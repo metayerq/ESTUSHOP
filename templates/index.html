@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estudantina · Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <div class="header-title">Estudantina</div>
+      <div class="header-sub" id="subtitle">Alcântara — chargement…</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <input type="date" id="date-picker" class="date-input" onchange="loadData()">
+      <button class="btn-refresh" onclick="goToday()">Aujourd'hui</button>
+      <button class="btn-refresh" onclick="loadData()">↻</button>
+      <div class="updated" id="updated-at" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="section-label">Aujourd'hui</div>
+  <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:32px;">
+    <div class="kpi-grid">
+      <div class="kpi-cell">
+        <div class="kpi-label">Chiffre d'affaires</div>
+        <div class="kpi-value" id="kpi-ca">—</div>
+        <div class="kpi-delta" id="kpi-ca-delta"></div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">Transactions</div>
+        <div class="kpi-value" id="kpi-nb">—</div>
+        <div class="kpi-delta" id="kpi-nb-delta"></div>
+        <div class="progress-wrap">
+          <div class="progress-track"><div class="progress-fill" id="seuil-bar" style="width:0%"></div></div>
+          <div class="progress-meta">Seuil rentabilité : {{ seuil }} tx/j</div>
+        </div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">Ticket moyen</div>
+        <div class="kpi-value" id="kpi-ticket">—</div>
+        <div class="kpi-delta" id="kpi-ticket-delta"></div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">Solde caisse</div>
+        <div class="kpi-value" id="kpi-balance">—</div>
+        <div class="kpi-delta" style="color:var(--muted)">en temps réel</div>
+      </div>
+      <div class="kpi-cell" id="kpi-tempo-cell" style="display:none;">
+        <div class="kpi-label">Tempo service</div>
+        <div class="kpi-value" id="kpi-tempo">—</div>
+        <div class="kpi-delta" id="kpi-tempo-sub" style="color:var(--muted)"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sparkline semaine -->
+  <div class="section-label">7 derniers jours</div>
+  <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:32px;padding:20px 24px;">
+    <canvas id="chart-week" height="55"></canvas>
+    <div id="week-labels" style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--muted);"></div>
+  </div>
+
+  <!-- Charts -->
+  <div class="section-label">Répartition</div>
+  <div class="charts-grid" style="margin-bottom:32px;">
+    <div class="chart-block">
+      <div class="section-label" style="margin-bottom:16px;">CA par heure (€)</div>
+      <canvas id="chart-hourly" height="130"></canvas>
+    </div>
+    <div class="chart-block">
+      <div class="section-label" style="margin-bottom:16px;">Modes de paiement</div>
+      <canvas id="chart-payments" height="160"></canvas>
+      <div id="payment-legend" style="margin-top:16px;"></div>
+    </div>
+  </div>
+
+  <!-- Rush detector -->
+  <div id="rush-section" style="display:none;margin-bottom:32px;">
+    <div class="section-label">Pics d'activité</div>
+    <div id="rush-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+  </div>
+
+  <!-- Top produits -->
+  <div class="section-label">Top produits</div>
+  <div class="table-wrap" style="margin-bottom:32px;">
+    <table>
+      <thead>
+        <tr>
+          <th>Produit</th>
+          <th class="right">Qté</th>
+          <th class="right">Prix unit.</th>
+          <th class="right">CA total</th>
+          <th class="right">Marge</th>
+          <th style="width:100px;"></th>
+        </tr>
+      </thead>
+      <tbody id="products-body">
+        <tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">Chargement…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- CA moyen par produit sur 7j -->
+  <div class="section-label" style="margin-top:32px;">Performance produits · 7 jours</div>
+  <div class="table-wrap" style="margin-bottom:32px;">
+    <table>
+      <thead>
+        <tr>
+          <th>Produit</th>
+          <th class="right">Jours vendus</th>
+          <th class="right">Qté totale</th>
+          <th class="right">CA total</th>
+          <th class="right">Marge</th>
+          <th class="right">CA moy/jour</th>
+        </tr>
+      </thead>
+      <tbody id="products7d-body">
+        <tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">Chargement…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Ventilation TVA -->
+  <div id="tva-section" style="display:none;margin-bottom:32px;">
+    <div class="section-label">Ventilation TVA</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Taux</th>
+            <th class="right">Base HT</th>
+            <th class="right">TVA collectée</th>
+            <th class="right">Total TTC</th>
+          </tr>
+        </thead>
+        <tbody id="tva-body"></tbody>
+        <tfoot id="tva-foot" style="border-top:2px solid var(--text);"></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- Produits non vendus -->
+  <div id="unsold-section" style="display:none;margin-bottom:32px;">
+    <div class="section-label">Pas vendus aujourd'hui</div>
+    <div id="unsold-list" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+  </div>
+
+  <!-- Transactions récentes -->
+  <div class="section-label">Transactions récentes</div>
+  <div class="table-wrap">
+    <div id="recent-list">
+      <table>
+        <thead>
+          <tr>
+            <th>Heure</th>
+            <th>Document</th>
+            <th>Type</th>
+            <th class="right">Montant</th>
+          </tr>
+        </thead>
+        <tbody id="recent-body">
+          <tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">Chargement…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<div id="error-banner">⚠ <span id="error-msg"></span></div>
+
+<!-- Drawer ticket -->
+<div id="drawer-overlay" onclick="closeDrawer()"></div>
+<div id="drawer">
+  <div class="drawer-header">
+    <div>
+      <div class="drawer-title" id="drawer-number"></div>
+      <div class="drawer-sub" id="drawer-meta"></div>
+    </div>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="drawer-section-label">Articles</div>
+  <table class="drawer-table" id="drawer-items"></table>
+  <div class="drawer-section-label" style="margin-top:20px;">Paiement</div>
+  <div id="drawer-payments"></div>
+  <div class="drawer-total" id="drawer-total"></div>
+</div>
+
+<script src="/static/dashboard.js"></script>
+</body>
+</html>

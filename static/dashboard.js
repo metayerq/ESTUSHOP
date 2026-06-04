@@ -1,0 +1,329 @@
+const COLORS = ['#1a1a1a','#555','#888','#aaa','#ccc','#e0e0e0'];
+let chartHourly = null, chartPayments = null, chartWeek = null;
+
+function marginBadge(pct) {
+  const color = pct >= 80 ? 'var(--green)' : pct >= 60 ? '#b07d00' : 'var(--red)';
+  return `<span style="color:${color};font-weight:500">${pct}%</span>`;
+}
+
+const fmt = n => new Intl.NumberFormat('fr-FR', {
+  style: 'currency', currency: 'EUR', minimumFractionDigits: 2
+}).format(n);
+
+function delta(today, yesterday) {
+  if (!yesterday) return '';
+  const pct = ((today - yesterday) / yesterday * 100).toFixed(0);
+  const cls = pct >= 0 ? 'delta-up' : 'delta-down';
+  return `<span class="${cls}">${pct >= 0 ? '+' : ''}${pct}% vs hier</span>`;
+}
+
+function getSelectedDate() {
+  return document.getElementById('date-picker').value;
+}
+
+function goToday() {
+  const today = new Date().toISOString().slice(0, 10);
+  document.getElementById('date-picker').value = today;
+  loadData();
+}
+
+async function loadData() {
+  const date = getSelectedDate();
+  try {
+    const r = await fetch('/api/data' + (date ? '?date=' + date : ''));
+    if (!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    render(d);
+    document.getElementById('error-banner').style.display = 'none';
+  } catch(e) {
+    document.getElementById('error-msg').textContent = e.message;
+    document.getElementById('error-banner').style.display = 'block';
+  }
+}
+
+function render(d) {
+  const dateStr = new Date(d.date + 'T12:00:00').toLocaleDateString('fr-FR', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
+  document.getElementById('subtitle').textContent = 'Alcântara — ' + dateStr;
+  const updatedEl = document.getElementById('updated-at');
+  if (d.is_today) {
+    updatedEl.textContent = 'Mis à jour à ' + d.updated_at;
+    updatedEl.style.display = '';
+  } else {
+    updatedEl.style.display = 'none';
+  }
+
+  document.getElementById('kpi-ca').textContent         = fmt(d.today.ca);
+  document.getElementById('kpi-ca-delta').innerHTML     = delta(d.today.ca, d.yesterday.ca);
+  document.getElementById('kpi-nb').textContent         = d.today.nb;
+  document.getElementById('kpi-nb-delta').innerHTML     = delta(d.today.nb, d.yesterday.nb);
+  document.getElementById('kpi-ticket').textContent     = fmt(d.today.ticket);
+  document.getElementById('kpi-ticket-delta').innerHTML = delta(d.today.ticket, d.yesterday.ticket);
+  document.getElementById('kpi-balance').textContent    = fmt(d.balance);
+
+  // Tempo service
+  const tempoCell = document.getElementById('kpi-tempo-cell');
+  if (d.tempo && d.tempo.avg_gap_min != null) {
+    tempoCell.style.display = '';
+    const gap = d.tempo.avg_gap_min;
+    document.getElementById('kpi-tempo').textContent = gap < 1
+      ? `${Math.round(gap * 60)}s/tx`
+      : `${gap}min/tx`;
+    document.getElementById('kpi-tempo-sub').textContent =
+      `${d.tempo.tx_per_hour} tx/h · pic ${d.tempo.busiest}`;
+  } else {
+    tempoCell.style.display = 'none';
+  }
+
+  const pct = Math.min(100, Math.round(d.today.nb / d.seuil * 100));
+  document.getElementById('seuil-bar').style.width = pct + '%';
+
+  // Sparkline semaine
+  const peakIdx = d.week.reduce((mi, v, i, a) => v.ca > a[mi].ca ? i : mi, 0);
+  const wCtx = document.getElementById('chart-week').getContext('2d');
+  if (chartWeek) chartWeek.destroy();
+  chartWeek = new Chart(wCtx, {
+    type: 'bar',
+    data: {
+      labels: d.week.map(w => w.label),
+      datasets: [{
+        data: d.week.map(w => w.ca),
+        backgroundColor: d.week.map((_, i) => i === peakIdx && d.week[peakIdx].ca > 0 ? '#1a1a1a' : '#e0e0e0'),
+        borderRadius: 3,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => fmt(ctx.raw) + ' · ' + d.week[ctx.dataIndex].nb + ' tx' } }
+      },
+      scales: {
+        y: { display: false, beginAtZero: true },
+        x: { ticks: { font: { size: 11 }, color: '#9b9b9b' }, grid: { display: false }, border: { display: false } }
+      }
+    }
+  });
+  document.getElementById('week-labels').innerHTML = d.week.map((w, i) =>
+    `<span style="${i === peakIdx && w.ca > 0 ? 'color:var(--text);font-weight:600' : ''}">${fmt(w.ca)}</span>`
+  ).join('');
+
+  // Chart horaire — heure de pointe en noir, reste en gris
+  const maxHourVal = Math.max(...d.hourly.values);
+  const hCtx = document.getElementById('chart-hourly').getContext('2d');
+  if (chartHourly) chartHourly.destroy();
+  chartHourly = new Chart(hCtx, {
+    type: 'bar',
+    data: {
+      labels: d.hourly.labels,
+      datasets: [{
+        data: d.hourly.values,
+        backgroundColor: d.hourly.values.map(v => v > 0 && v === maxHourVal ? '#1a1a1a' : '#e0e0e0'),
+        borderRadius: 2,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => fmt(ctx.raw) } }
+      },
+      scales: {
+        y: {
+          ticks: { callback: v => v + ' €', font: { size: 11 }, color: '#9b9b9b' },
+          grid: { color: '#f0f0f0' }, border: { display: false }
+        },
+        x: {
+          ticks: { font: { size: 11 }, color: '#9b9b9b' },
+          grid: { display: false }, border: { display: false }
+        }
+      }
+    }
+  });
+
+  // Chart paiements
+  const pCtx = document.getElementById('chart-payments').getContext('2d');
+  if (chartPayments) chartPayments.destroy();
+  const noData = !d.payments.labels.length;
+  if (noData) {
+    document.getElementById('payment-legend').innerHTML =
+      '<p style="font-size:12px;color:var(--muted);">Aucun mouvement enregistré.</p>';
+  } else {
+    chartPayments = new Chart(pCtx, {
+      type: 'doughnut',
+      data: {
+        labels: d.payments.labels,
+        datasets: [{
+          data: d.payments.values,
+          backgroundColor: COLORS.slice(0, d.payments.labels.length),
+          borderWidth: 3, borderColor: '#fff'
+        }]
+      },
+      options: {
+        cutout: '68%',
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ' ' + ctx.label + ': ' + fmt(ctx.raw) } }
+        }
+      }
+    });
+    const total = d.payments.values.reduce((a, b) => a + b, 0);
+    document.getElementById('payment-legend').innerHTML = d.payments.labels.map((l, i) => {
+      const p = total > 0 ? Math.round(d.payments.values[i] / total * 100) : 0;
+      return `<div class="pay-row">
+        <span class="pay-name"><span class="pay-dot" style="background:${COLORS[i]}"></span>${l}</span>
+        <span class="pay-val">${fmt(d.payments.values[i])} · ${p}%</span>
+      </div>`;
+    }).join('');
+  }
+
+  // Rush detector
+  const rushSection = document.getElementById('rush-section');
+  if (d.rush && d.rush.length) {
+    rushSection.style.display = '';
+    document.getElementById('rush-list').innerHTML = d.rush.map(r =>
+      `<span class="rush-badge">⚡ ${r.start}–${r.end} · ${r.count} tx</span>`
+    ).join('');
+  } else {
+    rushSection.style.display = 'none';
+  }
+
+  // Top produits
+  const maxQty = d.products.length ? d.products[0].qty : 1;
+  if (!d.products.length) {
+    document.getElementById('products-body').innerHTML =
+      '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">Aucun produit vendu aujourd\'hui.</td></tr>';
+  } else {
+    document.getElementById('products-body').innerHTML = d.products.map((p, i) => {
+      const barW = Math.round(p.qty / maxQty * 100);
+      const rank = i === 0 ? ' style="font-weight:600"' : '';
+      const marginHtml = p.margin_pct != null ? marginBadge(p.margin_pct) : '<span style="color:var(--muted)">—</span>';
+      return `<tr>
+        <td${rank}>${p.name}</td>
+        <td class="amount">${p.qty}</td>
+        <td class="amount" style="color:var(--muted)">${fmt(p.avg)}</td>
+        <td class="amount">${fmt(p.revenue)}</td>
+        <td class="amount">${marginHtml}</td>
+        <td style="padding-right:16px;vertical-align:middle;">
+          <div style="height:3px;background:var(--bar-bg);border-radius:2px;">
+            <div style="height:3px;background:var(--bar);border-radius:2px;width:${barW}%"></div>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  // CA moyen 7j par produit
+  if (!d.products_7d || !d.products_7d.length) {
+    document.getElementById('products7d-body').innerHTML =
+      '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">Aucune donnée sur 7 jours.</td></tr>';
+  } else {
+    const maxRev7 = d.products_7d[0].revenue;
+    document.getElementById('products7d-body').innerHTML = d.products_7d.map((p, i) => {
+      const bar = Math.round(p.revenue / maxRev7 * 100);
+      const marginHtml = p.margin_pct != null ? marginBadge(p.margin_pct) : '<span style="color:var(--muted)">—</span>';
+      return `<tr>
+        <td style="${i===0?'font-weight:600':''}">${p.name}</td>
+        <td class="amount" style="color:var(--muted)">${p.days_sold}j</td>
+        <td class="amount" style="color:var(--muted)">${p.qty}</td>
+        <td class="amount">${fmt(p.revenue)}</td>
+        <td class="amount">${marginHtml}</td>
+        <td style="padding-right:16px;vertical-align:middle;min-width:100px;">
+          <div style="height:3px;background:var(--bar-bg);border-radius:2px;">
+            <div style="height:3px;background:var(--bar);border-radius:2px;width:${bar}%"></div>
+          </div>
+          <span style="font-size:11px;color:var(--muted)">${fmt(p.avg_day)}/j</span>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Ventilation TVA
+  const tvaSection = document.getElementById('tva-section');
+  if (d.tva && d.tva.rows.length) {
+    tvaSection.style.display = '';
+    document.getElementById('tva-body').innerHTML = d.tva.rows.map(r => `
+      <tr>
+        <td><span class="badge">${r.rate}%</span></td>
+        <td class="amount">${fmt(r.base)}</td>
+        <td class="amount">${fmt(r.tva)}</td>
+        <td class="amount">${fmt(r.total)}</td>
+      </tr>`).join('');
+    document.getElementById('tva-foot').innerHTML = `
+      <tr>
+        <td>Total</td>
+        <td class="amount">${fmt(d.tva.totals.base)}</td>
+        <td class="amount">${fmt(d.tva.totals.tva)}</td>
+        <td class="amount">${fmt(d.tva.totals.total)}</td>
+      </tr>`;
+  } else {
+    tvaSection.style.display = 'none';
+  }
+
+  // Produits non vendus
+  const unsoldSection = document.getElementById('unsold-section');
+  if (d.unsold && d.unsold.length) {
+    unsoldSection.style.display = '';
+    document.getElementById('unsold-list').innerHTML =
+      d.unsold.map(p => `<span class="unsold-tag">${p.name}</span>`).join('');
+  } else {
+    unsoldSection.style.display = 'none';
+  }
+
+  // Tableau transactions — cliquable
+  if (!d.recent || !d.recent.length) {
+    document.getElementById('recent-body').innerHTML =
+      '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">Aucune transaction aujourd\'hui.</td></tr>';
+    return;
+  }
+  window._txData = d.recent;
+  document.getElementById('recent-body').innerHTML = d.recent.map((t, i) => `
+    <tr style="cursor:pointer;" onclick="openDrawer(${i})">
+      <td class="time">${t.time}</td>
+      <td class="num">${t.number}</td>
+      <td><span class="badge">${t.type}</span></td>
+      <td class="amount">${fmt(t.amount)}</td>
+    </tr>`).join('');
+}
+
+function openDrawer(idx) {
+  const t = window._txData[idx];
+  document.getElementById('drawer-number').textContent = t.number;
+  document.getElementById('drawer-meta').textContent   = t.time + ' · ' + t.client;
+
+  document.getElementById('drawer-items').innerHTML = t.items.length
+    ? t.items.map(item => `
+        <tr>
+          <td class="dt-name">${item.name}</td>
+          <td class="dt-qty">${item.qty > 1 ? item.qty + ' ×' : ''} ${fmt(item.unit)}</td>
+          <td class="dt-amt">${fmt(item.total)}</td>
+        </tr>`).join('')
+    : '<tr><td colspan="3" style="color:var(--muted);font-size:12px;padding:8px 0;">Détail non disponible</td></tr>';
+
+  document.getElementById('drawer-payments').innerHTML = t.payments.map(p => `
+    <div class="drawer-pay-row">
+      <span>${p.label}</span>
+      <span>${fmt(p.amount)}</span>
+    </div>`).join('');
+
+  document.getElementById('drawer-total').innerHTML =
+    `<span>Total</span><span>${fmt(t.amount)}</span>`;
+
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawer-overlay').classList.add('open');
+}
+
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('drawer-overlay').classList.remove('open');
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+// Initialiser le picker à aujourd'hui
+document.getElementById('date-picker').value = new Date().toISOString().slice(0, 10);
+loadData();
+// Auto-refresh seulement si on est sur aujourd'hui
+setInterval(() => { if (getSelectedDate() === new Date().toISOString().slice(0, 10)) loadData(); }, 5 * 60 * 1000);
