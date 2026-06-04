@@ -15,7 +15,8 @@ from vendus import (
     get_documents, get_documents_with_items, get_balance, get_catalog,
     calc_stats, hourly_breakdown, payment_breakdown, top_products, recent_docs,
     weekly_sparkline, rush_detector, unsold_today, product_stats_7d,
-    tva_breakdown, service_tempo,
+    tva_breakdown, service_tempo, upsell_rate, category_mix, ticket_median,
+    best_weekday, wow_growth,
 )
 
 SEUIL_TRANSACTIONS = 40
@@ -68,6 +69,11 @@ def api_data():
         "rush":        rush_detector(docs_today),
         "tva":         tva_breakdown(docs_today),
         "tempo":       service_tempo(docs_today),
+        "upsell":      upsell_rate(docs_today),
+        "mix":         category_mix(docs_today, catalog),
+        "median":      ticket_median(docs_today),
+        "weekdays":    best_weekday(),
+        "wow":         wow_growth(),
         "unsold":      unsold_today(docs_today, catalog),
         "products_7d": product_stats_7d(since_7d, today),
         "recent":      recent_docs(docs_today),

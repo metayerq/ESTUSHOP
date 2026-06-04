@@ -185,12 +185,13 @@ def get_catalog():
             supply = float(p.get("supply_price", 0))
             margin_pct = round((gross - supply) / gross * 100, 1) if gross and supply else None
             result[p["title"]] = {
-                "id":         p["id"],
-                "name":       p["title"],
-                "category":   p.get("class_name", ""),
-                "price":      gross,
-                "cost":       supply,
-                "margin_pct": margin_pct,
+                "id":          p["id"],
+                "name":        p["title"],
+                "category":    p.get("class_name", ""),
+                "category_id": p.get("category_id"),
+                "price":       gross,
+                "cost":        supply,
+                "margin_pct":  margin_pct,
             }
         return result
     except Exception:
@@ -204,6 +205,146 @@ def unsold_today(docs, catalog):
         p for p in catalog.values()
         if p["name"] not in sold_names and p.get("category") == "Alimentar"
     ]
+
+
+# Mapping category_id → groupe (dérivé de l'exploration du catalogue)
+FOOD_CAT_IDS = {343042919, 343054458, 343065085, 343055566, 343079649}
+DRINK_CAT_IDS = {343052000, 343053226, 343046110, 343053550, 343055376}
+EXTRA_CAT_IDS = {343052198}
+
+
+def upsell_rate(docs):
+    """% de tickets avec 2+ articles distincts (boissons+food = upsell réel)."""
+    if not docs:
+        return {"rate": 0, "multi": 0, "single": 0, "total": 0}
+    multi  = sum(1 for d in docs if len(d.get("items", [])) >= 2)
+    single = len(docs) - multi
+    return {
+        "rate":   round(multi / len(docs) * 100) if docs else 0,
+        "multi":  multi,
+        "single": single,
+        "total":  len(docs),
+    }
+
+
+def category_mix(docs, catalog):
+    """Répartition CA entre Boissons, Food et Extras."""
+    by_group = {"Boissons": 0.0, "Food": 0.0, "Extras": 0.0, "Autre": 0.0}
+    for d in docs:
+        for item in d.get("items", []):
+            name  = item.get("title", "")
+            total = float(item.get("amounts", {}).get("gross_total", 0))
+            cat   = catalog.get(name, {})
+            cid   = cat.get("category_id")
+            if cid in DRINK_CAT_IDS:
+                by_group["Boissons"] += total
+            elif cid in FOOD_CAT_IDS:
+                by_group["Food"] += total
+            elif cid in EXTRA_CAT_IDS:
+                by_group["Extras"] += total
+            else:
+                by_group["Autre"] += total
+    grand = sum(by_group.values()) or 1
+    return [
+        {"label": k, "amount": round(v, 2), "pct": round(v / grand * 100)}
+        for k, v in by_group.items() if v > 0
+    ]
+
+
+def ticket_median(docs):
+    """Ticket médian (plus robuste que la moyenne face aux valeurs extrêmes)."""
+    amounts = sorted(float(d.get("amount_gross", 0)) for d in docs)
+    if not amounts:
+        return None
+    n = len(amounts)
+    mid = n // 2
+    return round(amounts[mid] if n % 2 else (amounts[mid-1] + amounts[mid]) / 2, 2)
+
+
+def best_weekday():
+    """Meilleur jour de la semaine sur tout l'historique disponible (90j)."""
+    from datetime import date, timedelta
+    today = date.today()
+    since = (today - timedelta(days=90)).isoformat()
+    try:
+        raw = vendus("/documents/", {"since": since, "until": today.isoformat(), "status": "N"})
+        if not isinstance(raw, list):
+            raw = raw.get("docs", raw.get("data", []))
+    except Exception:
+        return None
+
+    from collections import defaultdict
+    import datetime as dt
+    by_weekday = defaultdict(lambda: {"ca": 0.0, "days": set()})
+    for d in raw:
+        if d.get("type") not in SALE_TYPES:
+            continue
+        day_str = d.get("date", "")
+        try:
+            day_obj = dt.date.fromisoformat(day_str)
+            wd = day_obj.strftime("%A")  # Monday, Tuesday…
+            by_weekday[wd]["ca"]   += float(d.get("amount_gross", 0))
+            by_weekday[wd]["days"].add(day_str)
+        except ValueError:
+            pass
+
+    if not by_weekday:
+        return None
+
+    WD_FR = {"Monday":"Lundi","Tuesday":"Mardi","Wednesday":"Mercredi",
+              "Thursday":"Jeudi","Friday":"Vendredi","Saturday":"Samedi","Sunday":"Dimanche"}
+    result = []
+    for wd, stats in by_weekday.items():
+        n = len(stats["days"])
+        result.append({
+            "day":     WD_FR.get(wd, wd),
+            "avg_ca":  round(stats["ca"] / n, 2) if n else 0,
+            "n_days":  n,
+        })
+    result.sort(key=lambda x: x["avg_ca"], reverse=True)
+    return result
+
+
+def wow_growth():
+    """Croissance semaine en cours vs semaine précédente (même 7 jours)."""
+    from datetime import date, timedelta
+    today = date.today()
+    # Semaine en cours : 7 derniers jours
+    since_cur  = (today - timedelta(days=6)).isoformat()
+    # Semaine précédente : les 7 jours avant ça
+    since_prev = (today - timedelta(days=13)).isoformat()
+    until_prev = (today - timedelta(days=7)).isoformat()
+    try:
+        raw = vendus("/documents/", {
+            "since": since_prev, "until": today.isoformat(), "status": "N"
+        })
+        if not isinstance(raw, list):
+            raw = raw.get("docs", raw.get("data", []))
+    except Exception:
+        return None
+
+    cur_ca = prev_ca = 0.0
+    cur_nb = prev_nb = 0
+    for d in raw:
+        if d.get("type") not in SALE_TYPES:
+            continue
+        day = d.get("date", "")
+        ca  = float(d.get("amount_gross", 0))
+        if day >= since_cur:
+            cur_ca += ca; cur_nb += 1
+        elif day <= until_prev:
+            prev_ca += ca; prev_nb += 1
+
+    growth_ca = round((cur_ca - prev_ca) / prev_ca * 100) if prev_ca else None
+    growth_nb = round((cur_nb - prev_nb) / prev_nb * 100) if prev_nb else None
+    return {
+        "cur_ca":   round(cur_ca, 2),
+        "prev_ca":  round(prev_ca, 2),
+        "cur_nb":   cur_nb,
+        "prev_nb":  prev_nb,
+        "growth_ca": growth_ca,
+        "growth_nb": growth_nb,
+    }
 
 
 def tva_breakdown(docs):

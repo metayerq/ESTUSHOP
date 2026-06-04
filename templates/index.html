@@ -83,6 +83,49 @@
     </div>
   </div>
 
+  <!-- Performance commerciale -->
+  <div class="section-label" style="margin-top:32px;">Performance commerciale</div>
+  <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:32px;">
+    <div class="kpi-grid" id="perf-grid">
+      <div class="kpi-cell">
+        <div class="kpi-label">Ticket médian</div>
+        <div class="kpi-value" id="kpi-median">—</div>
+        <div class="kpi-delta" style="color:var(--muted)">vs moy <span id="kpi-median-vs"></span></div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">Taux upsell</div>
+        <div class="kpi-value" id="kpi-upsell">—</div>
+        <div class="kpi-delta" id="kpi-upsell-sub" style="color:var(--muted)"></div>
+      </div>
+      <div class="kpi-cell" style="border-right:none;">
+        <div class="kpi-label">Mix boissons / food</div>
+        <div id="mix-bars" style="margin-top:8px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tendance semaine -->
+  <div class="section-label">Tendance</div>
+  <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:32px;">
+    <div class="kpi-grid">
+      <div class="kpi-cell">
+        <div class="kpi-label">CA semaine en cours</div>
+        <div class="kpi-value" id="kpi-wow-ca">—</div>
+        <div class="kpi-delta" id="kpi-wow-ca-delta"></div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">Transactions semaine</div>
+        <div class="kpi-value" id="kpi-wow-nb">—</div>
+        <div class="kpi-delta" id="kpi-wow-nb-delta"></div>
+      </div>
+      <div class="kpi-cell" style="border-right:none;" id="weekday-cell">
+        <div class="kpi-label">Meilleur jour</div>
+        <div class="kpi-value" id="kpi-best-day">—</div>
+        <div class="kpi-delta" id="kpi-best-day-sub" style="color:var(--muted)"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Rush detector -->
   <div id="rush-section" style="display:none;margin-bottom:32px;">
     <div class="section-label">Pics d'activité</div>

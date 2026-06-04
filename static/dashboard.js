@@ -179,6 +179,57 @@ function render(d) {
     }).join('');
   }
 
+  // Performance commerciale
+  // Ticket médian
+  if (d.median != null) {
+    document.getElementById('kpi-median').textContent = fmt(d.median);
+    const diff = d.today.ticket ? Math.round((d.median - d.today.ticket) / d.today.ticket * 100) : 0;
+    document.getElementById('kpi-median-vs').textContent = fmt(d.today.ticket) + (diff !== 0 ? ` (${diff > 0 ? '+' : ''}${diff}%)` : '');
+  }
+
+  // Upsell
+  if (d.upsell && d.upsell.total) {
+    document.getElementById('kpi-upsell').textContent = d.upsell.rate + '%';
+    document.getElementById('kpi-upsell-sub').textContent =
+      `${d.upsell.multi} tickets multi · ${d.upsell.single} seul`;
+  }
+
+  // Mix boissons/food
+  const MIX_COLORS = {'Boissons':'#1a1a1a','Food':'#555','Extras':'#999','Autre':'#ccc'};
+  if (d.mix && d.mix.length) {
+    const total = d.mix.reduce((a,b) => a + b.amount, 0);
+    document.getElementById('mix-bars').innerHTML = d.mix.map(m => `
+      <div style="margin-bottom:6px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+          <span style="color:var(--muted)">${m.label}</span>
+          <span style="font-weight:500">${m.pct}% · ${fmt(m.amount)}</span>
+        </div>
+        <div style="height:4px;background:var(--bar-bg);border-radius:2px;">
+          <div style="height:4px;background:${MIX_COLORS[m.label]||'#888'};border-radius:2px;width:${m.pct}%"></div>
+        </div>
+      </div>`).join('');
+  }
+
+  // Tendance WoW
+  if (d.wow) {
+    document.getElementById('kpi-wow-ca').textContent = fmt(d.wow.cur_ca);
+    document.getElementById('kpi-wow-ca-delta').innerHTML = d.wow.growth_ca != null
+      ? `<span class="${d.wow.growth_ca >= 0 ? 'delta-up' : 'delta-down'}">${d.wow.growth_ca >= 0 ? '+' : ''}${d.wow.growth_ca}% vs sem. préc.</span>`
+      : '<span style="color:var(--muted)">pas de comparatif</span>';
+    document.getElementById('kpi-wow-nb').textContent = d.wow.cur_nb;
+    document.getElementById('kpi-wow-nb-delta').innerHTML = d.wow.growth_nb != null
+      ? `<span class="${d.wow.growth_nb >= 0 ? 'delta-up' : 'delta-down'}">${d.wow.growth_nb >= 0 ? '+' : ''}${d.wow.growth_nb}% vs sem. préc.</span>`
+      : '<span style="color:var(--muted)">pas de comparatif</span>';
+  }
+
+  // Meilleur jour de la semaine
+  if (d.weekdays && d.weekdays.length) {
+    const best = d.weekdays[0];
+    document.getElementById('kpi-best-day').textContent = best.day;
+    document.getElementById('kpi-best-day-sub').textContent =
+      `moy. ${fmt(best.avg_ca)} · ${best.n_days}j de données`;
+  }
+
   // Rush detector
   const rushSection = document.getElementById('rush-section');
   if (d.rush && d.rush.length) {
