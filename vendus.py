@@ -385,6 +385,38 @@ def wow_growth():
     }
 
 
+def cumulative_curve(docs):
+    """Courbe cumulative du CA TTC transaction par transaction."""
+    points = []
+    for d in docs:
+        lt = d.get("local_time", "")
+        try:
+            time_str = lt[11:16]  # "HH:MM"
+        except (TypeError, IndexError):
+            continue
+        points.append({
+            "time": time_str,
+            "ca":   float(d.get("amount_gross", 0)),
+            "nb":   d.get("number", ""),
+        })
+
+    # Trier par heure
+    points.sort(key=lambda p: p["time"])
+
+    # Construire la série cumulative
+    cumul = 0.0
+    result = [{"time": points[0]["time"][:2] + "h00", "ca_cum": 0.0, "ca_tx": 0.0, "nb": ""}] if points else []
+    for p in points:
+        cumul += p["ca"]
+        result.append({
+            "time":   p["time"].replace(":", "h"),
+            "ca_cum": round(cumul, 2),
+            "ca_tx":  p["ca"],
+            "nb":     p["nb"],
+        })
+    return result
+
+
 def daily_economics(docs, catalog):
     """
     P&L du jour entièrement en HT (hors taxes).

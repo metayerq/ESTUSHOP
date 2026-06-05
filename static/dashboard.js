@@ -1,7 +1,7 @@
 const COLORS = ['rgba(55,53,47,1)','rgba(55,53,47,.65)','rgba(55,53,47,.4)','rgba(55,53,47,.25)','rgba(55,53,47,.12)','rgba(55,53,47,.07)'];
 const BAR_ACTIVE = 'rgba(55,53,47,0.85)';
 const BAR_IDLE   = 'rgba(55,53,47,0.12)';
-let chartHourly = null, chartPayments = null, chartWeek = null;
+let chartHourly = null, chartPayments = null, chartWeek = null, chartCurve = null;
 
 function marginBadge(pct) {
   const color = pct >= 80 ? 'var(--green)' : pct >= 60 ? '#b07d00' : 'var(--red)';
@@ -307,6 +307,62 @@ function render(d) {
     document.getElementById('kpi-best-day').textContent = best.day;
     document.getElementById('kpi-best-day-sub').textContent =
       `moy. ${fmt(best.avg_ca)} · ${best.n_days}j de données`;
+  }
+
+  // Courbe cumulative
+  const curveSection = document.getElementById('curve-section');
+  if (d.curve && d.curve.length > 1) {
+    curveSection.style.display = '';
+    const cCtx = document.getElementById('chart-curve').getContext('2d');
+    if (chartCurve) chartCurve.destroy();
+    chartCurve = new Chart(cCtx, {
+      type: 'line',
+      data: {
+        labels: d.curve.map(p => p.time),
+        datasets: [{
+          data: d.curve.map(p => p.ca_cum),
+          borderColor: BAR_ACTIVE,
+          backgroundColor: 'rgba(55,53,47,0.06)',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.3,
+          pointRadius: d.curve.map((p, i) => i === 0 ? 0 : 4),
+          pointBackgroundColor: BAR_ACTIVE,
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
+        }]
+      },
+      options: {
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: ctx => ctx[0].label,
+              label: ctx => {
+                const pt = d.curve[ctx.dataIndex];
+                return [
+                  ` Cumul : ${fmt(ctx.raw)}`,
+                  pt.ca_tx ? ` + ${fmt(pt.ca_tx)}  (${pt.nb})` : '',
+                ].filter(Boolean);
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { callback: v => v + ' €', font: { size: 11 }, color: 'rgba(120,119,111,1)' },
+            grid: { color: 'rgba(55,53,47,0.06)' }, border: { display: false },
+          },
+          x: {
+            ticks: { font: { size: 11 }, color: 'rgba(120,119,111,1)', maxTicksLimit: 12 },
+            grid: { display: false }, border: { display: false },
+          }
+        }
+      }
+    });
+  } else {
+    curveSection.style.display = 'none';
   }
 
   // Rush detector
