@@ -301,35 +301,32 @@ function render(d) {
     });
   }
 
-  // Treemap produits
-  const treemap = document.getElementById('treemap');
-  if (d.products && d.products.length && treemap) {
-    const totalRev = d.products.reduce((s, p) => s + p.revenue, 0);
+  // Contribution produits — barres horizontales
+  const productBars = document.getElementById('product-bars');
+  if (d.products && d.products.length && productBars) {
+    const maxRev = d.products[0].revenue || 1;
     const marginColor = pct => {
-      if (pct == null) return 'rgba(55,53,47,0.12)';
-      if (pct >= 75)   return '#448361';
-      if (pct >= 50)   return '#c47535';
+      if (pct == null) return 'rgba(55,53,47,0.18)';
+      if (pct >= 75) return '#448361';
+      if (pct >= 50) return '#c47535';
       return '#c4554d';
     };
-    treemap.innerHTML = d.products.map(p => {
-      const w = Math.max(8, Math.round(p.revenue / totalRev * 100));
-      const label = p.qty > 1 ? `${p.name} ×${p.qty}` : p.name;
-      return `<div title="${p.name}\nCA: ${fmt(p.revenue)}\nMarge: ${p.margin_pct != null ? p.margin_pct + '%' : '—'}"
-        style="
-          flex: ${w} 0 0;
-          min-width:${w < 12 ? '40' : '60'}px;
-          background:${marginColor(p.margin_pct)};
-          border-radius:4px;
-          padding:6px 8px;
-          display:flex;
-          flex-direction:column;
-          justify-content:flex-end;
-          overflow:hidden;
-          cursor:default;
-          height:${Math.max(40, Math.round(p.revenue / totalRev * 180))}px;
-        ">
-        <div style="font-size:10px;font-weight:600;color:#fff;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.name}</div>
-        <div style="font-size:9px;color:rgba(255,255,255,0.75);margin-top:2px;">${fmt(p.revenue)}${p.margin_pct != null ? ' · ' + p.margin_pct + '%' : ''}</div>
+    productBars.innerHTML = d.products.map(p => {
+      const barW = Math.round(p.revenue / maxRev * 100);
+      const color = marginColor(p.margin_pct);
+      return `<div style="display:flex;align-items:center;gap:8px;">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
+            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;color:var(--text)">${p.name}</span>
+            <span style="color:var(--muted);flex-shrink:0;margin-left:6px;">${fmt(p.revenue)}</span>
+          </div>
+          <div style="height:6px;background:var(--bar-bg);border-radius:3px;">
+            <div style="height:6px;background:${color};border-radius:3px;width:${barW}%;transition:width .4s ease;"></div>
+          </div>
+        </div>
+        <div style="font-size:11px;font-weight:500;color:${color};width:36px;text-align:right;flex-shrink:0;">
+          ${p.margin_pct != null ? p.margin_pct + '%' : '—'}
+        </div>
       </div>`;
     }).join('');
   }
