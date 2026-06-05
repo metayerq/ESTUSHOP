@@ -135,21 +135,10 @@
     </div>
   </div>
 
-  <!-- Distribution tickets + Treemap -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:32px;background:var(--bg-card);">
-    <div style="padding:20px 22px;border-right:1px solid var(--border);">
-      <div class="section-label" style="margin-bottom:14px;">Distribution des tickets</div>
-      <canvas id="chart-dist" height="120"></canvas>
-    </div>
-    <div style="padding:20px 22px;">
-      <div class="section-label" style="margin-bottom:14px;">Contribution produits <span style="font-weight:400;letter-spacing:0;text-transform:none;color:var(--faint);font-size:10px;">CA · couleur = marge</span></div>
-      <div id="product-bars" style="display:flex;flex-direction:column;gap:7px;"></div>
-      <div style="display:flex;gap:12px;margin-top:12px;font-size:10px;color:var(--muted);">
-        <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#448361;margin-right:4px;"></span>≥75%</span>
-        <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#c47535;margin-right:4px;"></span>50–75%</span>
-        <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#c4554d;margin-right:4px;"></span>&lt;50%</span>
-      </div>
-    </div>
+  <!-- Distribution tickets -->
+  <div class="section-label">Distribution des tickets</div>
+  <div class="card" style="padding:20px 22px;margin-bottom:32px;max-width:420px;">
+    <canvas id="chart-dist" height="100"></canvas>
   </div>
 
   <!-- Tendance semaine -->
