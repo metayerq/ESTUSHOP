@@ -1,7 +1,7 @@
 const COLORS = ['rgba(55,53,47,1)','rgba(55,53,47,.65)','rgba(55,53,47,.4)','rgba(55,53,47,.25)','rgba(55,53,47,.12)','rgba(55,53,47,.07)'];
 const BAR_ACTIVE = 'rgba(55,53,47,0.85)';
 const BAR_IDLE   = 'rgba(55,53,47,0.12)';
-let chartHourly = null, chartPayments = null, chartWeek = null, chartCurve = null;
+let chartHourly = null, chartPayments = null, chartWeek = null, chartCurve = null, chartDist = null;
 
 function marginBadge(pct) {
   const color = pct >= 80 ? 'var(--green)' : pct >= 60 ? '#b07d00' : 'var(--red)';
@@ -256,6 +256,82 @@ function render(d) {
       seuilSub.innerHTML = `<span style="color:var(--green)">Seuil dépassé ✓</span>`;
     }
     document.getElementById('eco-seuil-bar').style.width = Math.min(100, eco.pct_seuil) + '%';
+  }
+
+  // Distribution des tickets
+  if (d.ticket_dist && d.ticket_dist.length) {
+    const dCtx = document.getElementById('chart-dist').getContext('2d');
+    if (chartDist) chartDist.destroy();
+    const maxCount = Math.max(...d.ticket_dist.map(b => b.count)) || 1;
+    chartDist = new Chart(dCtx, {
+      type: 'bar',
+      data: {
+        labels: d.ticket_dist.map(b => b.label),
+        datasets: [{
+          data: d.ticket_dist.map(b => b.count),
+          backgroundColor: d.ticket_dist.map(b => b.count === maxCount ? BAR_ACTIVE : BAR_IDLE),
+          borderRadius: 4,
+          borderSkipped: false,
+        }]
+      },
+      options: {
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const b = d.ticket_dist[ctx.dataIndex];
+                return ` ${b.count} ticket${b.count > 1 ? 's' : ''} · ${b.pct}%`;
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { stepSize: 1, font: { size: 11 }, color: 'rgba(120,119,111,1)' },
+            grid: { color: 'rgba(55,53,47,0.06)' }, border: { display: false },
+          },
+          x: {
+            ticks: { font: { size: 11 }, color: 'rgba(120,119,111,1)' },
+            grid: { display: false }, border: { display: false },
+          }
+        }
+      }
+    });
+  }
+
+  // Treemap produits
+  const treemap = document.getElementById('treemap');
+  if (d.products && d.products.length && treemap) {
+    const totalRev = d.products.reduce((s, p) => s + p.revenue, 0);
+    const marginColor = pct => {
+      if (pct == null) return 'rgba(55,53,47,0.12)';
+      if (pct >= 75)   return '#448361';
+      if (pct >= 50)   return '#c47535';
+      return '#c4554d';
+    };
+    treemap.innerHTML = d.products.map(p => {
+      const w = Math.max(8, Math.round(p.revenue / totalRev * 100));
+      const label = p.qty > 1 ? `${p.name} ×${p.qty}` : p.name;
+      return `<div title="${p.name}\nCA: ${fmt(p.revenue)}\nMarge: ${p.margin_pct != null ? p.margin_pct + '%' : '—'}"
+        style="
+          flex: ${w} 0 0;
+          min-width:${w < 12 ? '40' : '60'}px;
+          background:${marginColor(p.margin_pct)};
+          border-radius:4px;
+          padding:6px 8px;
+          display:flex;
+          flex-direction:column;
+          justify-content:flex-end;
+          overflow:hidden;
+          cursor:default;
+          height:${Math.max(40, Math.round(p.revenue / totalRev * 180))}px;
+        ">
+        <div style="font-size:10px;font-weight:600;color:#fff;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.name}</div>
+        <div style="font-size:9px;color:rgba(255,255,255,0.75);margin-top:2px;">${fmt(p.revenue)}${p.margin_pct != null ? ' · ' + p.margin_pct + '%' : ''}</div>
+      </div>`;
+    }).join('');
   }
 
   // Performance commerciale

@@ -385,6 +385,28 @@ def wow_growth():
     }
 
 
+def ticket_distribution(docs):
+    """Répartition des tickets par tranche de montant TTC."""
+    buckets = [
+        ("0–5 €",   0,   5),
+        ("5–10 €",  5,  10),
+        ("10–20 €", 10, 20),
+        ("20+ €",   20, float("inf")),
+    ]
+    counts = {label: 0 for label, _, _ in buckets}
+    for d in docs:
+        amt = float(d.get("amount_gross", 0))
+        for label, lo, hi in buckets:
+            if lo <= amt < hi:
+                counts[label] += 1
+                break
+    total = len(docs) or 1
+    return [
+        {"label": label, "count": counts[label], "pct": round(counts[label] / total * 100)}
+        for label, _, _ in buckets
+    ]
+
+
 def cumulative_curve(docs):
     """Courbe cumulative du CA TTC transaction par transaction."""
     points = []
