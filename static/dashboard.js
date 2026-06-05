@@ -217,6 +217,40 @@ function render(d) {
     }).join('');
   }
 
+  // Économie du jour
+  const eco = d.economics;
+  if (eco) {
+    // Marge brute
+    document.getElementById('eco-marge').textContent = eco.marge_brute != null ? fmt(eco.marge_brute) : '—';
+    document.getElementById('eco-marge-pct').textContent = eco.marge_brute_pct != null
+      ? `${eco.marge_brute_pct}% du CA · COGS ${fmt(eco.cogs)}`
+      : 'coûts partiels catalogue';
+
+    // Charges
+    document.getElementById('eco-charges').textContent = fmt(eco.cout_total_jour);
+    document.getElementById('eco-charges-sub').textContent =
+      `Fixe ${fmt(eco.cout_fixe_jour)} · Personnel ${fmt(eco.cout_perso_jour)}`;
+
+    // EBITDA
+    const ebitdaEl = document.getElementById('eco-ebitda');
+    ebitdaEl.textContent = eco.ebitda != null ? fmt(eco.ebitda) : '—';
+    ebitdaEl.style.color = eco.ebitda > 0 ? 'var(--green)' : eco.ebitda < 0 ? 'var(--red)' : 'var(--text)';
+    document.getElementById('eco-ebitda-sub').textContent = eco.ebitda != null
+      ? (eco.ebitda > 0 ? 'Journée rentable ✓' : `Déficit de ${fmt(Math.abs(eco.ebitda))}`)
+      : '';
+    document.getElementById('eco-ebitda-sub').style.color = eco.ebitda > 0 ? 'var(--green)' : 'var(--red)';
+
+    // Seuil CA
+    document.getElementById('eco-seuil').textContent = fmt(eco.seuil_ca);
+    const seuilSub = document.getElementById('eco-seuil-sub');
+    if (eco.manque_seuil > 0) {
+      seuilSub.innerHTML = `<span style="color:var(--red)">Il manque ${fmt(eco.manque_seuil)}</span>`;
+    } else {
+      seuilSub.innerHTML = `<span style="color:var(--green)">Seuil dépassé ✓</span>`;
+    }
+    document.getElementById('eco-seuil-bar').style.width = Math.min(100, eco.pct_seuil) + '%';
+  }
+
   // Performance commerciale
   // Ticket médian
   if (d.median != null) {
