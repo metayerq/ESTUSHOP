@@ -381,49 +381,68 @@ def wow_growth():
 
 def daily_economics(docs, catalog):
     """
-    Marge brute réelle du jour, charges et EBITDA estimé.
-    Utilise les coûts réels du catalogue Vendus + les charges BP.
+    P&L du jour entièrement en HT (hors taxes).
+    CA HT  = amount_net  (Vendus)
+    COGS HT = supply_price × qty (prix d'achat HT dans catalogue Vendus)
+    Charges = BP en HT
+    Tout est cohérent pour le calcul de rentabilité.
     """
     from config import (
         COUT_TOTAL_JOUR, COUT_FIXE_JOUR, COUT_PERSONNEL_JOUR,
-        AMORT_JOUR, SEUIL_CA_JOUR, MARGE_BP_GLOBALE,
+        AMORT_JOUR, SEUIL_CA_JOUR,
     )
 
-    # Marge brute réelle à partir des items vendus × coût catalogue
-    ca_total   = 0.0
-    cogs_total = 0.0
+    ca_ttc  = 0.0   # TTC  — affiché pour info
+    ca_ht   = 0.0   # HT   — base des calculs de rentabilité
+    cogs_ht = 0.0   # COGS HT (supply_price × qty)
+    tva_col = 0.0   # TVA collectée = ca_ttc - ca_ht
+
     for d in docs:
+        # CA au niveau du document (net = HT, gross = TTC)
+        ca_ttc += float(d.get("amount_gross", 0))
+        ca_ht  += float(d.get("amount_net",   0))
+
+        # COGS item par item (supply_price est HT dans Vendus)
         for item in d.get("items", []):
-            qty    = float(item.get("qty", 0))
-            gross  = float(item.get("amounts", {}).get("gross_total", 0))
-            name   = item.get("title", "")
-            cat    = catalog.get(name, {})
-            cost   = cat.get("cost", 0) * qty if cat.get("cost") else None
-            ca_total   += gross
-            if cost is not None:
-                cogs_total += cost
+            qty  = float(item.get("qty", 0))
+            name = item.get("title", "")
+            cat  = catalog.get(name, {})
+            if cat.get("cost"):
+                cogs_ht += cat["cost"] * qty
 
-    marge_brute   = round(ca_total - cogs_total, 2) if cogs_total else None
-    marge_brute_pct = round(marge_brute / ca_total * 100, 1) if (marge_brute and ca_total) else None
+    tva_col = round(ca_ttc - ca_ht, 2)
 
-    # EBITDA estimé = marge brute réelle - charges du jour
-    ebitda = round(marge_brute - COUT_TOTAL_JOUR, 2) if marge_brute else None
+    # Marge brute HT (comparable aux charges BP qui sont en HT)
+    marge_ht     = round(ca_ht - cogs_ht, 2) if cogs_ht else None
+    marge_ht_pct = round(marge_ht / ca_ht * 100, 1) if (marge_ht and ca_ht) else None
 
-    # Seuil rentabilité : CA nécessaire pour couvrir les charges
-    manque_seuil = round(max(0, SEUIL_CA_JOUR - ca_total), 2)
-    pct_seuil    = round(ca_total / SEUIL_CA_JOUR * 100) if SEUIL_CA_JOUR else 0
+    # EBITDA HT = marge brute HT − charges totales HT du jour
+    ebitda_ht = round(marge_ht - COUT_TOTAL_JOUR, 2) if marge_ht else None
+
+    # Seuil rentabilité en CA HT
+    # (SEUIL_CA_JOUR est déjà calculé en HT dans config.py via marge BP)
+    manque_seuil = round(max(0, SEUIL_CA_JOUR - ca_ht), 2)
+    pct_seuil    = round(ca_ht / SEUIL_CA_JOUR * 100) if SEUIL_CA_JOUR else 0
 
     return {
-        "ca":               round(ca_total, 2),
-        "marge_brute":      marge_brute,
-        "marge_brute_pct":  marge_brute_pct,
-        "cogs":             round(cogs_total, 2),
+        # CA
+        "ca_ttc":          round(ca_ttc, 2),
+        "ca_ht":           round(ca_ht, 2),
+        "tva_collectee":   tva_col,
+        # Coûts
+        "cogs_ht":         round(cogs_ht, 2),
+        # Marge brute HT
+        "marge_brute_ht":      marge_ht,
+        "marge_brute_ht_pct":  marge_ht_pct,
+        # Charges HT/jour (BP)
         "cout_fixe_jour":   COUT_FIXE_JOUR,
         "cout_perso_jour":  COUT_PERSONNEL_JOUR,
         "cout_total_jour":  COUT_TOTAL_JOUR,
         "amort_jour":       AMORT_JOUR,
-        "ebitda":           ebitda,
-        "seuil_ca":         SEUIL_CA_JOUR,
+        # EBITDA HT
+        "ebitda_ht":        ebitda_ht,
+        # Seuil (en CA HT)
+        "seuil_ca_ht":      SEUIL_CA_JOUR,
         "manque_seuil":     manque_seuil,
         "pct_seuil":        pct_seuil,
     }

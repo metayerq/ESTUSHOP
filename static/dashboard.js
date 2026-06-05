@@ -57,7 +57,11 @@ function render(d) {
     updatedEl.style.display = 'none';
   }
 
-  document.getElementById('kpi-ca').textContent         = fmt(d.today.ca);
+  document.getElementById('kpi-ca').textContent = fmt(d.today.ca);
+  if (d.economics) {
+    document.getElementById('kpi-ca-ht').textContent =
+      `${fmt(d.economics.ca_ht)} HT · TVA ${fmt(d.economics.tva_collectee)}`;
+  }
   document.getElementById('kpi-ca-delta').innerHTML     = delta(d.today.ca, d.yesterday.ca);
   document.getElementById('kpi-nb').textContent         = d.today.nb;
   document.getElementById('kpi-nb-delta').innerHTML     = delta(d.today.nb, d.yesterday.nb);
@@ -220,31 +224,33 @@ function render(d) {
   // Économie du jour
   const eco = d.economics;
   if (eco) {
-    // Marge brute
-    document.getElementById('eco-marge').textContent = eco.marge_brute != null ? fmt(eco.marge_brute) : '—';
-    document.getElementById('eco-marge-pct').textContent = eco.marge_brute_pct != null
-      ? `${eco.marge_brute_pct}% du CA · COGS ${fmt(eco.cogs)}`
-      : 'coûts partiels catalogue';
+    // Marge brute HT
+    document.getElementById('eco-marge').textContent = eco.marge_brute_ht != null ? fmt(eco.marge_brute_ht) : '—';
+    document.getElementById('eco-marge-pct').innerHTML = eco.marge_brute_ht_pct != null
+      ? `${eco.marge_brute_ht_pct}% <span style="color:var(--faint)">HT · COGS ${fmt(eco.cogs_ht)}</span>`
+      : '<span style="color:var(--muted)">coûts partiels catalogue</span>';
 
-    // Charges
+    // Charges HT/jour
     document.getElementById('eco-charges').textContent = fmt(eco.cout_total_jour);
-    document.getElementById('eco-charges-sub').textContent =
-      `Fixe ${fmt(eco.cout_fixe_jour)} · Personnel ${fmt(eco.cout_perso_jour)}`;
+    document.getElementById('eco-charges-sub').innerHTML =
+      `Fixe ${fmt(eco.cout_fixe_jour)} · Perso ${fmt(eco.cout_perso_jour)} <span style="color:var(--faint)">HT</span>`;
 
-    // EBITDA
+    // EBITDA HT
     const ebitdaEl = document.getElementById('eco-ebitda');
-    ebitdaEl.textContent = eco.ebitda != null ? fmt(eco.ebitda) : '—';
-    ebitdaEl.style.color = eco.ebitda > 0 ? 'var(--green)' : eco.ebitda < 0 ? 'var(--red)' : 'var(--text)';
-    document.getElementById('eco-ebitda-sub').textContent = eco.ebitda != null
-      ? (eco.ebitda > 0 ? 'Journée rentable ✓' : `Déficit de ${fmt(Math.abs(eco.ebitda))}`)
-      : '';
-    document.getElementById('eco-ebitda-sub').style.color = eco.ebitda > 0 ? 'var(--green)' : 'var(--red)';
+    ebitdaEl.textContent = eco.ebitda_ht != null ? fmt(eco.ebitda_ht) : '—';
+    ebitdaEl.style.color = eco.ebitda_ht > 0 ? 'var(--green)' : eco.ebitda_ht < 0 ? 'var(--red)' : 'var(--text)';
+    const ebitdaSub = document.getElementById('eco-ebitda-sub');
+    if (eco.ebitda_ht != null) {
+      ebitdaSub.innerHTML = eco.ebitda_ht > 0
+        ? `<span style="color:var(--green)">Journée rentable ✓</span>`
+        : `<span style="color:var(--red)">Déficit ${fmt(Math.abs(eco.ebitda_ht))}</span>`;
+    }
 
-    // Seuil CA
-    document.getElementById('eco-seuil').textContent = fmt(eco.seuil_ca);
+    // Seuil CA HT + ligne TVA
+    document.getElementById('eco-seuil').textContent = fmt(eco.seuil_ca_ht);
     const seuilSub = document.getElementById('eco-seuil-sub');
     if (eco.manque_seuil > 0) {
-      seuilSub.innerHTML = `<span style="color:var(--red)">Il manque ${fmt(eco.manque_seuil)}</span>`;
+      seuilSub.innerHTML = `<span style="color:var(--red)">Il manque ${fmt(eco.manque_seuil)} HT</span>`;
     } else {
       seuilSub.innerHTML = `<span style="color:var(--green)">Seuil dépassé ✓</span>`;
     }
