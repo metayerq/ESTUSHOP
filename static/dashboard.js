@@ -66,7 +66,8 @@ function render(d) {
   document.getElementById('kpi-nb').textContent         = d.today.nb;
   document.getElementById('kpi-nb-delta').innerHTML     = delta(d.today.nb, d.yesterday.nb);
   document.getElementById('kpi-ticket').textContent     = fmt(d.today.ticket);
-  document.getElementById('kpi-ticket-delta').innerHTML = delta(d.today.ticket, d.yesterday.ticket);
+  document.getElementById('kpi-ticket-delta').innerHTML = delta(d.today.ticket, d.yesterday.ticket)
+    + (d.today.ticket_ht ? `<span style="color:var(--faint)"> · ${fmt(d.today.ticket_ht)} HT</span>` : '');
   document.getElementById('kpi-balance').textContent    = fmt(d.balance);
 
   // Tempo service

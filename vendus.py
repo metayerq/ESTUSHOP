@@ -123,10 +123,16 @@ def get_balance():
 
 
 def calc_stats(docs):
-    ca     = sum(float(d.get("amount_gross", 0)) for d in docs)
+    ca_ttc = sum(float(d.get("amount_gross", 0)) for d in docs)
+    ca_ht  = sum(float(d.get("amount_net",   0)) for d in docs)
     nb     = len(docs)
-    ticket = round(ca / nb, 2) if nb else 0.0
-    return {"ca": round(ca, 2), "nb": nb, "ticket": ticket}
+    return {
+        "ca":         round(ca_ttc, 2),   # TTC — affiché en principal
+        "ca_ht":      round(ca_ht, 2),
+        "nb":         nb,
+        "ticket":     round(ca_ttc / nb, 2) if nb else 0.0,   # TTC
+        "ticket_ht":  round(ca_ht  / nb, 2) if nb else 0.0,   # HT
+    }
 
 
 def hourly_breakdown(docs):
@@ -260,12 +266,12 @@ def upsell_rate(docs):
 
 
 def category_mix(docs, catalog):
-    """Répartition CA entre Boissons, Food et Extras."""
+    """Répartition CA HT entre Boissons, Food et Extras."""
     by_group = {"Boissons": 0.0, "Food": 0.0, "Extras": 0.0, "Autre": 0.0}
     for d in docs:
         for item in d.get("items", []):
             name  = item.get("title", "")
-            total = float(item.get("amounts", {}).get("gross_total", 0))
+            total = float(item.get("amounts", {}).get("net_total", 0))  # HT
             cat   = catalog.get(name, {})
             cid   = cat.get("category_id")
             if cid in DRINK_CAT_IDS:
@@ -284,7 +290,7 @@ def category_mix(docs, catalog):
 
 
 def ticket_median(docs):
-    """Ticket médian (plus robuste que la moyenne face aux valeurs extrêmes)."""
+    """Ticket médian TTC (robuste face aux valeurs extrêmes)."""
     amounts = sorted(float(d.get("amount_gross", 0)) for d in docs)
     if not amounts:
         return None
@@ -554,7 +560,7 @@ def product_stats_7d(since: str, until: str):
     except Exception:
         return []
 
-    by_product = defaultdict(lambda: {"revenue": 0.0, "qty": 0, "days": set()})
+    by_product = defaultdict(lambda: {"rev_ttc": 0.0, "rev_ht": 0.0, "qty": 0, "days": set()})
 
     def fetch(doc_id):
         try:
@@ -570,28 +576,31 @@ def product_stats_7d(since: str, until: str):
             continue
         day = detail.get("date", "")
         for item in detail.get("items", []):
-            name = item.get("title", "—")
-            by_product[name]["revenue"] += float(item.get("amounts", {}).get("gross_total", 0))
-            by_product[name]["qty"]     += float(item.get("qty", 0))
+            name    = item.get("title", "—")
+            qty     = float(item.get("qty", 0))
+            amounts = item.get("amounts", {})
+            by_product[name]["rev_ttc"] += float(amounts.get("gross_total", 0))
+            by_product[name]["rev_ht"]  += float(amounts.get("net_total",   0))
+            by_product[name]["qty"]     += qty
             by_product[name]["days"].add(day)
 
-    n_days = max(1, len({d.get("date","") for d in (details or []) if d}))
-    result = []
-    # Récupérer le catalogue pour la marge
     catalog = get_catalog()
+    result = []
     for name, stats in by_product.items():
         days_sold = len(stats["days"])
-        revenue   = round(stats["revenue"], 2)
+        rev_ttc   = round(stats["rev_ttc"], 2)
+        rev_ht    = round(stats["rev_ht"],  2)
         cat_info  = catalog.get(name)
-        cost      = round(cat_info["cost"] * stats["qty"], 2) if cat_info else None
-        margin    = round((revenue - cost) / revenue * 100, 1) if revenue and cost else None
+        cost_ht   = round(cat_info["cost"] * stats["qty"], 2) if cat_info and cat_info.get("cost") else None
+        margin    = round((rev_ht - cost_ht) / rev_ht * 100, 1) if rev_ht and cost_ht else None
         result.append({
             "name":       name,
-            "revenue":    revenue,
+            "revenue":    rev_ttc,
+            "rev_ht":     rev_ht,
             "qty":        int(stats["qty"]),
             "days_sold":  days_sold,
-            "avg_day":    round(revenue / days_sold, 2) if days_sold else 0,
-            "cost":       cost,
+            "avg_day":    round(rev_ttc / days_sold, 2) if days_sold else 0,
+            "cost_ht":    cost_ht,
             "margin_pct": margin,
         })
     return sorted(result, key=lambda x: x["revenue"], reverse=True)
@@ -630,31 +639,39 @@ def weekly_sparkline(days=7):
 
 
 def top_products(docs, catalog=None, n=10):
-    """Top produits par quantité vendue, avec CA, coût et marge."""
+    """Top produits par quantité vendue.
+    Display: TTC (prix client). Marge: HT vs HT (correct fiscalement)."""
     catalog = catalog or {}
-    by_product = defaultdict(lambda: {"qty": 0, "revenue": 0.0, "cost": 0.0})
+    by_product = defaultdict(lambda: {"qty": 0, "rev_ttc": 0.0, "rev_ht": 0.0, "cost_ht": 0.0})
     for d in docs:
         for item in d.get("items", []):
             title = item.get("title", "—")
             qty   = float(item.get("qty", 0))
+            amounts = item.get("amounts", {})
             by_product[title]["qty"]     += qty
-            by_product[title]["revenue"] += float(item.get("amounts", {}).get("gross_total", 0))
+            by_product[title]["rev_ttc"] += float(amounts.get("gross_total", 0))
+            by_product[title]["rev_ht"]  += float(amounts.get("net_total",   0))
             cat_info = catalog.get(title)
-            if cat_info:
-                by_product[title]["cost"] += cat_info["cost"] * qty
+            if cat_info and cat_info.get("cost"):
+                by_product[title]["cost_ht"] += cat_info["cost"] * qty
+
     ranked = sorted(by_product.items(), key=lambda x: x[1]["qty"], reverse=True)
     result = []
-    for name, stats in ranked[:n]:
-        revenue = round(stats["revenue"], 2)
-        cost    = round(stats["cost"], 2)
-        margin  = round((revenue - cost) / revenue * 100, 1) if revenue and cost else None
+    for name, s in ranked[:n]:
+        rev_ttc  = round(s["rev_ttc"], 2)
+        rev_ht   = round(s["rev_ht"],  2)
+        cost_ht  = round(s["cost_ht"], 2)
+        avg_ttc  = round(rev_ttc / s["qty"], 2) if s["qty"] else 0
+        # Marge brute HT = (CA HT - COGS HT) / CA HT
+        margin   = round((rev_ht - cost_ht) / rev_ht * 100, 1) if rev_ht and cost_ht else None
         result.append({
             "name":       name,
-            "qty":        int(stats["qty"]),
-            "revenue":    revenue,
-            "avg":        round(revenue / stats["qty"], 2) if stats["qty"] else 0,
-            "cost":       cost,
-            "margin_pct": margin,
+            "qty":        int(s["qty"]),
+            "revenue":    rev_ttc,   # TTC — affiché
+            "rev_ht":     rev_ht,    # HT — pour vérif
+            "avg":        avg_ttc,   # prix unit. TTC
+            "cost_ht":    cost_ht,
+            "margin_pct": margin,    # % HT
         })
     return result
 
