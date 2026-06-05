@@ -1,4 +1,6 @@
-const COLORS = ['#1a1a1a','#555','#888','#aaa','#ccc','#e0e0e0'];
+const COLORS = ['rgba(55,53,47,1)','rgba(55,53,47,.65)','rgba(55,53,47,.4)','rgba(55,53,47,.25)','rgba(55,53,47,.12)','rgba(55,53,47,.07)'];
+const BAR_ACTIVE = 'rgba(55,53,47,0.85)';
+const BAR_IDLE   = 'rgba(55,53,47,0.12)';
 let chartHourly = null, chartPayments = null, chartWeek = null;
 
 function marginBadge(pct) {
@@ -90,7 +92,7 @@ function render(d) {
       labels: d.week.map(w => w.label),
       datasets: [{
         data: d.week.map(w => w.ca),
-        backgroundColor: d.week.map((_, i) => i === peakIdx && d.week[peakIdx].ca > 0 ? '#1a1a1a' : '#e0e0e0'),
+        backgroundColor: d.week.map((_, i) => i === peakIdx && d.week[peakIdx].ca > 0 ? BAR_ACTIVE : BAR_IDLE),
         borderRadius: 3,
         borderSkipped: false,
       }]
@@ -102,7 +104,7 @@ function render(d) {
       },
       scales: {
         y: { display: false, beginAtZero: true },
-        x: { ticks: { font: { size: 11 }, color: '#9b9b9b' }, grid: { display: false }, border: { display: false } }
+        x: { ticks: { font: { size: 11 }, color: 'rgba(120,119,111,1)' }, grid: { display: false }, border: { display: false } }
       }
     }
   });
@@ -123,7 +125,7 @@ function render(d) {
           type: 'bar',
           label: 'CA',
           data: d.hourly.values,
-          backgroundColor: d.hourly.values.map(v => v > 0 && v === maxHourVal ? '#1a1a1a' : '#e0e0e0'),
+          backgroundColor: d.hourly.values.map(v => v > 0 && v === maxHourVal ? BAR_ACTIVE : BAR_IDLE),
           borderRadius: 2,
           borderSkipped: false,
           yAxisID: 'y',
@@ -132,12 +134,12 @@ function render(d) {
           type: 'line',
           label: 'Ticket moy.',
           data: d.hourly.avg_ticket,
-          borderColor: '#1a1a1a',
+          borderColor: BAR_ACTIVE,
           backgroundColor: 'transparent',
           borderWidth: 1.5,
           borderDash: [4, 3],
           pointRadius: d.hourly.avg_ticket.map(v => v != null ? 3 : 0),
-          pointBackgroundColor: '#1a1a1a',
+          pointBackgroundColor: BAR_ACTIVE,
           spanGaps: false,
           yAxisID: 'y2',
         }
@@ -163,8 +165,8 @@ function render(d) {
       },
       scales: {
         y: {
-          ticks: { callback: v => v + ' €', font: { size: 11 }, color: '#9b9b9b' },
-          grid: { color: '#f0f0f0' }, border: { display: false },
+          ticks: { callback: v => v + ' €', font: { size: 11 }, color: 'rgba(120,119,111,1)' },
+          grid: { color: 'rgba(55,53,47,0.06)' }, border: { display: false },
         },
         y2: {
           position: 'right',
@@ -172,7 +174,7 @@ function render(d) {
           grid: { display: false }, border: { display: false },
         },
         x: {
-          ticks: { font: { size: 11 }, color: '#9b9b9b' },
+          ticks: { font: { size: 11 }, color: 'rgba(120,119,111,1)' },
           grid: { display: false }, border: { display: false }
         }
       }
@@ -231,7 +233,7 @@ function render(d) {
   }
 
   // Mix boissons/food
-  const MIX_COLORS = {'Boissons':'#1a1a1a','Food':'#555','Extras':'#999','Autre':'#ccc'};
+  const MIX_COLORS = {'Boissons':'rgba(55,53,47,1)','Food':'rgba(55,53,47,.55)','Extras':'rgba(55,53,47,.3)','Autre':'rgba(55,53,47,.15)'};
   if (d.mix && d.mix.length) {
     const total = d.mix.reduce((a,b) => a + b.amount, 0);
     document.getElementById('mix-bars').innerHTML = d.mix.map(m => `
