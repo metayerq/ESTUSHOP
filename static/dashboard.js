@@ -110,7 +110,7 @@ function render(d) {
     `<span style="${i === peakIdx && w.ca > 0 ? 'color:var(--text);font-weight:600' : ''}">${fmt(w.ca)}</span>`
   ).join('');
 
-  // Chart horaire — heure de pointe en noir, reste en gris
+  // Chart horaire — barres CA + ligne ticket moyen
   const maxHourVal = Math.max(...d.hourly.values);
   const hCtx = document.getElementById('chart-hourly').getContext('2d');
   if (chartHourly) chartHourly.destroy();
@@ -118,22 +118,58 @@ function render(d) {
     type: 'bar',
     data: {
       labels: d.hourly.labels,
-      datasets: [{
-        data: d.hourly.values,
-        backgroundColor: d.hourly.values.map(v => v > 0 && v === maxHourVal ? '#1a1a1a' : '#e0e0e0'),
-        borderRadius: 2,
-        borderSkipped: false,
-      }]
+      datasets: [
+        {
+          type: 'bar',
+          label: 'CA',
+          data: d.hourly.values,
+          backgroundColor: d.hourly.values.map(v => v > 0 && v === maxHourVal ? '#1a1a1a' : '#e0e0e0'),
+          borderRadius: 2,
+          borderSkipped: false,
+          yAxisID: 'y',
+        },
+        {
+          type: 'line',
+          label: 'Ticket moy.',
+          data: d.hourly.avg_ticket,
+          borderColor: '#1a1a1a',
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          borderDash: [4, 3],
+          pointRadius: d.hourly.avg_ticket.map(v => v != null ? 3 : 0),
+          pointBackgroundColor: '#1a1a1a',
+          spanGaps: false,
+          yAxisID: 'y2',
+        }
+      ]
     },
     options: {
+      interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: ctx => fmt(ctx.raw) } }
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              if (ctx.datasetIndex === 0) {
+                const nb  = d.hourly.nb[ctx.dataIndex];
+                const gap = d.hourly.avg_gap[ctx.dataIndex];
+                const gapStr = gap != null ? ` · ${gap}min/tx` : '';
+                return ` CA: ${fmt(ctx.raw)}  (${nb} tx${gapStr})`;
+              }
+              return ctx.raw != null ? ` Ticket moy: ${fmt(ctx.raw)}` : null;
+            }
+          }
+        }
       },
       scales: {
         y: {
           ticks: { callback: v => v + ' €', font: { size: 11 }, color: '#9b9b9b' },
-          grid: { color: '#f0f0f0' }, border: { display: false }
+          grid: { color: '#f0f0f0' }, border: { display: false },
+        },
+        y2: {
+          position: 'right',
+          ticks: { callback: v => v + ' €', font: { size: 10 }, color: '#bbb' },
+          grid: { display: false }, border: { display: false },
         },
         x: {
           ticks: { font: { size: 11 }, color: '#9b9b9b' },

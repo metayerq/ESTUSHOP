@@ -130,18 +130,50 @@ def calc_stats(docs):
 
 
 def hourly_breakdown(docs):
-    by_hour = defaultdict(float)
+    from datetime import datetime
+    by_hour = defaultdict(lambda: {"ca": 0.0, "nb": 0, "times": []})
     for d in docs:
         lt = d.get("local_time", "")
         try:
             hour = int(lt[11:13])
+            by_hour[hour]["times"].append(lt)
         except (TypeError, ValueError, IndexError):
             hour = 0
-        by_hour[hour] += float(d.get("amount_gross", 0))
+        by_hour[hour]["ca"] += float(d.get("amount_gross", 0))
+        by_hour[hour]["nb"] += 1
+
     hours = list(range(7, 23))
+    ca_values, nb_values, avg_ticket, avg_gap = [], [], [], []
+
+    for h in hours:
+        slot = by_hour.get(h, {"ca": 0.0, "nb": 0, "times": []})
+        ca  = round(slot["ca"], 2)
+        nb  = slot["nb"]
+        ca_values.append(ca)
+        nb_values.append(nb)
+        avg_ticket.append(round(ca / nb, 2) if nb else None)
+
+        # Vitesse : gap moyen entre transactions consécutives dans l'heure
+        times = sorted(slot["times"])
+        if len(times) >= 2:
+            gaps = []
+            for i in range(len(times) - 1):
+                try:
+                    t1 = datetime.strptime(times[i],   "%Y-%m-%d %H:%M:%S")
+                    t2 = datetime.strptime(times[i+1], "%Y-%m-%d %H:%M:%S")
+                    gaps.append((t2 - t1).seconds / 60)
+                except ValueError:
+                    pass
+            avg_gap.append(round(sum(gaps) / len(gaps), 1) if gaps else None)
+        else:
+            avg_gap.append(None)
+
     return {
-        "labels": [f"{h}h" for h in hours],
-        "values": [round(by_hour.get(h, 0), 2) for h in hours],
+        "labels":     [f"{h}h" for h in hours],
+        "values":     ca_values,
+        "nb":         nb_values,
+        "avg_ticket": avg_ticket,
+        "avg_gap":    avg_gap,
     }
 
 
