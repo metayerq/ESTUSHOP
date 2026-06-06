@@ -439,12 +439,31 @@ def cumulative_curve(docs):
     return result
 
 
-def daily_economics(docs, catalog):
+def daily_breakdown(docs):
+    """Agrège les docs par date — pour le graphe CA journalier (périodes multi-jours)."""
+    by_day = {}
+    for doc in docs:
+        raw = doc.get("local_time") or doc.get("date") or ""
+        d = raw[:10]
+        if not d:
+            continue
+        if d not in by_day:
+            by_day[d] = {"ca_ht": 0.0, "ca_ttc": 0.0, "nb": 0}
+        by_day[d]["ca_ht"]  += float(doc.get("amount_net",   0))
+        by_day[d]["ca_ttc"] += float(doc.get("amount_gross", 0))
+        by_day[d]["nb"]     += 1
+    return [
+        {"date": d, "ca_ht": round(v["ca_ht"], 2), "ca_ttc": round(v["ca_ttc"], 2), "nb": v["nb"]}
+        for d, v in sorted(by_day.items())
+    ]
+
+
+def daily_economics(docs, catalog, n_days=1):
     """
-    P&L du jour entièrement en HT (hors taxes).
+    P&L entièrement en HT (hors taxes) — pour 1 jour ou une période.
     CA HT  = amount_net  (Vendus)
     COGS HT = supply_price × qty (prix d'achat HT dans catalogue Vendus)
-    Charges = BP en HT
+    Charges = BP en HT × n_days
     Tout est cohérent pour le calcul de rentabilité.
     """
     from config import (
@@ -472,17 +491,23 @@ def daily_economics(docs, catalog):
 
     tva_col = round(ca_ttc - ca_ht, 2)
 
+    # Charges × n_days
+    cout_total = round(COUT_TOTAL_JOUR    * n_days, 2)
+    cout_fixe  = round(COUT_FIXE_JOUR     * n_days, 2)
+    cout_perso = round(COUT_PERSONNEL_JOUR * n_days, 2)
+    amort      = round(AMORT_JOUR         * n_days, 2)
+    seuil_ca   = round(SEUIL_CA_JOUR      * n_days, 2)
+
     # Marge brute HT (comparable aux charges BP qui sont en HT)
     marge_ht     = round(ca_ht - cogs_ht, 2) if cogs_ht else None
     marge_ht_pct = round(marge_ht / ca_ht * 100, 1) if (marge_ht and ca_ht) else None
 
-    # EBITDA HT = marge brute HT − charges totales HT du jour
-    ebitda_ht = round(marge_ht - COUT_TOTAL_JOUR, 2) if marge_ht else None
+    # EBITDA HT = marge brute HT − charges totales HT de la période
+    ebitda_ht = round(marge_ht - cout_total, 2) if marge_ht else None
 
     # Seuil rentabilité en CA HT
-    # (SEUIL_CA_JOUR est déjà calculé en HT dans config.py via marge BP)
-    manque_seuil = round(max(0, SEUIL_CA_JOUR - ca_ht), 2)
-    pct_seuil    = round(ca_ht / SEUIL_CA_JOUR * 100) if SEUIL_CA_JOUR else 0
+    manque_seuil = round(max(0, seuil_ca - ca_ht), 2)
+    pct_seuil    = round(ca_ht / seuil_ca * 100) if seuil_ca else 0
 
     return {
         # CA
@@ -494,15 +519,15 @@ def daily_economics(docs, catalog):
         # Marge brute HT
         "marge_brute_ht":      marge_ht,
         "marge_brute_ht_pct":  marge_ht_pct,
-        # Charges HT/jour (BP)
-        "cout_fixe_jour":   COUT_FIXE_JOUR,
-        "cout_perso_jour":  COUT_PERSONNEL_JOUR,
-        "cout_total_jour":  COUT_TOTAL_JOUR,
-        "amort_jour":       AMORT_JOUR,
+        # Charges HT/période (BP)
+        "cout_fixe_jour":   cout_fixe,
+        "cout_perso_jour":  cout_perso,
+        "cout_total_jour":  cout_total,
+        "amort_jour":       amort,
         # EBITDA HT
         "ebitda_ht":        ebitda_ht,
         # Seuil (en CA HT)
-        "seuil_ca_ht":      SEUIL_CA_JOUR,
+        "seuil_ca_ht":      seuil_ca,
         "manque_seuil":     manque_seuil,
         "pct_seuil":        pct_seuil,
     }

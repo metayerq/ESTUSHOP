@@ -19,11 +19,21 @@
       <div class="header-sub" id="subtitle">Alcântara — chargement…</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
-      <input type="date" id="date-picker" class="date-input" onchange="loadData()">
-      <button class="btn-refresh" onclick="goToday()">Aujourd'hui</button>
-      <button class="btn-refresh" onclick="loadData()">↻</button>
       <div class="updated" id="updated-at" style="display:none;"></div>
+      <button class="btn-refresh" onclick="loadData()" title="Rafraîchir">↻</button>
     </div>
+  </div>
+
+  <!-- Filtres de période -->
+  <div class="period-pills" id="period-pills">
+    <button class="pill active" data-preset="today"     onclick="setPreset('today')">Aujourd'hui</button>
+    <button class="pill"        data-preset="yesterday" onclick="setPreset('yesterday')">Hier</button>
+    <button class="pill"        data-preset="3d"        onclick="setPreset('3d')">3 jours</button>
+    <button class="pill"        data-preset="7d"        onclick="setPreset('7d')">7 jours</button>
+    <button class="pill"        data-preset="30d"       onclick="setPreset('30d')">30 jours</button>
+    <button class="pill"        data-preset="month"     onclick="setPreset('month')">Ce mois</button>
+    <button class="pill"        data-preset="year"      onclick="setPreset('year')">Cette année</button>
+    <button class="pill"        data-preset="all"       onclick="setPreset('all')">Tout</button>
   </div>
 
   <!-- KPIs -->
@@ -64,7 +74,7 @@
   </div>
 
   <!-- Économie du jour -->
-  <div class="section-label" style="margin-top:32px;">Économie du jour</div>
+  <div class="section-label" id="eco-label" style="margin-top:32px;">Économie du jour</div>
   <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:32px;background:var(--bg-card);">
     <div class="kpi-grid">
       <div class="kpi-cell">
@@ -104,8 +114,9 @@
   <div class="section-label">Répartition</div>
   <div class="charts-grid" style="margin-bottom:32px;">
     <div class="chart-block">
-      <div class="section-label" style="margin-bottom:16px;">CA par heure (€)</div>
+      <div class="section-label" id="time-chart-label" style="margin-bottom:16px;">CA par heure (€)</div>
       <canvas id="chart-hourly" height="130"></canvas>
+      <canvas id="chart-daily"  height="130" style="display:none;"></canvas>
     </div>
     <div class="chart-block">
       <div class="section-label" style="margin-bottom:16px;">Modes de paiement</div>
@@ -178,6 +189,7 @@
   </div>
 
   <!-- Top produits -->
+  <div id="top-products-section">
   <div class="section-label">Top produits</div>
   <div class="table-wrap" style="margin-bottom:32px;">
     <table>
@@ -196,6 +208,8 @@
       </tbody>
     </table>
   </div>
+
+  </div><!-- /top-products-section -->
 
   <!-- CA moyen par produit sur 7j -->
   <div class="section-label" style="margin-top:32px;">Performance produits · 7 jours</div>

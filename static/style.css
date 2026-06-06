@@ -82,6 +82,38 @@ body {
 }
 .btn-refresh:hover { background: var(--bg-hover); color: var(--text); }
 
+/* ── Filtres de période ── */
+.period-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 32px;
+}
+
+.pill {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--muted);
+  padding: 5px 12px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+  white-space: nowrap;
+}
+.pill:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: rgba(55,53,47,0.25);
+}
+.pill.active {
+  background: var(--text);
+  color: #fff;
+  border-color: var(--text);
+}
+
 .updated {
   font-size: 12px;
   color: var(--faint);

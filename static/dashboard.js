@@ -1,8 +1,21 @@
 const COLORS = ['rgba(55,53,47,1)','rgba(55,53,47,.65)','rgba(55,53,47,.4)','rgba(55,53,47,.25)','rgba(55,53,47,.12)','rgba(55,53,47,.07)'];
 const BAR_ACTIVE = 'rgba(55,53,47,0.85)';
 const BAR_IDLE   = 'rgba(55,53,47,0.12)';
-let chartHourly = null, chartPayments = null, chartWeek = null, chartCurve = null, chartDist = null;
+let chartHourly = null, chartPayments = null, chartWeek = null;
+let chartCurve  = null, chartDist    = null, chartDaily = null;
 
+// ── Preset actif ──────────────────────────────────────────────────────────────
+let currentPreset = 'today';
+
+function setPreset(p) {
+  currentPreset = p;
+  document.querySelectorAll('.pill').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.preset === p);
+  });
+  loadData();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function marginBadge(pct) {
   const color = pct >= 80 ? 'var(--green)' : pct >= 60 ? '#b07d00' : 'var(--red)';
   return `<span style="color:${color};font-weight:500">${pct}%</span>`;
@@ -12,27 +25,24 @@ const fmt = n => new Intl.NumberFormat('fr-FR', {
   style: 'currency', currency: 'EUR', minimumFractionDigits: 2
 }).format(n);
 
-function delta(today, yesterday) {
-  if (!yesterday) return '';
-  const pct = ((today - yesterday) / yesterday * 100).toFixed(0);
+function delta(cur, prev, label) {
+  label = label || 'vs période préc.';
+  if (prev == null || prev === 0) return '';
+  const pct = ((cur - prev) / Math.abs(prev) * 100).toFixed(0);
   const cls = pct >= 0 ? 'delta-up' : 'delta-down';
-  return `<span class="${cls}">${pct >= 0 ? '+' : ''}${pct}% vs hier</span>`;
+  return `<span class="${cls}">${pct >= 0 ? '+' : ''}${pct}% ${label}</span>`;
 }
 
-function getSelectedDate() {
-  return document.getElementById('date-picker').value;
+function fmtDate(iso) {
+  return new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
 }
 
-function goToday() {
-  const today = new Date().toISOString().slice(0, 10);
-  document.getElementById('date-picker').value = today;
-  loadData();
-}
-
+// ── Chargement ────────────────────────────────────────────────────────────────
 async function loadData() {
-  const date = getSelectedDate();
   try {
-    const r = await fetch('/api/data' + (date ? '?date=' + date : ''));
+    const r = await fetch('/api/data?preset=' + currentPreset);
     if (!r.ok) throw new Error(await r.text());
     const d = await r.json();
     if (d.error) throw new Error(d.error);
@@ -44,11 +54,21 @@ async function loadData() {
   }
 }
 
+// ── Rendu principal ───────────────────────────────────────────────────────────
 function render(d) {
-  const dateStr = new Date(d.date + 'T12:00:00').toLocaleDateString('fr-FR', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-  });
-  document.getElementById('subtitle').textContent = 'Alcântara — ' + dateStr;
+  // Sous-titre
+  let subtitle = 'Alcântara';
+  if (d.is_single_day) {
+    subtitle += ' — ' + fmtDate(d.date);
+  } else {
+    subtitle += ' — ' + d.period_label
+      + ' (' + new Date(d.from_date+'T12:00:00').toLocaleDateString('fr-FR', {day:'numeric',month:'short'})
+      + ' → ' + new Date(d.to_date  +'T12:00:00').toLocaleDateString('fr-FR', {day:'numeric',month:'short',year:'numeric'})
+      + ')';
+  }
+  document.getElementById('subtitle').textContent = subtitle;
+
+  // Mis à jour
   const updatedEl = document.getElementById('updated-at');
   if (d.is_today) {
     updatedEl.textContent = 'Mis à jour à ' + d.updated_at;
@@ -57,22 +77,32 @@ function render(d) {
     updatedEl.style.display = 'none';
   }
 
+  // Label comparaison
+  const compLabel = d.is_single_day ? 'vs hier' : 'vs période préc.';
+
+  // ── KPIs ─────────────────────────────────────────────────────────────────
   document.getElementById('kpi-ca').textContent = fmt(d.today.ca);
   if (d.economics) {
     document.getElementById('kpi-ca-ht').textContent =
       `${fmt(d.economics.ca_ht)} HT · TVA ${fmt(d.economics.tva_collectee)}`;
+  } else {
+    document.getElementById('kpi-ca-ht').textContent = '';
   }
-  document.getElementById('kpi-ca-delta').innerHTML     = delta(d.today.ca, d.yesterday.ca);
+  document.getElementById('kpi-ca-delta').innerHTML     = delta(d.today.ca,     d.yesterday.ca,     compLabel);
   document.getElementById('kpi-nb').textContent         = d.today.nb;
-  document.getElementById('kpi-nb-delta').innerHTML     = delta(d.today.nb, d.yesterday.nb);
+  document.getElementById('kpi-nb-delta').innerHTML     = delta(d.today.nb,     d.yesterday.nb,     compLabel);
   document.getElementById('kpi-ticket').textContent     = fmt(d.today.ticket);
-  document.getElementById('kpi-ticket-delta').innerHTML = delta(d.today.ticket, d.yesterday.ticket)
+  document.getElementById('kpi-ticket-delta').innerHTML = delta(d.today.ticket, d.yesterday.ticket, compLabel)
     + (d.today.ticket_ht ? `<span style="color:var(--faint)"> · ${fmt(d.today.ticket_ht)} HT</span>` : '');
   document.getElementById('kpi-balance').textContent    = fmt(d.balance);
 
-  // Tempo service
+  // Seuil transactions (seulement pour jour unique)
+  const pct = Math.min(100, Math.round(d.today.nb / d.seuil * 100));
+  document.getElementById('seuil-bar').style.width = pct + '%';
+
+  // Tempo service (jour unique seulement)
   const tempoCell = document.getElementById('kpi-tempo-cell');
-  if (d.tempo && d.tempo.avg_gap_min != null) {
+  if (d.is_single_day && d.tempo && d.tempo.avg_gap_min != null) {
     tempoCell.style.display = '';
     const gap = d.tempo.avg_gap_min;
     document.getElementById('kpi-tempo').textContent = gap < 1
@@ -84,10 +114,46 @@ function render(d) {
     tempoCell.style.display = 'none';
   }
 
-  const pct = Math.min(100, Math.round(d.today.nb / d.seuil * 100));
-  document.getElementById('seuil-bar').style.width = pct + '%';
+  // ── Économie ──────────────────────────────────────────────────────────────
+  const ecoEl = document.querySelector('[id="eco-label"]') || document.getElementById('eco-label');
+  if (ecoEl) {
+    ecoEl.textContent = d.is_single_day ? 'Économie du jour' : `Économie · ${d.period_label}`;
+  }
+  const eco = d.economics;
+  if (eco) {
+    document.getElementById('eco-marge').textContent = eco.marge_brute_ht != null ? fmt(eco.marge_brute_ht) : '—';
+    document.getElementById('eco-marge-pct').innerHTML = eco.marge_brute_ht != null
+      ? `${eco.marge_brute_ht_pct}% <span style="color:var(--faint)">HT · COGS ${fmt(eco.cogs_ht)}</span>`
+      : '<span style="color:var(--muted)">coûts partiels catalogue</span>';
 
-  // Sparkline semaine
+    const chargesLabel = d.is_single_day ? 'Charges du jour' : `Charges · ${d.n_days}j`;
+    document.querySelector('#eco-charges')?.closest('.kpi-cell')?.querySelector('.kpi-label')
+      && (document.querySelector('.kpi-cell .kpi-label') || null);
+    document.getElementById('eco-charges').textContent = fmt(eco.cout_total_jour);
+    document.getElementById('eco-charges-sub').innerHTML =
+      `Fixe ${fmt(eco.cout_fixe_jour)} · Perso ${fmt(eco.cout_perso_jour)} <span style="color:var(--faint)">HT</span>`;
+
+    const ebitdaEl = document.getElementById('eco-ebitda');
+    ebitdaEl.textContent = eco.ebitda_ht != null ? fmt(eco.ebitda_ht) : '—';
+    ebitdaEl.style.color = eco.ebitda_ht > 0 ? 'var(--green)' : eco.ebitda_ht < 0 ? 'var(--red)' : 'var(--text)';
+    const ebitdaSub = document.getElementById('eco-ebitda-sub');
+    if (eco.ebitda_ht != null) {
+      ebitdaSub.innerHTML = eco.ebitda_ht > 0
+        ? `<span style="color:var(--green)">Rentable ✓</span>`
+        : `<span style="color:var(--red)">Déficit ${fmt(Math.abs(eco.ebitda_ht))}</span>`;
+    }
+
+    document.getElementById('eco-seuil').textContent = fmt(eco.seuil_ca_ht);
+    const seuilSub = document.getElementById('eco-seuil-sub');
+    if (eco.manque_seuil > 0) {
+      seuilSub.innerHTML = `<span style="color:var(--red)">Il manque ${fmt(eco.manque_seuil)} HT</span>`;
+    } else {
+      seuilSub.innerHTML = `<span style="color:var(--green)">Seuil dépassé ✓</span>`;
+    }
+    document.getElementById('eco-seuil-bar').style.width = Math.min(100, eco.pct_seuil) + '%';
+  }
+
+  // ── Sparkline 7 derniers jours (toujours) ────────────────────────────────
   const peakIdx = d.week.reduce((mi, v, i, a) => v.ca > a[mi].ca ? i : mi, 0);
   const wCtx = document.getElementById('chart-week').getContext('2d');
   if (chartWeek) chartWeek.destroy();
@@ -117,76 +183,27 @@ function render(d) {
     `<span style="${i === peakIdx && w.ca > 0 ? 'color:var(--text);font-weight:600' : ''}">${fmt(w.ca)}</span>`
   ).join('');
 
-  // Chart horaire — barres CA + ligne ticket moyen
-  const maxHourVal = Math.max(...d.hourly.values);
-  const hCtx = document.getElementById('chart-hourly').getContext('2d');
-  if (chartHourly) chartHourly.destroy();
-  chartHourly = new Chart(hCtx, {
-    type: 'bar',
-    data: {
-      labels: d.hourly.labels,
-      datasets: [
-        {
-          type: 'bar',
-          label: 'CA',
-          data: d.hourly.values,
-          backgroundColor: d.hourly.values.map(v => v > 0 && v === maxHourVal ? BAR_ACTIVE : BAR_IDLE),
-          borderRadius: 2,
-          borderSkipped: false,
-          yAxisID: 'y',
-        },
-        {
-          type: 'line',
-          label: 'Ticket moy.',
-          data: d.hourly.avg_ticket,
-          borderColor: BAR_ACTIVE,
-          backgroundColor: 'transparent',
-          borderWidth: 1.5,
-          borderDash: [4, 3],
-          pointRadius: d.hourly.avg_ticket.map(v => v != null ? 3 : 0),
-          pointBackgroundColor: BAR_ACTIVE,
-          spanGaps: false,
-          yAxisID: 'y2',
-        }
-      ]
-    },
-    options: {
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: ctx => {
-              if (ctx.datasetIndex === 0) {
-                const nb  = d.hourly.nb[ctx.dataIndex];
-                const gap = d.hourly.avg_gap[ctx.dataIndex];
-                const gapStr = gap != null ? ` · ${gap}min/tx` : '';
-                return ` CA: ${fmt(ctx.raw)}  (${nb} tx${gapStr})`;
-              }
-              return ctx.raw != null ? ` Ticket moy: ${fmt(ctx.raw)}` : null;
-            }
-          }
-        }
-      },
-      scales: {
-        y: {
-          ticks: { callback: v => v + ' €', font: { size: 11 }, color: 'rgba(120,119,111,1)' },
-          grid: { color: 'rgba(55,53,47,0.06)' }, border: { display: false },
-        },
-        y2: {
-          position: 'right',
-          ticks: { callback: v => v + ' €', font: { size: 10 }, color: '#bbb' },
-          grid: { display: false }, border: { display: false },
-        },
-        x: {
-          ticks: { font: { size: 11 }, color: 'rgba(120,119,111,1)' },
-          grid: { display: false }, border: { display: false }
-        }
-      }
-    }
-  });
+  // ── Graphe temporel : horaire (1j) ou journalier (multi-jours) ───────────
+  const hourlyCanvas = document.getElementById('chart-hourly');
+  const dailyCanvas  = document.getElementById('chart-daily');
+  const timeLabel    = document.getElementById('time-chart-label');
 
-  // Chart paiements
+  if (d.is_single_day && d.hourly) {
+    hourlyCanvas.style.display = '';
+    dailyCanvas.style.display  = 'none';
+    timeLabel.textContent = 'CA par heure (€)';
+    renderHourlyChart(d);
+  } else if (d.daily && d.daily.length) {
+    hourlyCanvas.style.display = 'none';
+    dailyCanvas.style.display  = '';
+    timeLabel.textContent = 'CA par jour (€)';
+    renderDailyChart(d.daily);
+  } else {
+    hourlyCanvas.style.display = 'none';
+    dailyCanvas.style.display  = 'none';
+  }
+
+  // ── Chart paiements ───────────────────────────────────────────────────────
   const pCtx = document.getElementById('chart-payments').getContext('2d');
   if (chartPayments) chartPayments.destroy();
   const noData = !d.payments.labels.length;
@@ -222,43 +239,35 @@ function render(d) {
     }).join('');
   }
 
-  // Économie du jour
-  const eco = d.economics;
-  if (eco) {
-    // Marge brute HT
-    document.getElementById('eco-marge').textContent = eco.marge_brute_ht != null ? fmt(eco.marge_brute_ht) : '—';
-    document.getElementById('eco-marge-pct').innerHTML = eco.marge_brute_ht_pct != null
-      ? `${eco.marge_brute_ht_pct}% <span style="color:var(--faint)">HT · COGS ${fmt(eco.cogs_ht)}</span>`
-      : '<span style="color:var(--muted)">coûts partiels catalogue</span>';
-
-    // Charges HT/jour
-    document.getElementById('eco-charges').textContent = fmt(eco.cout_total_jour);
-    document.getElementById('eco-charges-sub').innerHTML =
-      `Fixe ${fmt(eco.cout_fixe_jour)} · Perso ${fmt(eco.cout_perso_jour)} <span style="color:var(--faint)">HT</span>`;
-
-    // EBITDA HT
-    const ebitdaEl = document.getElementById('eco-ebitda');
-    ebitdaEl.textContent = eco.ebitda_ht != null ? fmt(eco.ebitda_ht) : '—';
-    ebitdaEl.style.color = eco.ebitda_ht > 0 ? 'var(--green)' : eco.ebitda_ht < 0 ? 'var(--red)' : 'var(--text)';
-    const ebitdaSub = document.getElementById('eco-ebitda-sub');
-    if (eco.ebitda_ht != null) {
-      ebitdaSub.innerHTML = eco.ebitda_ht > 0
-        ? `<span style="color:var(--green)">Journée rentable ✓</span>`
-        : `<span style="color:var(--red)">Déficit ${fmt(Math.abs(eco.ebitda_ht))}</span>`;
-    }
-
-    // Seuil CA HT + ligne TVA
-    document.getElementById('eco-seuil').textContent = fmt(eco.seuil_ca_ht);
-    const seuilSub = document.getElementById('eco-seuil-sub');
-    if (eco.manque_seuil > 0) {
-      seuilSub.innerHTML = `<span style="color:var(--red)">Il manque ${fmt(eco.manque_seuil)} HT</span>`;
-    } else {
-      seuilSub.innerHTML = `<span style="color:var(--green)">Seuil dépassé ✓</span>`;
-    }
-    document.getElementById('eco-seuil-bar').style.width = Math.min(100, eco.pct_seuil) + '%';
+  // ── Performance commerciale ───────────────────────────────────────────────
+  if (d.median != null) {
+    document.getElementById('kpi-median').textContent = fmt(d.median);
+    const diff = d.today.ticket ? Math.round((d.median - d.today.ticket) / d.today.ticket * 100) : 0;
+    document.getElementById('kpi-median-vs').textContent = fmt(d.today.ticket) + (diff !== 0 ? ` (${diff > 0 ? '+' : ''}${diff}%)` : '');
+  }
+  if (d.upsell && d.upsell.total) {
+    document.getElementById('kpi-upsell').textContent = d.upsell.rate + '%';
+    document.getElementById('kpi-upsell-sub').textContent =
+      `${d.upsell.multi} tickets multi · ${d.upsell.single} seul`;
+  }
+  const MIX_COLORS = {'Boissons':'rgba(55,53,47,1)','Food':'rgba(55,53,47,.55)','Extras':'rgba(55,53,47,.3)','Autre':'rgba(55,53,47,.15)'};
+  if (d.mix && d.mix.length) {
+    document.getElementById('mix-bars').innerHTML = d.mix.map(m => `
+      <div style="margin-bottom:6px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+          <span style="color:var(--muted)">${m.label}</span>
+          <span style="font-weight:500">${m.pct}% · ${fmt(m.amount)}</span>
+        </div>
+        <div style="height:4px;background:var(--bar-bg);border-radius:2px;">
+          <div style="height:4px;background:${MIX_COLORS[m.label]||'#888'};border-radius:2px;width:${m.pct}%"></div>
+        </div>
+      </div>`).join('');
+  } else if (!d.has_items) {
+    document.getElementById('mix-bars').innerHTML =
+      '<span style="font-size:12px;color:var(--muted);">Disponible pour ≤ 7 jours</span>';
   }
 
-  // Distribution des tickets
+  // ── Distribution des tickets ──────────────────────────────────────────────
   if (d.ticket_dist && d.ticket_dist.length) {
     const dCtx = document.getElementById('chart-dist').getContext('2d');
     if (chartDist) chartDist.destroy();
@@ -270,8 +279,7 @@ function render(d) {
         datasets: [{
           data: d.ticket_dist.map(b => b.count),
           backgroundColor: d.ticket_dist.map(b => b.count === maxCount ? BAR_ACTIVE : BAR_IDLE),
-          borderRadius: 4,
-          borderSkipped: false,
+          borderRadius: 4, borderSkipped: false,
         }]
       },
       options: {
@@ -287,82 +295,14 @@ function render(d) {
           }
         },
         scales: {
-          y: {
-            beginAtZero: true,
-            ticks: { stepSize: 1, font: { size: 11 }, color: 'rgba(120,119,111,1)' },
-            grid: { color: 'rgba(55,53,47,0.06)' }, border: { display: false },
-          },
-          x: {
-            ticks: { font: { size: 11 }, color: 'rgba(120,119,111,1)' },
-            grid: { display: false }, border: { display: false },
-          }
+          y: { beginAtZero: true, ticks: { stepSize: 1, font:{size:11}, color:'rgba(120,119,111,1)' }, grid:{color:'rgba(55,53,47,0.06)'}, border:{display:false} },
+          x: { ticks: { font:{size:11}, color:'rgba(120,119,111,1)' }, grid:{display:false}, border:{display:false} }
         }
       }
     });
   }
 
-  // Contribution produits — barres horizontales
-  const productBars = document.getElementById('product-bars');
-  if (d.products && d.products.length && productBars) {
-    const maxRev = d.products[0].revenue || 1;
-    const marginColor = pct => {
-      if (pct == null) return 'rgba(55,53,47,0.18)';
-      if (pct >= 75) return '#448361';
-      if (pct >= 50) return '#c47535';
-      return '#c4554d';
-    };
-    productBars.innerHTML = d.products.map(p => {
-      const barW = Math.round(p.revenue / maxRev * 100);
-      const color = marginColor(p.margin_pct);
-      return `<div style="display:flex;align-items:center;gap:8px;">
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
-            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;color:var(--text)">${p.name}</span>
-            <span style="color:var(--muted);flex-shrink:0;margin-left:6px;">${fmt(p.revenue)}</span>
-          </div>
-          <div style="height:6px;background:var(--bar-bg);border-radius:3px;">
-            <div style="height:6px;background:${color};border-radius:3px;width:${barW}%;transition:width .4s ease;"></div>
-          </div>
-        </div>
-        <div style="font-size:11px;font-weight:500;color:${color};width:36px;text-align:right;flex-shrink:0;">
-          ${p.margin_pct != null ? p.margin_pct + '%' : '—'}
-        </div>
-      </div>`;
-    }).join('');
-  }
-
-  // Performance commerciale
-  // Ticket médian
-  if (d.median != null) {
-    document.getElementById('kpi-median').textContent = fmt(d.median);
-    const diff = d.today.ticket ? Math.round((d.median - d.today.ticket) / d.today.ticket * 100) : 0;
-    document.getElementById('kpi-median-vs').textContent = fmt(d.today.ticket) + (diff !== 0 ? ` (${diff > 0 ? '+' : ''}${diff}%)` : '');
-  }
-
-  // Upsell
-  if (d.upsell && d.upsell.total) {
-    document.getElementById('kpi-upsell').textContent = d.upsell.rate + '%';
-    document.getElementById('kpi-upsell-sub').textContent =
-      `${d.upsell.multi} tickets multi · ${d.upsell.single} seul`;
-  }
-
-  // Mix boissons/food
-  const MIX_COLORS = {'Boissons':'rgba(55,53,47,1)','Food':'rgba(55,53,47,.55)','Extras':'rgba(55,53,47,.3)','Autre':'rgba(55,53,47,.15)'};
-  if (d.mix && d.mix.length) {
-    const total = d.mix.reduce((a,b) => a + b.amount, 0);
-    document.getElementById('mix-bars').innerHTML = d.mix.map(m => `
-      <div style="margin-bottom:6px;">
-        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
-          <span style="color:var(--muted)">${m.label}</span>
-          <span style="font-weight:500">${m.pct}% · ${fmt(m.amount)}</span>
-        </div>
-        <div style="height:4px;background:var(--bar-bg);border-radius:2px;">
-          <div style="height:4px;background:${MIX_COLORS[m.label]||'#888'};border-radius:2px;width:${m.pct}%"></div>
-        </div>
-      </div>`).join('');
-  }
-
-  // Tendance WoW
+  // ── Tendance WoW ──────────────────────────────────────────────────────────
   if (d.wow) {
     document.getElementById('kpi-wow-ca').textContent = fmt(d.wow.cur_ca);
     document.getElementById('kpi-wow-ca-delta').innerHTML = d.wow.growth_ca != null
@@ -373,8 +313,6 @@ function render(d) {
       ? `<span class="${d.wow.growth_nb >= 0 ? 'delta-up' : 'delta-down'}">${d.wow.growth_nb >= 0 ? '+' : ''}${d.wow.growth_nb}% vs sem. préc.</span>`
       : '<span style="color:var(--muted)">pas de comparatif</span>';
   }
-
-  // Meilleur jour de la semaine
   if (d.weekdays && d.weekdays.length) {
     const best = d.weekdays[0];
     document.getElementById('kpi-best-day').textContent = best.day;
@@ -382,9 +320,9 @@ function render(d) {
       `moy. ${fmt(best.avg_ca)} · ${best.n_days}j de données`;
   }
 
-  // Courbe cumulative
+  // ── Courbe cumulative (jour unique) ───────────────────────────────────────
   const curveSection = document.getElementById('curve-section');
-  if (d.curve && d.curve.length > 1) {
+  if (d.is_single_day && d.curve && d.curve.length > 1) {
     curveSection.style.display = '';
     const cCtx = document.getElementById('chart-curve').getContext('2d');
     if (chartCurve) chartCurve.destroy();
@@ -396,13 +334,9 @@ function render(d) {
           data: d.curve.map(p => p.ca_cum),
           borderColor: BAR_ACTIVE,
           backgroundColor: 'rgba(55,53,47,0.06)',
-          borderWidth: 2,
-          fill: true,
-          tension: 0.3,
-          pointRadius: d.curve.map((p, i) => i === 0 ? 0 : 4),
-          pointBackgroundColor: BAR_ACTIVE,
-          pointBorderColor: '#fff',
-          pointBorderWidth: 2,
+          borderWidth: 2, fill: true, tension: 0.3,
+          pointRadius: d.curve.map((_, i) => i === 0 ? 0 : 4),
+          pointBackgroundColor: BAR_ACTIVE, pointBorderColor: '#fff', pointBorderWidth: 2,
         }]
       },
       options: {
@@ -413,24 +347,14 @@ function render(d) {
               title: ctx => ctx[0].label,
               label: ctx => {
                 const pt = d.curve[ctx.dataIndex];
-                return [
-                  ` Cumul : ${fmt(ctx.raw)}`,
-                  pt.ca_tx ? ` + ${fmt(pt.ca_tx)}  (${pt.nb})` : '',
-                ].filter(Boolean);
+                return [` Cumul : ${fmt(ctx.raw)}`, pt.ca_tx ? ` + ${fmt(pt.ca_tx)}  (${pt.nb})` : ''].filter(Boolean);
               }
             }
           }
         },
         scales: {
-          y: {
-            beginAtZero: true,
-            ticks: { callback: v => v + ' €', font: { size: 11 }, color: 'rgba(120,119,111,1)' },
-            grid: { color: 'rgba(55,53,47,0.06)' }, border: { display: false },
-          },
-          x: {
-            ticks: { font: { size: 11 }, color: 'rgba(120,119,111,1)', maxTicksLimit: 12 },
-            grid: { display: false }, border: { display: false },
-          }
+          y: { beginAtZero: true, ticks:{callback:v=>v+' €',font:{size:11},color:'rgba(120,119,111,1)'}, grid:{color:'rgba(55,53,47,0.06)'}, border:{display:false} },
+          x: { ticks:{font:{size:11},color:'rgba(120,119,111,1)',maxTicksLimit:12}, grid:{display:false}, border:{display:false} }
         }
       }
     });
@@ -438,9 +362,9 @@ function render(d) {
     curveSection.style.display = 'none';
   }
 
-  // Rush detector
+  // ── Rush detector (jour unique) ────────────────────────────────────────────
   const rushSection = document.getElementById('rush-section');
-  if (d.rush && d.rush.length) {
+  if (d.is_single_day && d.rush && d.rush.length) {
     rushSection.style.display = '';
     document.getElementById('rush-list').innerHTML = d.rush.map(r =>
       `<span class="rush-badge">⚡ ${r.start}–${r.end} · ${r.count} tx</span>`
@@ -449,32 +373,38 @@ function render(d) {
     rushSection.style.display = 'none';
   }
 
-  // Top produits
-  const maxQty = d.products.length ? d.products[0].qty : 1;
-  if (!d.products.length) {
-    document.getElementById('products-body').innerHTML =
-      '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">Aucun produit vendu aujourd\'hui.</td></tr>';
-  } else {
-    document.getElementById('products-body').innerHTML = d.products.map((p, i) => {
-      const barW = Math.round(p.qty / maxQty * 100);
-      const rank = i === 0 ? ' style="font-weight:600"' : '';
-      const marginHtml = p.margin_pct != null ? marginBadge(p.margin_pct) : '<span style="color:var(--muted)">—</span>';
-      return `<tr>
-        <td${rank}>${p.name}</td>
-        <td class="amount">${p.qty}</td>
-        <td class="amount" style="color:var(--muted)">${fmt(p.avg)}</td>
-        <td class="amount">${fmt(p.revenue)}</td>
-        <td class="amount">${marginHtml}</td>
-        <td style="padding-right:16px;vertical-align:middle;">
-          <div style="height:3px;background:var(--bar-bg);border-radius:2px;">
-            <div style="height:3px;background:var(--bar);border-radius:2px;width:${barW}%"></div>
-          </div>
-        </td>
-      </tr>`;
-    }).join('');
+  // ── Top produits (détail articles requis) ────────────────────────────────
+  const topSection = document.getElementById('top-products-section');
+  if (topSection) {
+    topSection.style.display = d.has_items ? '' : 'none';
+  }
+  if (d.has_items && d.products) {
+    const maxQty = d.products.length ? d.products[0].qty : 1;
+    if (!d.products.length) {
+      document.getElementById('products-body').innerHTML =
+        '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">Aucun produit vendu.</td></tr>';
+    } else {
+      document.getElementById('products-body').innerHTML = d.products.map((p, i) => {
+        const barW = Math.round(p.qty / maxQty * 100);
+        const rank = i === 0 ? ' style="font-weight:600"' : '';
+        const marginHtml = p.margin_pct != null ? marginBadge(p.margin_pct) : '<span style="color:var(--muted)">—</span>';
+        return `<tr>
+          <td${rank}>${p.name}</td>
+          <td class="amount">${p.qty}</td>
+          <td class="amount" style="color:var(--muted)">${fmt(p.avg)}</td>
+          <td class="amount">${fmt(p.revenue)}</td>
+          <td class="amount">${marginHtml}</td>
+          <td style="padding-right:16px;vertical-align:middle;">
+            <div style="height:3px;background:var(--bar-bg);border-radius:2px;">
+              <div style="height:3px;background:var(--bar);border-radius:2px;width:${barW}%"></div>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+    }
   }
 
-  // CA moyen 7j par produit
+  // ── CA moyen 7j par produit ───────────────────────────────────────────────
   if (!d.products_7d || !d.products_7d.length) {
     document.getElementById('products7d-body').innerHTML =
       '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">Aucune donnée sur 7 jours.</td></tr>';
@@ -499,7 +429,7 @@ function render(d) {
     }).join('');
   }
 
-  // Ventilation TVA
+  // ── Ventilation TVA ───────────────────────────────────────────────────────
   const tvaSection = document.getElementById('tva-section');
   if (d.tva && d.tva.rows.length) {
     tvaSection.style.display = '';
@@ -521,9 +451,9 @@ function render(d) {
     tvaSection.style.display = 'none';
   }
 
-  // Produits non vendus
+  // ── Produits non vendus (jour unique) ────────────────────────────────────
   const unsoldSection = document.getElementById('unsold-section');
-  if (d.unsold && d.unsold.length) {
+  if (d.is_single_day && d.unsold && d.unsold.length) {
     unsoldSection.style.display = '';
     document.getElementById('unsold-list').innerHTML =
       d.unsold.map(p => `<span class="unsold-tag">${p.name}</span>`).join('');
@@ -531,10 +461,10 @@ function render(d) {
     unsoldSection.style.display = 'none';
   }
 
-  // Tableau transactions — cliquable
+  // ── Transactions récentes ────────────────────────────────────────────────
   if (!d.recent || !d.recent.length) {
     document.getElementById('recent-body').innerHTML =
-      '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">Aucune transaction aujourd\'hui.</td></tr>';
+      '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">Aucune transaction.</td></tr>';
     return;
   }
   window._txData = d.recent;
@@ -547,11 +477,102 @@ function render(d) {
     </tr>`).join('');
 }
 
+// ── Graphe horaire ─────────────────────────────────────────────────────────
+function renderHourlyChart(d) {
+  const maxHourVal = Math.max(...d.hourly.values);
+  const hCtx = document.getElementById('chart-hourly').getContext('2d');
+  if (chartHourly) chartHourly.destroy();
+  chartHourly = new Chart(hCtx, {
+    type: 'bar',
+    data: {
+      labels: d.hourly.labels,
+      datasets: [
+        {
+          type: 'bar', label: 'CA',
+          data: d.hourly.values,
+          backgroundColor: d.hourly.values.map(v => v > 0 && v === maxHourVal ? BAR_ACTIVE : BAR_IDLE),
+          borderRadius: 2, borderSkipped: false, yAxisID: 'y',
+        },
+        {
+          type: 'line', label: 'Ticket moy.',
+          data: d.hourly.avg_ticket,
+          borderColor: BAR_ACTIVE, backgroundColor: 'transparent',
+          borderWidth: 1.5, borderDash: [4, 3],
+          pointRadius: d.hourly.avg_ticket.map(v => v != null ? 3 : 0),
+          pointBackgroundColor: BAR_ACTIVE,
+          spanGaps: false, yAxisID: 'y2',
+        }
+      ]
+    },
+    options: {
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              if (ctx.datasetIndex === 0) {
+                const nb  = d.hourly.nb[ctx.dataIndex];
+                const gap = d.hourly.avg_gap[ctx.dataIndex];
+                return ` CA: ${fmt(ctx.raw)}  (${nb} tx${gap != null ? ' · ' + gap + 'min/tx' : ''})`;
+              }
+              return ctx.raw != null ? ` Ticket moy: ${fmt(ctx.raw)}` : null;
+            }
+          }
+        }
+      },
+      scales: {
+        y:  { ticks:{callback:v=>v+' €',font:{size:11},color:'rgba(120,119,111,1)'}, grid:{color:'rgba(55,53,47,0.06)'}, border:{display:false} },
+        y2: { position:'right', ticks:{callback:v=>v+' €',font:{size:10},color:'#bbb'}, grid:{display:false}, border:{display:false} },
+        x:  { ticks:{font:{size:11},color:'rgba(120,119,111,1)'}, grid:{display:false}, border:{display:false} }
+      }
+    }
+  });
+}
+
+// ── Graphe journalier (multi-jours) ───────────────────────────────────────
+function renderDailyChart(daily) {
+  const maxVal = Math.max(...daily.map(d => d.ca_ttc)) || 1;
+  const dCtx = document.getElementById('chart-daily').getContext('2d');
+  if (chartDaily) chartDaily.destroy();
+  chartDaily = new Chart(dCtx, {
+    type: 'bar',
+    data: {
+      labels: daily.map(d => {
+        const dt = new Date(d.date + 'T12:00:00');
+        return dt.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+      }),
+      datasets: [{
+        data: daily.map(d => d.ca_ttc),
+        backgroundColor: daily.map(d => d.ca_ttc === maxVal ? BAR_ACTIVE : BAR_IDLE),
+        borderRadius: 3, borderSkipped: false,
+      }]
+    },
+    options: {
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const day = daily[ctx.dataIndex];
+              return ` ${fmt(ctx.raw)} · ${day.nb} tx`;
+            }
+          }
+        }
+      },
+      scales: {
+        y: { beginAtZero: true, ticks:{callback:v=>v+' €',font:{size:11},color:'rgba(120,119,111,1)'}, grid:{color:'rgba(55,53,47,0.06)'}, border:{display:false} },
+        x: { ticks:{font:{size:11},color:'rgba(120,119,111,1)',maxTicksLimit:16}, grid:{display:false}, border:{display:false} }
+      }
+    }
+  });
+}
+
+// ── Drawer ticket ──────────────────────────────────────────────────────────
 function openDrawer(idx) {
   const t = window._txData[idx];
   document.getElementById('drawer-number').textContent = t.number;
   document.getElementById('drawer-meta').textContent   = t.time + ' · ' + t.client;
-
   document.getElementById('drawer-items').innerHTML = t.items.length
     ? t.items.map(item => `
         <tr>
@@ -560,16 +581,12 @@ function openDrawer(idx) {
           <td class="dt-amt">${fmt(item.total)}</td>
         </tr>`).join('')
     : '<tr><td colspan="3" style="color:var(--muted);font-size:12px;padding:8px 0;">Détail non disponible</td></tr>';
-
   document.getElementById('drawer-payments').innerHTML = t.payments.map(p => `
     <div class="drawer-pay-row">
       <span>${p.label}</span>
       <span>${fmt(p.amount)}</span>
     </div>`).join('');
-
-  document.getElementById('drawer-total').innerHTML =
-    `<span>Total</span><span>${fmt(t.amount)}</span>`;
-
+  document.getElementById('drawer-total').innerHTML = `<span>Total</span><span>${fmt(t.amount)}</span>`;
   document.getElementById('drawer').classList.add('open');
   document.getElementById('drawer-overlay').classList.add('open');
 }
@@ -581,8 +598,6 @@ function closeDrawer() {
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
 
-// Initialiser le picker à aujourd'hui
-document.getElementById('date-picker').value = new Date().toISOString().slice(0, 10);
+// ── Init ───────────────────────────────────────────────────────────────────
 loadData();
-// Auto-refresh seulement si on est sur aujourd'hui
-setInterval(() => { if (getSelectedDate() === new Date().toISOString().slice(0, 10)) loadData(); }, 5 * 60 * 1000);
+setInterval(() => { if (currentPreset === 'today') loadData(); }, 5 * 60 * 1000);
