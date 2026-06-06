@@ -123,15 +123,16 @@ def api_data():
         "recent":        recent_docs(docs_main),
     }
 
-    # ── Sections disponibles uniquement si on a le détail articles ────────────
+    # ── Économie : toujours calculée (marge réelle si articles, estimée sinon) ─
+    result["economics"] = daily_economics(docs_main, catalog, n_days)
+
+    # ── Produits et mix : uniquement si détail articles disponible ────────────
     if fetch_items:
-        result["economics"] = daily_economics(docs_main, catalog, n_days)
-        result["products"]  = top_products(docs_main, catalog)
-        result["mix"]       = category_mix(docs_main, catalog)
+        result["products"] = top_products(docs_main, catalog)
+        result["mix"]      = category_mix(docs_main, catalog)
     else:
-        result["economics"] = None
-        result["products"]  = []
-        result["mix"]       = []
+        result["products"] = []
+        result["mix"]      = []
 
     # ── Sections disponibles uniquement pour un jour unique ───────────────────
     if is_single:

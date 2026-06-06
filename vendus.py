@@ -498,12 +498,23 @@ def daily_economics(docs, catalog, n_days=1):
     amort      = round(AMORT_JOUR         * n_days, 2)
     seuil_ca   = round(SEUIL_CA_JOUR      * n_days, 2)
 
-    # Marge brute HT (comparable aux charges BP qui sont en HT)
-    marge_ht     = round(ca_ht - cogs_ht, 2) if cogs_ht else None
-    marge_ht_pct = round(marge_ht / ca_ht * 100, 1) if (marge_ht and ca_ht) else None
+    # Marge brute HT
+    # - Si on a les détails articles : marge réelle (CA HT − COGS réel)
+    # - Sinon : estimation via taux BP (70.3 %) — indiqué clairement dans UI
+    is_estimated_margin = False
+    if cogs_ht:
+        marge_ht     = round(ca_ht - cogs_ht, 2)
+        marge_ht_pct = round(marge_ht / ca_ht * 100, 1) if ca_ht else None
+    elif ca_ht:
+        from config import MARGE_BP_GLOBALE
+        marge_ht          = round(ca_ht * MARGE_BP_GLOBALE, 2)
+        marge_ht_pct      = round(MARGE_BP_GLOBALE * 100, 1)
+        is_estimated_margin = True
+    else:
+        marge_ht = marge_ht_pct = None
 
     # EBITDA HT = marge brute HT − charges totales HT de la période
-    ebitda_ht = round(marge_ht - cout_total, 2) if marge_ht else None
+    ebitda_ht = round(marge_ht - cout_total, 2) if marge_ht is not None else None
 
     # Seuil rentabilité en CA HT
     manque_seuil = round(max(0, seuil_ca - ca_ht), 2)
@@ -517,8 +528,9 @@ def daily_economics(docs, catalog, n_days=1):
         # Coûts
         "cogs_ht":         round(cogs_ht, 2),
         # Marge brute HT
-        "marge_brute_ht":      marge_ht,
-        "marge_brute_ht_pct":  marge_ht_pct,
+        "marge_brute_ht":          marge_ht,
+        "marge_brute_ht_pct":      marge_ht_pct,
+        "marge_is_estimated":       is_estimated_margin,
         # Charges HT/période (BP)
         "cout_fixe_jour":   cout_fixe,
         "cout_perso_jour":  cout_perso,

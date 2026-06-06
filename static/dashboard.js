@@ -115,24 +115,35 @@ function render(d) {
   }
 
   // ── Économie ──────────────────────────────────────────────────────────────
-  const ecoEl = document.querySelector('[id="eco-label"]') || document.getElementById('eco-label');
-  if (ecoEl) {
-    ecoEl.textContent = d.is_single_day ? 'Économie du jour' : `Économie · ${d.period_label}`;
-  }
+  // Labels dynamiques selon la période
+  const periodSuffix = d.is_single_day ? 'du jour' : `· ${d.n_days} jours`;
+  document.getElementById('eco-label').textContent      = `Économie ${periodSuffix}`;
+  document.getElementById('eco-charges-label').textContent = `Charges ${periodSuffix}`;
+  document.getElementById('eco-ebitda-label').textContent  = `EBITDA ${periodSuffix}`;
+  document.getElementById('eco-seuil-label').textContent   = `Seuil CA ${periodSuffix}`;
+  document.getElementById('eco-marge-label').textContent   = 'Marge brute';
+
   const eco = d.economics;
   if (eco) {
+    // Marge brute
     document.getElementById('eco-marge').textContent = eco.marge_brute_ht != null ? fmt(eco.marge_brute_ht) : '—';
-    document.getElementById('eco-marge-pct').innerHTML = eco.marge_brute_ht != null
-      ? `${eco.marge_brute_ht_pct}% <span style="color:var(--faint)">HT · COGS ${fmt(eco.cogs_ht)}</span>`
-      : '<span style="color:var(--muted)">coûts partiels catalogue</span>';
+    if (eco.marge_brute_ht != null) {
+      const cogsStr = eco.marge_is_estimated
+        ? `<span style="color:var(--amber)">* estimée via taux BP</span>`
+        : `<span style="color:var(--faint)">HT · COGS réel ${fmt(eco.cogs_ht)}</span>`;
+      document.getElementById('eco-marge-pct').innerHTML = `${eco.marge_brute_ht_pct}% ${cogsStr}`;
+    } else {
+      document.getElementById('eco-marge-pct').innerHTML = '<span style="color:var(--muted)">aucune vente</span>';
+    }
 
-    const chargesLabel = d.is_single_day ? 'Charges du jour' : `Charges · ${d.n_days}j`;
-    document.querySelector('#eco-charges')?.closest('.kpi-cell')?.querySelector('.kpi-label')
-      && (document.querySelector('.kpi-cell .kpi-label') || null);
+    // Charges
     document.getElementById('eco-charges').textContent = fmt(eco.cout_total_jour);
-    document.getElementById('eco-charges-sub').innerHTML =
-      `Fixe ${fmt(eco.cout_fixe_jour)} · Perso ${fmt(eco.cout_perso_jour)} <span style="color:var(--faint)">HT</span>`;
+    const chargesSub = d.is_single_day
+      ? `Fixe ${fmt(eco.cout_fixe_jour)} · Perso ${fmt(eco.cout_perso_jour)}`
+      : `${fmt(eco.cout_fixe_jour)} fixes · ${fmt(eco.cout_perso_jour)} perso · <span style="color:var(--faint)">${d.n_days}j × ${fmt(eco.cout_total_jour / d.n_days)}/j</span>`;
+    document.getElementById('eco-charges-sub').innerHTML = chargesSub;
 
+    // EBITDA
     const ebitdaEl = document.getElementById('eco-ebitda');
     ebitdaEl.textContent = eco.ebitda_ht != null ? fmt(eco.ebitda_ht) : '—';
     ebitdaEl.style.color = eco.ebitda_ht > 0 ? 'var(--green)' : eco.ebitda_ht < 0 ? 'var(--red)' : 'var(--text)';
@@ -143,6 +154,7 @@ function render(d) {
         : `<span style="color:var(--red)">Déficit ${fmt(Math.abs(eco.ebitda_ht))}</span>`;
     }
 
+    // Seuil CA
     document.getElementById('eco-seuil').textContent = fmt(eco.seuil_ca_ht);
     const seuilSub = document.getElementById('eco-seuil-sub');
     if (eco.manque_seuil > 0) {
