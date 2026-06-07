@@ -42,18 +42,27 @@ SALE_TYPES = {"FT", "FS", "FR", "FG"}
 
 
 def get_documents(since: str, until: str):
-    docs = vendus("/documents/", {
-        "since":  since,
-        "until":  until,
-        "status": "N",
-        "view":   "detailed",
-    })
-    if isinstance(docs, list):
-        raw = docs
-    else:
-        raw = docs.get("docs", docs.get("data", []))
+    """Récupère TOUS les documents de la période (pagination complète)."""
+    PER_PAGE = 200
+    all_raw  = []
+    page     = 1
+    while True:
+        batch = vendus("/documents/", {
+            "since":    since,
+            "until":    until,
+            "per_page": PER_PAGE,
+            "page":     page,
+        })
+        if isinstance(batch, list):
+            raw = batch
+        else:
+            raw = batch.get("docs", batch.get("data", []))
+        all_raw.extend(raw)
+        if len(raw) < PER_PAGE:
+            break   # dernière page
+        page += 1
     # Exclure les RG (reçus globaux) qui doublonnent les FT
-    return [d for d in raw if d.get("type") in SALE_TYPES]
+    return [d for d in all_raw if d.get("type") in SALE_TYPES]
 
 
 def get_document_detail(doc_id: int):
