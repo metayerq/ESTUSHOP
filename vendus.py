@@ -80,7 +80,7 @@ def get_documents_with_items(since: str, until: str):
         return []
     # Appels parallèles pour récupérer les items de chaque document
     results = {}
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=20) as pool:
         futures = {pool.submit(get_document_detail, d["id"]): d["id"] for d in docs}
         for future in as_completed(futures):
             doc_id = futures[future]
@@ -650,8 +650,41 @@ def rush_detector(docs, window_minutes=60, threshold=5):
     return rushes
 
 
+def product_stats_from_docs(docs_with_items, catalog):
+    """Dérive les stats produits depuis des docs déjà chargés (sans appel API)."""
+    by_product = defaultdict(lambda: {"rev_ttc": 0.0, "rev_ht": 0.0, "qty": 0, "days": set()})
+    for detail in docs_with_items:
+        if not detail:
+            continue
+        day = detail.get("date", "")[:10]
+        for item in detail.get("items", []):
+            name    = item.get("title", "—")
+            qty     = float(item.get("qty", 0))
+            amounts = item.get("amounts", {})
+            by_product[name]["rev_ttc"] += float(amounts.get("gross_total", item.get("gross_total", 0)))
+            by_product[name]["rev_ht"]  += float(amounts.get("net_total",   item.get("net_total",   0)))
+            by_product[name]["qty"]     += qty
+            by_product[name]["days"].add(day)
+
+    result = []
+    for name, stats in by_product.items():
+        days_sold = len(stats["days"])
+        rev_ttc   = round(stats["rev_ttc"], 2)
+        rev_ht    = round(stats["rev_ht"],  2)
+        cat_info  = catalog.get(name)
+        cost_ht   = round(cat_info["cost"] * stats["qty"], 2) if cat_info and cat_info.get("cost") else None
+        margin    = round((rev_ht - cost_ht) / rev_ht * 100, 1) if rev_ht and cost_ht else None
+        result.append({
+            "name": name, "revenue": rev_ttc, "rev_ht": rev_ht,
+            "qty": int(stats["qty"]), "days_sold": days_sold,
+            "avg_day": round(rev_ttc / days_sold, 2) if days_sold else 0,
+            "cost_ht": cost_ht, "margin_pct": margin,
+        })
+    return sorted(result, key=lambda x: x["revenue"], reverse=True)
+
+
 def product_stats_7d(since: str, until: str):
-    """CA total et nb jours vendus par produit sur la période."""
+    """CA total et nb jours vendus par produit sur la période (fallback avec appels API)."""
     try:
         raw = vendus("/documents/", {"since": since, "until": until, "status": "N"})
         if not isinstance(raw, list):
