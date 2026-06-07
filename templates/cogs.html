@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estudantina · Fiche COGS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  /* ── COGS-specific overrides ─────────────────────────────────────────────── */
+  .cogs-nav {
+    display: flex; align-items: center; gap: 16px; margin-bottom: 40px;
+  }
+  .cogs-nav a {
+    font-size: 13px; color: var(--muted); text-decoration: none;
+  }
+  .cogs-nav a:hover { color: var(--text); }
+  .cogs-nav .sep { color: var(--faint); }
+
+  .filter-bar {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 28px; flex-wrap: wrap;
+  }
+  .filter-bar input {
+    font-family: inherit; font-size: 13px;
+    border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
+    padding: 6px 12px; border-radius: 6px; outline: none; width: 220px;
+    transition: border-color .15s;
+  }
+  .filter-bar input:focus { border-color: var(--faint); }
+  .filter-bar select {
+    font-family: inherit; font-size: 13px;
+    border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
+    padding: 6px 10px; border-radius: 6px; outline: none; cursor: pointer;
+  }
+  .cat-count { font-size: 12px; color: var(--faint); margin-left: auto; }
+
+  .cogs-section { margin-bottom: 40px; }
+  .cogs-section-title {
+    font-size: 11px; font-weight: 500; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 8px;
+    padding: 0 2px; display: flex; align-items: center; gap: 8px;
+  }
+  .cogs-section-title .badge-cat {
+    font-size: 10px; font-weight: 500; padding: 1px 8px;
+    border: 1px solid var(--border); border-radius: 10px;
+    color: var(--faint); background: var(--bg-page);
+    letter-spacing: .04em;
+  }
+
+  /* Table */
+  .cogs-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .cogs-table thead th {
+    font-size: 10px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--faint); text-align: left; padding: 8px 14px;
+    border-bottom: 1px solid var(--border); background: var(--bg-page);
+    white-space: nowrap;
+  }
+  .cogs-table thead th.r { text-align: right; }
+  .cogs-table tbody tr { border-bottom: 1px solid var(--border); }
+  .cogs-table tbody tr:last-child { border-bottom: none; }
+  .cogs-table tbody tr:hover { background: var(--bg-hover); }
+  .cogs-table td { padding: 10px 14px; vertical-align: top; }
+  .cogs-table td.r { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* Product name */
+  .prod-name { font-weight: 500; color: var(--text); }
+
+  /* Recipe ingredients */
+  .recipe-wrap { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .ing-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    background: var(--bg-page); border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .ing-chip .ing-cost { color: var(--faint); font-size: 10px; }
+  .no-recipe { font-size: 11px; color: var(--faint); margin-top: 3px; font-style: italic; }
+
+  /* Prices */
+  .price-ttc { font-weight: 600; color: var(--text); }
+  .price-ht  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* Margin bar */
+  .margin-cell { min-width: 120px; }
+  .margin-val  { font-weight: 600; }
+  .margin-bar-wrap { margin-top: 4px; height: 3px; background: var(--bar-bg); border-radius: 2px; width: 100%; }
+  .margin-bar  { height: 3px; border-radius: 2px; background: var(--bar); }
+  .margin-bar.good { background: var(--green); }
+  .margin-bar.warn { background: var(--amber); }
+  .margin-bar.bad  { background: var(--red); }
+
+  /* COGS value */
+  .cogs-val  { font-weight: 500; color: var(--text); }
+  .cogs-calc { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* Summary bar */
+  .summary-bar {
+    display: flex; gap: 32px; flex-wrap: wrap;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 18px 24px; margin-bottom: 32px;
+  }
+  .sum-item { display: flex; flex-direction: column; gap: 3px; }
+  .sum-label { font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .sum-val   { font-size: 22px; font-weight: 600; letter-spacing: -.4px; color: var(--text); }
+
+  /* Edit btn */
+  .edit-btn {
+    font-size: 11px; padding: 3px 10px; border-radius: 4px;
+    border: 1px solid var(--border); background: transparent; color: var(--muted);
+    cursor: pointer; font-family: inherit;
+    transition: background .12s, color .12s;
+  }
+  .edit-btn:hover { background: var(--bg-hover); color: var(--text); }
+
+  /* Inline edit */
+  .inline-edit {
+    font-family: inherit; font-size: 13px; width: 80px;
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 3px 6px; outline: none; text-align: right;
+    background: var(--bg-card); color: var(--text);
+  }
+  .inline-edit:focus { border-color: var(--text); }
+
+  /* Toast */
+  #toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--text); color: #fff;
+    font-size: 13px; padding: 10px 16px; border-radius: 8px;
+    opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 300;
+  }
+  #toast.show { opacity: 1; }
+
+  .loading { text-align: center; padding: 60px; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Nav -->
+  <div class="cogs-nav">
+    <a href="/">← Dashboard</a>
+    <span class="sep">·</span>
+    <span style="font-size:13px; color:var(--text); font-weight:500;">Fiche COGS &amp; Recettes</span>
+  </div>
+
+  <!-- Header -->
+  <div class="header" style="margin-bottom:24px;">
+    <div>
+      <div class="header-title">COGS &amp; Marges</div>
+      <div class="header-sub">Recettes · Coût matière · Prix de vente · Marge brute</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button class="btn-refresh" onclick="loadCogs()" title="Rafraîchir">↻</button>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <div class="summary-bar" id="summary-bar" style="display:none;">
+    <div class="sum-item">
+      <div class="sum-label">Produits</div>
+      <div class="sum-val" id="sum-total">—</div>
+    </div>
+    <div class="sum-item">
+      <div class="sum-label">Avec recette</div>
+      <div class="sum-val" id="sum-recipe">—</div>
+    </div>
+    <div class="sum-item">
+      <div class="sum-label">Marge moy. (avec recette)</div>
+      <div class="sum-val" id="sum-margin">—</div>
+    </div>
+    <div class="sum-item">
+      <div class="sum-label">Marge la plus faible</div>
+      <div class="sum-val" id="sum-min">—</div>
+    </div>
+    <div class="sum-item">
+      <div class="sum-label">Marge la plus haute</div>
+      <div class="sum-val" id="sum-max">—</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filter-bar">
+    <input id="search" type="text" placeholder="Rechercher un produit…" oninput="applyFilters()">
+    <select id="cat-filter" onchange="applyFilters()">
+      <option value="">Toutes catégories</option>
+    </select>
+    <select id="recipe-filter" onchange="applyFilters()">
+      <option value="">Avec ou sans recette</option>
+      <option value="yes">Avec recette</option>
+      <option value="no">Sans recette</option>
+    </select>
+    <span class="cat-count" id="shown-count"></span>
+  </div>
+
+  <!-- Content -->
+  <div id="content">
+    <div class="loading">Chargement…</div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+let allProducts = [];
+let categoryOrder = [];
+let categoryNames = {};
+
+async function loadCogs() {
+  document.getElementById('content').innerHTML = '<div class="loading">Chargement…</div>';
+  try {
+    const r = await fetch('/api/cogs');
+    const d = await r.json();
+    allProducts   = d.products;
+    categoryOrder = d.category_order;
+    categoryNames = d.category_names;
+    buildCatFilter();
+    buildSummary();
+    applyFilters();
+  } catch(e) {
+    document.getElementById('content').innerHTML = '<div class="loading" style="color:var(--red)">Erreur de chargement</div>';
+  }
+}
+
+function buildCatFilter() {
+  const sel = document.getElementById('cat-filter');
+  // clear existing options except first
+  while (sel.options.length > 1) sel.remove(1);
+  const seen = new Set();
+  for (const catId of categoryOrder) {
+    if (!seen.has(catId) && allProducts.some(p => p.category_id === catId)) {
+      seen.add(catId);
+      const o = document.createElement('option');
+      o.value = catId;
+      o.textContent = categoryNames[catId] || catId;
+      sel.appendChild(o);
+    }
+  }
+}
+
+function buildSummary() {
+  const withRecipe = allProducts.filter(p => p.has_recipe && p.marge_pct !== null);
+  const margins    = withRecipe.map(p => p.marge_pct).filter(v => v !== null);
+  const avg        = margins.length ? (margins.reduce((a,b)=>a+b,0)/margins.length) : null;
+  const min        = margins.length ? Math.min(...margins) : null;
+  const max        = margins.length ? Math.max(...margins) : null;
+
+  document.getElementById('sum-total').textContent  = allProducts.length;
+  document.getElementById('sum-recipe').textContent = withRecipe.length;
+  document.getElementById('sum-margin').textContent = avg !== null ? avg.toFixed(1) + ' %' : '—';
+  document.getElementById('sum-min').textContent    = min !== null ? min.toFixed(1) + ' %' : '—';
+  document.getElementById('sum-max').textContent    = max !== null ? max.toFixed(1) + ' %' : '—';
+  document.getElementById('summary-bar').style.display = 'flex';
+}
+
+function applyFilters() {
+  const search      = document.getElementById('search').value.toLowerCase();
+  const catFilter   = document.getElementById('cat-filter').value;
+  const recipeFilter= document.getElementById('recipe-filter').value;
+
+  let filtered = allProducts.filter(p => {
+    if (search && !p.title.toLowerCase().includes(search)) return false;
+    if (catFilter && p.category_id !== catFilter) return false;
+    if (recipeFilter === 'yes' && !p.has_recipe) return false;
+    if (recipeFilter === 'no'  &&  p.has_recipe) return false;
+    return true;
+  });
+
+  document.getElementById('shown-count').textContent = `${filtered.length} produit${filtered.length !== 1 ? 's' : ''}`;
+  renderProducts(filtered);
+}
+
+function renderProducts(products) {
+  // Group by category, preserving order
+  const grouped = {};
+  for (const catId of categoryOrder) grouped[catId] = [];
+  for (const p of products) {
+    if (!grouped[p.category_id]) grouped[p.category_id] = [];
+    grouped[p.category_id].push(p);
+  }
+
+  let html = '';
+  for (const catId of categoryOrder) {
+    const group = grouped[catId];
+    if (!group || !group.length) continue;
+    const catName = categoryNames[catId] || catId;
+    html += `
+    <div class="cogs-section" data-cat="${catId}">
+      <div class="cogs-section-title">
+        ${catName}
+        <span class="badge-cat">${group.length}</span>
+      </div>
+      <div class="table-wrap">
+        <table class="cogs-table">
+          <thead>
+            <tr>
+              <th style="width:30%">Produit &amp; Recette</th>
+              <th class="r">Prix TTC</th>
+              <th class="r">Prix HT</th>
+              <th class="r">COGS</th>
+              <th class="r">Marge brute</th>
+              <th class="r">% Marge</th>
+              <th class="r" style="width:60px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${group.map(p => rowHtml(p)).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+
+  // Uncategorized
+  const uncatKey = '_other';
+  const uncat = products.filter(p => !categoryOrder.includes(p.category_id));
+  if (uncat.length) {
+    html += `
+    <div class="cogs-section">
+      <div class="cogs-section-title">Autres <span class="badge-cat">${uncat.length}</span></div>
+      <div class="table-wrap">
+        <table class="cogs-table">
+          <thead><tr>
+            <th style="width:30%">Produit &amp; Recette</th>
+            <th class="r">Prix TTC</th><th class="r">Prix HT</th>
+            <th class="r">COGS</th><th class="r">Marge brute</th>
+            <th class="r">% Marge</th><th class="r" style="width:60px;"></th>
+          </tr></thead>
+          <tbody>${uncat.map(p => rowHtml(p)).join('')}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+
+  document.getElementById('content').innerHTML = html || '<div class="loading">Aucun produit</div>';
+}
+
+function rowHtml(p) {
+  // Recipe chips
+  let recipeHtml = '';
+  if (p.has_recipe && p.recipe.length) {
+    const chips = p.recipe.map(ing =>
+      `<span class="ing-chip">${ing.name} <span class="ing-cost">${ing.qty}${ing.name.includes('Café') ? 'g' : 'ml'} · ${formatEur(ing.cost)}</span></span>`
+    ).join('');
+    recipeHtml = `<div class="recipe-wrap">${chips}</div>`;
+  } else if (!p.supply_price) {
+    recipeHtml = `<div class="no-recipe">Recette à renseigner</div>`;
+  } else {
+    recipeHtml = `<div class="no-recipe">Prix achat Vendus</div>`;
+  }
+
+  // COGS display
+  const cogs = p.has_recipe ? p.recipe_total : p.supply_price;
+  const cogsHtml = cogs
+    ? `<span class="cogs-val">${formatEur(cogs)}</span>${p.has_recipe && p.supply_price && Math.abs(p.supply_price - cogs) > 0.01
+        ? `<div class="cogs-calc">Vendus: ${formatEur(p.supply_price)}</div>` : ''}`
+    : `<span style="color:var(--faint)">—</span>`;
+
+  // Margin
+  const effectiveCogs = cogs || 0;
+  const marge_ht  = p.price_ht ? (p.price_ht - effectiveCogs) : null;
+  const marge_pct = (marge_ht !== null && p.price_ht) ? (marge_ht / p.price_ht * 100) : null;
+  const pct = marge_pct !== null ? marge_pct.toFixed(1) : null;
+  const barClass = pct === null ? '' : pct >= 75 ? 'good' : pct >= 55 ? 'warn' : 'bad';
+  const margeHtml = marge_ht !== null
+    ? `<span class="margin-val" style="color:${pct >= 75 ? 'var(--green)' : pct >= 55 ? 'var(--amber)' : 'var(--red)'}">${formatEur(marge_ht)}</span>`
+    : `<span style="color:var(--faint)">—</span>`;
+  const pctHtml = pct !== null
+    ? `<div class="margin-cell">
+        <span class="margin-val" style="color:${pct >= 75 ? 'var(--green)' : pct >= 55 ? 'var(--amber)' : 'var(--red)'}">${pct} %</span>
+        <div class="margin-bar-wrap"><div class="margin-bar ${barClass}" style="width:${Math.min(pct,100)}%"></div></div>
+       </div>`
+    : `<span style="color:var(--faint)">—</span>`;
+
+  const tvaBadge = p.tax_rate ? `<span style="font-size:10px;color:var(--faint);margin-left:4px;">TVA ${p.tax_rate}%</span>` : '';
+
+  return `<tr data-id="${p.id}">
+    <td>
+      <div class="prod-name">${p.title}</div>
+      ${recipeHtml}
+    </td>
+    <td class="r">
+      <div class="price-ttc">${p.price_ttc ? formatEur(p.price_ttc) : '—'}</div>
+      ${tvaBadge}
+    </td>
+    <td class="r">
+      <div>${p.price_ht ? formatEur(p.price_ht) : '—'}</div>
+    </td>
+    <td class="r">${cogsHtml}</td>
+    <td class="r">${margeHtml}</td>
+    <td class="r">${pctHtml}</td>
+    <td class="r">
+      <button class="edit-btn" onclick="openEdit(${p.id}, ${effectiveCogs})">Éditer</button>
+    </td>
+  </tr>`;
+}
+
+// ── Inline edit COGS ──────────────────────────────────────────────────────────
+function openEdit(id, currentCogs) {
+  const row = document.querySelector(`tr[data-id="${id}"]`);
+  if (!row) return;
+  const cogsCell = row.querySelector('td:nth-child(4)');
+  const editBtn  = row.querySelector('.edit-btn');
+  cogsCell.innerHTML = `<input class="inline-edit" id="edit-${id}" type="number" step="0.01" min="0" value="${currentCogs.toFixed(3)}" onkeydown="editKeydown(event, ${id})"> <button class="edit-btn" onclick="saveEdit(${id})" style="margin-top:2px;">OK</button>`;
+  editBtn.textContent = 'Annuler';
+  editBtn.onclick = () => loadCogs();
+  document.getElementById(`edit-${id}`)?.focus();
+}
+
+function editKeydown(e, id) {
+  if (e.key === 'Enter') saveEdit(id);
+  if (e.key === 'Escape') loadCogs();
+}
+
+async function saveEdit(id) {
+  const input = document.getElementById(`edit-${id}`);
+  if (!input) return;
+  const val = parseFloat(input.value);
+  if (isNaN(val) || val < 0) { showToast('Valeur invalide'); return; }
+
+  try {
+    const r = await fetch(`/api/update_supply_price/${id}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({supply_price: val}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      showToast('✓ COGS mis à jour');
+      await loadCogs();
+    } else {
+      showToast('Erreur : ' + (d.error || 'inconnue'));
+    }
+  } catch(e) {
+    showToast('Erreur réseau');
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function formatEur(v) {
+  return (typeof v === 'number' ? v : parseFloat(v)).toFixed(2) + ' €';
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadCogs();
+</script>
+</body>
+</html>

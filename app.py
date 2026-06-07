@@ -184,6 +184,150 @@ def api_data():
     return jsonify(result)
 
 
+@app.route("/cogs")
+def cogs_page():
+    return render_template("cogs.html")
+
+
+# ── Recettes détaillées par produit ───────────────────────────────────────────
+CAFE_G  = 28.70 / 1000   # €/g
+LAIT_ML = 1.09  / 1000   # €/ml
+OAT_ML  = 1.90  / 1000   # €/ml
+
+def _r(name, qty, cost):
+    return {"name": name, "qty": qty, "cost": round(qty * cost, 4)}
+
+RECIPES = {
+    # ── Espresso ──────────────────────────────────────────────────────────────
+    "Espresso":            [_r("Café", 18, CAFE_G)],
+    "Doppio":              [_r("Café", 18, CAFE_G)],
+    "Americano":           [_r("Café", 18, CAFE_G)],
+    "Iced Americano":      [_r("Café", 18, CAFE_G)],
+    # ── Cortado ───────────────────────────────────────────────────────────────
+    "Cortado":             [_r("Café", 18, CAFE_G), _r("Lait frais", 60, LAIT_ML)],
+    "Cortado Oat":         [_r("Café", 18, CAFE_G), _r("Lait avoine", 60, OAT_ML)],
+    # ── Flat White ────────────────────────────────────────────────────────────
+    "Flat White":          [_r("Café", 18, CAFE_G), _r("Lait frais", 130, LAIT_ML)],
+    "Flat White Oat":      [_r("Café", 18, CAFE_G), _r("Lait avoine", 130, OAT_ML)],
+    "Iced Flat White":     [_r("Café", 18, CAFE_G), _r("Lait frais", 130, LAIT_ML)],
+    "Iced Flat White Oat": [_r("Café", 18, CAFE_G), _r("Lait avoine", 130, OAT_ML)],
+    # ── Cappuccino ────────────────────────────────────────────────────────────
+    "Cappuccino":          [_r("Café", 18, CAFE_G), _r("Lait frais", 150, LAIT_ML)],
+    "Cappuccino Oat":      [_r("Café", 18, CAFE_G), _r("Lait avoine", 150, OAT_ML)],
+    # ── Latte ─────────────────────────────────────────────────────────────────
+    "Latte":               [_r("Café", 18, CAFE_G), _r("Lait frais", 220, LAIT_ML)],
+    "Latte Oat":           [_r("Café", 18, CAFE_G), _r("Lait avoine", 220, OAT_ML)],
+    "Iced Latte":          [_r("Café", 18, CAFE_G), _r("Lait frais", 200, LAIT_ML)],
+    "Iced Latte Oat":      [_r("Café", 18, CAFE_G), _r("Lait avoine", 200, OAT_ML)],
+    # ── Signatures ────────────────────────────────────────────────────────────
+    "Banana Bread Iced Latte":     [_r("Café", 18, CAFE_G), _r("Lait frais", 200, LAIT_ML)],
+    "Banana Bread Iced Latte Oat": [_r("Café", 18, CAFE_G), _r("Lait avoine", 200, OAT_ML)],
+    "Cold Brew":           [_r("Café", 25, CAFE_G)],
+    # ── Filter ────────────────────────────────────────────────────────────────
+    "V60":                 [_r("Café (filtre)", 20, CAFE_G)],
+    "Batch Brew":          [_r("Café (filtre)", 17, CAFE_G)],
+    # ── Matcha / Tea ──────────────────────────────────────────────────────────
+    "Matcha Latte":        [_r("Matcha", 5, 0.048), _r("Lait frais", 220, LAIT_ML)],
+    "Matcha Latte Oat":    [_r("Matcha", 5, 0.048), _r("Lait avoine", 220, OAT_ML)],
+    "Iced Matcha Latte":   [_r("Matcha", 5, 0.048), _r("Lait frais", 220, LAIT_ML)],
+    "Iced Matcha Latte Oat": [_r("Matcha", 5, 0.048), _r("Lait avoine", 220, OAT_ML)],
+    # ── Babyccino ─────────────────────────────────────────────────────────────
+    "Babyccino":           [_r("Lait frais", 120, LAIT_ML)],
+    "Babyccino Oat":       [_r("Lait avoine", 110, OAT_ML)],
+}
+
+CATEGORY_NAMES = {
+    "343052000": "Espresso",
+    "343053226": "Iced drinks",
+    "343046110": "Matcha & Tea",
+    "343053550": "Filter coffee",
+    "343054458": "Viennoiseries",
+    "343042919": "Pâtisserie",
+    "343055376": "Cold drinks",
+    "343055566": "Brunch",
+    "343065085": "Sandwiches",
+    "343071668": "Livres",
+    "343077316": "Papeterie",
+    "343052198": "Extras",
+    "343079649": "Granola",
+}
+
+CATEGORY_ORDER = [
+    "343052000", "343053226", "343053550", "343046110",
+    "343054458", "343042919", "343055566", "343065085", "343052198",
+    "343055376", "343071668", "343077316", "343079649",
+]
+
+TAX_RATES = {"NOR": 0.23, "INT": 0.13, "RED": 0.06}
+
+
+@app.route("/api/cogs")
+def api_cogs():
+    import requests as req
+    from vendus import API_KEY as VENDUS_API_KEY
+    BASE = "https://www.vendus.pt/ws/v1.1"
+    r = req.get(f"{BASE}/products/", auth=(VENDUS_API_KEY, ""), params={"per_page": 200})
+    raw = r.json() if r.ok else []
+
+    products = []
+    for p in raw:
+        title   = p.get("title", "")
+        cat_id  = str(p.get("category_id") or "")
+        tax_id  = p.get("tax_id") or "INT"
+        rate    = TAX_RATES.get(tax_id, 0.13)
+        prices  = p.get("prices") or []
+        price_ttc = float(prices[0].get("price", prices[0].get("gross_price", 0))) if isinstance(prices, list) and prices else 0.0
+        price_ht  = round(price_ttc / (1 + rate), 4) if price_ttc else float(p.get("price_without_tax") or 0)
+        supply    = float(p.get("supply_price") or 0)
+        marge_ht  = round(price_ht - supply, 4)
+        marge_pct = round((marge_ht / price_ht * 100), 1) if price_ht else None
+        recipe       = RECIPES.get(title, [])
+        recipe_total = round(sum(ing["cost"] for ing in recipe), 4) if recipe else None
+        # Effective COGS: recipe si dispo, sinon supply_price Vendus
+        effective_cogs = recipe_total if recipe_total is not None else supply
+        marge_ht_eff   = round(price_ht - effective_cogs, 4) if price_ht else None
+        marge_pct_eff  = round((marge_ht_eff / price_ht * 100), 1) if (marge_ht_eff is not None and price_ht) else None
+
+        products.append({
+            "id":           p.get("id"),
+            "title":        title,
+            "category_id":  cat_id,
+            "category":     CATEGORY_NAMES.get(cat_id, cat_id),
+            "tax_rate":     int(rate * 100),
+            "price_ttc":    price_ttc,
+            "price_ht":     price_ht,
+            "supply_price": supply,
+            "recipe_total": recipe_total,
+            "marge_ht":     marge_ht_eff,
+            "marge_pct":    marge_pct_eff,
+            "recipe":       recipe,
+            "has_recipe":   bool(recipe),
+        })
+
+    # Trier par catégorie puis par titre
+    order_map = {cat: i for i, cat in enumerate(CATEGORY_ORDER)}
+    products.sort(key=lambda p: (order_map.get(p["category_id"], 99), p["title"]))
+
+    return jsonify({"products": products, "category_order": CATEGORY_ORDER, "category_names": CATEGORY_NAMES})
+
+
+@app.route("/api/update_supply_price/<int:product_id>", methods=["POST"])
+def update_supply_price(product_id):
+    import requests as req
+    from flask import request as freq
+    from vendus import API_KEY as VENDUS_API_KEY
+    data = freq.get_json()
+    val  = data.get("supply_price")
+    if val is None:
+        return jsonify({"ok": False, "error": "missing supply_price"}), 400
+    BASE = "https://www.vendus.pt/ws/v1.1"
+    r = req.patch(f"{BASE}/products/{product_id}/", auth=(VENDUS_API_KEY, ""),
+                  json={"supply_price": round(float(val), 4)})
+    if r.ok:
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": r.text}), 502
+
+
 if __name__ == "__main__":
     api_key = os.environ.get("VENDUS_API_KEY", "")
     if not api_key:
