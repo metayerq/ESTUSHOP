@@ -264,6 +264,40 @@
   padding:12px 14px; margin:12px 0; display:flex; justify-content:space-between; align-items:center;
 }
 
+/* ── Prix/nom éditables dans drawer ── */
+.drawer-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
+.drawer-field label { display:block; font-size:10px; font-weight:500; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:4px; }
+.drawer-field input {
+  font-family:inherit; font-size:13px; width:100%;
+  border:1px solid var(--border); background:var(--bg-card); color:var(--text);
+  padding:6px 9px; border-radius:6px; outline:none; transition:border-color .12s;
+}
+.drawer-field input:focus { border-color:var(--text); }
+.drawer-field input[readonly] { background:var(--bg-page); color:var(--muted); cursor:default; }
+
+/* ── Tri colonnes ── */
+.sortable { cursor:pointer; user-select:none; }
+.sortable:hover { color:var(--text); }
+.sort-icon { margin-left:3px; color:var(--faint); font-size:9px; }
+.sort-icon.asc::after  { content:'▲'; }
+.sort-icon.desc::after { content:'▼'; }
+.sort-icon.none::after { content:'⇅'; }
+
+/* ── Simulateur prix ── */
+.price-sim {
+  background:var(--bg-page); border:1px solid var(--border); border-radius:8px;
+  padding:12px 14px; margin-bottom:16px;
+}
+.price-sim-title { font-size:10px; font-weight:500; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:8px; }
+.price-sim-row { display:flex; align-items:center; gap:8px; }
+.price-sim-row input {
+  font-family:inherit; font-size:13px; width:80px;
+  border:1px solid var(--border); background:var(--bg-card); color:var(--text);
+  padding:5px 8px; border-radius:6px; outline:none; text-align:right;
+}
+.price-sim-row input:focus { border-color:var(--text); }
+.sim-result { font-size:13px; font-weight:600; }
+
 /* ── Add ingredient form ── */
 .add-ingr-form {
   display:grid; grid-template-columns:1.8fr 1fr 80px 100px auto auto;
@@ -471,6 +505,22 @@
   </div>
   <div class="drawer-body">
 
+    <!-- Nom + Prix éditables -->
+    <div class="drawer-fields">
+      <div class="drawer-field" style="grid-column:1/3;">
+        <label>Nom produit</label>
+        <input id="d-prod-title" type="text" placeholder="Nom…" oninput="updateLiveCogs()">
+      </div>
+      <div class="drawer-field">
+        <label>Prix TTC (€)</label>
+        <input id="d-price-ttc" type="number" step="0.10" min="0" placeholder="3.50" oninput="updateLiveCogs()">
+      </div>
+      <div class="drawer-field">
+        <label>Prix HT</label>
+        <input id="d-price-ht" type="text" readonly>
+      </div>
+    </div>
+
     <!-- Live COGS -->
     <div class="cogs-live">
       <div>
@@ -483,7 +533,20 @@
       </div>
     </div>
 
-    <!-- Ingrédients header -->
+    <!-- Simulateur de prix -->
+    <div class="price-sim">
+      <div class="price-sim-title">Simulateur — quel prix pour atteindre X% de marge ?</div>
+      <div class="price-sim-row">
+        <span style="font-size:12px;color:var(--muted);">Cible</span>
+        <input id="sim-target" type="number" value="80" min="0" max="99" step="1" oninput="runSim()">
+        <span style="font-size:12px;color:var(--muted);">%</span>
+        <span style="font-size:12px;color:var(--muted);margin-left:4px;">→ prix TTC</span>
+        <span class="sim-result" id="sim-result">—</span>
+      </div>
+    </div>
+
+    <!-- Ingrédients -->
+    <div class="section-label" style="margin-bottom:6px;">Recette</div>
     <div class="ing-row-header" style="margin-bottom:6px;">
       <span>Ingrédient</span>
       <span style="text-align:right;">Qté</span>
@@ -492,8 +555,7 @@
       <span></span>
     </div>
     <div class="ing-rows" id="ing-rows"></div>
-
-    <button class="btn-secondary" style="width:100%;margin-bottom:20px;" onclick="addIngRow()">+ Ajouter un ingrédient</button>
+    <button class="btn-secondary" style="width:100%;margin-bottom:16px;" onclick="addIngRow()">+ Ajouter un ingrédient</button>
 
     <!-- Notes -->
     <div class="section-label" style="margin-bottom:6px;">Notes</div>
@@ -516,6 +578,8 @@ let categoryOrder = [];
 let categoryNames = {};
 let ingrLib       = {};          // {name: {price, unit_ref, category, note}}
 let drawerProd    = null;        // produit en cours d'édition
+let sortCol       = null;        // colonne de tri active
+let sortDir       = 1;           // 1=asc, -1=desc
 
 // ══════════════════════════════════════════════════════════
 // LOAD
@@ -604,8 +668,11 @@ function renderProducts(products) {
         <table class="cogs-table">
           <thead><tr>
             <th style="width:34%">Produit &amp; Recette</th>
-            <th class="r">TTC</th><th class="r">HT</th>
-            <th class="r">COGS</th><th class="r">Marge €</th><th class="r">Marge %</th>
+            <th class="r sortable" onclick="sortBy('price_ttc')">TTC <span class="sort-icon ${sortCol==='price_ttc'?(sortDir>0?'asc':'desc'):'none'}"></span></th>
+            <th class="r">HT</th>
+            <th class="r sortable" onclick="sortBy('recipe_total')">COGS <span class="sort-icon ${sortCol==='recipe_total'?(sortDir>0?'asc':'desc'):'none'}"></span></th>
+            <th class="r sortable" onclick="sortBy('marge_ht')">Marge € <span class="sort-icon ${sortCol==='marge_ht'?(sortDir>0?'asc':'desc'):'none'}"></span></th>
+            <th class="r sortable" onclick="sortBy('marge_pct')">Marge % <span class="sort-icon ${sortCol==='marge_pct'?(sortDir>0?'asc':'desc'):'none'}"></span></th>
             <th style="width:100px;"></th>
           </tr></thead>
           <tbody>${g.map(rowHtml).join('')}</tbody>
@@ -671,7 +738,10 @@ function rowHtml(p) {
 async function openDrawer(id, title, priceHt, priceTtc, taxRate) {
   drawerProd = { id, title, priceHt, priceTtc, taxRate };
   document.getElementById('d-title').textContent    = title;
-  document.getElementById('d-subtitle').textContent = `${fmt(priceTtc)} TTC · ${fmt(priceHt)} HT · TVA ${taxRate}%`;
+  document.getElementById('d-subtitle').textContent = `TVA ${taxRate}%`;
+  document.getElementById('d-prod-title').value     = title;
+  document.getElementById('d-price-ttc').value      = priceTtc || '';
+  document.getElementById('d-price-ht').value       = priceHt ? priceHt.toFixed(2) + ' €' : '';
   document.getElementById('ing-rows').innerHTML = '<div class="loading" style="padding:16px;">Chargement…</div>';
   document.getElementById('d-notes').value = '';
   openDrawerUI();
@@ -681,6 +751,7 @@ async function openDrawer(id, title, priceHt, priceTtc, taxRate) {
   document.getElementById('d-notes').value = d.notes || '';
   renderIngRows(d.ingredients || []);
   updateLiveCogs();
+  runSim();
 }
 
 function openDrawerUI() {
@@ -794,37 +865,52 @@ function calcIngCost(name, qty, unit) {
   return Math.round(qty * f * lib.price * 100000) / 100000;
 }
 
+function getDrawerPriceHt() {
+  const ttc  = parseFloat(document.getElementById('d-price-ttc')?.value);
+  const rate = TAX_RATES_JS[drawerProd?.taxRate === 23 ? 'NOR' : drawerProd?.taxRate === 6 ? 'RED' : 'INT'] || 0.13;
+  return ttc ? ttc / (1 + rate) : (drawerProd?.priceHt || 0);
+}
+
 function updateLiveCogs() {
+  // Mettre à jour prix HT affiché
+  const ttc    = parseFloat(document.getElementById('d-price-ttc')?.value);
+  const rate   = drawerProd ? (TAX_RATES_JS[drawerProd.taxRate === 23 ? 'NOR' : drawerProd.taxRate === 6 ? 'RED' : 'INT'] || 0.13) : 0.13;
+  const priceHt = ttc ? ttc / (1 + rate) : 0;
+  const htEl   = document.getElementById('d-price-ht');
+  if (htEl) htEl.value = priceHt ? priceHt.toFixed(2) + ' €' : '';
+
   let total = 0;
-  let anyError = false;
   document.querySelectorAll('#ing-rows .ing-row').forEach(row => {
     const name = row.querySelector('.ing-name')?.value.trim();
     const qty  = parseFloat(row.querySelector('.ing-qty')?.value);
     const unit = row.querySelector('.ing-unit')?.value;
     const prev = row.querySelector('.cost-preview');
     const cost = name ? calcIngCost(name, qty, unit) : null;
-    if (cost !== null) {
-      total += cost;
-      prev.textContent = fmt(cost);
-      prev.style.color = '';
-    } else {
-      prev.textContent = name ? '?' : '—';
-      prev.style.color = 'var(--faint)';
-      if (name && qty) anyError = true;
-    }
+    if (cost !== null) { total += cost; prev.textContent = fmt(cost); prev.style.color = ''; }
+    else { prev.textContent = name ? '?' : '—'; prev.style.color = 'var(--faint)'; }
   });
 
   document.getElementById('d-cogs-val').textContent = fmt(total);
-
-  const priceHt = drawerProd?.priceHt || 0;
   const margeEl = document.getElementById('d-margin-val');
   if (priceHt && total > 0) {
     const pct = ((priceHt - total) / priceHt * 100).toFixed(1);
     const cls = pct >= 75 ? 'green' : pct >= 55 ? 'amber' : 'red';
     margeEl.innerHTML = `<span style="color:var(--${cls})">${pct} %</span> <span style="font-size:11px;color:var(--muted);">(${fmt(priceHt - total)} HT)</span>`;
-  } else {
-    margeEl.textContent = '—';
-  }
+  } else { margeEl.textContent = '—'; }
+  runSim();
+}
+
+// ── Simulateur prix ─────────────────────────────────────────
+function runSim() {
+  const target  = parseFloat(document.getElementById('sim-target')?.value) / 100;
+  if (!target || target >= 1) return;
+  const cogsVal = parseFloat(document.getElementById('d-cogs-val')?.textContent);
+  if (!cogsVal) return;
+  const rate    = drawerProd ? (TAX_RATES_JS[drawerProd.taxRate === 23 ? 'NOR' : drawerProd.taxRate === 6 ? 'RED' : 'INT'] || 0.13) : 0.13;
+  const priceHt = cogsVal / (1 - target);
+  const priceTtc = priceHt * (1 + rate);
+  const el = document.getElementById('sim-result');
+  if (el) el.textContent = priceTtc.toFixed(2) + ' €';
 }
 
 // ── Save recipe ─────────────────────────────────────────────
@@ -841,19 +927,38 @@ async function saveRecipe() {
   });
   if (!valid) { showToast('⚠ Vérifiez les ingrédients'); return; }
 
-  const notes = document.getElementById('d-notes').value.trim();
-  const btn   = document.querySelector('.drawer-footer .btn-primary');
+  const notes    = document.getElementById('d-notes').value.trim();
+  const newTitle = document.getElementById('d-prod-title').value.trim();
+  const newTtc   = parseFloat(document.getElementById('d-price-ttc').value);
+  const btn      = document.querySelector('.drawer-footer .btn-primary');
   btn.textContent = 'Sauvegarde…'; btn.disabled = true;
 
   try {
+    // 1. Sauver recette + supply_price
     const r = await fetch(`/api/recipe/${drawerProd.id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ingredients, notes }),
     });
     const d = await r.json();
+
+    // 2. Si nom ou prix TTC changés → PATCH Vendus séparément
+    const updates = {};
+    if (newTitle && newTitle !== drawerProd.title) updates.title = newTitle;
+    if (newTtc && Math.abs(newTtc - drawerProd.priceTtc) > 0.001) updates.gross_price = newTtc;
+
+    if (Object.keys(updates).length) {
+      const r2 = await fetch(`/api/product/${drawerProd.id}/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      const d2 = await r2.json();
+      if (!d2.ok) showToast('⚠ Prix/nom non mis à jour : ' + d2.error);
+    }
+
     if (d.ok) {
-      showToast(`✓ Recette sauvée · COGS ${fmt(d.total_cogs)} → Vendus ${d.vendus_patched ? '✓' : '⚠'}`);
+      showToast(`✓ Sauvegardé · COGS ${fmt(d.total_cogs)} · Vendus ${d.vendus_patched ? '✓' : '⚠'}`);
       closeDrawer();
       await loadCogs();
     } else {
@@ -960,6 +1065,20 @@ function showToast(msg) {
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ══════════════════════════════════════════════════════════
+// TRI COLONNES
+// ══════════════════════════════════════════════════════════
+function sortBy(col) {
+  if (sortCol === col) sortDir *= -1;
+  else { sortCol = col; sortDir = -1; } // défaut desc (meilleure marge en haut)
+  allProducts.sort((a, b) => {
+    const va = a[col] ?? -Infinity;
+    const vb = b[col] ?? -Infinity;
+    return (va - vb) * sortDir;
+  });
+  applyFilters();
 }
 
 // ══════════════════════════════════════════════════════════

@@ -507,6 +507,26 @@ def api_product_create():
     })
 
 
+@app.route("/api/product/<int:product_id>/update", methods=["POST"])
+def api_product_update(product_id):
+    """Met à jour prix TTC et/ou nom d'un produit Vendus."""
+    import requests as req
+    from vendus import API_KEY as VENDUS_API_KEY
+    data    = request.get_json()
+    payload = {}
+    if "gross_price" in data:
+        payload["gross_price"] = str(round(float(data["gross_price"]), 2))
+    if "title" in data:
+        payload["title"] = data["title"].strip()
+    if not payload:
+        return jsonify({"ok": False, "error": "nothing to update"}), 400
+    r = req.patch(f"https://www.vendus.pt/ws/v1.1/products/{product_id}/",
+                  auth=(VENDUS_API_KEY, ""), json=payload)
+    if r.ok:
+        return jsonify({"ok": True, "updated": payload})
+    return jsonify({"ok": False, "error": r.text}), 502
+
+
 @app.route("/api/update_supply_price/<int:product_id>", methods=["POST"])
 def update_supply_price(product_id):
     import requests as req
