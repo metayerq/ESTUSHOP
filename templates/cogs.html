@@ -226,6 +226,44 @@
 .ingr-del { background:none; border:none; cursor:pointer; color:var(--faint); font-size:13px; padding:2px 4px; }
 .ingr-del:hover { color:var(--red); }
 
+/* ── Modal nouveau produit ── */
+#modal-overlay {
+  display:none; position:fixed; inset:0;
+  background:rgba(15,15,15,.45); z-index:300; backdrop-filter:blur(2px);
+  align-items:center; justify-content:center;
+}
+#modal-overlay.open { display:flex; }
+#new-prod-modal {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:12px; width:520px; max-width:96vw;
+  box-shadow:0 8px 40px rgba(0,0,0,.18);
+  display:flex; flex-direction:column; max-height:90vh;
+}
+.modal-head {
+  padding:22px 24px 16px; border-bottom:1px solid var(--border);
+  display:flex; align-items:flex-start; justify-content:space-between;
+}
+.modal-title { font-size:15px; font-weight:600; color:var(--text); }
+.modal-sub   { font-size:12px; color:var(--muted); margin-top:2px; }
+.modal-body  { padding:20px 24px; overflow-y:auto; flex:1; }
+.modal-foot  { padding:14px 24px; border-top:1px solid var(--border); display:flex; gap:10px; }
+
+.field { margin-bottom:16px; }
+.field label { display:block; font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:5px; }
+.field input, .field select {
+  font-family:inherit; font-size:13px; width:100%;
+  border:1px solid var(--border); background:var(--bg-card); color:var(--text);
+  padding:7px 10px; border-radius:6px; outline:none;
+  transition:border-color .12s;
+}
+.field input:focus, .field select:focus { border-color:var(--text); }
+.field-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+
+.modal-cogs-live {
+  background:var(--bg-page); border:1px solid var(--border); border-radius:8px;
+  padding:12px 14px; margin:12px 0; display:flex; justify-content:space-between; align-items:center;
+}
+
 /* ── Add ingredient form ── */
 .add-ingr-form {
   display:grid; grid-template-columns:1.8fr 1fr 80px 100px auto auto;
@@ -268,6 +306,7 @@
       <div class="header-sub">Coût matière · Marge brute · Éditeur de recettes</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn-primary" onclick="openNewProdModal()">+ Nouveau produit</button>
       <button class="btn-secondary" id="btn-recalc" onclick="recalculateAll()">↺ Tout recalculer</button>
       <button class="btn-secondary" onclick="loadCogs()">↻ Rafraîchir</button>
     </div>
@@ -335,6 +374,90 @@
   </div>
 
 </div><!-- /page -->
+
+<!-- ══════════════════════════════════════════════════════
+     MODAL — Nouveau produit
+══════════════════════════════════════════════════════ -->
+<div id="modal-overlay" onclick="handleModalOverlayClick(event)">
+  <div id="new-prod-modal">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Nouveau produit</div>
+        <div class="modal-sub">Crée dans Vendus + recette sauvegardée</div>
+      </div>
+      <button class="drawer-close" onclick="closeNewProdModal()">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Infos produit -->
+      <div class="field-row">
+        <div class="field" style="grid-column:1/3;">
+          <label>Nom du produit *</label>
+          <input id="np-title" type="text" placeholder="Ex: Oat Espresso Tonic">
+        </div>
+        <div class="field">
+          <label>Catégorie</label>
+          <select id="np-category">
+            <option value="">— Choisir —</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Prix TTC (€) *</label>
+          <input id="np-price" type="number" step="0.10" min="0" placeholder="3.50" oninput="updateModalCogs()">
+        </div>
+        <div class="field">
+          <label>TVA</label>
+          <select id="np-tax" onchange="updateModalCogs()">
+            <option value="INT">13% — Boissons</option>
+            <option value="NOR">23% — Normal</option>
+            <option value="RED">6% — Réduit</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Prix HT</label>
+          <input id="np-price-ht" type="text" readonly style="background:var(--bg-page);color:var(--muted);" placeholder="—">
+        </div>
+      </div>
+
+      <!-- Recette -->
+      <div class="section-label" style="margin-bottom:8px;margin-top:4px;">Recette</div>
+      <div class="ing-row-header" style="margin-bottom:6px;">
+        <span>Ingrédient</span>
+        <span style="text-align:right;">Qté</span>
+        <span>Unité</span>
+        <span style="text-align:right;">Coût</span>
+        <span></span>
+      </div>
+      <div class="ing-rows" id="np-ing-rows"></div>
+      <button class="btn-secondary" style="width:100%;margin-bottom:12px;" onclick="addNpIngRow()">+ Ajouter un ingrédient</button>
+
+      <!-- COGS live -->
+      <div class="modal-cogs-live">
+        <div>
+          <div style="font-size:10px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">COGS total</div>
+          <div style="font-size:20px;font-weight:600;" id="np-cogs-val">0.00 €</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:10px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Marge brute</div>
+          <div style="font-size:14px;font-weight:600;" id="np-margin-val">—</div>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="field">
+        <label>Notes</label>
+        <textarea class="drawer-notes" id="np-notes" placeholder="Préparation, variante, saisonnier…"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-primary" style="flex:1;" id="np-save-btn" onclick="createProduct()">Créer dans Vendus</button>
+      <button class="btn-secondary" onclick="closeNewProdModal()">Annuler</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════════════════════════════════════════════════
      DRAWER — Éditeur de recette
@@ -837,6 +960,135 @@ function showToast(msg) {
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ══════════════════════════════════════════════════════════
+// MODAL NOUVEAU PRODUIT
+// ══════════════════════════════════════════════════════════
+const TAX_RATES_JS = { INT: 0.13, NOR: 0.23, RED: 0.06 };
+
+function openNewProdModal() {
+  // Remplir dropdown catégories
+  const sel = document.getElementById('np-category');
+  while (sel.options.length > 1) sel.remove(1);
+  for (const [id, name] of Object.entries(categoryNames)) {
+    const o = document.createElement('option');
+    o.value = id; o.textContent = name;
+    sel.appendChild(o);
+  }
+  // Reset form
+  ['np-title','np-price','np-price-ht','np-notes'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('np-ing-rows').innerHTML = '';
+  document.getElementById('np-cogs-val').textContent = '0.00 €';
+  document.getElementById('np-margin-val').textContent = '—';
+  addNpIngRow();
+  document.getElementById('modal-overlay').classList.add('open');
+  document.getElementById('np-title').focus();
+}
+
+function closeNewProdModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+}
+
+function handleModalOverlayClick(e) {
+  if (e.target === document.getElementById('modal-overlay')) closeNewProdModal();
+}
+
+function addNpIngRow(ing = {}) {
+  const container = document.getElementById('np-ing-rows');
+  const div = document.createElement('div');
+  div.className = 'ing-row';
+  const unitOpts = ['g','ml','cl','dl','l','kg','mg','unit'].map(u =>
+    `<option value="${u}" ${u === (ing.unit||'g') ? 'selected':''}>${u}</option>`
+  ).join('');
+  div.innerHTML = `
+    <div class="ac-wrap">
+      <input type="text" class="ing-name" placeholder="Ingrédient…" value="${ing.name||''}"
+             oninput="showAC(this)" onblur="hideAC(this,200)" onfocus="showAC(this)"
+             onchange="updateModalCogs()">
+      <div class="ac-dropdown"></div>
+    </div>
+    <input type="number" class="ing-qty" step="any" min="0" placeholder="Qté" value="${ing.qty||''}"
+           oninput="updateModalCogs()">
+    <select class="ing-unit" onchange="updateModalCogs()">${unitOpts}</select>
+    <div class="cost-preview">—</div>
+    <button class="ing-del-btn" onclick="this.closest('.ing-row').remove();updateModalCogs()">✕</button>
+  `;
+  container.appendChild(div);
+}
+
+function updateModalCogs() {
+  // Prix HT
+  const priceTtc = parseFloat(document.getElementById('np-price')?.value) || 0;
+  const taxId    = document.getElementById('np-tax')?.value || 'INT';
+  const rate     = TAX_RATES_JS[taxId] || 0.13;
+  const priceHt  = priceTtc ? priceTtc / (1 + rate) : 0;
+  document.getElementById('np-price-ht').value = priceHt ? priceHt.toFixed(2) + ' €' : '';
+
+  // COGS depuis les lignes du modal
+  let total = 0;
+  document.querySelectorAll('#np-ing-rows .ing-row').forEach(row => {
+    const name = row.querySelector('.ing-name')?.value.trim();
+    const qty  = parseFloat(row.querySelector('.ing-qty')?.value);
+    const unit = row.querySelector('.ing-unit')?.value;
+    const prev = row.querySelector('.cost-preview');
+    const cost = name ? calcIngCost(name, qty, unit) : null;
+    if (cost !== null) { total += cost; prev.textContent = fmt(cost); prev.style.color=''; }
+    else { prev.textContent = name ? '?' : '—'; prev.style.color='var(--faint)'; }
+  });
+
+  document.getElementById('np-cogs-val').textContent = fmt(total);
+  const margeEl = document.getElementById('np-margin-val');
+  if (priceHt && total > 0) {
+    const pct = ((priceHt - total) / priceHt * 100).toFixed(1);
+    const cls = pct >= 75 ? 'green' : pct >= 55 ? 'amber' : 'red';
+    margeEl.innerHTML = `<span style="color:var(--${cls})">${pct} %</span>`;
+  } else { margeEl.textContent = '—'; }
+}
+
+async function createProduct() {
+  const title    = document.getElementById('np-title').value.trim();
+  const priceTtc = parseFloat(document.getElementById('np-price').value);
+  const taxId    = document.getElementById('np-tax').value;
+  const catId    = document.getElementById('np-category').value;
+  const notes    = document.getElementById('np-notes').value.trim();
+
+  if (!title || !priceTtc) { showToast('⚠ Nom et prix requis'); return; }
+
+  const ingredients = [];
+  document.querySelectorAll('#np-ing-rows .ing-row').forEach(row => {
+    const name = row.querySelector('.ing-name')?.value.trim();
+    const qty  = parseFloat(row.querySelector('.ing-qty')?.value);
+    const unit = row.querySelector('.ing-unit')?.value;
+    if (name && qty > 0) ingredients.push({ name, qty, unit });
+  });
+
+  const btn = document.getElementById('np-save-btn');
+  btn.textContent = 'Création…'; btn.disabled = true;
+
+  try {
+    const r = await fetch('/api/product/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, price_ttc: priceTtc, tax_id: taxId,
+                             category_id: catId || null, ingredients, notes }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      showToast(`✓ "${d.title}" créé dans Vendus (id ${d.product_id}) · COGS ${fmt(d.total_cogs)}`);
+      closeNewProdModal();
+      await loadCogs();
+    } else {
+      showToast('Erreur : ' + (d.error || 'inconnue'));
+    }
+  } catch(e) {
+    showToast('Erreur réseau');
+  } finally {
+    btn.textContent = 'Créer dans Vendus'; btn.disabled = false;
+  }
 }
 
 // ══════════════════════════════════════════════════════════

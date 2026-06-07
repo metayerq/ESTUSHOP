@@ -457,6 +457,56 @@ def api_recipe_recalculate_all():
     return jsonify({"ok": True, "results": results, "count": len(results)})
 
 
+@app.route("/api/product/create", methods=["POST"])
+def api_product_create():
+    """Crée un produit dans Vendus ET sauvegarde sa recette dans Supabase."""
+    import requests as req
+    from vendus import API_KEY as VENDUS_API_KEY
+    data        = request.get_json()
+    title       = (data.get("title") or "").strip()
+    price_ttc   = float(data.get("price_ttc") or 0)
+    tax_id      = data.get("tax_id", "INT")
+    category_id = data.get("category_id")
+    ingredients = data.get("ingredients", [])
+    notes       = data.get("notes", "")
+
+    if not title or not price_ttc:
+        return jsonify({"ok": False, "error": "title et price_ttc requis"}), 400
+
+    ingr_lib          = _load_ingredients()
+    total, breakdown  = calc_recipe_cogs(ingredients, ingr_lib)
+
+    # Créer dans Vendus
+    payload = {
+        "title":       title,
+        "prices":      [{"gross_price": str(round(price_ttc, 2))}],
+        "tax_id":      tax_id,
+        "unit_id":     342853231,   # Uni (défaut)
+        "supply_price": round(total, 4),
+    }
+    if category_id:
+        payload["category_id"] = int(category_id)
+
+    r = req.post("https://www.vendus.pt/ws/v1.1/products/",
+                 auth=(VENDUS_API_KEY, ""), json=payload)
+    if not r.ok:
+        return jsonify({"ok": False, "error": r.text}), 502
+
+    product_id = r.json().get("id")
+
+    # Sauvegarder recette dans Supabase
+    if ingredients:
+        _save_recipe(title, ingredients, notes)
+
+    return jsonify({
+        "ok":        True,
+        "product_id": product_id,
+        "title":     title,
+        "total_cogs": total,
+        "breakdown": breakdown,
+    })
+
+
 @app.route("/api/update_supply_price/<int:product_id>", methods=["POST"])
 def update_supply_price(product_id):
     import requests as req
