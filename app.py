@@ -189,23 +189,53 @@ def cogs_page():
     return render_template("cogs.html")
 
 
-# ── Fichiers de données ────────────────────────────────────────────────────────
-import json as _json
-DATA_DIR       = os.path.join(os.path.dirname(__file__), "data")
-RECIPES_FILE   = os.path.join(DATA_DIR, "recipes.json")
-INGR_FILE      = os.path.join(DATA_DIR, "ingredients.json")
+# ── Supabase ──────────────────────────────────────────────────────────────────
+import requests as _req
 
-def _load_json(path):
-    try:
-        with open(path, encoding="utf-8") as f:
-            return _json.load(f)
-    except Exception:
-        return {}
+SUPA_URL = os.environ.get("SUPABASE_URL", "https://llbxrkyufegrhxbzkowf.supabase.co")
+SUPA_KEY = os.environ.get("SUPABASE_KEY", "sb_publishable_gZTNLYcOW5OisN-k-RoHCw_SMjfz6CO")
 
-def _save_json(path, data):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        _json.dump(data, f, ensure_ascii=False, indent=2)
+def _supa_headers(prefer=None):
+    h = {
+        "apikey":        SUPA_KEY,
+        "Authorization": f"Bearer {SUPA_KEY}",
+        "Content-Type":  "application/json",
+    }
+    if prefer:
+        h["Prefer"] = prefer
+    return h
+
+def _supa_get(table, params=None):
+    r = _req.get(f"{SUPA_URL}/rest/v1/{table}", headers=_supa_headers(), params=params)
+    return r.json() if r.ok else []
+
+def _supa_upsert(table, data):
+    r = _req.post(f"{SUPA_URL}/rest/v1/{table}", json=data,
+                  headers=_supa_headers("resolution=merge-duplicates"))
+    return r.ok
+
+def _supa_delete(table, col, val):
+    r = _req.delete(f"{SUPA_URL}/rest/v1/{table}",
+                    headers=_supa_headers(),
+                    params={col: f"eq.{val}"})
+    return r.ok
+
+# ── Helpers lecture / écriture (abstraction Supabase) ─────────────────────────
+def _load_ingredients():
+    rows = _supa_get("ingredients")
+    return {r["name"]: {k: v for k, v in r.items() if k != "name"} for r in rows}
+
+def _load_recipes():
+    rows = _supa_get("recipes")
+    return {r["product_title"]: {"ingredients": r["ingredients"], "notes": r.get("notes", "")}
+            for r in rows}
+
+def _save_ingredient(name, data):
+    return _supa_upsert("ingredients", {"name": name, **data})
+
+def _save_recipe(title, ingredients, notes):
+    return _supa_upsert("recipes", {"product_title": title,
+                                     "ingredients": ingredients, "notes": notes})
 
 # ── Calcul COGS depuis une recette ────────────────────────────────────────────
 UNIT_CONVERSIONS = {
@@ -272,6 +302,7 @@ CATEGORY_ORDER = [
 TAX_RATES = {"NOR": 0.23, "INT": 0.13, "RED": 0.06}
 
 
+
 @app.route("/api/cogs")
 def api_cogs():
     import requests as req
@@ -279,8 +310,8 @@ def api_cogs():
     BASE     = "https://www.vendus.pt/ws/v1.1"
     r        = req.get(f"{BASE}/products/", auth=(VENDUS_API_KEY, ""), params={"per_page": 200})
     raw      = r.json() if r.ok else []
-    recipes  = _load_json(RECIPES_FILE)
-    ingr_lib = _load_json(INGR_FILE)
+    recipes  = _load_recipes()
+    ingr_lib = _load_ingredients()
 
     products = []
     for p in raw:
@@ -328,7 +359,7 @@ def api_cogs():
 
 @app.route("/api/ingredients", methods=["GET"])
 def api_ingredients_get():
-    return jsonify(_load_json(INGR_FILE))
+    return jsonify(_load_ingredients())
 
 
 @app.route("/api/ingredients", methods=["POST"])
@@ -337,24 +368,21 @@ def api_ingredients_post():
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"ok": False, "error": "name required"}), 400
-    lib = _load_json(INGR_FILE)
-    lib[name] = {
+    ingr = {
         "price":    round(float(data.get("price", 0)), 4),
         "unit_ref": data.get("unit_ref", "unit"),
         "category": data.get("category", ""),
         "note":     data.get("note", ""),
     }
-    _save_json(INGR_FILE, lib)
-    return jsonify({"ok": True, "ingredient": {name: lib[name]}})
+    _save_ingredient(name, ingr)
+    return jsonify({"ok": True, "ingredient": {name: ingr}})
 
 
 @app.route("/api/ingredients/<path:name>", methods=["DELETE"])
 def api_ingredients_delete(name):
-    lib = _load_json(INGR_FILE)
-    if name not in lib:
+    ok = _supa_delete("ingredients", "name", name)
+    if not ok:
         return jsonify({"ok": False, "error": "not found"}), 404
-    del lib[name]
-    _save_json(INGR_FILE, lib)
     return jsonify({"ok": True})
 
 
@@ -365,17 +393,17 @@ def api_recipe_get(product_id):
     r = req.get(f"https://www.vendus.pt/ws/v1.1/products/{product_id}/", auth=(VENDUS_API_KEY, ""))
     if not r.ok:
         return jsonify({"ok": False, "error": "product not found"}), 404
-    title    = r.json().get("title", "")
-    recipes  = _load_json(RECIPES_FILE)
-    ingr_lib = _load_json(INGR_FILE)
+    title       = r.json().get("title", "")
+    recipes     = _load_recipes()
+    ingr_lib    = _load_ingredients()
     recipe_data = recipes.get(title, {"ingredients": [], "notes": ""})
     total, breakdown = calc_recipe_cogs(recipe_data["ingredients"], ingr_lib)
     return jsonify({
         "ok": True, "title": title, "product_id": product_id,
         "ingredients": recipe_data["ingredients"],
-        "breakdown": breakdown,
-        "notes": recipe_data.get("notes", ""),
-        "total_cogs": total,
+        "breakdown":   breakdown,
+        "notes":       recipe_data.get("notes", ""),
+        "total_cogs":  total,
     })
 
 
@@ -388,13 +416,11 @@ def api_recipe_post(product_id):
     if not r.ok:
         return jsonify({"ok": False, "error": "product not found"}), 404
     title       = r.json().get("title", "")
-    ingr_lib    = _load_json(INGR_FILE)
+    ingr_lib    = _load_ingredients()
     ingredients = data.get("ingredients", [])
     notes       = data.get("notes", "")
     total, breakdown = calc_recipe_cogs(ingredients, ingr_lib)
-    recipes = _load_json(RECIPES_FILE)
-    recipes[title] = {"ingredients": ingredients, "notes": notes}
-    _save_json(RECIPES_FILE, recipes)
+    _save_recipe(title, ingredients, notes)
     patch_r = req.patch(
         f"https://www.vendus.pt/ws/v1.1/products/{product_id}/",
         auth=(VENDUS_API_KEY, ""),
@@ -410,8 +436,8 @@ def api_recipe_post(product_id):
 def api_recipe_recalculate_all():
     import requests as req
     from vendus import API_KEY as VENDUS_API_KEY
-    recipes  = _load_json(RECIPES_FILE)
-    ingr_lib = _load_json(INGR_FILE)
+    recipes  = _load_recipes()
+    ingr_lib = _load_ingredients()
     BASE     = "https://www.vendus.pt/ws/v1.1"
     r        = req.get(f"{BASE}/products/", auth=(VENDUS_API_KEY, ""), params={"per_page": 200})
     products = r.json() if r.ok else []
