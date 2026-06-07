@@ -1,0 +1,422 @@
+{
+  "Espresso": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      }
+    ],
+    "notes": "Simple shot"
+  },
+  "Doppio": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      }
+    ],
+    "notes": "Double shot, même dose"
+  },
+  "Americano": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      }
+    ],
+    "notes": "Allongé eau chaude"
+  },
+  "Iced Americano": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      }
+    ],
+    "notes": "Sur glaçons"
+  },
+  "Cortado": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      },
+      {
+        "name": "Lait frais",
+        "qty": 60,
+        "unit": "ml"
+      }
+    ],
+    "notes": ""
+  },
+  "Cortado Oat": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      },
+      {
+        "name": "Lait avoine",
+        "qty": 60,
+        "unit": "ml"
+      }
+    ],
+    "notes": ""
+  },
+  "Flat White": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      },
+      {
+        "name": "Lait frais",
+        "qty": 130,
+        "unit": "ml"
+      }
+    ],
+    "notes": "Double ristretto"
+  },
+  "Flat White Oat": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      },
+      {
+        "name": "Lait avoine",
+        "qty": 130,
+        "unit": "ml"
+      }
+    ],
+    "notes": ""
+  },
+  "Iced Flat White": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      },
+      {
+        "name": "Lait frais",
+        "qty": 130,
+        "unit": "ml"
+      }
+    ],
+    "notes": "Sur glaçons"
+  },
+  "Iced Flat White Oat": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      },
+      {
+        "name": "Lait avoine",
+        "qty": 130,
+        "unit": "ml"
+      }
+    ],
+    "notes": ""
+  },
+  "Cappuccino": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      },
+      {
+        "name": "Lait frais",
+        "qty": 150,
+        "unit": "ml"
+      }
+    ],
+    "notes": ""
+  },
+  "Cappuccino Oat": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      },
+      {
+        "name": "Lait avoine",
+        "qty": 150,
+        "unit": "ml"
+      }
+    ],
+    "notes": ""
+  },
+  "Latte": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      },
+      {
+        "name": "Lait frais",
+        "qty": 220,
+        "unit": "ml"
+      }
+    ],
+    "notes": "Test save"
+  },
+  "Latte Oat": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      },
+      {
+        "name": "Lait avoine",
+        "qty": 220,
+        "unit": "ml"
+      }
+    ],
+    "notes": ""
+  },
+  "Iced Latte": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      },
+      {
+        "name": "Lait frais",
+        "qty": 200,
+        "unit": "ml"
+      }
+    ],
+    "notes": "Sur glaçons"
+  },
+  "Iced Latte Oat": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      },
+      {
+        "name": "Lait avoine",
+        "qty": 200,
+        "unit": "ml"
+      }
+    ],
+    "notes": ""
+  },
+  "Banana Bread Iced Latte": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      },
+      {
+        "name": "Lait frais",
+        "qty": 200,
+        "unit": "ml"
+      },
+      {
+        "name": "Banana Bread (tranche)",
+        "qty": 0.5,
+        "unit": "unit"
+      }
+    ],
+    "notes": "Signature drink"
+  },
+  "Banana Bread Iced Latte Oat": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 18,
+        "unit": "g"
+      },
+      {
+        "name": "Lait avoine",
+        "qty": 200,
+        "unit": "ml"
+      },
+      {
+        "name": "Banana Bread (tranche)",
+        "qty": 0.5,
+        "unit": "unit"
+      }
+    ],
+    "notes": "Signature drink"
+  },
+  "Cold Brew": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 25,
+        "unit": "g"
+      }
+    ],
+    "notes": "Infusion 12h à froid"
+  },
+  "V60": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 20,
+        "unit": "g"
+      }
+    ],
+    "notes": "Filtre, ratio 1:15"
+  },
+  "Batch Brew": {
+    "ingredients": [
+      {
+        "name": "Café Gardelli",
+        "qty": 17,
+        "unit": "g"
+      }
+    ],
+    "notes": "Filtre batch"
+  },
+  "Matcha Latte": {
+    "ingredients": [
+      {
+        "name": "Matcha",
+        "qty": 5,
+        "unit": "g"
+      },
+      {
+        "name": "Lait frais",
+        "qty": 220,
+        "unit": "ml"
+      }
+    ],
+    "notes": ""
+  },
+  "Matcha Latte Oat": {
+    "ingredients": [
+      {
+        "name": "Matcha",
+        "qty": 5,
+        "unit": "g"
+      },
+      {
+        "name": "Lait avoine",
+        "qty": 220,
+        "unit": "ml"
+      }
+    ],
+    "notes": ""
+  },
+  "Iced Matcha Latte": {
+    "ingredients": [
+      {
+        "name": "Matcha",
+        "qty": 5,
+        "unit": "g"
+      },
+      {
+        "name": "Lait frais",
+        "qty": 220,
+        "unit": "ml"
+      }
+    ],
+    "notes": "Sur glaçons"
+  },
+  "Iced Matcha Latte Oat": {
+    "ingredients": [
+      {
+        "name": "Matcha",
+        "qty": 5,
+        "unit": "g"
+      },
+      {
+        "name": "Lait avoine",
+        "qty": 220,
+        "unit": "ml"
+      }
+    ],
+    "notes": ""
+  },
+  "Babyccino": {
+    "ingredients": [
+      {
+        "name": "Lait frais",
+        "qty": 120,
+        "unit": "ml"
+      }
+    ],
+    "notes": "Lait chaud moussé"
+  },
+  "Babyccino Oat": {
+    "ingredients": [
+      {
+        "name": "Lait avoine",
+        "qty": 110,
+        "unit": "ml"
+      }
+    ],
+    "notes": ""
+  },
+  "Croissant": {
+    "ingredients": [
+      {
+        "name": "Croissant (Meia Lua)",
+        "qty": 1,
+        "unit": "unit"
+      }
+    ],
+    "notes": "Réchauffé 8 min 160°C"
+  },
+  "Pain au Chocolat": {
+    "ingredients": [
+      {
+        "name": "Pain au Chocolat (Meia Lua)",
+        "qty": 1,
+        "unit": "unit"
+      }
+    ],
+    "notes": "Réchauffé 8 min 160°C"
+  },
+  "Ginger beer": {
+    "ingredients": [
+      {
+        "name": "Ginger Beer (bouteille)",
+        "qty": 1,
+        "unit": "unit"
+      }
+    ],
+    "notes": ""
+  },
+  "Lemonade": {
+    "ingredients": [
+      {
+        "name": "Lemonade (bouteille)",
+        "qty": 1,
+        "unit": "unit"
+      }
+    ],
+    "notes": ""
+  },
+  "Sparkling Water": {
+    "ingredients": [
+      {
+        "name": "Sparkling Water (bouteille)",
+        "qty": 1,
+        "unit": "unit"
+      }
+    ],
+    "notes": ""
+  }
+}

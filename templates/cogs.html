@@ -3,135 +3,253 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Estudantina · Fiche COGS</title>
+<title>Estudantina · COGS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
 <style>
-  /* ── COGS-specific overrides ─────────────────────────────────────────────── */
-  .cogs-nav {
-    display: flex; align-items: center; gap: 16px; margin-bottom: 40px;
-  }
-  .cogs-nav a {
-    font-size: 13px; color: var(--muted); text-decoration: none;
-  }
-  .cogs-nav a:hover { color: var(--text); }
-  .cogs-nav .sep { color: var(--faint); }
+/* ── Nav ── */
+.cogs-nav { display:flex; align-items:center; gap:12px; margin-bottom:36px; }
+.cogs-nav a { font-size:13px; color:var(--muted); text-decoration:none; }
+.cogs-nav a:hover { color:var(--text); }
+.cogs-nav .sep { color:var(--faint); }
 
-  .filter-bar {
-    display: flex; align-items: center; gap: 10px; margin-bottom: 28px; flex-wrap: wrap;
-  }
-  .filter-bar input {
-    font-family: inherit; font-size: 13px;
-    border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
-    padding: 6px 12px; border-radius: 6px; outline: none; width: 220px;
-    transition: border-color .15s;
-  }
-  .filter-bar input:focus { border-color: var(--faint); }
-  .filter-bar select {
-    font-family: inherit; font-size: 13px;
-    border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
-    padding: 6px 10px; border-radius: 6px; outline: none; cursor: pointer;
-  }
-  .cat-count { font-size: 12px; color: var(--faint); margin-left: auto; }
+/* ── Summary bar ── */
+.summary-bar {
+  display:flex; gap:0; flex-wrap:nowrap;
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:8px; overflow:hidden; margin-bottom:28px;
+}
+.sum-item {
+  flex:1; padding:16px 20px;
+  border-right:1px solid var(--border);
+}
+.sum-item:last-child { border-right:none; }
+.sum-label { font-size:10px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+.sum-val { font-size:20px; font-weight:600; letter-spacing:-.4px; color:var(--text); }
 
-  .cogs-section { margin-bottom: 40px; }
-  .cogs-section-title {
-    font-size: 11px; font-weight: 500; letter-spacing: .07em; text-transform: uppercase;
-    color: var(--muted); margin-bottom: 8px;
-    padding: 0 2px; display: flex; align-items: center; gap: 8px;
-  }
-  .cogs-section-title .badge-cat {
-    font-size: 10px; font-weight: 500; padding: 1px 8px;
-    border: 1px solid var(--border); border-radius: 10px;
-    color: var(--faint); background: var(--bg-page);
-    letter-spacing: .04em;
-  }
+/* ── Filter bar ── */
+.filter-bar { display:flex; align-items:center; gap:8px; margin-bottom:20px; flex-wrap:wrap; }
+.filter-bar input, .filter-bar select {
+  font-family:inherit; font-size:13px;
+  border:1px solid var(--border); background:var(--bg-card); color:var(--text);
+  padding:6px 10px; border-radius:6px; outline:none;
+  transition:border-color .15s;
+}
+.filter-bar input { width:200px; }
+.filter-bar input:focus, .filter-bar select:focus { border-color:var(--faint); }
+.filter-bar select { cursor:pointer; }
+.count-badge { font-size:12px; color:var(--faint); margin-left:auto; }
 
-  /* Table */
-  .cogs-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .cogs-table thead th {
-    font-size: 10px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase;
-    color: var(--faint); text-align: left; padding: 8px 14px;
-    border-bottom: 1px solid var(--border); background: var(--bg-page);
-    white-space: nowrap;
-  }
-  .cogs-table thead th.r { text-align: right; }
-  .cogs-table tbody tr { border-bottom: 1px solid var(--border); }
-  .cogs-table tbody tr:last-child { border-bottom: none; }
-  .cogs-table tbody tr:hover { background: var(--bg-hover); }
-  .cogs-table td { padding: 10px 14px; vertical-align: top; }
-  .cogs-table td.r { text-align: right; font-variant-numeric: tabular-nums; }
+/* ── Action buttons ── */
+.btn-primary {
+  font-family:inherit; font-size:12px; font-weight:500;
+  background:var(--text); color:#fff; border:none;
+  padding:6px 14px; border-radius:6px; cursor:pointer;
+  transition:opacity .15s;
+}
+.btn-primary:hover { opacity:.85; }
+.btn-secondary {
+  font-family:inherit; font-size:12px; font-weight:400;
+  background:var(--bg-card); color:var(--muted); border:1px solid var(--border);
+  padding:6px 12px; border-radius:6px; cursor:pointer;
+  transition:background .12s, color .12s;
+}
+.btn-secondary:hover { background:var(--bg-hover); color:var(--text); }
 
-  /* Product name */
-  .prod-name { font-weight: 500; color: var(--text); }
+/* ── Section ── */
+.cogs-section { margin-bottom:36px; }
+.cogs-section-title {
+  font-size:11px; font-weight:500; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--muted); margin-bottom:8px; display:flex; align-items:center; gap:8px;
+}
+.badge-cat {
+  font-size:10px; padding:1px 7px; border-radius:10px;
+  border:1px solid var(--border); color:var(--faint); background:var(--bg-page);
+}
 
-  /* Recipe ingredients */
-  .recipe-wrap { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; }
-  .ing-chip {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-size: 11px; padding: 2px 8px; border-radius: 10px;
-    background: var(--bg-page); border: 1px solid var(--border);
-    color: var(--muted);
-  }
-  .ing-chip .ing-cost { color: var(--faint); font-size: 10px; }
-  .no-recipe { font-size: 11px; color: var(--faint); margin-top: 3px; font-style: italic; }
+/* ── Table ── */
+.cogs-table { width:100%; border-collapse:collapse; font-size:13px; }
+.cogs-table thead th {
+  font-size:10px; font-weight:500; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--faint); text-align:left; padding:8px 14px;
+  border-bottom:1px solid var(--border); background:var(--bg-page); white-space:nowrap;
+}
+.cogs-table thead th.r { text-align:right; }
+.cogs-table tbody tr { border-bottom:1px solid var(--border); transition:background .1s; }
+.cogs-table tbody tr:last-child { border-bottom:none; }
+.cogs-table tbody tr:hover { background:var(--bg-hover); }
+.cogs-table td { padding:10px 14px; vertical-align:middle; }
+.cogs-table td.r { text-align:right; font-variant-numeric:tabular-nums; }
 
-  /* Prices */
-  .price-ttc { font-weight: 600; color: var(--text); }
-  .price-ht  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+/* ── Chips de recette ── */
+.recipe-wrap { display:flex; flex-wrap:wrap; gap:3px; margin-top:4px; }
+.ing-chip {
+  display:inline-flex; align-items:center; gap:3px;
+  font-size:11px; padding:2px 7px; border-radius:8px;
+  background:var(--bg-page); border:1px solid var(--border); color:var(--muted);
+}
+.ing-chip .c { color:var(--faint); font-size:10px; }
+.no-recipe { font-size:11px; color:var(--faint); font-style:italic; margin-top:3px; }
 
-  /* Margin bar */
-  .margin-cell { min-width: 120px; }
-  .margin-val  { font-weight: 600; }
-  .margin-bar-wrap { margin-top: 4px; height: 3px; background: var(--bar-bg); border-radius: 2px; width: 100%; }
-  .margin-bar  { height: 3px; border-radius: 2px; background: var(--bar); }
-  .margin-bar.good { background: var(--green); }
-  .margin-bar.warn { background: var(--amber); }
-  .margin-bar.bad  { background: var(--red); }
+/* ── Margin bar ── */
+.margin-pct { font-weight:600; display:block; }
+.mbar { height:3px; border-radius:2px; margin-top:4px; background:var(--bar-bg); }
+.mbar-fill { height:3px; border-radius:2px; }
+.c-good { color:var(--green); } .c-warn { color:var(--amber); } .c-bad { color:var(--red); }
+.bg-good { background:var(--green); } .bg-warn { background:var(--amber); } .bg-bad { background:var(--red); }
 
-  /* COGS value */
-  .cogs-val  { font-weight: 500; color: var(--text); }
-  .cogs-calc { font-size: 11px; color: var(--muted); margin-top: 2px; }
+/* ── Edit btn ── */
+.edit-recipe-btn {
+  font-size:11px; padding:3px 10px; border-radius:4px;
+  border:1px solid var(--border); background:transparent; color:var(--muted);
+  cursor:pointer; font-family:inherit; white-space:nowrap;
+  transition:background .1s, color .1s, border-color .1s;
+}
+.edit-recipe-btn:hover { background:var(--text); color:#fff; border-color:var(--text); }
 
-  /* Summary bar */
-  .summary-bar {
-    display: flex; gap: 32px; flex-wrap: wrap;
-    background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 8px; padding: 18px 24px; margin-bottom: 32px;
-  }
-  .sum-item { display: flex; flex-direction: column; gap: 3px; }
-  .sum-label { font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-  .sum-val   { font-size: 22px; font-weight: 600; letter-spacing: -.4px; color: var(--text); }
+/* ═══════════════════════════════════════════════════════
+   DRAWER
+═══════════════════════════════════════════════════════ */
+#drawer-overlay {
+  display:none; position:fixed; inset:0;
+  background:rgba(15,15,15,.3); z-index:200;
+  backdrop-filter:blur(2px);
+}
+#recipe-drawer {
+  position:fixed; top:0; right:0; bottom:0; width:480px;
+  background:var(--bg-card); border-left:1px solid var(--border);
+  z-index:201; display:flex; flex-direction:column;
+  transform:translateX(100%); transition:transform .22s ease;
+  overflow:hidden;
+}
+#recipe-drawer.open { transform:translateX(0); }
+#drawer-overlay.open { display:block; }
 
-  /* Edit btn */
-  .edit-btn {
-    font-size: 11px; padding: 3px 10px; border-radius: 4px;
-    border: 1px solid var(--border); background: transparent; color: var(--muted);
-    cursor: pointer; font-family: inherit;
-    transition: background .12s, color .12s;
-  }
-  .edit-btn:hover { background: var(--bg-hover); color: var(--text); }
+.drawer-head {
+  padding:24px 24px 16px; border-bottom:1px solid var(--border); flex-shrink:0;
+}
+.drawer-title { font-size:16px; font-weight:600; color:var(--text); }
+.drawer-subtitle { font-size:12px; color:var(--muted); margin-top:3px; }
+.drawer-close {
+  float:right; background:none; border:1px solid var(--border); border-radius:6px;
+  font-size:12px; padding:4px 10px; cursor:pointer; color:var(--muted);
+}
+.drawer-close:hover { background:var(--bg-hover); }
 
-  /* Inline edit */
-  .inline-edit {
-    font-family: inherit; font-size: 13px; width: 80px;
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 3px 6px; outline: none; text-align: right;
-    background: var(--bg-card); color: var(--text);
-  }
-  .inline-edit:focus { border-color: var(--text); }
+.drawer-body { flex:1; overflow-y:auto; padding:20px 24px; }
+.drawer-footer {
+  padding:16px 24px; border-top:1px solid var(--border); flex-shrink:0;
+  display:flex; align-items:center; gap:10px;
+}
 
-  /* Toast */
-  #toast {
-    position: fixed; bottom: 24px; right: 24px;
-    background: var(--text); color: #fff;
-    font-size: 13px; padding: 10px 16px; border-radius: 8px;
-    opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 300;
-  }
-  #toast.show { opacity: 1; }
+/* COGS live total */
+.cogs-live {
+  background:var(--bg-page); border:1px solid var(--border); border-radius:8px;
+  padding:14px 16px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;
+}
+.cogs-live-label { font-size:11px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.cogs-live-val { font-size:22px; font-weight:600; color:var(--text); letter-spacing:-.4px; }
+.cogs-live-margin { font-size:13px; font-weight:500; margin-top:2px; }
 
-  .loading { text-align: center; padding: 60px; color: var(--muted); font-size: 14px; }
+/* Ingredient rows */
+.ing-rows { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
+.ing-row {
+  display:grid; grid-template-columns:1fr 72px 76px 76px 28px;
+  gap:6px; align-items:center;
+  background:var(--bg-page); border:1px solid var(--border);
+  border-radius:6px; padding:8px 10px;
+}
+.ing-row input, .ing-row select {
+  font-family:inherit; font-size:12px;
+  border:1px solid var(--border); background:var(--bg-card); color:var(--text);
+  padding:4px 6px; border-radius:4px; outline:none; width:100%;
+  transition:border-color .12s;
+}
+.ing-row input:focus, .ing-row select:focus { border-color:var(--text); }
+.ing-row .cost-preview { font-size:12px; color:var(--muted); text-align:right; font-variant-numeric:tabular-nums; min-width:52px; }
+.ing-del-btn {
+  background:none; border:none; cursor:pointer; color:var(--faint);
+  font-size:14px; padding:2px; line-height:1; transition:color .1s;
+}
+.ing-del-btn:hover { color:var(--red); }
+.ing-row-header {
+  display:grid; grid-template-columns:1fr 72px 76px 76px 28px;
+  gap:6px; padding:0 10px; margin-bottom:-2px;
+}
+.ing-row-header span { font-size:10px; color:var(--faint); text-transform:uppercase; letter-spacing:.05em; }
+
+/* Notes */
+.drawer-notes {
+  font-family:inherit; font-size:13px; width:100%; resize:vertical;
+  border:1px solid var(--border); background:var(--bg-card); color:var(--text);
+  padding:8px 10px; border-radius:6px; outline:none; min-height:56px;
+  transition:border-color .12s;
+}
+.drawer-notes:focus { border-color:var(--text); }
+
+/* Autocomplete dropdown */
+.ac-wrap { position:relative; }
+.ac-dropdown {
+  position:absolute; top:100%; left:0; right:0; z-index:300;
+  background:var(--bg-card); border:1px solid var(--border); border-radius:6px;
+  box-shadow:0 4px 16px rgba(0,0,0,.12); max-height:200px; overflow-y:auto;
+  display:none;
+}
+.ac-dropdown.open { display:block; }
+.ac-item {
+  padding:7px 10px; font-size:12px; cursor:pointer; color:var(--text);
+  display:flex; justify-content:space-between; align-items:center;
+}
+.ac-item:hover { background:var(--bg-hover); }
+.ac-item .ac-price { color:var(--faint); font-size:11px; }
+.ac-item.ac-new { color:var(--muted); font-style:italic; }
+
+/* ═══════════════════════════════════════════════════════
+   BIBLIOTHÈQUE INGRÉDIENTS
+═══════════════════════════════════════════════════════ */
+#ingr-section { margin-top:48px; }
+.ingr-table { width:100%; border-collapse:collapse; font-size:13px; }
+.ingr-table thead th {
+  font-size:10px; font-weight:500; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--faint); text-align:left; padding:8px 14px;
+  border-bottom:1px solid var(--border); background:var(--bg-page);
+}
+.ingr-table thead th.r { text-align:right; }
+.ingr-table tbody tr { border-bottom:1px solid var(--border); }
+.ingr-table tbody tr:last-child { border-bottom:none; }
+.ingr-table tbody tr:hover { background:var(--bg-hover); }
+.ingr-table td { padding:9px 14px; }
+.ingr-table td.r { text-align:right; font-variant-numeric:tabular-nums; }
+.ingr-inline { font-family:inherit; font-size:13px; width:90px; border:1px solid transparent; background:transparent; color:var(--text); padding:2px 4px; border-radius:4px; outline:none; text-align:right; }
+.ingr-inline:focus { border-color:var(--border); background:var(--bg-card); }
+.ingr-del { background:none; border:none; cursor:pointer; color:var(--faint); font-size:13px; padding:2px 4px; }
+.ingr-del:hover { color:var(--red); }
+
+/* ── Add ingredient form ── */
+.add-ingr-form {
+  display:grid; grid-template-columns:1.8fr 1fr 80px 100px auto auto;
+  gap:8px; align-items:center; margin-top:10px; padding:10px 14px;
+  background:var(--bg-page); border-radius:0 0 8px 8px;
+  border-top:1px solid var(--border);
+}
+.add-ingr-form input, .add-ingr-form select {
+  font-family:inherit; font-size:12px;
+  border:1px solid var(--border); background:var(--bg-card); color:var(--text);
+  padding:5px 8px; border-radius:4px; outline:none; width:100%;
+}
+.add-ingr-form input:focus, .add-ingr-form select:focus { border-color:var(--text); }
+
+/* ── Toast ── */
+#toast {
+  position:fixed; bottom:24px; right:24px;
+  background:var(--text); color:#fff; font-size:13px;
+  padding:10px 16px; border-radius:8px; opacity:0;
+  transition:opacity .25s; pointer-events:none; z-index:400;
+}
+#toast.show { opacity:1; }
+
+.loading { text-align:center; padding:60px; color:var(--muted); }
 </style>
 </head>
 <body>
@@ -141,198 +259,249 @@
   <div class="cogs-nav">
     <a href="/">← Dashboard</a>
     <span class="sep">·</span>
-    <span style="font-size:13px; color:var(--text); font-weight:500;">Fiche COGS &amp; Recettes</span>
+    <span style="font-size:13px;color:var(--text);font-weight:500;">COGS &amp; Recettes</span>
   </div>
 
-  <!-- Header -->
-  <div class="header" style="margin-bottom:24px;">
+  <div class="header" style="margin-bottom:20px;">
     <div>
-      <div class="header-title">COGS &amp; Marges</div>
-      <div class="header-sub">Recettes · Coût matière · Prix de vente · Marge brute</div>
+      <div class="header-title">COGS &amp; Recettes</div>
+      <div class="header-sub">Coût matière · Marge brute · Éditeur de recettes</div>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;">
-      <button class="btn-refresh" onclick="loadCogs()" title="Rafraîchir">↻</button>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn-secondary" id="btn-recalc" onclick="recalculateAll()">↺ Tout recalculer</button>
+      <button class="btn-secondary" onclick="loadCogs()">↻ Rafraîchir</button>
     </div>
   </div>
 
   <!-- Summary -->
   <div class="summary-bar" id="summary-bar" style="display:none;">
-    <div class="sum-item">
-      <div class="sum-label">Produits</div>
-      <div class="sum-val" id="sum-total">—</div>
-    </div>
-    <div class="sum-item">
-      <div class="sum-label">Avec recette</div>
-      <div class="sum-val" id="sum-recipe">—</div>
-    </div>
-    <div class="sum-item">
-      <div class="sum-label">Marge moy. (avec recette)</div>
-      <div class="sum-val" id="sum-margin">—</div>
-    </div>
-    <div class="sum-item">
-      <div class="sum-label">Marge la plus faible</div>
-      <div class="sum-val" id="sum-min">—</div>
-    </div>
-    <div class="sum-item">
-      <div class="sum-label">Marge la plus haute</div>
-      <div class="sum-val" id="sum-max">—</div>
-    </div>
+    <div class="sum-item"><div class="sum-label">Produits</div><div class="sum-val" id="s-total">—</div></div>
+    <div class="sum-item"><div class="sum-label">Avec recette</div><div class="sum-val" id="s-recipe">—</div></div>
+    <div class="sum-item"><div class="sum-label">Marge moy.</div><div class="sum-val" id="s-avg">—</div></div>
+    <div class="sum-item"><div class="sum-label">Min marge</div><div class="sum-val" id="s-min">—</div></div>
+    <div class="sum-item"><div class="sum-label">Max marge</div><div class="sum-val" id="s-max">—</div></div>
   </div>
 
   <!-- Filters -->
   <div class="filter-bar">
-    <input id="search" type="text" placeholder="Rechercher un produit…" oninput="applyFilters()">
+    <input id="search" type="text" placeholder="Rechercher…" oninput="applyFilters()">
     <select id="cat-filter" onchange="applyFilters()">
       <option value="">Toutes catégories</option>
     </select>
     <select id="recipe-filter" onchange="applyFilters()">
-      <option value="">Avec ou sans recette</option>
+      <option value="">Toutes recettes</option>
       <option value="yes">Avec recette</option>
       <option value="no">Sans recette</option>
     </select>
-    <span class="cat-count" id="shown-count"></span>
+    <span class="count-badge" id="shown-count"></span>
   </div>
 
-  <!-- Content -->
-  <div id="content">
-    <div class="loading">Chargement…</div>
+  <!-- Products -->
+  <div id="content"><div class="loading">Chargement…</div></div>
+
+  <!-- ── Bibliothèque ingrédients ── -->
+  <div id="ingr-section">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <div class="section-label" style="margin:0;">Bibliothèque d'ingrédients</div>
+    </div>
+    <div class="table-wrap">
+      <table class="ingr-table">
+        <thead>
+          <tr>
+            <th>Ingrédient</th>
+            <th>Catégorie</th>
+            <th class="r">Prix</th>
+            <th>Unité ref.</th>
+            <th>Note</th>
+            <th style="width:36px;"></th>
+          </tr>
+        </thead>
+        <tbody id="ingr-body"><tr><td colspan="6" class="loading" style="padding:24px;">Chargement…</td></tr></tbody>
+      </table>
+      <!-- Formulaire ajout -->
+      <div class="add-ingr-form">
+        <input id="new-name" type="text" placeholder="Nom ingrédient">
+        <input id="new-cat"  type="text" placeholder="Catégorie">
+        <input id="new-price" type="number" step="0.01" min="0" placeholder="Prix">
+        <select id="new-unit">
+          <option value="kg">€ / kg</option>
+          <option value="l">€ / litre</option>
+          <option value="unit">€ / unité</option>
+        </select>
+        <button class="btn-primary" onclick="addIngredient()">+ Ajouter</button>
+        <button class="btn-secondary" onclick="recalculateAll()" id="btn-recalc2" title="Recalculer tous les COGS après modif prix">↺ Recalc.</button>
+      </div>
+    </div>
   </div>
 
+</div><!-- /page -->
+
+<!-- ══════════════════════════════════════════════════════
+     DRAWER — Éditeur de recette
+══════════════════════════════════════════════════════ -->
+<div id="drawer-overlay" onclick="closeDrawer()"></div>
+<div id="recipe-drawer">
+  <div class="drawer-head">
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+    <div class="drawer-title" id="d-title">Recette</div>
+    <div class="drawer-subtitle" id="d-subtitle"></div>
+  </div>
+  <div class="drawer-body">
+
+    <!-- Live COGS -->
+    <div class="cogs-live">
+      <div>
+        <div class="cogs-live-label">COGS total</div>
+        <div class="cogs-live-val" id="d-cogs-val">0.00 €</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="cogs-live-label">Marge brute</div>
+        <div class="cogs-live-margin" id="d-margin-val">—</div>
+      </div>
+    </div>
+
+    <!-- Ingrédients header -->
+    <div class="ing-row-header" style="margin-bottom:6px;">
+      <span>Ingrédient</span>
+      <span style="text-align:right;">Qté</span>
+      <span>Unité</span>
+      <span style="text-align:right;">Coût</span>
+      <span></span>
+    </div>
+    <div class="ing-rows" id="ing-rows"></div>
+
+    <button class="btn-secondary" style="width:100%;margin-bottom:20px;" onclick="addIngRow()">+ Ajouter un ingrédient</button>
+
+    <!-- Notes -->
+    <div class="section-label" style="margin-bottom:6px;">Notes</div>
+    <textarea class="drawer-notes" id="d-notes" placeholder="Double ristretto, lait texturé 65°C…" oninput="updateLiveCogs()"></textarea>
+  </div>
+  <div class="drawer-footer">
+    <button class="btn-primary" style="flex:1;" onclick="saveRecipe()">Sauvegarder &amp; syncer Vendus</button>
+    <button class="btn-secondary" onclick="closeDrawer()">Annuler</button>
+  </div>
 </div>
 
 <div id="toast"></div>
 
 <script>
-let allProducts = [];
+// ══════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════
+let allProducts   = [];
 let categoryOrder = [];
 let categoryNames = {};
+let ingrLib       = {};          // {name: {price, unit_ref, category, note}}
+let drawerProd    = null;        // produit en cours d'édition
 
+// ══════════════════════════════════════════════════════════
+// LOAD
+// ══════════════════════════════════════════════════════════
 async function loadCogs() {
   document.getElementById('content').innerHTML = '<div class="loading">Chargement…</div>';
-  try {
-    const r = await fetch('/api/cogs');
-    const d = await r.json();
-    allProducts   = d.products;
-    categoryOrder = d.category_order;
-    categoryNames = d.category_names;
-    buildCatFilter();
-    buildSummary();
-    applyFilters();
-  } catch(e) {
-    document.getElementById('content').innerHTML = '<div class="loading" style="color:var(--red)">Erreur de chargement</div>';
-  }
+  const [cogsRes, ingrRes] = await Promise.all([
+    fetch('/api/cogs'), fetch('/api/ingredients')
+  ]);
+  const d   = await cogsRes.json();
+  ingrLib   = await ingrRes.json();
+  allProducts   = d.products;
+  categoryOrder = d.category_order;
+  categoryNames = d.category_names;
+  buildCatFilter();
+  buildSummary();
+  applyFilters();
+  renderIngrLib();
+}
+
+// ══════════════════════════════════════════════════════════
+// SUMMARY
+// ══════════════════════════════════════════════════════════
+function buildSummary() {
+  const wr = allProducts.filter(p => p.has_recipe && p.marge_pct !== null);
+  const ms = wr.map(p => p.marge_pct);
+  const avg = ms.length ? (ms.reduce((a,b)=>a+b,0)/ms.length).toFixed(1) : '—';
+  document.getElementById('s-total').textContent  = allProducts.length;
+  document.getElementById('s-recipe').textContent = wr.length;
+  document.getElementById('s-avg').textContent    = avg !== '—' ? avg + ' %' : '—';
+  document.getElementById('s-min').textContent    = ms.length ? Math.min(...ms).toFixed(1) + ' %' : '—';
+  document.getElementById('s-max').textContent    = ms.length ? Math.max(...ms).toFixed(1) + ' %' : '—';
+  document.getElementById('summary-bar').style.display = 'flex';
 }
 
 function buildCatFilter() {
-  const sel = document.getElementById('cat-filter');
-  // clear existing options except first
+  const sel  = document.getElementById('cat-filter');
   while (sel.options.length > 1) sel.remove(1);
   const seen = new Set();
-  for (const catId of categoryOrder) {
-    if (!seen.has(catId) && allProducts.some(p => p.category_id === catId)) {
-      seen.add(catId);
+  for (const id of categoryOrder) {
+    if (!seen.has(id) && allProducts.some(p => p.category_id === id)) {
+      seen.add(id);
       const o = document.createElement('option');
-      o.value = catId;
-      o.textContent = categoryNames[catId] || catId;
+      o.value = id; o.textContent = categoryNames[id] || id;
       sel.appendChild(o);
     }
   }
 }
 
-function buildSummary() {
-  const withRecipe = allProducts.filter(p => p.has_recipe && p.marge_pct !== null);
-  const margins    = withRecipe.map(p => p.marge_pct).filter(v => v !== null);
-  const avg        = margins.length ? (margins.reduce((a,b)=>a+b,0)/margins.length) : null;
-  const min        = margins.length ? Math.min(...margins) : null;
-  const max        = margins.length ? Math.max(...margins) : null;
-
-  document.getElementById('sum-total').textContent  = allProducts.length;
-  document.getElementById('sum-recipe').textContent = withRecipe.length;
-  document.getElementById('sum-margin').textContent = avg !== null ? avg.toFixed(1) + ' %' : '—';
-  document.getElementById('sum-min').textContent    = min !== null ? min.toFixed(1) + ' %' : '—';
-  document.getElementById('sum-max').textContent    = max !== null ? max.toFixed(1) + ' %' : '—';
-  document.getElementById('summary-bar').style.display = 'flex';
-}
-
+// ══════════════════════════════════════════════════════════
+// FILTERS + RENDER
+// ══════════════════════════════════════════════════════════
 function applyFilters() {
-  const search      = document.getElementById('search').value.toLowerCase();
-  const catFilter   = document.getElementById('cat-filter').value;
-  const recipeFilter= document.getElementById('recipe-filter').value;
-
-  let filtered = allProducts.filter(p => {
-    if (search && !p.title.toLowerCase().includes(search)) return false;
-    if (catFilter && p.category_id !== catFilter) return false;
-    if (recipeFilter === 'yes' && !p.has_recipe) return false;
-    if (recipeFilter === 'no'  &&  p.has_recipe) return false;
+  const q  = document.getElementById('search').value.toLowerCase();
+  const cf = document.getElementById('cat-filter').value;
+  const rf = document.getElementById('recipe-filter').value;
+  const filtered = allProducts.filter(p => {
+    if (q && !p.title.toLowerCase().includes(q)) return false;
+    if (cf && p.category_id !== cf) return false;
+    if (rf === 'yes' && !p.has_recipe) return false;
+    if (rf === 'no'  &&  p.has_recipe) return false;
     return true;
   });
-
   document.getElementById('shown-count').textContent = `${filtered.length} produit${filtered.length !== 1 ? 's' : ''}`;
   renderProducts(filtered);
 }
 
 function renderProducts(products) {
-  // Group by category, preserving order
   const grouped = {};
-  for (const catId of categoryOrder) grouped[catId] = [];
+  for (const id of categoryOrder) grouped[id] = [];
   for (const p of products) {
     if (!grouped[p.category_id]) grouped[p.category_id] = [];
     grouped[p.category_id].push(p);
   }
+  // Uncategorized
+  const other = products.filter(p => !categoryOrder.includes(p.category_id));
 
   let html = '';
-  for (const catId of categoryOrder) {
-    const group = grouped[catId];
-    if (!group || !group.length) continue;
-    const catName = categoryNames[catId] || catId;
-    html += `
-    <div class="cogs-section" data-cat="${catId}">
-      <div class="cogs-section-title">
-        ${catName}
-        <span class="badge-cat">${group.length}</span>
-      </div>
-      <div class="table-wrap">
-        <table class="cogs-table">
-          <thead>
-            <tr>
-              <th style="width:30%">Produit &amp; Recette</th>
-              <th class="r">Prix TTC</th>
-              <th class="r">Prix HT</th>
-              <th class="r">COGS</th>
-              <th class="r">Marge brute</th>
-              <th class="r">% Marge</th>
-              <th class="r" style="width:60px;"></th>
-            </tr>
-          </thead>
-          <tbody>
-            ${group.map(p => rowHtml(p)).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>`;
-  }
-
-  // Uncategorized
-  const uncatKey = '_other';
-  const uncat = products.filter(p => !categoryOrder.includes(p.category_id));
-  if (uncat.length) {
+  for (const id of categoryOrder) {
+    const g = grouped[id];
+    if (!g?.length) continue;
     html += `
     <div class="cogs-section">
-      <div class="cogs-section-title">Autres <span class="badge-cat">${uncat.length}</span></div>
+      <div class="cogs-section-title">${categoryNames[id] || id} <span class="badge-cat">${g.length}</span></div>
       <div class="table-wrap">
         <table class="cogs-table">
           <thead><tr>
-            <th style="width:30%">Produit &amp; Recette</th>
-            <th class="r">Prix TTC</th><th class="r">Prix HT</th>
-            <th class="r">COGS</th><th class="r">Marge brute</th>
-            <th class="r">% Marge</th><th class="r" style="width:60px;"></th>
+            <th style="width:34%">Produit &amp; Recette</th>
+            <th class="r">TTC</th><th class="r">HT</th>
+            <th class="r">COGS</th><th class="r">Marge €</th><th class="r">Marge %</th>
+            <th style="width:100px;"></th>
           </tr></thead>
-          <tbody>${uncat.map(p => rowHtml(p)).join('')}</tbody>
+          <tbody>${g.map(rowHtml).join('')}</tbody>
         </table>
       </div>
     </div>`;
   }
-
+  if (other.length) {
+    html += `<div class="cogs-section">
+      <div class="cogs-section-title">Autres <span class="badge-cat">${other.length}</span></div>
+      <div class="table-wrap"><table class="cogs-table">
+        <thead><tr><th style="width:34%">Produit &amp; Recette</th>
+          <th class="r">TTC</th><th class="r">HT</th>
+          <th class="r">COGS</th><th class="r">Marge €</th><th class="r">Marge %</th>
+          <th style="width:100px;"></th></tr></thead>
+        <tbody>${other.map(rowHtml).join('')}</tbody>
+      </table></div>
+    </div>`;
+  }
   document.getElementById('content').innerHTML = html || '<div class="loading">Aucun produit</div>';
 }
 
@@ -340,118 +509,339 @@ function rowHtml(p) {
   // Recipe chips
   let recipeHtml = '';
   if (p.has_recipe && p.recipe.length) {
-    const chips = p.recipe.map(ing =>
-      `<span class="ing-chip">${ing.name} <span class="ing-cost">${ing.qty}${ing.name.includes('Café') ? 'g' : 'ml'} · ${formatEur(ing.cost)}</span></span>`
-    ).join('');
-    recipeHtml = `<div class="recipe-wrap">${chips}</div>`;
-  } else if (!p.supply_price) {
-    recipeHtml = `<div class="no-recipe">Recette à renseigner</div>`;
+    const chips = p.recipe.map(ing => {
+      const u = ing.unit;
+      const qty = ing.qty % 1 === 0 ? ing.qty : ing.qty.toFixed(1);
+      return `<span class="ing-chip">${ing.name} <span class="c">${qty}${u} · ${fmt(ing.cost)}</span></span>`;
+    }).join('');
+    const notes = p.recipe_notes ? `<div style="font-size:11px;color:var(--faint);margin-top:3px;font-style:italic;">${p.recipe_notes}</div>` : '';
+    recipeHtml = `<div class="recipe-wrap">${chips}</div>${notes}`;
   } else {
-    recipeHtml = `<div class="no-recipe">Prix achat Vendus</div>`;
+    recipeHtml = `<div class="no-recipe">Pas de recette — cliquer pour créer</div>`;
   }
 
-  // COGS display
-  const cogs = p.has_recipe ? p.recipe_total : p.supply_price;
-  const cogsHtml = cogs
-    ? `<span class="cogs-val">${formatEur(cogs)}</span>${p.has_recipe && p.supply_price && Math.abs(p.supply_price - cogs) > 0.01
-        ? `<div class="cogs-calc">Vendus: ${formatEur(p.supply_price)}</div>` : ''}`
-    : `<span style="color:var(--faint)">—</span>`;
+  const cogs = p.recipe_total !== null ? p.recipe_total : p.supply_price;
+  const pct  = p.marge_pct;
+  const cls  = pct === null ? '' : pct >= 75 ? 'good' : pct >= 55 ? 'warn' : 'bad';
 
-  // Margin
-  const effectiveCogs = cogs || 0;
-  const marge_ht  = p.price_ht ? (p.price_ht - effectiveCogs) : null;
-  const marge_pct = (marge_ht !== null && p.price_ht) ? (marge_ht / p.price_ht * 100) : null;
-  const pct = marge_pct !== null ? marge_pct.toFixed(1) : null;
-  const barClass = pct === null ? '' : pct >= 75 ? 'good' : pct >= 55 ? 'warn' : 'bad';
-  const margeHtml = marge_ht !== null
-    ? `<span class="margin-val" style="color:${pct >= 75 ? 'var(--green)' : pct >= 55 ? 'var(--amber)' : 'var(--red)'}">${formatEur(marge_ht)}</span>`
-    : `<span style="color:var(--faint)">—</span>`;
-  const pctHtml = pct !== null
-    ? `<div class="margin-cell">
-        <span class="margin-val" style="color:${pct >= 75 ? 'var(--green)' : pct >= 55 ? 'var(--amber)' : 'var(--red)'}">${pct} %</span>
-        <div class="margin-bar-wrap"><div class="margin-bar ${barClass}" style="width:${Math.min(pct,100)}%"></div></div>
-       </div>`
-    : `<span style="color:var(--faint)">—</span>`;
-
-  const tvaBadge = p.tax_rate ? `<span style="font-size:10px;color:var(--faint);margin-left:4px;">TVA ${p.tax_rate}%</span>` : '';
-
-  return `<tr data-id="${p.id}">
-    <td>
-      <div class="prod-name">${p.title}</div>
-      ${recipeHtml}
+  return `<tr>
+    <td><div style="font-weight:500;">${p.title}</div>${recipeHtml}</td>
+    <td class="r">${p.price_ttc ? fmt(p.price_ttc) : '—'}<div style="font-size:10px;color:var(--faint);">TVA ${p.tax_rate}%</div></td>
+    <td class="r">${p.price_ht ? fmt(p.price_ht) : '—'}</td>
+    <td class="r" style="font-weight:500;">${cogs ? fmt(cogs) : '—'}</td>
+    <td class="r" class="c-${cls}">${p.marge_ht !== null ? `<span style="font-weight:600;color:var(--${cls === 'good' ? 'green' : cls === 'warn' ? 'amber' : 'red'})">${fmt(p.marge_ht)}</span>` : '—'}</td>
+    <td class="r">
+      ${pct !== null ? `<span class="margin-pct c-${cls}" style="color:var(--${cls === 'good' ? 'green' : cls === 'warn' ? 'amber' : 'red'})">${pct} %</span>
+        <div class="mbar"><div class="mbar-fill bg-${cls}" style="width:${Math.min(pct,100)}%"></div></div>` : '—'}
     </td>
     <td class="r">
-      <div class="price-ttc">${p.price_ttc ? formatEur(p.price_ttc) : '—'}</div>
-      ${tvaBadge}
-    </td>
-    <td class="r">
-      <div>${p.price_ht ? formatEur(p.price_ht) : '—'}</div>
-    </td>
-    <td class="r">${cogsHtml}</td>
-    <td class="r">${margeHtml}</td>
-    <td class="r">${pctHtml}</td>
-    <td class="r">
-      <button class="edit-btn" onclick="openEdit(${p.id}, ${effectiveCogs})">Éditer</button>
+      <button class="edit-recipe-btn" onclick="openDrawer(${p.id}, '${p.title.replace(/'/g,"\\'")}', ${p.price_ht || 0}, ${p.price_ttc || 0}, ${p.tax_rate})">
+        ${p.has_recipe ? '✎ Recette' : '+ Recette'}
+      </button>
     </td>
   </tr>`;
 }
 
-// ── Inline edit COGS ──────────────────────────────────────────────────────────
-function openEdit(id, currentCogs) {
-  const row = document.querySelector(`tr[data-id="${id}"]`);
-  if (!row) return;
-  const cogsCell = row.querySelector('td:nth-child(4)');
-  const editBtn  = row.querySelector('.edit-btn');
-  cogsCell.innerHTML = `<input class="inline-edit" id="edit-${id}" type="number" step="0.01" min="0" value="${currentCogs.toFixed(3)}" onkeydown="editKeydown(event, ${id})"> <button class="edit-btn" onclick="saveEdit(${id})" style="margin-top:2px;">OK</button>`;
-  editBtn.textContent = 'Annuler';
-  editBtn.onclick = () => loadCogs();
-  document.getElementById(`edit-${id}`)?.focus();
+// ══════════════════════════════════════════════════════════
+// DRAWER
+// ══════════════════════════════════════════════════════════
+async function openDrawer(id, title, priceHt, priceTtc, taxRate) {
+  drawerProd = { id, title, priceHt, priceTtc, taxRate };
+  document.getElementById('d-title').textContent    = title;
+  document.getElementById('d-subtitle').textContent = `${fmt(priceTtc)} TTC · ${fmt(priceHt)} HT · TVA ${taxRate}%`;
+  document.getElementById('ing-rows').innerHTML = '<div class="loading" style="padding:16px;">Chargement…</div>';
+  document.getElementById('d-notes').value = '';
+  openDrawerUI();
+
+  const r = await fetch(`/api/recipe/${id}`);
+  const d = await r.json();
+  document.getElementById('d-notes').value = d.notes || '';
+  renderIngRows(d.ingredients || []);
+  updateLiveCogs();
 }
 
-function editKeydown(e, id) {
-  if (e.key === 'Enter') saveEdit(id);
-  if (e.key === 'Escape') loadCogs();
+function openDrawerUI() {
+  document.getElementById('recipe-drawer').classList.add('open');
+  document.getElementById('drawer-overlay').classList.add('open');
 }
 
-async function saveEdit(id) {
-  const input = document.getElementById(`edit-${id}`);
-  if (!input) return;
-  const val = parseFloat(input.value);
-  if (isNaN(val) || val < 0) { showToast('Valeur invalide'); return; }
+function closeDrawer() {
+  document.getElementById('recipe-drawer').classList.remove('open');
+  document.getElementById('drawer-overlay').classList.remove('open');
+  drawerProd = null;
+}
+
+// ── Ingredient rows ─────────────────────────────────────────
+function renderIngRows(ingredients) {
+  const container = document.getElementById('ing-rows');
+  container.innerHTML = '';
+  if (!ingredients.length) {
+    addIngRow();
+    return;
+  }
+  for (const ing of ingredients) addIngRow(ing);
+}
+
+function addIngRow(ing = {}) {
+  const container = document.getElementById('ing-rows');
+  const idx       = container.children.length;
+  const div       = document.createElement('div');
+  div.className   = 'ing-row';
+  div.dataset.idx = idx;
+
+  const unitOpts = ['g','ml','cl','dl','l','kg','mg','unit'].map(u =>
+    `<option value="${u}" ${u === (ing.unit||'g') ? 'selected' : ''}>${u}</option>`
+  ).join('');
+
+  div.innerHTML = `
+    <div class="ac-wrap">
+      <input type="text" class="ing-name" placeholder="Ingrédient…" value="${ing.name||''}"
+             oninput="showAC(this)" onblur="hideAC(this,200)" onfocus="showAC(this)"
+             onchange="updateLiveCogs()">
+      <div class="ac-dropdown"></div>
+    </div>
+    <input type="number" class="ing-qty" step="any" min="0" placeholder="Qté" value="${ing.qty||''}"
+           oninput="updateLiveCogs()">
+    <select class="ing-unit" onchange="updateLiveCogs()">${unitOpts}</select>
+    <div class="cost-preview" data-cost="">—</div>
+    <button class="ing-del-btn" onclick="this.closest('.ing-row').remove();updateLiveCogs()">✕</button>
+  `;
+  container.appendChild(div);
+  updateLiveCogs();
+}
+
+// ── Autocomplete ─────────────────────────────────────────────
+function showAC(input) {
+  const q   = input.value.toLowerCase();
+  const dd  = input.nextElementSibling;
+  const all = Object.keys(ingrLib);
+  const matches = all.filter(n => n.toLowerCase().includes(q)).slice(0, 12);
+  if (!matches.length && !q) { dd.classList.remove('open'); return; }
+  let html = matches.map(n => {
+    const lib  = ingrLib[n];
+    const priceStr = `${lib.price} €/${lib.unit_ref}`;
+    return `<div class="ac-item" onmousedown="selectAC(event,'${n.replace(/'/g,"\\'")}')">
+      ${n} <span class="ac-price">${priceStr}</span>
+    </div>`;
+  }).join('');
+  if (q && !matches.includes(q)) {
+    html += `<div class="ac-item ac-new" onmousedown="selectAC(event,'${q.replace(/'/g,"\\'")}',true)">+ Créer "${q}"</div>`;
+  }
+  dd.innerHTML = html;
+  dd.classList.add('open');
+}
+
+function hideAC(input, delay) {
+  setTimeout(() => {
+    const dd = input.nextElementSibling;
+    if (dd) dd.classList.remove('open');
+  }, delay);
+}
+
+function selectAC(e, name, isNew) {
+  e.preventDefault();
+  const dd    = e.currentTarget.closest('.ac-dropdown');
+  const input = dd.previousElementSibling;
+  input.value = name;
+  dd.classList.remove('open');
+  if (isNew) {
+    // Pré-remplir la biblio avec cet ingrédient
+    const price = parseFloat(prompt(`Prix de "${name}" (€) ?`) || 0);
+    const unit  = prompt(`Unité de référence (kg / l / unit) ?`, 'unit') || 'unit';
+    if (price > 0) {
+      ingrLib[name] = { price, unit_ref: unit, category: '', note: '' };
+      saveIngredient(name, ingrLib[name]);
+    }
+  }
+  updateLiveCogs();
+}
+
+// ── Live COGS calc ─────────────────────────────────────────
+const CONV = {
+  g:    {kg: 0.001},  mg:  {kg: 0.000001}, kg: {kg: 1},
+  ml:   {l:  0.001},  cl:  {l:  0.01},     dl: {l: 0.1}, l: {l: 1},
+  unit: {unit: 1},
+};
+
+function calcIngCost(name, qty, unit) {
+  const lib = ingrLib[name];
+  if (!lib || !qty) return null;
+  const f = (CONV[unit] || {})[lib.unit_ref];
+  if (f === undefined) return null;
+  return Math.round(qty * f * lib.price * 100000) / 100000;
+}
+
+function updateLiveCogs() {
+  let total = 0;
+  let anyError = false;
+  document.querySelectorAll('#ing-rows .ing-row').forEach(row => {
+    const name = row.querySelector('.ing-name')?.value.trim();
+    const qty  = parseFloat(row.querySelector('.ing-qty')?.value);
+    const unit = row.querySelector('.ing-unit')?.value;
+    const prev = row.querySelector('.cost-preview');
+    const cost = name ? calcIngCost(name, qty, unit) : null;
+    if (cost !== null) {
+      total += cost;
+      prev.textContent = fmt(cost);
+      prev.style.color = '';
+    } else {
+      prev.textContent = name ? '?' : '—';
+      prev.style.color = 'var(--faint)';
+      if (name && qty) anyError = true;
+    }
+  });
+
+  document.getElementById('d-cogs-val').textContent = fmt(total);
+
+  const priceHt = drawerProd?.priceHt || 0;
+  const margeEl = document.getElementById('d-margin-val');
+  if (priceHt && total > 0) {
+    const pct = ((priceHt - total) / priceHt * 100).toFixed(1);
+    const cls = pct >= 75 ? 'green' : pct >= 55 ? 'amber' : 'red';
+    margeEl.innerHTML = `<span style="color:var(--${cls})">${pct} %</span> <span style="font-size:11px;color:var(--muted);">(${fmt(priceHt - total)} HT)</span>`;
+  } else {
+    margeEl.textContent = '—';
+  }
+}
+
+// ── Save recipe ─────────────────────────────────────────────
+async function saveRecipe() {
+  if (!drawerProd) return;
+  const ingredients = [];
+  let valid = true;
+  document.querySelectorAll('#ing-rows .ing-row').forEach(row => {
+    const name = row.querySelector('.ing-name')?.value.trim();
+    const qty  = parseFloat(row.querySelector('.ing-qty')?.value);
+    const unit = row.querySelector('.ing-unit')?.value;
+    if (name && qty > 0) ingredients.push({ name, qty, unit });
+    else if (name || qty) valid = false;
+  });
+  if (!valid) { showToast('⚠ Vérifiez les ingrédients'); return; }
+
+  const notes = document.getElementById('d-notes').value.trim();
+  const btn   = document.querySelector('.drawer-footer .btn-primary');
+  btn.textContent = 'Sauvegarde…'; btn.disabled = true;
 
   try {
-    const r = await fetch(`/api/update_supply_price/${id}`, {
+    const r = await fetch(`/api/recipe/${drawerProd.id}`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({supply_price: val}),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ingredients, notes }),
     });
     const d = await r.json();
     if (d.ok) {
-      showToast('✓ COGS mis à jour');
+      showToast(`✓ Recette sauvée · COGS ${fmt(d.total_cogs)} → Vendus ${d.vendus_patched ? '✓' : '⚠'}`);
+      closeDrawer();
       await loadCogs();
     } else {
       showToast('Erreur : ' + (d.error || 'inconnue'));
     }
   } catch(e) {
     showToast('Erreur réseau');
+  } finally {
+    btn.textContent = 'Sauvegarder & syncer Vendus'; btn.disabled = false;
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function formatEur(v) {
-  return (typeof v === 'number' ? v : parseFloat(v)).toFixed(2) + ' €';
+// ══════════════════════════════════════════════════════════
+// BIBLIOTHÈQUE INGRÉDIENTS
+// ══════════════════════════════════════════════════════════
+function renderIngrLib() {
+  const body  = document.getElementById('ingr-body');
+  const items = Object.entries(ingrLib).sort((a,b) => a[0].localeCompare(b[0]));
+  if (!items.length) { body.innerHTML = '<tr><td colspan="6" style="padding:20px;color:var(--muted);text-align:center;">Bibliothèque vide</td></tr>'; return; }
+  body.innerHTML = items.map(([name, lib]) => `
+    <tr data-ingr="${encodeURIComponent(name)}">
+      <td style="font-weight:500;">${name}</td>
+      <td style="color:var(--muted);">${lib.category || '—'}</td>
+      <td class="r">
+        <input class="ingr-inline" type="number" step="0.01" min="0"
+               value="${lib.price}" onblur="updateIngrPrice('${name.replace(/'/g,"\\'")}', this.value)">
+      </td>
+      <td style="color:var(--muted);">€ / ${lib.unit_ref}</td>
+      <td style="color:var(--faint);font-size:12px;">${lib.note || ''}</td>
+      <td><button class="ingr-del" onclick="deleteIngr('${name.replace(/'/g,"\\'")}')">✕</button></td>
+    </tr>`).join('');
 }
 
-let toastTimer = null;
+async function updateIngrPrice(name, val) {
+  const price = parseFloat(val);
+  if (isNaN(price) || price < 0) return;
+  ingrLib[name].price = price;
+  await saveIngredient(name, ingrLib[name]);
+  showToast(`✓ ${name} → ${price} €/${ingrLib[name].unit_ref}`);
+}
+
+async function saveIngredient(name, data) {
+  await fetch('/api/ingredients', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, ...data }),
+  });
+}
+
+async function addIngredient() {
+  const name  = document.getElementById('new-name').value.trim();
+  const cat   = document.getElementById('new-cat').value.trim();
+  const price = parseFloat(document.getElementById('new-price').value);
+  const unit  = document.getElementById('new-unit').value;
+  if (!name || isNaN(price)) { showToast('Nom et prix requis'); return; }
+  await saveIngredient(name, { price, unit_ref: unit, category: cat, note: '' });
+  ingrLib[name] = { price, unit_ref: unit, category: cat, note: '' };
+  renderIngrLib();
+  document.getElementById('new-name').value  = '';
+  document.getElementById('new-cat').value   = '';
+  document.getElementById('new-price').value = '';
+  showToast(`✓ ${name} ajouté`);
+}
+
+async function deleteIngr(name) {
+  if (!confirm(`Supprimer "${name}" de la bibliothèque ?`)) return;
+  await fetch(`/api/ingredients/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  delete ingrLib[name];
+  renderIngrLib();
+  showToast(`✓ ${name} supprimé`);
+}
+
+// ══════════════════════════════════════════════════════════
+// RECALCUL GLOBAL
+// ══════════════════════════════════════════════════════════
+async function recalculateAll() {
+  const btn = document.getElementById('btn-recalc');
+  btn.textContent = '↺ Calcul…'; btn.disabled = true;
+  try {
+    const r = await fetch('/api/recipe/recalculate-all', { method: 'POST' });
+    const d = await r.json();
+    const ok  = d.results.filter(x => x.status === 'ok').length;
+    const err = d.results.filter(x => x.status !== 'ok' && x.status !== 'not_found_in_vendus').length;
+    showToast(`✓ ${ok} COGS recalculés${err ? ` · ${err} erreurs` : ''}`);
+    await loadCogs();
+  } catch(e) {
+    showToast('Erreur réseau');
+  } finally {
+    btn.textContent = '↺ Tout recalculer'; btn.disabled = false;
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════════
+function fmt(v) {
+  if (v === null || v === undefined) return '—';
+  return parseFloat(v).toFixed(2) + ' €';
+}
+
+let toastTimer;
 function showToast(msg) {
   const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
+  t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════
 loadCogs();
 </script>
 </body>

@@ -1,0 +1,110 @@
+{
+  "Café Gardelli": {
+    "price": 28.70,
+    "unit_ref": "kg",
+    "category": "café",
+    "note": "Blend espresso"
+  },
+  "Lait frais": {
+    "price": 1.09,
+    "unit_ref": "l",
+    "category": "lait",
+    "note": ""
+  },
+  "Lait avoine": {
+    "price": 1.90,
+    "unit_ref": "l",
+    "category": "lait",
+    "note": "Oatly barista"
+  },
+  "Matcha": {
+    "price": 96.00,
+    "unit_ref": "kg",
+    "category": "matcha",
+    "note": "Poudre cérémonie"
+  },
+  "Sirop vanille": {
+    "price": 8.50,
+    "unit_ref": "l",
+    "category": "sirop",
+    "note": ""
+  },
+  "Sirop caramel": {
+    "price": 8.50,
+    "unit_ref": "l",
+    "category": "sirop",
+    "note": ""
+  },
+  "Sucre": {
+    "price": 1.20,
+    "unit_ref": "kg",
+    "category": "divers",
+    "note": ""
+  },
+  "Oeuf": {
+    "price": 0.33,
+    "unit_ref": "unit",
+    "category": "frais",
+    "note": "Calibre M"
+  },
+  "Banana Bread (tranche)": {
+    "price": 0.40,
+    "unit_ref": "unit",
+    "category": "pâtisserie",
+    "note": "Production maison"
+  },
+  "Crème liquide": {
+    "price": 2.40,
+    "unit_ref": "l",
+    "category": "lait",
+    "note": ""
+  },
+  "Beurre": {
+    "price": 9.00,
+    "unit_ref": "kg",
+    "category": "frais",
+    "note": ""
+  },
+  "Houji Cha (thé)": {
+    "price": 80.00,
+    "unit_ref": "kg",
+    "category": "thé",
+    "note": ""
+  },
+  "Tea of the month": {
+    "price": 60.00,
+    "unit_ref": "kg",
+    "category": "thé",
+    "note": ""
+  },
+  "Ginger Beer (bouteille)": {
+    "price": 0.32,
+    "unit_ref": "unit",
+    "category": "boisson",
+    "note": ""
+  },
+  "Lemonade (bouteille)": {
+    "price": 0.32,
+    "unit_ref": "unit",
+    "category": "boisson",
+    "note": ""
+  },
+  "Sparkling Water (bouteille)": {
+    "price": 0.95,
+    "unit_ref": "unit",
+    "category": "boisson",
+    "note": ""
+  },
+  "Croissant (Meia Lua)": {
+    "price": 1.70,
+    "unit_ref": "unit",
+    "category": "viennoiserie",
+    "note": "Achat Meia Lua Bakery"
+  },
+  "Pain au Chocolat (Meia Lua)": {
+    "price": 1.80,
+    "unit_ref": "unit",
+    "category": "viennoiserie",
+    "note": "Achat Meia Lua Bakery"
+  }
+}
