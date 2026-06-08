@@ -227,7 +227,8 @@ def _load_ingredients():
 
 def _load_recipes():
     rows = _supa_get("recipes")
-    return {r["product_title"]: {"ingredients": r["ingredients"], "notes": r.get("notes", "")}
+    # Strip trailing/leading spaces from keys so Vendus title mismatches (e.g. "Croissant ") still match
+    return {r["product_title"].strip(): {"ingredients": r["ingredients"], "notes": r.get("notes", "")}
             for r in rows}
 
 def _save_ingredient(name, data):
@@ -324,7 +325,7 @@ def api_cogs():
         price_ht  = round(price_ttc / (1 + rate), 4) if price_ttc else float(p.get("price_without_tax") or 0)
         supply    = float(p.get("supply_price") or 0)
 
-        recipe_data  = recipes.get(title)
+        recipe_data  = recipes.get(title.strip())
         has_recipe   = bool(recipe_data and recipe_data.get("ingredients"))
         recipe_total = None
         breakdown    = []
