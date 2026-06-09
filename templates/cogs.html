@@ -193,7 +193,7 @@
 .ac-dropdown {
   position:absolute; top:100%; left:0; right:0; z-index:300;
   background:var(--bg-card); border:1px solid var(--border); border-radius:6px;
-  box-shadow:0 4px 16px rgba(0,0,0,.12); max-height:200px; overflow-y:auto;
+  box-shadow:0 4px 16px rgba(0,0,0,.12); max-height:240px; overflow-y:auto;
   display:none;
 }
 .ac-dropdown.open { display:block; }
@@ -204,6 +204,46 @@
 .ac-item:hover { background:var(--bg-hover); }
 .ac-item .ac-price { color:var(--faint); font-size:11px; }
 .ac-item.ac-new { color:var(--muted); font-style:italic; }
+
+/* Mini-formulaire inline "Créer ingrédient" dans le dropdown */
+.ac-create-form {
+  padding:10px 10px 8px;
+  border-top:1px solid var(--border);
+  background:var(--bg-page);
+}
+.ac-create-form .ac-cf-title {
+  font-size:11px; font-weight:500; color:var(--text);
+  margin-bottom:8px; letter-spacing:0;
+}
+.ac-create-form .ac-cf-name {
+  font-size:12px; font-weight:500; color:var(--text);
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:4px; padding:4px 7px; width:100%; margin-bottom:6px;
+  font-family:inherit;
+}
+.ac-create-form .ac-cf-row {
+  display:grid; grid-template-columns:1fr 80px 1fr; gap:5px; margin-bottom:7px;
+}
+.ac-create-form input, .ac-create-form select {
+  font-family:inherit; font-size:12px;
+  border:1px solid var(--border); background:var(--bg-card); color:var(--text);
+  padding:4px 6px; border-radius:4px; outline:none; width:100%;
+}
+.ac-create-form input:focus, .ac-create-form select:focus { border-color:var(--text); }
+.ac-create-form .ac-cf-btns {
+  display:flex; gap:6px;
+}
+.ac-create-form .ac-cf-btns button {
+  font-family:inherit; font-size:12px; font-weight:500;
+  padding:4px 12px; border-radius:4px; cursor:pointer; border:none;
+}
+.ac-create-form .ac-cf-btns .btn-cf-create {
+  background:var(--text); color:#fff; flex:1;
+}
+.ac-create-form .ac-cf-btns .btn-cf-create:disabled { opacity:.5; cursor:default; }
+.ac-create-form .ac-cf-btns .btn-cf-cancel {
+  background:none; color:var(--muted); border:1px solid var(--border) !important;
+}
 
 /* ═══════════════════════════════════════════════════════
    BIBLIOTHÈQUE INGRÉDIENTS
@@ -832,7 +872,10 @@ function showAC(input) {
 function hideAC(input, delay) {
   setTimeout(() => {
     const dd = input.nextElementSibling;
-    if (dd) dd.classList.remove('open');
+    // Ne pas fermer si le mini-formulaire de création est affiché
+    if (dd && !dd.querySelector('.ac-create-form')) {
+      dd.classList.remove('open');
+    }
   }, delay);
 }
 
@@ -840,18 +883,85 @@ function selectAC(e, name, isNew) {
   e.preventDefault();
   const dd    = e.currentTarget.closest('.ac-dropdown');
   const input = dd.previousElementSibling;
+
+  if (isNew) {
+    // Afficher le mini-formulaire inline au lieu d'un prompt()
+    showAcCreateForm(dd, input, name);
+    return;
+  }
+
   input.value = name;
   dd.classList.remove('open');
-  if (isNew) {
-    // Pré-remplir la biblio avec cet ingrédient
-    const price = parseFloat(prompt(`Prix de "${name}" (€) ?`) || 0);
-    const unit  = prompt(`Unité de référence (kg / l / unit) ?`, 'unit') || 'unit';
-    if (price > 0) {
-      ingrLib[name] = { price, unit_ref: unit, category: '', note: '' };
-      saveIngredient(name, ingrLib[name]);
-    }
-  }
   updateLiveCogs();
+}
+
+function showAcCreateForm(dd, nameInput, name) {
+  const unitOpts = ['kg','l','unit','g','ml','cl'].map(u =>
+    `<option value="${u}">${u}</option>`).join('');
+
+  dd.innerHTML = `
+    <div class="ac-create-form">
+      <div class="ac-cf-title">Nouvel ingrédient</div>
+      <input class="ac-cf-name" type="text" id="acf-name" value="${name.replace(/"/g,'&quot;')}" placeholder="Nom…">
+      <div class="ac-cf-row">
+        <input type="number" id="acf-price" step="0.01" min="0" placeholder="Prix (€)" autofocus>
+        <select id="acf-unit">${unitOpts}</select>
+        <input type="text" id="acf-cat" placeholder="Catégorie">
+      </div>
+      <div class="ac-cf-btns">
+        <button class="btn-cf-create" id="acf-btn" onclick="submitAcCreate(event)">Créer</button>
+        <button class="btn-cf-cancel" onmousedown="cancelAcCreate(event)">✕</button>
+      </div>
+    </div>`;
+
+  // Garder le dropdown ouvert et mettre le focus sur le prix
+  dd.classList.add('open');
+  setTimeout(() => {
+    const priceEl = dd.querySelector('#acf-price');
+    if (priceEl) priceEl.focus();
+  }, 30);
+
+  // Stocker la référence au champ name de la recette pour le remplir après
+  dd._targetInput = nameInput;
+}
+
+async function submitAcCreate(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const dd     = e.currentTarget.closest('.ac-create-form').parentElement;
+  const name   = dd.querySelector('#acf-name').value.trim();
+  const price  = parseFloat(dd.querySelector('#acf-price').value);
+  const unit   = dd.querySelector('#acf-unit').value;
+  const cat    = dd.querySelector('#acf-cat').value.trim();
+  const btn    = dd.querySelector('#acf-btn');
+
+  if (!name) { dd.querySelector('#acf-name').focus(); return; }
+  if (isNaN(price) || price <= 0) { dd.querySelector('#acf-price').focus(); return; }
+
+  btn.textContent = '…'; btn.disabled = true;
+
+  const data = { price, unit_ref: unit, category: cat, note: '' };
+  await saveIngredient(name, data);
+  ingrLib[name] = data;
+  renderIngrLib();
+
+  // Remplir le champ ingrédient de la recette
+  const targetInput = dd._targetInput;
+  if (targetInput) {
+    targetInput.value = name;
+  }
+
+  dd.classList.remove('open');
+  dd.innerHTML = '';
+  updateLiveCogs();
+  showToast(`✓ "${name}" créé · ${price} €/${unit}`);
+}
+
+function cancelAcCreate(e) {
+  e.preventDefault();
+  const dd = e.currentTarget.closest('.ac-create-form').parentElement;
+  dd.classList.remove('open');
+  dd.innerHTML = '';
 }
 
 // ── Live COGS calc ─────────────────────────────────────────
