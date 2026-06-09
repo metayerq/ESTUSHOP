@@ -3,6 +3,22 @@ Hypothèses BP Estudantina — BP_Estudantina_v3.xlsx
 À mettre à jour manuellement quand les charges changent.
 """
 
+from datetime import date, timedelta
+
+# ── Calendrier d'ouverture ───────────────────────────────────────────────────
+# weekday() : 0=lun, 1=mar, 2=mer, 3=jeu, 4=ven, 5=sam, 6=dim
+OPEN_WEEKDAYS = frozenset({0, 3, 4, 5, 6})   # lun, jeu, ven, sam, dim
+
+def count_open_days(from_date: date, to_date: date) -> int:
+    """Nombre de jours d'ouverture effectifs entre deux dates incluses."""
+    n = 0
+    cur = from_date
+    while cur <= to_date:
+        if cur.weekday() in OPEN_WEEKDAYS:
+            n += 1
+        cur += timedelta(1)
+    return max(n, 1)   # au moins 1 pour éviter la division par zéro
+
 # ── Charges fixes opérationnelles / mois (€) ────────────────────────────────
 # Source : feuille 4_Charges_fixes, mois stabilisés (Juil 26+)
 CHARGES_FIXES = {

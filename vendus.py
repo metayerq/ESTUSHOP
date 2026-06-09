@@ -467,18 +467,28 @@ def daily_breakdown(docs):
     ]
 
 
-def daily_economics(docs, catalog, n_days=1):
+def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
     """
     P&L entièrement en HT (hors taxes) — pour 1 jour ou une période.
     CA HT  = amount_net  (Vendus)
     COGS HT = supply_price × qty (prix d'achat HT dans catalogue Vendus)
-    Charges = BP en HT × n_days
-    Tout est cohérent pour le calcul de rentabilité.
+    Charges = COUT_TOTAL_JOUR × jours_ouvrés_réels_dans_la_période
+    → on compte les vrais jours d'ouverture (lun/jeu/ven/sam/dim) pour ne
+      pas gonfler les charges sur des périodes incluant des jours calendaires
+      hors ouverture.
     """
     from config import (
         COUT_TOTAL_JOUR, COUT_FIXE_JOUR, COUT_PERSONNEL_JOUR,
-        AMORT_JOUR, SEUIL_CA_JOUR,
+        AMORT_JOUR, SEUIL_CA_JOUR, count_open_days,
     )
+    from datetime import date as _date
+
+    # Jours d'ouverture effectifs dans la période
+    if from_date is not None and to_date is not None:
+        open_days = count_open_days(from_date, to_date)
+    else:
+        # Fallback : estimation (5/7 des jours calendaires, min 1)
+        open_days = max(1, round(n_days * 5 / 7))
 
     ca_ttc  = 0.0   # TTC  — affiché pour info
     ca_ht   = 0.0   # HT   — base des calculs de rentabilité
@@ -500,12 +510,12 @@ def daily_economics(docs, catalog, n_days=1):
 
     tva_col = round(ca_ttc - ca_ht, 2)
 
-    # Charges × n_days
-    cout_total = round(COUT_TOTAL_JOUR    * n_days, 2)
-    cout_fixe  = round(COUT_FIXE_JOUR     * n_days, 2)
-    cout_perso = round(COUT_PERSONNEL_JOUR * n_days, 2)
-    amort      = round(AMORT_JOUR         * n_days, 2)
-    seuil_ca   = round(SEUIL_CA_JOUR      * n_days, 2)
+    # Charges × jours_ouvrés_réels (pas jours calendaires)
+    cout_total = round(COUT_TOTAL_JOUR     * open_days, 2)
+    cout_fixe  = round(COUT_FIXE_JOUR      * open_days, 2)
+    cout_perso = round(COUT_PERSONNEL_JOUR  * open_days, 2)
+    amort      = round(AMORT_JOUR          * open_days, 2)
+    seuil_ca   = round(SEUIL_CA_JOUR       * open_days, 2)
 
     # Marge brute HT
     # - Si on a les détails articles : marge réelle (CA HT − COGS réel)

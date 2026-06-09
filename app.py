@@ -32,7 +32,7 @@ PRESET_RANGES = {
     "30d":       lambda d: (d - timedelta(29), d),
     "month":     lambda d: (d.replace(day=1), d),
     "year":      lambda d: (date(d.year, 1, 1), d),
-    "all":       lambda d: (date(2025, 6, 1), d),   # ← ajuste la date d'ouverture
+    "all":       lambda d: (date(2026, 5, 27), d),  # date d'ouverture Estudantina
 }
 PRESET_LABELS = {
     "today":     "Aujourd'hui",
@@ -157,7 +157,8 @@ def api_data():
     }
 
     # ── Économie : toujours calculée (marge réelle si articles, estimée sinon) ─
-    result["economics"] = daily_economics(docs_main, catalog, n_days)
+    result["economics"] = daily_economics(docs_main, catalog, n_days,
+                                           from_date=from_date, to_date=to_date)
 
     # ── Produits et mix : uniquement si détail articles disponible ────────────
     if fetch_items:
