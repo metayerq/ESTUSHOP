@@ -72,10 +72,8 @@ MARGE_BP_LIVRES      = 0.40    # 40 %
 MARGE_BP_GLOBALE     = 0.703   # 70.3 % (pondérée)
 
 # ── TVA moyenne pondérée (blended) ──────────────────────────────────────────
-# Estimée sur le mix produit : ~75% boissons/food INT 13%, ~20% alimentaire RED 6%,
-# ~5% livres/papeterie NOR 23% → blended ≈ 11.5%
-# À affiner quand on aura les données TVA réelles sur plusieurs mois.
-TVA_MOYENNE_BLENDED = 0.115
+# Taux dominant sur boissons/food (INT = 13%).
+TVA_MOYENNE_BLENDED = 0.13
 
 # ── Seuil de rentabilité CA ──────────────────────────────────────────────────
 # CA minimum pour couvrir toutes les charges opérationnelles (hors amort.)
