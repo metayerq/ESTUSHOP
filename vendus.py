@@ -479,7 +479,7 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
     """
     from config import (
         COUT_TOTAL_JOUR, COUT_FIXE_JOUR, COUT_PERSONNEL_JOUR,
-        AMORT_JOUR, SEUIL_CA_JOUR, count_open_days,
+        AMORT_JOUR, SEUIL_CA_JOUR, SEUIL_CA_JOUR_TTC, count_open_days,
     )
     from datetime import date as _date
 
@@ -514,8 +514,9 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
     cout_total = round(COUT_TOTAL_JOUR     * open_days, 2)
     cout_fixe  = round(COUT_FIXE_JOUR      * open_days, 2)
     cout_perso = round(COUT_PERSONNEL_JOUR  * open_days, 2)
-    amort      = round(AMORT_JOUR          * open_days, 2)
-    seuil_ca   = round(SEUIL_CA_JOUR       * open_days, 2)
+    amort         = round(AMORT_JOUR          * open_days, 2)
+    seuil_ca      = round(SEUIL_CA_JOUR       * open_days, 2)   # HT
+    seuil_ca_ttc  = round(SEUIL_CA_JOUR_TTC   * open_days, 2)   # TTC — affiché en principal
 
     # Marge brute HT
     # - Si on a les détails articles : marge réelle (CA HT − COGS réel)
@@ -535,9 +536,9 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
     # EBITDA HT = marge brute HT − charges totales HT de la période
     ebitda_ht = round(marge_ht - cout_total, 2) if marge_ht is not None else None
 
-    # Seuil rentabilité en CA HT
-    manque_seuil = round(max(0, seuil_ca - ca_ht), 2)
-    pct_seuil    = round(ca_ht / seuil_ca * 100) if seuil_ca else 0
+    # Seuil rentabilité — comparaison TTC vs TTC (ce que tu vois en caisse)
+    manque_seuil = round(max(0, seuil_ca_ttc - ca_ttc), 2)
+    pct_seuil    = round(ca_ttc / seuil_ca_ttc * 100) if seuil_ca_ttc else 0
 
     return {
         # CA
@@ -557,10 +558,11 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
         "amort_jour":       amort,
         # EBITDA HT
         "ebitda_ht":        ebitda_ht,
-        # Seuil (en CA HT)
-        "seuil_ca_ht":      seuil_ca,
-        "manque_seuil":     manque_seuil,
-        "pct_seuil":        pct_seuil,
+        # Seuil (TTC en principal — ce qu'on lit sur la caisse)
+        "seuil_ca_ttc":     seuil_ca_ttc,
+        "seuil_ca_ht":      seuil_ca,       # HT gardé pour info
+        "manque_seuil":     manque_seuil,   # en TTC
+        "pct_seuil":        pct_seuil,      # basé sur TTC vs TTC
     }
 
 

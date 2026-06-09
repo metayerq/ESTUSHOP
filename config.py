@@ -71,6 +71,13 @@ MARGE_BP_PATISSERIES = 0.638   # 63.8 %
 MARGE_BP_LIVRES      = 0.40    # 40 %
 MARGE_BP_GLOBALE     = 0.703   # 70.3 % (pondérée)
 
+# ── TVA moyenne pondérée (blended) ──────────────────────────────────────────
+# Estimée sur le mix produit : ~75% boissons/food INT 13%, ~20% alimentaire RED 6%,
+# ~5% livres/papeterie NOR 23% → blended ≈ 11.5%
+# À affiner quand on aura les données TVA réelles sur plusieurs mois.
+TVA_MOYENNE_BLENDED = 0.115
+
 # ── Seuil de rentabilité CA ──────────────────────────────────────────────────
 # CA minimum pour couvrir toutes les charges opérationnelles (hors amort.)
-SEUIL_CA_JOUR = round(COUT_TOTAL_JOUR / MARGE_BP_GLOBALE, 2)  # ≈ 280 €/jour
+SEUIL_CA_JOUR     = round(COUT_TOTAL_JOUR / MARGE_BP_GLOBALE, 2)          # ≈ 280 €/jour HT
+SEUIL_CA_JOUR_TTC = round(SEUIL_CA_JOUR * (1 + TVA_MOYENNE_BLENDED), 2)  # ≈ 312 €/jour TTC

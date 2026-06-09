@@ -127,7 +127,7 @@ function render(d) {
   document.getElementById('eco-label').textContent      = `Économie ${periodSuffix}`;
   document.getElementById('eco-charges-label').textContent = `Charges ${periodSuffix}`;
   document.getElementById('eco-ebitda-label').textContent  = `EBITDA ${periodSuffix}`;
-  document.getElementById('eco-seuil-label').textContent   = `Seuil CA ${periodSuffix}`;
+  document.getElementById('eco-seuil-label').textContent   = `Seuil CA TTC ${periodSuffix}`;
   document.getElementById('eco-marge-label').textContent   = 'Marge brute';
 
   const eco = d.economics;
@@ -161,13 +161,15 @@ function render(d) {
         : `<span style="color:var(--red)">Déficit ${fmt(Math.abs(eco.ebitda_ht))}</span>`;
     }
 
-    // Seuil CA
-    document.getElementById('eco-seuil').textContent = fmt(eco.seuil_ca_ht);
+    // Seuil CA — TTC en principal (ce qu'on lit en caisse), HT en note
+    document.getElementById('eco-seuil').textContent = fmt(eco.seuil_ca_ttc);
     const seuilSub = document.getElementById('eco-seuil-sub');
     if (eco.manque_seuil > 0) {
-      seuilSub.innerHTML = `<span style="color:var(--red)">Il manque ${fmt(eco.manque_seuil)} HT</span>`;
+      seuilSub.innerHTML = `<span style="color:var(--red)">Il manque ${fmt(eco.manque_seuil)} TTC</span>`
+        + ` <span style="color:var(--faint)">· ${fmt(eco.seuil_ca_ht)} HT</span>`;
     } else {
-      seuilSub.innerHTML = `<span style="color:var(--green)">Seuil dépassé ✓</span>`;
+      seuilSub.innerHTML = `<span style="color:var(--green)">Seuil dépassé ✓</span>`
+        + ` <span style="color:var(--faint)">· ${fmt(eco.seuil_ca_ht)} HT</span>`;
     }
     document.getElementById('eco-seuil-bar').style.width = Math.min(100, eco.pct_seuil) + '%';
   }
