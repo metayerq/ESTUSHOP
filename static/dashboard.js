@@ -1,8 +1,9 @@
 const COLORS = ['rgba(55,53,47,1)','rgba(55,53,47,.65)','rgba(55,53,47,.4)','rgba(55,53,47,.25)','rgba(55,53,47,.12)','rgba(55,53,47,.07)'];
 const BAR_ACTIVE = 'rgba(55,53,47,0.85)';
 const BAR_IDLE   = 'rgba(55,53,47,0.12)';
-let chartHourly = null, chartPayments = null, chartWeek = null;
-let chartCurve  = null, chartDist    = null, chartDaily = null;
+let chartHourly = null, chartWeek = null;
+let chartCurve  = null, chartDaily = null;
+let activeProdTab = 'period'; // 'period' | '7d'
 
 // ── Preset actif ──────────────────────────────────────────────────────────────
 let currentPreset = 'today';
@@ -67,6 +68,12 @@ function render(d) {
       + ')';
   }
   document.getElementById('subtitle').textContent = subtitle;
+
+  // Label KPI dynamique
+  const kpiLabel = d.is_single_day
+    ? (d.is_today ? 'Aujourd\'hui' : fmtDate(d.date).replace(/^\w/, c => c.toUpperCase()))
+    : d.period_label;
+  document.getElementById('kpi-section-label').textContent = kpiLabel;
 
   // Mis à jour
   const updatedEl = document.getElementById('updated-at');
@@ -215,121 +222,67 @@ function render(d) {
     dailyCanvas.style.display  = 'none';
   }
 
-  // ── Chart paiements ───────────────────────────────────────────────────────
-  const pCtx = document.getElementById('chart-payments').getContext('2d');
-  if (chartPayments) chartPayments.destroy();
-  const noData = !d.payments.labels.length;
-  if (noData) {
-    document.getElementById('payment-legend').innerHTML =
-      '<p style="font-size:12px;color:var(--muted);">Aucun mouvement enregistré.</p>';
+  // ── Paiements compacts (remplace le donut) ───────────────────────────────
+  const payEl = document.getElementById('payment-compact');
+  if (!d.payments.labels.length) {
+    payEl.innerHTML = '<p style="font-size:12px;color:var(--muted);">Aucun mouvement enregistré.</p>';
   } else {
-    chartPayments = new Chart(pCtx, {
-      type: 'doughnut',
-      data: {
-        labels: d.payments.labels,
-        datasets: [{
-          data: d.payments.values,
-          backgroundColor: COLORS.slice(0, d.payments.labels.length),
-          borderWidth: 3, borderColor: '#fff'
-        }]
-      },
-      options: {
-        cutout: '68%',
-        plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: ctx => ' ' + ctx.label + ': ' + fmt(ctx.raw) } }
-        }
-      }
-    });
     const total = d.payments.values.reduce((a, b) => a + b, 0);
-    document.getElementById('payment-legend').innerHTML = d.payments.labels.map((l, i) => {
-      const p = total > 0 ? Math.round(d.payments.values[i] / total * 100) : 0;
-      return `<div class="pay-row">
-        <span class="pay-name"><span class="pay-dot" style="background:${COLORS[i]}"></span>${l}</span>
-        <span class="pay-val">${fmt(d.payments.values[i])} · ${p}%</span>
+    payEl.innerHTML = d.payments.labels.map((l, i) => {
+      const val = d.payments.values[i];
+      const pct = total > 0 ? Math.round(val / total * 100) : 0;
+      return `<div class="pay-compact-row">
+        <span class="pay-label">
+          <span class="pay-dot" style="background:${COLORS[i]}"></span>${l}
+        </span>
+        <span class="pay-nums">${fmt(val)} · ${pct}%</span>
+      </div>
+      <div class="pay-bar-track">
+        <div class="pay-bar-fill" style="width:${pct}%;background:${COLORS[i]}"></div>
       </div>`;
     }).join('');
   }
 
-  // ── Performance commerciale ───────────────────────────────────────────────
-  if (d.median != null) {
-    document.getElementById('kpi-median').textContent = fmt(d.median);
-    const diff = d.today.ticket ? Math.round((d.median - d.today.ticket) / d.today.ticket * 100) : 0;
-    document.getElementById('kpi-median-vs').textContent = fmt(d.today.ticket) + (diff !== 0 ? ` (${diff > 0 ? '+' : ''}${diff}%)` : '');
-  }
-  if (d.upsell && d.upsell.total) {
-    document.getElementById('kpi-upsell').textContent = d.upsell.rate + '%';
-    document.getElementById('kpi-upsell-sub').textContent =
-      `${d.upsell.multi} tickets multi · ${d.upsell.single} seul`;
-  }
+  // ── Mix produits ──────────────────────────────────────────────────────────
   const MIX_COLORS = {'Boissons':'rgba(55,53,47,1)','Food':'rgba(55,53,47,.55)','Extras':'rgba(55,53,47,.3)','Autre':'rgba(55,53,47,.15)'};
   if (d.mix && d.mix.length) {
     document.getElementById('mix-bars').innerHTML = d.mix.map(m => `
-      <div style="margin-bottom:6px;">
-        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+      <div style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;">
           <span style="color:var(--muted)">${m.label}</span>
-          <span style="font-weight:500">${m.pct}% · ${fmt(m.amount)}</span>
+          <span style="font-weight:500">${m.pct}% <span style="color:var(--muted);font-weight:400">· ${fmt(m.amount)}</span></span>
         </div>
         <div style="height:4px;background:var(--bar-bg);border-radius:2px;">
           <div style="height:4px;background:${MIX_COLORS[m.label]||'#888'};border-radius:2px;width:${m.pct}%"></div>
         </div>
       </div>`).join('');
-  } else if (!d.has_items) {
+  } else {
     document.getElementById('mix-bars').innerHTML =
       '<span style="font-size:12px;color:var(--muted);">Disponible pour ≤ 7 jours</span>';
   }
 
-  // ── Distribution des tickets ──────────────────────────────────────────────
-  if (d.ticket_dist && d.ticket_dist.length) {
-    const dCtx = document.getElementById('chart-dist').getContext('2d');
-    if (chartDist) chartDist.destroy();
-    const maxCount = Math.max(...d.ticket_dist.map(b => b.count)) || 1;
-    chartDist = new Chart(dCtx, {
-      type: 'bar',
-      data: {
-        labels: d.ticket_dist.map(b => b.label),
-        datasets: [{
-          data: d.ticket_dist.map(b => b.count),
-          backgroundColor: d.ticket_dist.map(b => b.count === maxCount ? BAR_ACTIVE : BAR_IDLE),
-          borderRadius: 4, borderSkipped: false,
-        }]
-      },
-      options: {
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: ctx => {
-                const b = d.ticket_dist[ctx.dataIndex];
-                return ` ${b.count} ticket${b.count > 1 ? 's' : ''} · ${b.pct}%`;
-              }
-            }
-          }
-        },
-        scales: {
-          y: { beginAtZero: true, ticks: { stepSize: 1, font:{size:11}, color:'rgba(120,119,111,1)' }, grid:{color:'rgba(55,53,47,0.06)'}, border:{display:false} },
-          x: { ticks: { font:{size:11}, color:'rgba(120,119,111,1)' }, grid:{display:false}, border:{display:false} }
-        }
-      }
-    });
-  }
+  // Distribution tickets et TVA retirés du flux principal
 
-  // ── Tendance WoW ──────────────────────────────────────────────────────────
+  // ── WoW strip (sous sparkline) ────────────────────────────────────────────
+  const wowStrip = document.getElementById('wow-strip');
   if (d.wow) {
+    wowStrip.style.display = 'flex';
     document.getElementById('kpi-wow-ca').textContent = fmt(d.wow.cur_ca);
     document.getElementById('kpi-wow-ca-delta').innerHTML = d.wow.growth_ca != null
-      ? `<span class="${d.wow.growth_ca >= 0 ? 'delta-up' : 'delta-down'}">${d.wow.growth_ca >= 0 ? '+' : ''}${d.wow.growth_ca}% vs sem. préc.</span>`
-      : '<span style="color:var(--muted)">pas de comparatif</span>';
+      ? `<span class="${d.wow.growth_ca >= 0 ? 'delta-up' : 'delta-down'}">${d.wow.growth_ca >= 0 ? '+' : ''}${d.wow.growth_ca}%</span>`
+      : '';
     document.getElementById('kpi-wow-nb').textContent = d.wow.cur_nb;
     document.getElementById('kpi-wow-nb-delta').innerHTML = d.wow.growth_nb != null
-      ? `<span class="${d.wow.growth_nb >= 0 ? 'delta-up' : 'delta-down'}">${d.wow.growth_nb >= 0 ? '+' : ''}${d.wow.growth_nb}% vs sem. préc.</span>`
-      : '<span style="color:var(--muted)">pas de comparatif</span>';
+      ? `<span class="${d.wow.growth_nb >= 0 ? 'delta-up' : 'delta-down'}">${d.wow.growth_nb >= 0 ? '+' : ''}${d.wow.growth_nb}%</span>`
+      : '';
+  } else {
+    wowStrip.style.display = 'none';
   }
   if (d.weekdays && d.weekdays.length) {
     const best = d.weekdays[0];
     document.getElementById('kpi-best-day').textContent = best.day;
     document.getElementById('kpi-best-day-sub').textContent =
-      `moy. ${fmt(best.avg_ca)} · ${best.n_days}j de données`;
+      `moy. ${fmt(best.avg_ca)}`;
   }
 
   // ── Courbe cumulative (jour unique) ───────────────────────────────────────
@@ -385,10 +338,16 @@ function render(d) {
     rushSection.style.display = 'none';
   }
 
-  // ── Top produits (détail articles requis) ────────────────────────────────
+  // ── Produits (toggle période / 7j) ───────────────────────────────────────
   const topSection = document.getElementById('top-products-section');
   if (topSection) {
-    topSection.style.display = d.has_items ? '' : 'none';
+    topSection.style.display = '';
+    // Mettre à jour le label selon la période active
+    const periodLbl = d.is_single_day ? (d.is_today ? 'aujourd\'hui' : 'cette journée') : d.period_label?.toLowerCase() || 'la période';
+    document.getElementById('products-section-label').textContent = `Produits vendus`;
+    // Activer le tab période seulement si on a des items
+    document.getElementById('tab-prod-period').style.display = d.has_items ? '' : 'none';
+    if (!d.has_items && activeProdTab === 'period') switchProdTab('7d');
   }
   if (d.has_items && d.products) {
     const maxQty = d.products.length ? d.products[0].qty : 1;
@@ -441,27 +400,6 @@ function render(d) {
     }).join('');
   }
 
-  // ── Ventilation TVA ───────────────────────────────────────────────────────
-  const tvaSection = document.getElementById('tva-section');
-  if (d.tva && d.tva.rows.length) {
-    tvaSection.style.display = '';
-    document.getElementById('tva-body').innerHTML = d.tva.rows.map(r => `
-      <tr>
-        <td><span class="badge">${r.rate}%</span></td>
-        <td class="amount">${fmt(r.base)}</td>
-        <td class="amount">${fmt(r.tva)}</td>
-        <td class="amount">${fmt(r.total)}</td>
-      </tr>`).join('');
-    document.getElementById('tva-foot').innerHTML = `
-      <tr>
-        <td>Total</td>
-        <td class="amount">${fmt(d.tva.totals.base)}</td>
-        <td class="amount">${fmt(d.tva.totals.tva)}</td>
-        <td class="amount">${fmt(d.tva.totals.total)}</td>
-      </tr>`;
-  } else {
-    tvaSection.style.display = 'none';
-  }
 
   // ── Produits non vendus (jour unique) ────────────────────────────────────
   const unsoldSection = document.getElementById('unsold-section');
@@ -609,6 +547,15 @@ function closeDrawer() {
 }
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+// ── Toggle tableau produits ────────────────────────────────────────────────
+function switchProdTab(tab) {
+  activeProdTab = tab;
+  document.getElementById('prod-view-period').style.display = tab === 'period' ? '' : 'none';
+  document.getElementById('prod-view-7d').style.display     = tab === '7d'     ? '' : 'none';
+  document.getElementById('tab-prod-period').classList.toggle('active', tab === 'period');
+  document.getElementById('tab-prod-7d').classList.toggle('active',     tab === '7d');
+}
 
 // ── Init ───────────────────────────────────────────────────────────────────
 loadData();

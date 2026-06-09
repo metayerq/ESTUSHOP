@@ -8,6 +8,43 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="/static/style.css">
+<style>
+/* ── Compact payments ── */
+.pay-compact { display:flex; flex-direction:column; gap:8px; margin-top:4px; }
+.pay-compact-row {
+  display:flex; align-items:center; justify-content:space-between;
+  font-size:13px;
+}
+.pay-compact-row .pay-label { display:flex; align-items:center; gap:8px; color:var(--text); }
+.pay-compact-row .pay-dot   { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.pay-compact-row .pay-nums  { color:var(--muted); font-variant-numeric:tabular-nums; }
+.pay-bar-track { height:3px; background:var(--bar-bg); border-radius:2px; margin-top:3px; }
+.pay-bar-fill  { height:3px; border-radius:2px; }
+
+/* ── WoW strip ── */
+.wow-strip {
+  display:flex; gap:0; flex-wrap:nowrap;
+  font-size:12px; color:var(--muted);
+  margin-top:8px; padding:10px 16px;
+  background:var(--bg-page); border-radius:0 0 8px 8px;
+  border-top:1px solid var(--border);
+  align-items:center; gap:4px;
+}
+.wow-strip .wow-item { display:flex; align-items:center; gap:6px; }
+.wow-strip .wow-sep  { color:var(--faint); margin:0 10px; }
+
+/* ── Product tab toggle ── */
+.prod-tabs { display:flex; gap:0; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+.prod-tab  {
+  font-family:inherit; font-size:12px; font-weight:500;
+  padding:5px 14px; border:none; background:transparent;
+  color:var(--muted); cursor:pointer;
+  border-right:1px solid var(--border); transition:background .1s, color .1s;
+}
+.prod-tab:last-child { border-right:none; }
+.prod-tab:hover   { background:var(--bg-hover); color:var(--text); }
+.prod-tab.active  { background:var(--bg-card); color:var(--text); font-weight:600; }
+</style>
 </head>
 <body>
 <div class="page">
@@ -37,8 +74,8 @@
     <button class="pill"        data-preset="all"       onclick="setPreset('all')">Tout</button>
   </div>
 
-  <!-- KPIs -->
-  <div class="section-label">Aujourd'hui</div>
+  <!-- KPIs — label dynamique selon la période -->
+  <div class="section-label" id="kpi-section-label">Aujourd'hui</div>
   <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:32px;">
     <div class="kpi-grid">
       <div class="kpi-cell">
@@ -74,7 +111,7 @@
     </div>
   </div>
 
-  <!-- Économie du jour -->
+  <!-- Économie -->
   <div class="section-label" id="eco-label" style="margin-top:32px;">Économie du jour</div>
   <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:32px;background:var(--bg-card);">
     <div class="kpi-grid">
@@ -104,14 +141,35 @@
     </div>
   </div>
 
-  <!-- Sparkline semaine -->
+  <!-- Sparkline 7j + strip WoW fusionné -->
   <div class="section-label">7 derniers jours</div>
-  <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:32px;padding:20px 24px;">
-    <canvas id="chart-week" height="55"></canvas>
-    <div id="week-labels" style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--muted);"></div>
+  <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:32px;">
+    <div style="padding:20px 24px 12px;">
+      <canvas id="chart-week" height="55"></canvas>
+      <div id="week-labels" style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--muted);"></div>
+    </div>
+    <!-- WoW + meilleur jour intégrés sous la sparkline -->
+    <div class="wow-strip" id="wow-strip" style="display:none;">
+      <div class="wow-item">
+        <span>Semaine en cours</span>
+        <strong id="kpi-wow-ca">—</strong>
+        <span id="kpi-wow-ca-delta"></span>
+      </div>
+      <span class="wow-sep">·</span>
+      <div class="wow-item">
+        <span id="kpi-wow-nb">—</span> tx
+        <span id="kpi-wow-nb-delta"></span>
+      </div>
+      <span class="wow-sep">·</span>
+      <div class="wow-item" id="weekday-cell">
+        <span>Meilleur jour :</span>
+        <strong id="kpi-best-day">—</strong>
+        <span id="kpi-best-day-sub" style="color:var(--faint)"></span>
+      </div>
+    </div>
   </div>
 
-  <!-- Charts -->
+  <!-- Répartition : graphe temporel + paiements compacts -->
   <div class="section-label">Répartition</div>
   <div class="charts-grid" style="margin-bottom:32px;">
     <div class="chart-block">
@@ -120,62 +178,26 @@
       <canvas id="chart-daily"  height="130" style="display:none;"></canvas>
     </div>
     <div class="chart-block">
-      <div class="section-label" style="margin-bottom:16px;">Modes de paiement</div>
-      <canvas id="chart-payments" height="160"></canvas>
-      <div id="payment-legend" style="margin-top:16px;"></div>
+      <div class="section-label" style="margin-bottom:12px;">Modes de paiement</div>
+      <div id="payment-compact" class="pay-compact"></div>
     </div>
   </div>
 
-  <!-- Performance commerciale -->
-  <div class="section-label" style="margin-top:32px;">Performance commerciale</div>
-  <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:32px;">
-    <div class="kpi-grid" id="perf-grid">
-      <div class="kpi-cell">
-        <div class="kpi-label">Ticket médian</div>
-        <div class="kpi-value" id="kpi-median">—</div>
-        <div class="kpi-delta" style="color:var(--muted)">vs moy <span id="kpi-median-vs"></span></div>
-      </div>
-      <div class="kpi-cell">
-        <div class="kpi-label">Taux upsell</div>
-        <div class="kpi-value" id="kpi-upsell">—</div>
-        <div class="kpi-delta" id="kpi-upsell-sub" style="color:var(--muted)"></div>
-      </div>
-      <div class="kpi-cell" style="border-right:none;">
-        <div class="kpi-label">Mix boissons / food</div>
-        <div id="mix-bars" style="margin-top:8px;"></div>
-      </div>
+  <!-- Mix boissons / food -->
+  <div class="section-label" style="margin-top:4px;">Mix produits</div>
+  <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:32px;background:var(--bg-card);">
+    <div style="padding:16px 20px;" id="mix-bars">
+      <span style="font-size:12px;color:var(--muted);">Chargement…</span>
     </div>
   </div>
 
-  <!-- Distribution tickets -->
-  <div class="section-label">Distribution des tickets</div>
-  <div class="card" style="padding:20px 22px;margin-bottom:32px;max-width:420px;">
-    <canvas id="chart-dist" height="100"></canvas>
+  <!-- Pics d'activité (conditionnel — jour unique) -->
+  <div id="rush-section" style="display:none;margin-bottom:32px;">
+    <div class="section-label">Pics d'activité</div>
+    <div id="rush-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
   </div>
 
-  <!-- Tendance semaine -->
-  <div class="section-label">Tendance</div>
-  <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:32px;">
-    <div class="kpi-grid">
-      <div class="kpi-cell">
-        <div class="kpi-label">CA semaine en cours</div>
-        <div class="kpi-value" id="kpi-wow-ca">—</div>
-        <div class="kpi-delta" id="kpi-wow-ca-delta"></div>
-      </div>
-      <div class="kpi-cell">
-        <div class="kpi-label">Transactions semaine</div>
-        <div class="kpi-value" id="kpi-wow-nb">—</div>
-        <div class="kpi-delta" id="kpi-wow-nb-delta"></div>
-      </div>
-      <div class="kpi-cell" style="border-right:none;" id="weekday-cell">
-        <div class="kpi-label">Meilleur jour</div>
-        <div class="kpi-value" id="kpi-best-day">—</div>
-        <div class="kpi-delta" id="kpi-best-day-sub" style="color:var(--muted)"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Courbe cumulative -->
+  <!-- Courbe cumulative (conditionnel — jour unique) -->
   <div id="curve-section" style="display:none;margin-bottom:32px;">
     <div class="section-label">Évolution des ventes</div>
     <div class="card" style="padding:20px 22px;">
@@ -183,75 +205,56 @@
     </div>
   </div>
 
-  <!-- Rush detector -->
-  <div id="rush-section" style="display:none;margin-bottom:32px;">
-    <div class="section-label">Pics d'activité</div>
-    <div id="rush-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
-  </div>
-
-  <!-- Top produits -->
+  <!-- Produits — un seul tableau avec toggle période / 7j -->
   <div id="top-products-section">
-  <div class="section-label">Top produits</div>
-  <div class="table-wrap" style="margin-bottom:32px;">
-    <table>
-      <thead>
-        <tr>
-          <th>Produit</th>
-          <th class="right">Qté</th>
-          <th class="right">Prix unit.</th>
-          <th class="right">CA total</th>
-          <th class="right">Marge</th>
-          <th style="width:100px;"></th>
-        </tr>
-      </thead>
-      <tbody id="products-body">
-        <tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">Chargement…</td></tr>
-      </tbody>
-    </table>
-  </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <div class="section-label" style="margin:0;" id="products-section-label">Top produits</div>
+      <div class="prod-tabs">
+        <button class="prod-tab active" id="tab-prod-period" onclick="switchProdTab('period')">Période</button>
+        <button class="prod-tab"        id="tab-prod-7d"     onclick="switchProdTab('7d')">7 jours</button>
+      </div>
+    </div>
 
-  </div><!-- /top-products-section -->
-
-  <!-- CA moyen par produit sur 7j -->
-  <div class="section-label" style="margin-top:32px;">Performance produits · 7 jours</div>
-  <div class="table-wrap" style="margin-bottom:32px;">
-    <table>
-      <thead>
-        <tr>
-          <th>Produit</th>
-          <th class="right">Jours vendus</th>
-          <th class="right">Qté totale</th>
-          <th class="right">CA total</th>
-          <th class="right">Marge</th>
-          <th class="right">CA moy/jour</th>
-        </tr>
-      </thead>
-      <tbody id="products7d-body">
-        <tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">Chargement…</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Ventilation TVA -->
-  <div id="tva-section" style="display:none;margin-bottom:32px;">
-    <div class="section-label">Ventilation TVA</div>
-    <div class="table-wrap">
+    <!-- Vue période -->
+    <div id="prod-view-period" class="table-wrap" style="margin-bottom:32px;">
       <table>
         <thead>
           <tr>
-            <th>Taux</th>
-            <th class="right">Base HT</th>
-            <th class="right">TVA collectée</th>
-            <th class="right">Total TTC</th>
+            <th>Produit</th>
+            <th class="right">Qté</th>
+            <th class="right">Prix unit.</th>
+            <th class="right">CA total</th>
+            <th class="right">Marge</th>
+            <th style="width:100px;"></th>
           </tr>
         </thead>
-        <tbody id="tva-body"></tbody>
-        <tfoot id="tva-foot" style="border-top:2px solid var(--text);"></tfoot>
+        <tbody id="products-body">
+          <tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Chargement…</td></tr>
+        </tbody>
       </table>
     </div>
-  </div>
 
-  <!-- Produits non vendus -->
+    <!-- Vue 7 jours glissants -->
+    <div id="prod-view-7d" class="table-wrap" style="margin-bottom:32px;display:none;">
+      <table>
+        <thead>
+          <tr>
+            <th>Produit</th>
+            <th class="right">Jours vendus</th>
+            <th class="right">Qté</th>
+            <th class="right">CA total</th>
+            <th class="right">Marge</th>
+            <th class="right">CA moy/jour</th>
+          </tr>
+        </thead>
+        <tbody id="products7d-body">
+          <tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Chargement…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div><!-- /top-products-section -->
+
+  <!-- Produits non vendus (conditionnel) -->
   <div id="unsold-section" style="display:none;margin-bottom:32px;">
     <div class="section-label">Pas vendus aujourd'hui</div>
     <div id="unsold-list" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
