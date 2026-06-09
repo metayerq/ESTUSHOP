@@ -14,6 +14,34 @@
 .cogs-nav a:hover { color:var(--text); }
 .cogs-nav .sep { color:var(--faint); }
 
+/* ── Onglets ── */
+.view-tabs {
+  display:flex; gap:0; margin-bottom:24px;
+  border:1px solid var(--border); border-radius:8px;
+  overflow:hidden; background:var(--bg-page);
+  width:fit-content;
+}
+.view-tab {
+  font-family:inherit; font-size:13px; font-weight:500;
+  padding:8px 20px; border:none; background:transparent;
+  color:var(--muted); cursor:pointer;
+  transition:background .12s, color .12s;
+  border-right:1px solid var(--border);
+}
+.view-tab:last-child { border-right:none; }
+.view-tab:hover { background:var(--bg-hover); color:var(--text); }
+.view-tab.active {
+  background:var(--bg-card); color:var(--text);
+  font-weight:600; box-shadow:inset 0 -2px 0 var(--text);
+}
+.view-tab .tab-badge {
+  display:inline-block; margin-left:6px;
+  font-size:10px; font-weight:500;
+  background:var(--bg-hover); color:var(--faint);
+  padding:1px 6px; border-radius:10px;
+  vertical-align:middle;
+}
+
 /* ── Summary bar ── */
 .summary-bar {
   display:flex; gap:0; flex-wrap:nowrap;
@@ -386,6 +414,19 @@
     </div>
   </div>
 
+  <!-- Onglets de vue -->
+  <div class="view-tabs">
+    <button class="view-tab active" id="tab-products" onclick="switchTab('products')">
+      Produits &amp; marges <span class="tab-badge" id="tab-badge-products">—</span>
+    </button>
+    <button class="view-tab" id="tab-ingredients" onclick="switchTab('ingredients')">
+      Ingrédients <span class="tab-badge" id="tab-badge-ingredients">—</span>
+    </button>
+  </div>
+
+  <!-- Vue produits -->
+  <div id="view-products">
+
   <!-- Summary -->
   <div class="summary-bar" id="summary-bar" style="display:none;">
     <div class="sum-item"><div class="sum-label">Produits</div><div class="sum-val" id="s-total">—</div></div>
@@ -412,8 +453,11 @@
   <!-- Products -->
   <div id="content"><div class="loading">Chargement…</div></div>
 
-  <!-- ── Bibliothèque ingrédients ── -->
-  <div id="ingr-section">
+  </div><!-- /view-products -->
+
+  <!-- Vue ingrédients -->
+  <div id="view-ingredients" style="display:none;">
+  <div id="ingr-section" style="margin-top:0;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
       <div class="section-label" style="margin:0;">Bibliothèque d'ingrédients</div>
     </div>
@@ -444,7 +488,8 @@
         <button class="btn-primary" onclick="addIngredient()">+ Ajouter</button>
         </div>
     </div>
-  </div>
+  </div><!-- /ingr-section -->
+  </div><!-- /view-ingredients -->
 
 </div><!-- /page -->
 
@@ -623,6 +668,25 @@ let sortCol       = null;        // colonne de tri active
 let sortDir       = 1;           // 1=asc, -1=desc
 
 // ══════════════════════════════════════════════════════════
+// ONGLETS
+// ══════════════════════════════════════════════════════════
+function switchTab(tab) {
+  const isProducts    = tab === 'products';
+  document.getElementById('view-products').style.display    = isProducts ? '' : 'none';
+  document.getElementById('view-ingredients').style.display = isProducts ? 'none' : '';
+  document.getElementById('tab-products').classList.toggle('active',    isProducts);
+  document.getElementById('tab-ingredients').classList.toggle('active', !isProducts);
+  // Scroll en haut à chaque changement d'onglet
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function updateTabBadges() {
+  document.getElementById('tab-badge-products').textContent    = allProducts.length || '—';
+  const ingrCount = Object.keys(ingrLib).length;
+  document.getElementById('tab-badge-ingredients').textContent = ingrCount || '—';
+}
+
+// ══════════════════════════════════════════════════════════
 // LOAD
 // ══════════════════════════════════════════════════════════
 async function loadCogs() {
@@ -638,6 +702,7 @@ async function loadCogs() {
   buildCatFilter();
   applyFilters(); // applyFilters appelle buildSummary avec les produits filtrés
   renderIngrLib();
+  updateTabBadges();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -944,6 +1009,7 @@ async function submitAcCreate(e) {
   await saveIngredient(name, data);
   ingrLib[name] = data;
   renderIngrLib();
+  updateTabBadges();
 
   // Remplir le champ ingrédient de la recette
   const targetInput = dd._targetInput;
@@ -1131,6 +1197,7 @@ async function addIngredient() {
   await saveIngredient(name, { price, unit_ref: unit, category: cat, note: '' });
   ingrLib[name] = { price, unit_ref: unit, category: cat, note: '' };
   renderIngrLib();
+  updateTabBadges();
   document.getElementById('new-name').value  = '';
   document.getElementById('new-cat').value   = '';
   document.getElementById('new-price').value = '';
@@ -1142,6 +1209,7 @@ async function deleteIngr(name) {
   await fetch(`/api/ingredients/${encodeURIComponent(name)}`, { method: 'DELETE' });
   delete ingrLib[name];
   renderIngrLib();
+  updateTabBadges();
   showToast(`✓ ${name} supprimé`);
 }
 
