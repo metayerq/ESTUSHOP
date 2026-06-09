@@ -45,9 +45,10 @@ PRESET_LABELS = {
     "all":       "Depuis l'ouverture",
 }
 # Presets pour lesquels on récupère le détail articles (COGS, produits, mix)
-# today/yesterday/3d/7d : Vendus retourne ~7 jours en un appel, on filtre côté Python
-# Au-delà (30d, month, year, all) : trop de pages → timeout Vercel, on estime via taux BP
-FETCH_ITEMS_PRESETS = {"today", "yesterday", "3d", "7d"}
+# Tous les presets fetchent les items pour avoir le COGS réel.
+# Note : pour des périodes très longues (>3 mois, centaines de transactions),
+# repasser certains presets en estimation si le timeout Vercel devient un problème.
+FETCH_ITEMS_PRESETS = {"today", "yesterday", "3d", "7d", "30d", "month", "year", "all"}
 
 app = Flask(__name__)
 
@@ -77,10 +78,14 @@ def api_data():
     # docs_main + appels indépendants (balance, catalog, sparkline…) tournent
     # en même temps → temps total ≈ max(docs_main, others) au lieu de somme.
     def _load_docs_main():
-        """Un seul fetch qui couvre docs_main ET docs_7d (si items requis)."""
+        """Fetch avec items sur toute la période demandée.
+        Pour today/yesterday/3d/7d on part de since_7d pour avoir aussi les docs_7d
+        en un seul appel (filtrés côté Python ensuite).
+        Pour les presets plus longs (30d, month, year, all) on part de from_date.
+        """
         if fetch_items:
-            # On charge 7j d'un coup — docs_main sera filtré côté Python
-            return get_documents_with_items(since_7d, today_real.isoformat())
+            fetch_from = min(from_date, today_real - timedelta(6))  # couvre toujours 7j pour docs_7d
+            return get_documents_with_items(fetch_from.isoformat(), today_real.isoformat())
         return get_documents(from_date.isoformat(), to_date.isoformat())
 
     def _load_comp():
@@ -100,7 +105,7 @@ def api_data():
         fut_weekday = pool.submit(best_weekday)
 
         try:
-            docs_7d = fut_docs.result(timeout=20)
+            docs_7d = fut_docs.result(timeout=55)  # laisse de la marge pour les longues périodes
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
