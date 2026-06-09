@@ -45,8 +45,9 @@ PRESET_LABELS = {
     "all":       "Depuis l'ouverture",
 }
 # Presets pour lesquels on récupère le détail articles (COGS, produits, mix)
-# Limité à today/yesterday pour rester sous le timeout Vercel (10s)
-FETCH_ITEMS_PRESETS = {"today", "yesterday"}
+# today/yesterday/3d/7d : Vendus retourne ~7 jours en un appel, on filtre côté Python
+# Au-delà (30d, month, year, all) : trop de pages → timeout Vercel, on estime via taux BP
+FETCH_ITEMS_PRESETS = {"today", "yesterday", "3d", "7d"}
 
 app = Flask(__name__)
 

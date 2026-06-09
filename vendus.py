@@ -231,7 +231,7 @@ def get_catalog():
             gross  = float(p.get("gross_price", 0))
             supply = float(p.get("supply_price", 0))
             margin_pct = round((gross - supply) / gross * 100, 1) if gross and supply else None
-            result[p["title"]] = {
+            result[p["title"].strip()] = {
                 "id":          p["id"],
                 "name":        p["title"],
                 "category":    p.get("class_name", ""),
@@ -279,7 +279,7 @@ def category_mix(docs, catalog):
     by_group = {"Boissons": 0.0, "Food": 0.0, "Extras": 0.0, "Autre": 0.0}
     for d in docs:
         for item in d.get("items", []):
-            name  = item.get("title", "")
+            name  = item.get("title", "").strip()
             total = float(item.get("amounts", {}).get("net_total", 0))  # HT
             cat   = catalog.get(name, {})
             cid   = cat.get("category_id")
@@ -503,7 +503,7 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
         # COGS item par item (supply_price est HT dans Vendus)
         for item in d.get("items", []):
             qty  = float(item.get("qty", 0))
-            name = item.get("title", "")
+            name = item.get("title", "").strip()   # strip: titres Vendus ont parfois des espaces
             cat  = catalog.get(name, {})
             if cat.get("cost"):
                 cogs_ht += cat["cost"] * qty
@@ -668,7 +668,7 @@ def product_stats_from_docs(docs_with_items, catalog):
             continue
         day = detail.get("date", "")[:10]
         for item in detail.get("items", []):
-            name    = item.get("title", "—")
+            name    = item.get("title", "—").strip()
             qty     = float(item.get("qty", 0))
             amounts = item.get("amounts", {})
             by_product[name]["rev_ttc"] += float(amounts.get("gross_total", item.get("gross_total", 0)))
@@ -719,7 +719,7 @@ def product_stats_7d(since: str, until: str):
             continue
         day = detail.get("date", "")
         for item in detail.get("items", []):
-            name    = item.get("title", "—")
+            name    = item.get("title", "—").strip()
             qty     = float(item.get("qty", 0))
             amounts = item.get("amounts", {})
             by_product[name]["rev_ttc"] += float(amounts.get("gross_total", 0))
@@ -788,7 +788,7 @@ def top_products(docs, catalog=None, n=10):
     by_product = defaultdict(lambda: {"qty": 0, "rev_ttc": 0.0, "rev_ht": 0.0, "cost_ht": 0.0})
     for d in docs:
         for item in d.get("items", []):
-            title = item.get("title", "—")
+            title = item.get("title", "—").strip()
             qty   = float(item.get("qty", 0))
             amounts = item.get("amounts", {})
             by_product[title]["qty"]     += qty
