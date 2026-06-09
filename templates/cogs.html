@@ -351,6 +351,47 @@
 .sort-icon.desc::after { content:'▼'; }
 .sort-icon.none::after { content:'⇅'; }
 
+/* ── Flat list / sort strip ── */
+.sort-strip {
+  display:flex; align-items:center; gap:8px;
+  padding:7px 12px; margin-bottom:12px;
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:6px; font-size:12px; color:var(--muted);
+}
+.sort-strip strong { color:var(--text); font-weight:600; }
+.sort-strip .reset-sort {
+  margin-left:auto; font-family:inherit; font-size:12px;
+  background:none; border:1px solid var(--border); border-radius:4px;
+  color:var(--muted); padding:2px 10px; cursor:pointer;
+  transition:background .1s, color .1s;
+}
+.sort-strip .reset-sort:hover { background:var(--bg-hover); color:var(--text); }
+
+/* ── Spinner overlay sur le tableau pendant rechargement ── */
+#content { position:relative; }
+#content.is-loading::after {
+  content:''; position:absolute; inset:0;
+  background:rgba(var(--bg-page-rgb, 248,247,244), .65);
+  border-radius:8px; z-index:10; pointer-events:none;
+}
+.spin-badge {
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:11px; color:var(--muted);
+  opacity:0; transition:opacity .2s; pointer-events:none;
+}
+.spin-badge.visible { opacity:1; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.spin-badge::before {
+  content:''; display:block; width:10px; height:10px;
+  border:1.5px solid var(--border); border-top-color:var(--text);
+  border-radius:50%; animation:spin .7s linear infinite;
+}
+
+/* ── Summary stat cliquable ── */
+.sum-item.clickable { cursor:pointer; transition:background .12s; }
+.sum-item.clickable:hover { background:var(--bg-hover); }
+.sum-item.clickable .sum-label::after { content:' ↗'; font-size:9px; opacity:.5; }
+
 /* ── Simulateur prix ── */
 .price-sim {
   background:var(--bg-page); border:1px solid var(--border); border-radius:8px;
@@ -408,6 +449,7 @@
       <div class="header-sub">Coût matière · Marge brute · Éditeur de recettes</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
+      <span class="spin-badge" id="spin-badge"></span>
       <button class="btn-primary" onclick="openNewProdModal()">+ Nouveau produit</button>
       <button class="btn-secondary" id="btn-recalc" onclick="recalculateAll()">↺ Tout recalculer</button>
       <button class="btn-secondary" onclick="loadCogs()">↻ Rafraîchir</button>
@@ -432,8 +474,8 @@
     <div class="sum-item"><div class="sum-label">Produits</div><div class="sum-val" id="s-total">—</div></div>
     <div class="sum-item"><div class="sum-label">Avec recette</div><div class="sum-val" id="s-recipe">—</div></div>
     <div class="sum-item"><div class="sum-label">Marge moy.</div><div class="sum-val" id="s-avg">—</div></div>
-    <div class="sum-item"><div class="sum-label">Min marge</div><div class="sum-val" id="s-min">—</div></div>
-    <div class="sum-item"><div class="sum-label">Max marge</div><div class="sum-val" id="s-max">—</div></div>
+    <div class="sum-item clickable" title="Voir les pires marges" onclick="showWorstMargins()"><div class="sum-label">Min marge</div><div class="sum-val" id="s-min">—</div></div>
+    <div class="sum-item clickable" title="Voir les meilleures marges" onclick="showBestMargins()"><div class="sum-label">Max marge</div><div class="sum-val" id="s-max">—</div></div>
   </div>
 
   <!-- Filters -->
@@ -687,10 +729,22 @@ function updateTabBadges() {
 }
 
 // ══════════════════════════════════════════════════════════
+// SPINNER HELPERS
+// ══════════════════════════════════════════════════════════
+function setLoading(on) {
+  document.getElementById('content').classList.toggle('is-loading', on);
+  document.getElementById('spin-badge').classList.toggle('visible', on);
+}
+
+// ══════════════════════════════════════════════════════════
 // LOAD
 // ══════════════════════════════════════════════════════════
-async function loadCogs() {
-  document.getElementById('content').innerHTML = '<div class="loading">Chargement…</div>';
+async function loadCogs(soft = false) {
+  // soft=true : garde le contenu visible avec overlay, pour les reloads après save
+  if (!soft) {
+    document.getElementById('content').innerHTML = '<div class="loading">Chargement…</div>';
+  }
+  setLoading(true);
   const [cogsRes, ingrRes] = await Promise.all([
     fetch('/api/cogs'), fetch('/api/ingredients')
   ]);
@@ -703,6 +757,7 @@ async function loadCogs() {
   applyFilters(); // applyFilters appelle buildSummary avec les produits filtrés
   renderIngrLib();
   updateTabBadges();
+  setLoading(false);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -756,17 +811,66 @@ function applyFilters() {
   renderProducts(filtered);
 }
 
+function sortIcon(col) {
+  if (sortCol !== col) return `<span class="sort-icon none"></span>`;
+  return `<span class="sort-icon ${sortDir > 0 ? 'asc' : 'desc'}"></span>`;
+}
+
+function flatTableHeaders() {
+  return `<thead><tr>
+    <th style="width:30%">Produit &amp; Recette</th>
+    <th>Catégorie</th>
+    <th class="r sortable" onclick="sortBy('price_ttc')">TTC ${sortIcon('price_ttc')}</th>
+    <th class="r sortable" onclick="sortBy('recipe_total')">COGS ${sortIcon('recipe_total')}</th>
+    <th class="r sortable" onclick="sortBy('marge_ht')">Marge € ${sortIcon('marge_ht')}</th>
+    <th class="r sortable" onclick="sortBy('marge_pct')">Marge % ${sortIcon('marge_pct')}</th>
+    <th style="width:100px;"></th>
+  </tr></thead>`;
+}
+
+function groupedTableHeaders() {
+  return `<thead><tr>
+    <th style="width:34%">Produit &amp; Recette</th>
+    <th class="r sortable" onclick="sortBy('price_ttc')">TTC ${sortIcon('price_ttc')}</th>
+    <th class="r sortable" onclick="sortBy('recipe_total')">COGS ${sortIcon('recipe_total')}</th>
+    <th class="r sortable" onclick="sortBy('marge_ht')">Marge € ${sortIcon('marge_ht')}</th>
+    <th class="r sortable" onclick="sortBy('marge_pct')">Marge % ${sortIcon('marge_pct')}</th>
+    <th style="width:100px;"></th>
+  </tr></thead>`;
+}
+
 function renderProducts(products) {
+  let html = '';
+
+  // ── Mode liste plate (tri actif) ──────────────────────────
+  if (sortCol) {
+    const colLabels = { price_ttc:'TTC', recipe_total:'COGS', marge_ht:'Marge €', marge_pct:'Marge %' };
+    const dirLabel  = sortDir > 0 ? '↑ croissant' : '↓ décroissant';
+    html = `
+      <div class="sort-strip">
+        Tri par <strong>${colLabels[sortCol] || sortCol}</strong> · ${dirLabel}
+        &nbsp;·&nbsp; ${products.length} produit${products.length !== 1 ? 's' : ''}
+        <button class="reset-sort" onclick="resetSort()">✕ Revenir aux catégories</button>
+      </div>
+      <div class="table-wrap">
+        <table class="cogs-table">
+          ${flatTableHeaders()}
+          <tbody>${products.map(p => flatRowHtml(p)).join('')}</tbody>
+        </table>
+      </div>`;
+    document.getElementById('content').innerHTML = html;
+    return;
+  }
+
+  // ── Mode groupé (par défaut) ───────────────────────────────
   const grouped = {};
   for (const id of categoryOrder) grouped[id] = [];
   for (const p of products) {
     if (!grouped[p.category_id]) grouped[p.category_id] = [];
     grouped[p.category_id].push(p);
   }
-  // Uncategorized
   const other = products.filter(p => !categoryOrder.includes(p.category_id));
 
-  let html = '';
   for (const id of categoryOrder) {
     const g = grouped[id];
     if (!g?.length) continue;
@@ -775,15 +879,8 @@ function renderProducts(products) {
       <div class="cogs-section-title">${categoryNames[id] || id} <span class="badge-cat">${g.length}</span></div>
       <div class="table-wrap">
         <table class="cogs-table">
-          <thead><tr>
-            <th style="width:34%">Produit &amp; Recette</th>
-            <th class="r sortable" onclick="sortBy('price_ttc')">TTC <span class="sort-icon ${sortCol==='price_ttc'?(sortDir>0?'asc':'desc'):'none'}"></span></th>
-            <th class="r sortable" onclick="sortBy('recipe_total')">COGS <span class="sort-icon ${sortCol==='recipe_total'?(sortDir>0?'asc':'desc'):'none'}"></span></th>
-            <th class="r sortable" onclick="sortBy('marge_ht')">Marge € <span class="sort-icon ${sortCol==='marge_ht'?(sortDir>0?'asc':'desc'):'none'}"></span></th>
-            <th class="r sortable" onclick="sortBy('marge_pct')">Marge % <span class="sort-icon ${sortCol==='marge_pct'?(sortDir>0?'asc':'desc'):'none'}"></span></th>
-            <th style="width:100px;"></th>
-          </tr></thead>
-          <tbody>${g.map(rowHtml).join('')}</tbody>
+          ${groupedTableHeaders()}
+          <tbody>${g.map(p => rowHtml(p)).join('')}</tbody>
         </table>
       </div>
     </div>`;
@@ -792,11 +889,8 @@ function renderProducts(products) {
     html += `<div class="cogs-section">
       <div class="cogs-section-title">Autres <span class="badge-cat">${other.length}</span></div>
       <div class="table-wrap"><table class="cogs-table">
-        <thead><tr><th style="width:34%">Produit &amp; Recette</th>
-          <th class="r">TTC</th>
-          <th class="r">COGS</th><th class="r">Marge €</th><th class="r">Marge %</th>
-          <th style="width:100px;"></th></tr></thead>
-        <tbody>${other.map(rowHtml).join('')}</tbody>
+        ${groupedTableHeaders()}
+        <tbody>${other.map(p => rowHtml(p)).join('')}</tbody>
       </table></div>
     </div>`;
   }
@@ -839,6 +933,42 @@ function rowHtml(p) {
       </button>
     </td>
   </tr>`;
+}
+
+function flatRowHtml(p) {
+  // Ligne pour la vue liste plate — identique à rowHtml + colonne catégorie
+  const base = rowHtml(p);
+  const catCell = `<td style="font-size:12px;color:var(--muted);white-space:nowrap;">${categoryNames[p.category_id] || '—'}</td>`;
+  // Insérer la cellule catégorie après la 1ère <td> (produit+recette)
+  return base.replace('</td>\n    <td class="r">', `</td>\n    ${catCell}\n    <td class="r">`);
+}
+
+// ══════════════════════════════════════════════════════════
+// TRI & RACCOURCIS MARGE
+// ══════════════════════════════════════════════════════════
+function resetSort() {
+  sortCol = null;
+  sortDir = 1;
+  applyFilters();
+}
+
+function showWorstMargins() {
+  // Tri marge % croissant (pires en premier) → flat list
+  sortCol = 'marge_pct';
+  sortDir = 1; // ascendant = pires marges en haut
+  allProducts.sort((a, b) => ((a.marge_pct ?? -Infinity) - (b.marge_pct ?? -Infinity)));
+  applyFilters();
+  // Scroll vers le contenu
+  document.getElementById('content').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function showBestMargins() {
+  // Tri marge % décroissant (meilleures en premier)
+  sortCol = 'marge_pct';
+  sortDir = -1;
+  allProducts.sort((a, b) => ((b.marge_pct ?? -Infinity) - (a.marge_pct ?? -Infinity)));
+  applyFilters();
+  document.getElementById('content').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1140,7 +1270,7 @@ async function saveRecipe() {
     if (d.ok) {
       showToast(`✓ Sauvegardé · COGS ${fmt(d.total_cogs)} · Vendus ${d.vendus_patched ? '✓' : '⚠'}`);
       closeDrawer();
-      await loadCogs();
+      await loadCogs(true); // soft reload — garde le contenu visible
     } else {
       showToast('Erreur : ' + (d.error || 'inconnue'));
     }
@@ -1227,7 +1357,7 @@ async function recalculateAll() {
     const ok  = d.results.filter(x => x.status === 'ok').length;
     const err = d.results.filter(x => x.status !== 'ok' && x.status !== 'not_found_in_vendus').length;
     showToast(`✓ ${ok} COGS recalculés${err ? ` · ${err} erreurs` : ''}`);
-    await loadCogs();
+    await loadCogs(true);
   } catch(e) {
     showToast('Erreur réseau');
   } finally {
@@ -1255,8 +1385,8 @@ function showToast(msg) {
 // TRI COLONNES
 // ══════════════════════════════════════════════════════════
 function sortBy(col) {
-  if (sortCol === col) sortDir *= -1;
-  else { sortCol = col; sortDir = -1; } // défaut desc (meilleure marge en haut)
+  if (sortCol === col) { sortDir *= -1; }
+  else { sortCol = col; sortDir = -1; } // défaut desc (grande valeur en haut)
   allProducts.sort((a, b) => {
     const va = a[col] ?? -Infinity;
     const vb = b[col] ?? -Infinity;
