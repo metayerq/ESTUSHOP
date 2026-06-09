@@ -132,7 +132,7 @@
 .drawer-title { font-size:16px; font-weight:600; color:var(--text); }
 .drawer-subtitle { font-size:12px; color:var(--muted); margin-top:3px; }
 .drawer-close {
-  float:right; background:none; border:1px solid var(--border); border-radius:6px;
+  flex-shrink:0; background:none; border:1px solid var(--border); border-radius:6px;
   font-size:12px; padding:4px 10px; cursor:pointer; color:var(--muted);
 }
 .drawer-close:hover { background:var(--bg-hover); }
@@ -300,7 +300,7 @@
 
 /* ── Add ingredient form ── */
 .add-ingr-form {
-  display:grid; grid-template-columns:1.8fr 1fr 80px 100px auto auto;
+  display:grid; grid-template-columns:1.8fr 1fr 80px 100px auto;
   gap:8px; align-items:center; margin-top:10px; padding:10px 14px;
   background:var(--bg-page); border-radius:0 0 8px 8px;
   border-top:1px solid var(--border);
@@ -402,8 +402,7 @@
           <option value="unit">€ / unité</option>
         </select>
         <button class="btn-primary" onclick="addIngredient()">+ Ajouter</button>
-        <button class="btn-secondary" onclick="recalculateAll()" id="btn-recalc2" title="Recalculer tous les COGS après modif prix">↺ Recalc.</button>
-      </div>
+        </div>
     </div>
   </div>
 
@@ -498,10 +497,12 @@
 ══════════════════════════════════════════════════════ -->
 <div id="drawer-overlay" onclick="closeDrawer()"></div>
 <div id="recipe-drawer">
-  <div class="drawer-head">
+  <div class="drawer-head" style="display:flex;align-items:flex-start;justify-content:space-between;">
+    <div>
+      <div class="drawer-title" id="d-title">Recette</div>
+      <div class="drawer-subtitle" id="d-subtitle"></div>
+    </div>
     <button class="drawer-close" onclick="closeDrawer()">✕</button>
-    <div class="drawer-title" id="d-title">Recette</div>
-    <div class="drawer-subtitle" id="d-subtitle"></div>
   </div>
   <div class="drawer-body">
 
@@ -562,7 +563,7 @@
     <textarea class="drawer-notes" id="d-notes" placeholder="Double ristretto, lait texturé 65°C…" oninput="updateLiveCogs()"></textarea>
   </div>
   <div class="drawer-footer">
-    <button class="btn-primary" style="flex:1;" onclick="saveRecipe()">Sauvegarder &amp; syncer Vendus</button>
+    <button class="btn-primary" style="flex:1;" onclick="saveRecipe()">Enregistrer la recette</button>
     <button class="btn-secondary" onclick="closeDrawer()">Annuler</button>
   </div>
 </div>
@@ -595,19 +596,21 @@ async function loadCogs() {
   categoryOrder = d.category_order;
   categoryNames = d.category_names;
   buildCatFilter();
-  buildSummary();
-  applyFilters();
+  applyFilters(); // applyFilters appelle buildSummary avec les produits filtrés
   renderIngrLib();
 }
 
 // ══════════════════════════════════════════════════════════
 // SUMMARY
 // ══════════════════════════════════════════════════════════
-function buildSummary() {
-  const wr = allProducts.filter(p => p.has_recipe && p.marge_pct !== null);
+function buildSummary(products) {
+  // Si appelée sans argument, utilise tous les produits (chargement initial)
+  const list = products || allProducts;
+  const wr = list.filter(p => p.has_recipe && p.marge_pct !== null);
   const ms = wr.map(p => p.marge_pct);
   const avg = ms.length ? (ms.reduce((a,b)=>a+b,0)/ms.length).toFixed(1) : '—';
-  document.getElementById('s-total').textContent  = allProducts.length;
+  const isFiltered = list.length !== allProducts.length;
+  document.getElementById('s-total').textContent  = isFiltered ? `${list.length} / ${allProducts.length}` : list.length;
   document.getElementById('s-recipe').textContent = wr.length;
   document.getElementById('s-avg').textContent    = avg !== '—' ? avg + ' %' : '—';
   document.getElementById('s-min').textContent    = ms.length ? Math.min(...ms).toFixed(1) + ' %' : '—';
@@ -644,6 +647,7 @@ function applyFilters() {
     return true;
   });
   document.getElementById('shown-count').textContent = `${filtered.length} produit${filtered.length !== 1 ? 's' : ''}`;
+  buildSummary(filtered);
   renderProducts(filtered);
 }
 
@@ -669,7 +673,6 @@ function renderProducts(products) {
           <thead><tr>
             <th style="width:34%">Produit &amp; Recette</th>
             <th class="r sortable" onclick="sortBy('price_ttc')">TTC <span class="sort-icon ${sortCol==='price_ttc'?(sortDir>0?'asc':'desc'):'none'}"></span></th>
-            <th class="r">HT</th>
             <th class="r sortable" onclick="sortBy('recipe_total')">COGS <span class="sort-icon ${sortCol==='recipe_total'?(sortDir>0?'asc':'desc'):'none'}"></span></th>
             <th class="r sortable" onclick="sortBy('marge_ht')">Marge € <span class="sort-icon ${sortCol==='marge_ht'?(sortDir>0?'asc':'desc'):'none'}"></span></th>
             <th class="r sortable" onclick="sortBy('marge_pct')">Marge % <span class="sort-icon ${sortCol==='marge_pct'?(sortDir>0?'asc':'desc'):'none'}"></span></th>
@@ -685,7 +688,7 @@ function renderProducts(products) {
       <div class="cogs-section-title">Autres <span class="badge-cat">${other.length}</span></div>
       <div class="table-wrap"><table class="cogs-table">
         <thead><tr><th style="width:34%">Produit &amp; Recette</th>
-          <th class="r">TTC</th><th class="r">HT</th>
+          <th class="r">TTC</th>
           <th class="r">COGS</th><th class="r">Marge €</th><th class="r">Marge %</th>
           <th style="width:100px;"></th></tr></thead>
         <tbody>${other.map(rowHtml).join('')}</tbody>
@@ -696,16 +699,18 @@ function renderProducts(products) {
 }
 
 function rowHtml(p) {
-  // Recipe chips
+  // Recipe chips (limité à 3 visibles + badge "+N")
   let recipeHtml = '';
   if (p.has_recipe && p.recipe.length) {
-    const chips = p.recipe.map(ing => {
-      const u = ing.unit;
+    const MAX_CHIPS = 3;
+    const visible = p.recipe.slice(0, MAX_CHIPS);
+    const hidden  = p.recipe.length - MAX_CHIPS;
+    const chips = visible.map(ing => {
       const qty = ing.qty % 1 === 0 ? ing.qty : ing.qty.toFixed(1);
-      return `<span class="ing-chip">${ing.name} <span class="c">${qty}${u} · ${fmt(ing.cost)}</span></span>`;
+      return `<span class="ing-chip">${ing.name} <span class="c">${qty}${ing.unit} · ${fmt(ing.cost)}</span></span>`;
     }).join('');
-    const notes = p.recipe_notes ? `<div style="font-size:11px;color:var(--faint);margin-top:3px;font-style:italic;">${p.recipe_notes}</div>` : '';
-    recipeHtml = `<div class="recipe-wrap">${chips}</div>${notes}`;
+    const moreBadge = hidden > 0 ? `<span class="ing-chip" style="color:var(--faint);font-style:italic;">+${hidden}</span>` : '';
+    recipeHtml = `<div class="recipe-wrap">${chips}${moreBadge}</div>`;
   } else {
     recipeHtml = `<div class="no-recipe">Pas de recette — cliquer pour créer</div>`;
   }
@@ -717,7 +722,6 @@ function rowHtml(p) {
   return `<tr>
     <td><div style="font-weight:500;">${p.title}</div>${recipeHtml}</td>
     <td class="r">${p.price_ttc ? fmt(p.price_ttc) : '—'}<div style="font-size:10px;color:var(--faint);">TVA ${p.tax_rate}%</div></td>
-    <td class="r">${p.price_ht ? fmt(p.price_ht) : '—'}</td>
     <td class="r" style="font-weight:500;">${cogs ? fmt(cogs) : '—'}</td>
     <td class="r" class="c-${cls}">${p.marge_ht !== null ? `<span style="font-weight:600;color:var(--${cls === 'good' ? 'green' : cls === 'warn' ? 'amber' : 'red'})">${fmt(p.marge_ht)}</span>` : '—'}</td>
     <td class="r">
@@ -967,7 +971,7 @@ async function saveRecipe() {
   } catch(e) {
     showToast('Erreur réseau');
   } finally {
-    btn.textContent = 'Sauvegarder & syncer Vendus'; btn.disabled = false;
+    btn.textContent = 'Enregistrer la recette'; btn.disabled = false;
   }
 }
 
@@ -1035,6 +1039,8 @@ async function deleteIngr(name) {
 // RECALCUL GLOBAL
 // ══════════════════════════════════════════════════════════
 async function recalculateAll() {
+  const withRecipe = allProducts.filter(p => p.has_recipe).length;
+  if (!confirm(`Recalculer les COGS de ${withRecipe} produits et mettre à jour Vendus ?\nCette action écrase les prix de revient dans votre caisse.`)) return;
   const btn = document.getElementById('btn-recalc');
   btn.textContent = '↺ Calcul…'; btn.disabled = true;
   try {
