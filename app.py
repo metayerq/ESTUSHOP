@@ -178,7 +178,7 @@ def api_data():
         try:
             return get_documents(comp_from.isoformat(), comp_to.isoformat())
         except Exception:
-            return []
+            return None   # échec ≠ zéro vente
 
     # Appels indépendants en parallèle avec le fetch principal
     with ThreadPoolExecutor(max_workers=6) as pool:
@@ -195,10 +195,26 @@ def api_data():
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-        docs_comp    = fut_comp.result(timeout=5) or []
-        balance      = fut_balance.result(timeout=5) or 0.0
-        catalog      = fut_catalog.result(timeout=10) or {}
-        week_data    = fut_week.result(timeout=5) or []
+        warnings = []
+
+        docs_comp = fut_comp.result(timeout=5)
+        if docs_comp is None:
+            warnings.append("Comparaison période précédente indisponible")
+            docs_comp = []
+
+        balance = fut_balance.result(timeout=5)
+        if balance is None:
+            warnings.append("Solde caisse indisponible (API Vendus)")
+
+        catalog = fut_catalog.result(timeout=10) or {}
+        if fetch_items and not catalog:
+            warnings.append("Catalogue produits indisponible — marges et COGS non calculés")
+
+        week_data = fut_week.result(timeout=5)
+        if week_data is None:
+            warnings.append("Historique 7 jours indisponible")
+            week_data = []
+
         wow_data     = fut_wow.result(timeout=5)
         weekday_data = fut_weekday.result(timeout=5)
 
@@ -251,6 +267,9 @@ def api_data():
     # ── Économie : toujours calculée (marge réelle si articles, estimée sinon) ─
     result["economics"] = daily_economics(docs_main, catalog, n_days,
                                            from_date=from_date, to_date=to_date)
+    if result["economics"].get("charges_source") == "fallback_bp":
+        warnings.append("Charges Supabase injoignables — valeurs du Business Plan utilisées")
+    result["warnings"] = warnings
 
     # ── Produits et mix : uniquement si détail articles disponible ────────────
     if fetch_items:

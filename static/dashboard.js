@@ -57,6 +57,15 @@ async function loadData() {
 
 // ── Rendu principal ───────────────────────────────────────────────────────────
 function render(d) {
+  // Bandeau warnings — sources de données en échec
+  const warnBanner = document.getElementById('warn-banner');
+  if (d.warnings && d.warnings.length) {
+    document.getElementById('warn-msg').textContent = d.warnings.join(' · ');
+    warnBanner.style.display = '';
+  } else {
+    warnBanner.style.display = 'none';
+  }
+
   // Sous-titre
   let subtitle = 'Alcântara';
   if (d.is_single_day) {
@@ -101,7 +110,7 @@ function render(d) {
   document.getElementById('kpi-ticket').textContent     = fmt(d.today.ticket);
   document.getElementById('kpi-ticket-delta').innerHTML = delta(d.today.ticket, d.yesterday.ticket, compLabel)
     + (d.today.ticket_ht ? `<span style="color:var(--faint)"> · ${fmt(d.today.ticket_ht)} HT</span>` : '');
-  document.getElementById('kpi-balance').textContent    = fmt(d.balance);
+  document.getElementById('kpi-balance').textContent    = d.balance != null ? fmt(d.balance) : '—';
 
   // Seuil transactions (seulement pour jour unique)
   const pct = Math.min(100, Math.round(d.today.nb / d.seuil * 100));

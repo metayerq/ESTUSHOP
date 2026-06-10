@@ -129,6 +129,7 @@ def get_register_movements(since: str, until: str):
 
 
 def get_balance():
+    """Retourne le solde caisse, ou None si l'API échoue (≠ 0 = vraie valeur)."""
     try:
         data = vendus("/registers/balance/")
         if isinstance(data, list) and data:
@@ -137,7 +138,7 @@ def get_balance():
             return float(data.get("amount", 0))
         return 0.0
     except Exception:
-        return 0.0
+        return None
 
 
 def calc_stats(docs):
@@ -531,12 +532,14 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
 
     total_charges_mois = total_fixes_mois + total_perso_mois
 
-    # Fallback si Supabase vide (premières secondes après migration)
+    # Fallback si Supabase vide ou injoignable
+    charges_source = "supabase"
     if total_charges_mois == 0:
         from config import TOTAL_CHARGES_MOIS as _TCM
         total_charges_mois = _TCM
         total_fixes_mois   = 0
         total_perso_mois   = 0
+        charges_source     = "fallback_bp"
 
     cout_jour        = total_charges_mois / JOURS_OUVERTS_MOIS
     cout_fixe_jour   = total_fixes_mois   / JOURS_OUVERTS_MOIS
@@ -621,6 +624,7 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
         "seuil_ca_ht":      seuil_ca,       # HT gardé pour info
         "manque_seuil":     manque_seuil,   # en TTC
         "pct_seuil":        pct_seuil,      # basé sur TTC vs TTC
+        "charges_source":   charges_source, # "supabase" ou "fallback_bp"
     }
 
 
@@ -820,7 +824,7 @@ def weekly_sparkline(days=7):
         if not isinstance(raw, list):
             raw = raw.get("docs", raw.get("data", []))
     except Exception:
-        raw = []
+        return None   # échec API ≠ zéro vente — le front affiche un warning
 
     by_day = defaultdict(lambda: {"ca": 0.0, "nb": 0})
     for d in raw:
