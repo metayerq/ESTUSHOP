@@ -8,10 +8,12 @@ Usage:
 """
 
 import os
+import hmac
+import hashlib
 from datetime import date, timedelta, datetime
 from concurrent.futures import ThreadPoolExecutor
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, redirect, make_response
 from vendus import (
     get_documents, get_documents_with_items, get_balance, get_catalog,
     calc_stats, hourly_breakdown, payment_breakdown, top_products, recent_docs,
@@ -51,6 +53,73 @@ PRESET_LABELS = {
 FETCH_ITEMS_PRESETS = {"today", "yesterday", "week", "lastweek", "month", "all"}
 
 app = Flask(__name__)
+
+
+# ── Authentification ──────────────────────────────────────────────────────────
+# DASHBOARD_PASSWORD non défini → auth désactivée (dev local).
+# En prod (Vercel), définir DASHBOARD_PASSWORD dans les env vars.
+DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
+AUTH_SECRET        = os.environ.get("AUTH_SECRET", DASHBOARD_PASSWORD)
+
+def _auth_token():
+    return hmac.new(AUTH_SECRET.encode(), b"estushop-auth-v1", hashlib.sha256).hexdigest()
+
+def _is_authenticated():
+    if not DASHBOARD_PASSWORD:
+        return True   # auth désactivée si pas de mot de passe configuré
+    return hmac.compare_digest(request.cookies.get("estu_auth", ""), _auth_token())
+
+@app.before_request
+def _require_auth():
+    if not DASHBOARD_PASSWORD:
+        return
+    if request.path == "/login" or request.path.startswith("/static/"):
+        return
+    if _is_authenticated():
+        return
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "unauthorized"}), 401
+    return redirect("/login")
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = ""
+    if request.method == "POST":
+        if hmac.compare_digest(request.form.get("password", ""), DASHBOARD_PASSWORD):
+            resp = make_response(redirect("/"))
+            resp.set_cookie("estu_auth", _auth_token(),
+                            max_age=30*24*3600, httponly=True,
+                            secure=True, samesite="Lax")
+            return resp
+        error = "Mot de passe incorrect"
+    return f"""<!DOCTYPE html>
+<html lang="fr"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estudantina — Connexion</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body {{ font-family:'Inter',sans-serif; background:#faf9f5; display:flex; align-items:center;
+       justify-content:center; height:100vh; margin:0; color:#37352f; }}
+.box {{ background:#fff; border:1px solid #e8e6e0; border-radius:12px; padding:40px;
+        width:320px; box-shadow:0 4px 24px rgba(0,0,0,.06); }}
+h1 {{ font-size:18px; margin:0 0 4px; }}
+p {{ font-size:13px; color:#78776f; margin:0 0 24px; }}
+input {{ width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #e8e6e0;
+         border-radius:6px; font-family:inherit; font-size:14px; margin-bottom:12px; }}
+button {{ width:100%; padding:10px; background:#37352f; color:#fff; border:none;
+          border-radius:6px; font-family:inherit; font-size:14px; font-weight:500; cursor:pointer; }}
+.err {{ color:#d33; font-size:12px; margin-bottom:12px; }}
+</style></head><body>
+<div class="box">
+  <h1>Estudantina</h1>
+  <p>Dashboard privé — entrez le mot de passe</p>
+  {f'<div class="err">{error}</div>' if error else ''}
+  <form method="POST">
+    <input type="password" name="password" placeholder="Mot de passe" autofocus>
+    <button type="submit">Se connecter</button>
+  </form>
+</div>
+</body></html>"""
 
 
 @app.route("/")
@@ -294,8 +363,8 @@ def api_employees_delete(emp_id):
 # ── Supabase ──────────────────────────────────────────────────────────────────
 import requests as _req
 
-SUPA_URL = os.environ.get("SUPABASE_URL", "https://llbxrkyufegrhxbzkowf.supabase.co")
-SUPA_KEY = os.environ.get("SUPABASE_KEY", "sb_publishable_gZTNLYcOW5OisN-k-RoHCw_SMjfz6CO")
+SUPA_URL = os.environ.get("SUPABASE_URL", "")
+SUPA_KEY = os.environ.get("SUPABASE_KEY", "")
 
 def _supa_headers(prefer=None):
     h = {

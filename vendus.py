@@ -9,8 +9,8 @@ import requests
 API_KEY   = os.environ.get("VENDUS_API_KEY", "")
 BASE_URL  = "https://www.vendus.pt/ws/v1.1"
 
-SUPA_URL  = os.environ.get("SUPABASE_URL", "https://llbxrkyufegrhxbzkowf.supabase.co")
-SUPA_KEY  = os.environ.get("SUPABASE_KEY", "sb_publishable_gZTNLYcOW5OisN-k-RoHCw_SMjfz6CO")
+SUPA_URL  = os.environ.get("SUPABASE_URL", "")
+SUPA_KEY  = os.environ.get("SUPABASE_KEY", "")
 
 def _supa_get_economics(table, params=None):
     """Lecture Supabase légère pour les calculs economics (indépendant de app.py)."""
