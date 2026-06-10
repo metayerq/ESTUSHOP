@@ -636,6 +636,22 @@ def api_recipe_post(product_id):
     })
 
 
+@app.route("/api/recipe/<int:product_id>", methods=["DELETE"])
+def api_recipe_delete(product_id):
+    import requests as req
+    from vendus import API_KEY as VENDUS_API_KEY
+    # Récupérer le titre pour trouver la ligne Supabase
+    r = req.get(f"https://www.vendus.pt/ws/v1.1/products/{product_id}/", auth=(VENDUS_API_KEY, ""))
+    if not r.ok:
+        return jsonify({"ok": False, "error": "product not found"}), 404
+    title = r.json().get("title", "").strip()
+    ok = _supa_delete("recipes", "product_title", title)
+    # Remettre supply_price à 0 dans Vendus
+    req.patch(f"https://www.vendus.pt/ws/v1.1/products/{product_id}/",
+              auth=(VENDUS_API_KEY, ""), json={"supply_price": 0})
+    return jsonify({"ok": ok})
+
+
 @app.route("/api/recipe/recalculate-all", methods=["POST"])
 def api_recipe_recalculate_all():
     import requests as req

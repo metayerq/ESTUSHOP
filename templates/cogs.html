@@ -707,6 +707,7 @@
   <div class="drawer-footer">
     <button class="btn-primary" style="flex:1;" onclick="saveRecipe()">Enregistrer la recette</button>
     <button class="btn-secondary" onclick="closeDrawer()">Annuler</button>
+    <button class="btn-secondary" id="btn-delete-recipe" style="display:none;color:var(--red);border-color:var(--red);" onclick="deleteRecipe()">Supprimer</button>
   </div>
 </div>
 
@@ -1070,6 +1071,9 @@ async function openDrawer(id, title, priceHt, priceTtc, taxRate) {
   renderIngRows(d.ingredients || []);
   updateLiveCogs();
   runSim();
+  // Afficher bouton Supprimer seulement si une recette existe
+  const delBtn = document.getElementById('btn-delete-recipe');
+  if (delBtn) delBtn.style.display = (d.ingredients && d.ingredients.length) ? '' : 'none';
 }
 
 function openDrawerUI() {
@@ -1804,6 +1808,20 @@ function prepAddIngredientRow(name, btn) {
   document.getElementById('prep-ac-dropdown').classList.remove('open');
   renderPrepIngredients();
   updatePrepCost();
+}
+
+async function deleteRecipe() {
+  if (!drawerProd) return;
+  if (!confirm(`Supprimer la recette de "${drawerProd.title}" ?`)) return;
+  const r = await fetch(`/api/recipe/${drawerProd.id}`, { method: 'DELETE' });
+  const d = await r.json();
+  if (d.ok) {
+    closeDrawer();
+    showToast(`Recette "${drawerProd ? drawerProd.title : ''}" supprimée`);
+    loadCogs(true);
+  } else {
+    showToast('Erreur suppression : ' + (d.error || ''));
+  }
 }
 
 async function savePrep() {
