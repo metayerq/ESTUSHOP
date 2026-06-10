@@ -112,9 +112,14 @@ function render(d) {
     + (d.today.ticket_ht ? `<span style="color:var(--faint)"> · ${fmt(d.today.ticket_ht)} HT</span>` : '');
   document.getElementById('kpi-balance').textContent    = d.balance != null ? fmt(d.balance) : '—';
 
-  // Seuil transactions (seulement pour jour unique)
-  const pct = Math.min(100, Math.round(d.today.nb / d.seuil * 100));
+  // Seuil transactions — proportionnel aux jours ouvrés de la période
+  const openDaysTx = (d.economics && d.economics.open_days) || 1;
+  const seuilTarget = d.seuil * (d.is_single_day ? 1 : openDaysTx);
+  const pct = Math.min(100, Math.round(d.today.nb / seuilTarget * 100));
   document.getElementById('seuil-bar').style.width = pct + '%';
+  document.getElementById('seuil-meta').textContent = d.is_single_day
+    ? `Seuil rentabilité : ${d.seuil} tx/j`
+    : `Seuil : ${seuilTarget} tx (${d.seuil}/j × ${openDaysTx}j ouvrés)`;
 
   // Tempo service (jour unique seulement)
   const tempoCell = document.getElementById('kpi-tempo-cell');

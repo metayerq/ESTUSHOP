@@ -1934,8 +1934,14 @@ async function savePrep() {
 
 async function deletePrep(name) {
   if (!confirm(`Supprimer la préparation "${name}" ?`)) return;
-  const r = await fetch(`/api/preparations/${encodeURIComponent(name)}`, { method: 'DELETE' });
-  const d = await r.json();
+  let r = await fetch(`/api/preparations/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  let d = await r.json();
+  if (r.status === 409 && d.error === 'used_in_recipes') {
+    const list = (d.used_in || []).join(', ');
+    if (!confirm(`⚠ "${name}" est utilisée dans ${d.used_in.length} recette(s) :\n${list}\n\nSupprimer quand même ? Ces recettes afficheront "ingrédient inconnu" et leur COGS chutera.`)) return;
+    r = await fetch(`/api/preparations/${encodeURIComponent(name)}?force=1`, { method: 'DELETE' });
+    d = await r.json();
+  }
   if (d.ok) { showToast(`"${name}" supprimé`); loadCogs(true); }
   else showToast('Erreur suppression : ' + (d.error || ''));
 }

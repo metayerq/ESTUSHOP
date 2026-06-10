@@ -667,6 +667,14 @@ def api_preparations_post():
 
 @app.route("/api/preparations/<path:name>", methods=["DELETE"])
 def api_preparations_delete(name):
+    # Garde-fou : refuser si la préparation est utilisée dans des recettes
+    # (sauf si ?force=1) — sinon les recettes afficheraient "ingrédient inconnu"
+    if request.args.get("force") != "1":
+        used_in = [title for title, r in _load_recipes().items()
+                   if any(ing.get("name") == name for ing in r.get("ingredients", []))]
+        if used_in:
+            return jsonify({"ok": False, "error": "used_in_recipes",
+                            "used_in": used_in}), 409
     ok = _supa_delete("preparations", "name", name)
     return jsonify({"ok": ok})
 
