@@ -225,8 +225,8 @@ def api_charges_post():
     }
     if data.get("id"):
         row["id"] = data["id"]
-    ok = _supa_upsert("charges_fixes", row)
-    return jsonify({"ok": ok})
+    ok, err = _supa_upsert("charges_fixes", row)
+    return jsonify({"ok": ok, "error": err})
 
 @app.route("/api/charges/<string:charge_id>", methods=["PATCH"])
 def api_charges_patch(charge_id):
@@ -271,8 +271,8 @@ def api_employees_post():
     }
     if data.get("id"):
         row["id"] = data["id"]
-    ok = _supa_upsert("employees", row)
-    return jsonify({"ok": ok})
+    ok, err = _supa_upsert("employees", row)
+    return jsonify({"ok": ok, "error": err})
 
 @app.route("/api/employees/<string:emp_id>", methods=["PATCH"])
 def api_employees_patch(emp_id):
@@ -314,7 +314,13 @@ def _supa_get(table, params=None):
 def _supa_upsert(table, data):
     r = _req.post(f"{SUPA_URL}/rest/v1/{table}", json=data,
                   headers=_supa_headers("resolution=merge-duplicates"))
-    return r.ok
+    if r.ok:
+        return True, None
+    try:
+        msg = r.json().get("message") or r.json().get("error") or r.text
+    except Exception:
+        msg = r.text
+    return False, msg
 
 def _supa_delete(table, col, val):
     r = _req.delete(f"{SUPA_URL}/rest/v1/{table}",
@@ -334,11 +340,13 @@ def _load_recipes():
             for r in rows}
 
 def _save_ingredient(name, data):
-    return _supa_upsert("ingredients", {"name": name, **data})
+    ok, _ = _supa_upsert("ingredients", {"name": name, **data})
+    return ok
 
 def _save_recipe(title, ingredients, notes):
-    return _supa_upsert("recipes", {"product_title": title,
-                                     "ingredients": ingredients, "notes": notes})
+    ok, _ = _supa_upsert("recipes", {"product_title": title,
+                                      "ingredients": ingredients, "notes": notes})
+    return ok
 
 # ── Calcul COGS depuis une recette ────────────────────────────────────────────
 UNIT_CONVERSIONS = {
