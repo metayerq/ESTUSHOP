@@ -6,8 +6,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 
-API_KEY  = os.environ.get("VENDUS_API_KEY", "")
-BASE_URL = "https://www.vendus.pt/ws/v1.1"
+API_KEY   = os.environ.get("VENDUS_API_KEY", "")
+BASE_URL  = "https://www.vendus.pt/ws/v1.1"
+
+SUPA_URL  = os.environ.get("SUPABASE_URL", "https://llbxrkyufegrhxbzkowf.supabase.co")
+SUPA_KEY  = os.environ.get("SUPABASE_KEY", "sb_publishable_gZTNLYcOW5OisN-k-RoHCw_SMjfz6CO")
+
+def _supa_get_economics(table, params=None):
+    """Lecture Supabase légère pour les calculs economics (indépendant de app.py)."""
+    h = {"apikey": SUPA_KEY, "Authorization": f"Bearer {SUPA_KEY}"}
+    r = requests.get(f"{SUPA_URL}/rest/v1/{table}", headers=h, params=params or {})
+    return r.json() if r.ok else []
 
 PAYMENT_LABELS = {
     "NU":      "Espèces",
@@ -478,17 +487,63 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
       hors ouverture.
     """
     from config import (
-        COUT_TOTAL_JOUR, COUT_FIXE_JOUR, COUT_PERSONNEL_JOUR,
-        AMORT_JOUR, SEUIL_CA_JOUR, SEUIL_CA_JOUR_TTC, count_open_days,
+        MARGE_BP_GLOBALE, TVA_MOYENNE_BLENDED, AMORTISSEMENT_MOIS,
+        JOURS_OUVERTS_MOIS, count_open_days,
     )
-    from datetime import date as _date
 
     # Jours d'ouverture effectifs dans la période
     if from_date is not None and to_date is not None:
         open_days = count_open_days(from_date, to_date)
     else:
-        # Fallback : estimation (5/7 des jours calendaires, min 1)
         open_days = max(1, round(n_days * 5 / 7))
+
+    # ── Charges live depuis Supabase ─────────────────────────────────────────
+    # Appel léger (~15ms) — résultat utilisé pour les 4 KPIs économie
+    try:
+        charges_rows  = _supa_get_economics("charges_fixes", {"active": "eq.true"})
+        employee_rows = _supa_get_economics("employees",     {"active": "eq.true"})
+    except Exception:
+        charges_rows  = []
+        employee_rows = []
+
+    # Total charges fixes mensuelles
+    def _to_monthly(amount, freq):
+        if freq == "quarterly": return amount / 3
+        if freq == "annual":    return amount / 12
+        return amount
+
+    total_fixes_mois = sum(_to_monthly(float(c["amount"]), c.get("frequency","monthly"))
+                           for c in charges_rows)
+
+    # Total personnel lissé mensuel (TSU + 13e/14e + repas)
+    TSU_RATE    = 0.2375
+    REPAS_JOURS = 242   # ~11 mois × 22 jours
+    total_perso_mois = 0.0
+    for e in employee_rows:
+        gross = float(e.get("gross_monthly", 0))
+        if e.get("type") == "extra":
+            total_perso_mois += gross
+        else:
+            meal    = float(e.get("meal_card_daily", 10.20))
+            tsu     = 0.0 if e.get("tsu_exempt") else TSU_RATE
+            monthly = (gross * 14 * (1 + tsu) + meal * REPAS_JOURS) / 12
+            total_perso_mois += monthly
+
+    total_charges_mois = total_fixes_mois + total_perso_mois
+
+    # Fallback si Supabase vide (premières secondes après migration)
+    if total_charges_mois == 0:
+        from config import TOTAL_CHARGES_MOIS as _TCM
+        total_charges_mois = _TCM
+        total_fixes_mois   = 0
+        total_perso_mois   = 0
+
+    cout_jour        = total_charges_mois / JOURS_OUVERTS_MOIS
+    cout_fixe_jour   = total_fixes_mois   / JOURS_OUVERTS_MOIS
+    cout_perso_jour  = total_perso_mois   / JOURS_OUVERTS_MOIS
+    amort_jour       = AMORTISSEMENT_MOIS / JOURS_OUVERTS_MOIS
+    seuil_ca_jour    = cout_jour / MARGE_BP_GLOBALE
+    seuil_ca_jour_ttc = seuil_ca_jour * (1 + TVA_MOYENNE_BLENDED)
 
     ca_ttc  = 0.0   # TTC  — affiché pour info
     ca_ht   = 0.0   # HT   — base des calculs de rentabilité
@@ -510,23 +565,20 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
 
     tva_col = round(ca_ttc - ca_ht, 2)
 
-    # Charges × jours_ouvrés_réels (pas jours calendaires)
-    cout_total = round(COUT_TOTAL_JOUR     * open_days, 2)
-    cout_fixe  = round(COUT_FIXE_JOUR      * open_days, 2)
-    cout_perso = round(COUT_PERSONNEL_JOUR  * open_days, 2)
-    amort         = round(AMORT_JOUR          * open_days, 2)
-    seuil_ca      = round(SEUIL_CA_JOUR       * open_days, 2)   # HT
-    seuil_ca_ttc  = round(SEUIL_CA_JOUR_TTC   * open_days, 2)   # TTC — affiché en principal
+    # Charges × jours_ouvrés_réels (live Supabase)
+    cout_total   = round(cout_jour       * open_days, 2)
+    cout_fixe    = round(cout_fixe_jour  * open_days, 2)
+    cout_perso   = round(cout_perso_jour * open_days, 2)
+    amort        = round(amort_jour      * open_days, 2)
+    seuil_ca     = round(seuil_ca_jour     * open_days, 2)      # HT
+    seuil_ca_ttc = round(seuil_ca_jour_ttc * open_days, 2)      # TTC
 
     # Marge brute HT
-    # - Si on a les détails articles : marge réelle (CA HT − COGS réel)
-    # - Sinon : estimation via taux BP (70.3 %) — indiqué clairement dans UI
     is_estimated_margin = False
     if cogs_ht:
         marge_ht     = round(ca_ht - cogs_ht, 2)
         marge_ht_pct = round(marge_ht / ca_ht * 100, 1) if ca_ht else None
     elif ca_ht:
-        from config import MARGE_BP_GLOBALE
         marge_ht          = round(ca_ht * MARGE_BP_GLOBALE, 2)
         marge_ht_pct      = round(MARGE_BP_GLOBALE * 100, 1)
         is_estimated_margin = True
