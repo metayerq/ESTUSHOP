@@ -57,17 +57,25 @@ app = Flask(__name__)
 
 # ── Authentification ──────────────────────────────────────────────────────────
 # DASHBOARD_PASSWORD non défini → auth désactivée (dev local).
-# En prod (Vercel), définir DASHBOARD_PASSWORD dans les env vars.
+# INVESTOR_PASSWORD (optionnel) → accès lecture seule (GET uniquement).
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
+INVESTOR_PASSWORD  = os.environ.get("INVESTOR_PASSWORD", "")
 AUTH_SECRET        = os.environ.get("AUTH_SECRET", DASHBOARD_PASSWORD)
 
-def _auth_token():
-    return hmac.new(AUTH_SECRET.encode(), b"estushop-auth-v1", hashlib.sha256).hexdigest()
+def _auth_token(role):
+    return hmac.new(AUTH_SECRET.encode(), f"estushop-auth-v1:{role}".encode(),
+                    hashlib.sha256).hexdigest()
 
-def _is_authenticated():
-    if not DASHBOARD_PASSWORD:
-        return True   # auth désactivée si pas de mot de passe configuré
-    return hmac.compare_digest(request.cookies.get("estu_auth", ""), _auth_token())
+def _current_role():
+    """'admin', 'investor' ou None."""
+    cookie = request.cookies.get("estu_auth", "")
+    if not cookie:
+        return None
+    if hmac.compare_digest(cookie, _auth_token("admin")):
+        return "admin"
+    if INVESTOR_PASSWORD and hmac.compare_digest(cookie, _auth_token("investor")):
+        return "investor"
+    return None
 
 @app.before_request
 def _require_auth():
@@ -75,19 +83,28 @@ def _require_auth():
         return
     if request.path == "/login" or request.path.startswith("/static/"):
         return
-    if _is_authenticated():
-        return
-    if request.path.startswith("/api/"):
-        return jsonify({"error": "unauthorized"}), 401
-    return redirect("/login")
+    role = _current_role()
+    if role is None:
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "unauthorized"}), 401
+        return redirect("/login")
+    # Investisseur : lecture seule — toute écriture est bloquée
+    if role == "investor" and request.method not in ("GET", "HEAD"):
+        return jsonify({"error": "lecture seule — accès investisseur"}), 403
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = ""
     if request.method == "POST":
-        if hmac.compare_digest(request.form.get("password", ""), DASHBOARD_PASSWORD):
+        pw = request.form.get("password", "")
+        role = None
+        if hmac.compare_digest(pw, DASHBOARD_PASSWORD):
+            role = "admin"
+        elif INVESTOR_PASSWORD and hmac.compare_digest(pw, INVESTOR_PASSWORD):
+            role = "investor"
+        if role:
             resp = make_response(redirect("/"))
-            resp.set_cookie("estu_auth", _auth_token(),
+            resp.set_cookie("estu_auth", _auth_token(role),
                             max_age=30*24*3600, httponly=True,
                             secure=True, samesite="Lax")
             return resp
