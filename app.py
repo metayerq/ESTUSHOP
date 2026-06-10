@@ -46,11 +46,8 @@ PRESET_LABELS = {
     "month":     "Ce mois-ci",
     "all":       "Depuis l'ouverture",
 }
-# Presets pour lesquels on récupère le détail articles (COGS, produits, mix)
-# Tous les presets fetchent les items pour avoir le COGS réel.
-# Note : pour des périodes très longues (>3 mois, centaines de transactions),
-# repasser certains presets en estimation si le timeout Vercel devient un problème.
-FETCH_ITEMS_PRESETS = {"today", "yesterday", "week", "lastweek", "month", "all"}
+# Le détail articles des jours passés vient du cache daily_summary (Supabase) ;
+# seul le jour courant est détaillé en live via l'API Vendus.
 
 app = Flask(__name__)
 
@@ -154,25 +151,24 @@ def api_data():
     from_date, to_date    = PRESET_RANGES[preset](today_real)
     is_single             = (from_date == to_date)
     n_days                = (to_date - from_date).days + 1
-    fetch_items           = preset in FETCH_ITEMS_PRESETS
 
-    since_7d  = (today_real - timedelta(days=6)).isoformat()
     comp_to   = from_date - timedelta(1)
     comp_from = comp_to   - timedelta(n_days - 1)
 
-    # ── Tous les appels API en parallèle ────────────────────────────────────
-    # docs_main + appels indépendants (balance, catalog, sparkline…) tournent
-    # en même temps → temps total ≈ max(docs_main, others) au lieu de somme.
+    # ── Stratégie de chargement ──────────────────────────────────────────────
+    # Jour unique : items en live (peu de tickets).
+    # Multi-jours : documents légers (1-2 appels) + cache daily_summary pour
+    # les agrégats item-level des jours passés ; seul aujourd'hui est détaillé.
     def _load_docs_main():
-        """Fetch avec items sur toute la période demandée.
-        Pour today/yesterday/3d/7d on part de since_7d pour avoir aussi les docs_7d
-        en un seul appel (filtrés côté Python ensuite).
-        Pour les presets plus longs (30d, month, year, all) on part de from_date.
-        """
-        if fetch_items:
-            fetch_from = min(from_date, today_real - timedelta(6))  # couvre toujours 7j pour docs_7d
-            return get_documents_with_items(fetch_from.isoformat(), today_real.isoformat())
+        if is_single:
+            return get_documents_with_items(from_date.isoformat(), to_date.isoformat())
         return get_documents(from_date.isoformat(), to_date.isoformat())
+
+    def _load_today_items():
+        """Items du jour courant (si inclus dans une période multi-jours)."""
+        if not is_single and from_date <= today_real <= to_date:
+            return get_documents_with_items(today_real.isoformat(), today_real.isoformat())
+        return []
 
     def _load_comp():
         try:
@@ -181,21 +177,28 @@ def api_data():
             return None   # échec ≠ zéro vente
 
     # Appels indépendants en parallèle avec le fetch principal
-    with ThreadPoolExecutor(max_workers=6) as pool:
+    with ThreadPoolExecutor(max_workers=7) as pool:
         fut_docs    = pool.submit(_load_docs_main)
+        fut_today   = pool.submit(_load_today_items)
         fut_comp    = pool.submit(_load_comp)
         fut_balance = pool.submit(get_balance)
-        fut_catalog = pool.submit(get_catalog if fetch_items else dict)
+        fut_catalog = pool.submit(get_catalog)
         fut_week    = pool.submit(weekly_sparkline, 7)
         fut_wow     = pool.submit(wow_growth)
         fut_weekday = pool.submit(best_weekday)
 
         try:
-            docs_7d = fut_docs.result(timeout=55)  # laisse de la marge pour les longues périodes
+            docs_main = fut_docs.result(timeout=55)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
         warnings = []
+
+        try:
+            today_docs = fut_today.result(timeout=30)
+        except Exception:
+            today_docs = []
+            warnings.append("Détail du jour indisponible — COGS du jour estimé")
 
         docs_comp = fut_comp.result(timeout=5)
         if docs_comp is None:
@@ -207,7 +210,7 @@ def api_data():
             warnings.append("Solde caisse indisponible (API Vendus)")
 
         catalog = fut_catalog.result(timeout=10) or {}
-        if fetch_items and not catalog:
+        if not catalog:
             warnings.append("Catalogue produits indisponible — marges et COGS non calculés")
 
         week_data = fut_week.result(timeout=5)
@@ -218,15 +221,33 @@ def api_data():
         wow_data     = fut_wow.result(timeout=5)
         weekday_data = fut_weekday.result(timeout=5)
 
-    # Filtrer docs_main depuis les 7j chargés (ou utiliser directement si pas d'items)
-    if fetch_items:
-        from_iso  = from_date.isoformat()
-        to_iso    = to_date.isoformat()
-        docs_main = [d for d in docs_7d
-                     if from_iso <= (d.get("date") or d.get("local_time",""))[:10] <= to_iso]
+    # ── Agrégats item-level : cache pour les jours passés + live aujourd'hui ──
+    if is_single:
+        day_summary = _summarize_docs_items(docs_main, catalog)
+        # Cache opportuniste : une journée passée consultée = summary persisté
+        if to_date < today_real and catalog:
+            _upsert_summary(to_date.isoformat(), day_summary)
+        period_rows = [{"day": to_date.isoformat(), **day_summary}]
     else:
-        docs_main = docs_7d
-        docs_7d   = []
+        past_to     = min(to_date, today_real - timedelta(1))
+        period_rows = _ensure_summaries(from_date, past_to, catalog) if from_date <= past_to else []
+        if today_docs:
+            period_rows = period_rows + [{"day": today_real.isoformat(),
+                                          **_summarize_docs_items(today_docs, catalog)}]
+
+    cogs_agg = (
+        round(sum(r.get("cogs_ht",    0) for r in period_rows), 2),
+        round(sum(r.get("covered_ht", 0) for r in period_rows), 2),
+        round(sum(r.get("items_ht",   0) for r in period_rows), 2),
+    )
+    merged_products = _merge_products(period_rows)
+
+    # Produits 7 jours glissants : summaries des 6 derniers jours + aujourd'hui
+    rows_7d = _ensure_summaries(today_real - timedelta(6), today_real - timedelta(1), catalog)
+    today_row_7d = ([{"day": today_real.isoformat(),
+                      **(_summarize_docs_items(docs_main if (is_single and to_date == today_real) else today_docs, catalog))}]
+                    if (is_single and to_date == today_real) or today_docs else [])
+    merged_7d = _merge_products(rows_7d + today_row_7d)
 
     result = {
         # Méta
@@ -236,7 +257,7 @@ def api_data():
         "to_date":       to_date.isoformat(),
         "n_days":        n_days,
         "is_single_day": is_single,
-        "has_items":     fetch_items,
+        "has_items":     True,
         "date":          to_date.isoformat(),
         "updated_at":    datetime.now().strftime("%H:%M"),
         "is_today":      (preset == "today"),
@@ -256,28 +277,25 @@ def api_data():
         "weekdays":      weekday_data,
         # Perf commerciale
         "median":        ticket_median(docs_main),
-        "upsell":        upsell_rate(docs_main),
+        "upsell":        _upsell_from_rows(period_rows),
         "ticket_dist":   ticket_distribution(docs_main),
-        # Produits sur 7j glissants — dérivés des docs déjà chargés si dispo
-        "products_7d":   product_stats_from_docs(docs_7d, catalog) if fetch_items else [],
+        # Produits sur 7j glissants — depuis le cache + aujourd'hui live
+        "products_7d":   _products_list(merged_7d, catalog, n=None),
         # Transactions récentes
         "recent":        recent_docs(docs_main),
     }
 
-    # ── Économie : toujours calculée (marge réelle si articles, estimée sinon) ─
+    # ── Économie : COGS depuis le cache (multi-jours) ou les items (jour) ─────
     result["economics"] = daily_economics(docs_main, catalog, n_days,
-                                           from_date=from_date, to_date=to_date)
+                                           from_date=from_date, to_date=to_date,
+                                           cogs_agg=cogs_agg)
     if result["economics"].get("charges_source") == "indisponible":
         warnings.append("Charges Supabase injoignables — charges et seuil non calculés")
     result["warnings"] = warnings
 
-    # ── Produits et mix : uniquement si détail articles disponible ────────────
-    if fetch_items:
-        result["products"] = top_products(docs_main, catalog)
-        result["mix"]      = category_mix(docs_main, catalog)
-    else:
-        result["products"] = []
-        result["mix"]      = []
+    # ── Produits et mix — depuis les agrégats fusionnés ───────────────────────
+    result["products"] = _products_list(merged_products, catalog, n=10)
+    result["mix"]      = _mix_from_merged(merged_products, catalog)
 
     # ── Sections disponibles uniquement pour un jour unique ───────────────────
     if is_single:
@@ -294,6 +312,31 @@ def api_data():
         result["unsold"] = []
 
     return jsonify(result)
+
+
+@app.route("/api/summary/rebuild", methods=["POST"])
+def api_summary_rebuild():
+    """Recalcule le cache daily_summary (après changement de prix d'achat/recettes).
+    Body optionnel : {"from": "YYYY-MM-DD", "to": "YYYY-MM-DD"} — défaut : tout l'historique."""
+    from vendus import get_documents_with_items, get_catalog as _gc
+    data      = request.get_json(silent=True) or {}
+    from_iso  = data.get("from", "2026-05-27")
+    to_iso    = data.get("to", (date.today() - timedelta(1)).isoformat())
+    catalog   = _gc()
+    if not catalog:
+        return jsonify({"ok": False, "error": "catalogue Vendus indisponible"}), 502
+    docs = get_documents_with_items(from_iso, to_iso)
+    by_day = {}
+    for doc in docs:
+        day = (doc.get("date") or doc.get("local_time", ""))[:10]
+        by_day.setdefault(day, []).append(doc)
+    cur, end, count = date.fromisoformat(from_iso), date.fromisoformat(to_iso), 0
+    while cur <= end:
+        iso = cur.isoformat()
+        _upsert_summary(iso, _summarize_docs_items(by_day.get(iso, []), catalog))
+        count += 1
+        cur += timedelta(1)
+    return jsonify({"ok": True, "days_rebuilt": count})
 
 
 @app.route("/cogs")
@@ -452,6 +495,133 @@ def _save_recipe(title, ingredients, notes):
     ok, _ = _supa_upsert("recipes", {"product_title": title,
                                       "ingredients": ingredients, "notes": notes})
     return ok
+
+# ── Cache daily_summary ───────────────────────────────────────────────────────
+# Les journées passées ne changent plus : leurs agrégats item-level (COGS,
+# produits, upsell) sont calculés une fois et stockés dans Supabase.
+# Seul aujourd'hui est recalculé en live.
+
+def _get_summaries(from_iso, to_iso):
+    rows = _req.get(f"{SUPA_URL}/rest/v1/daily_summary", headers=_supa_headers(),
+                    params=[("day", f"gte.{from_iso}"), ("day", f"lte.{to_iso}"),
+                            ("order", "day.asc")])
+    return rows.json() if rows.ok else []
+
+def _summarize_docs_items(docs, catalog):
+    """Agrégats item-level d'une liste de docs avec items (1 journée)."""
+    cogs = covered = items_ht = 0.0
+    multi = 0
+    products = {}
+    for d in docs:
+        its = d.get("items", [])
+        if len(its) >= 2:
+            multi += 1
+        for item in its:
+            name = item.get("title", "").strip()
+            qty  = float(item.get("qty", 0))
+            am   = item.get("amounts", {})
+            net  = float(am.get("net_total", 0))
+            grs  = float(am.get("gross_total", 0))
+            items_ht += net
+            p = products.setdefault(name, {"qty": 0, "rev_ttc": 0.0, "rev_ht": 0.0})
+            p["qty"]     += qty
+            p["rev_ttc"] += grs
+            p["rev_ht"]  += net
+            c = catalog.get(name, {})
+            if c.get("cost"):
+                cogs    += c["cost"] * qty
+                covered += net
+    return {
+        "nb":          len(docs),
+        "ca_ttc":      round(sum(float(d.get("amount_gross", 0)) for d in docs), 2),
+        "ca_ht":       round(sum(float(d.get("amount_net",   0)) for d in docs), 2),
+        "cogs_ht":     round(cogs, 2),
+        "covered_ht":  round(covered, 2),
+        "items_ht":    round(items_ht, 2),
+        "multi_count": multi,
+        "products":    {k: {"qty": v["qty"], "rev_ttc": round(v["rev_ttc"], 2),
+                            "rev_ht": round(v["rev_ht"], 2)} for k, v in products.items()},
+    }
+
+def _upsert_summary(day_iso, summary):
+    _supa_upsert("daily_summary", {"day": day_iso, **summary})
+
+def _ensure_summaries(from_date, to_date, catalog):
+    """Retourne les summaries [from..to] (jours passés), en construisant les manquants."""
+    from vendus import get_documents_with_items
+    from_iso, to_iso = from_date.isoformat(), to_date.isoformat()
+    rows = _get_summaries(from_iso, to_iso)
+    have = {r["day"] for r in rows}
+    all_days = []
+    cur = from_date
+    while cur <= to_date:
+        all_days.append(cur.isoformat())
+        cur += timedelta(1)
+    missing = [d for d in all_days if d not in have]
+    if missing and catalog:   # sans catalogue, on ne fige pas de COGS à zéro
+        docs = get_documents_with_items(min(missing), max(missing))
+        by_day = {}
+        for doc in docs:
+            day = (doc.get("date") or doc.get("local_time", ""))[:10]
+            by_day.setdefault(day, []).append(doc)
+        for day in missing:
+            s = _summarize_docs_items(by_day.get(day, []), catalog)
+            _upsert_summary(day, s)
+            rows.append({"day": day, **s})
+    rows.sort(key=lambda r: r["day"])
+    return rows
+
+def _merge_products(summary_rows):
+    """Fusionne les dicts products de plusieurs jours → {name: {qty, rev, days}}."""
+    merged = {}
+    for r in summary_rows:
+        for name, p in (r.get("products") or {}).items():
+            m = merged.setdefault(name, {"qty": 0, "rev_ttc": 0.0, "rev_ht": 0.0, "days": 0})
+            m["qty"]     += p["qty"]
+            m["rev_ttc"] += p["rev_ttc"]
+            m["rev_ht"]  += p["rev_ht"]
+            if p["qty"]:
+                m["days"] += 1
+    return merged
+
+def _products_list(merged, catalog, n=10):
+    """Format top_products depuis un dict fusionné."""
+    rows = []
+    for name, s in merged.items():
+        cost = catalog.get(name, {}).get("cost")
+        cost_ht = round(cost * s["qty"], 2) if cost else None
+        rev_ht  = round(s["rev_ht"], 2)
+        margin  = round((rev_ht - cost_ht) / rev_ht * 100, 1) if rev_ht and cost_ht else None
+        rows.append({
+            "name": name, "qty": int(s["qty"]),
+            "revenue": round(s["rev_ttc"], 2), "rev_ht": rev_ht,
+            "avg": round(s["rev_ttc"] / s["qty"], 2) if s["qty"] else 0,
+            "cost_ht": cost_ht, "margin_pct": margin,
+            "days_sold": s.get("days", 0),
+            "avg_day": round(s["rev_ttc"] / s["days"], 2) if s.get("days") else 0,
+        })
+    rows.sort(key=lambda x: x["qty"], reverse=True)
+    return rows[:n] if n else rows
+
+def _upsell_from_rows(rows):
+    total = sum(r.get("nb", 0) for r in rows)
+    multi = sum(r.get("multi_count", 0) for r in rows)
+    return {"rate": round(multi / total * 100) if total else 0,
+            "multi": multi, "single": total - multi, "total": total}
+
+def _mix_from_merged(merged, catalog):
+    from vendus import DRINK_CAT_IDS, FOOD_CAT_IDS, EXTRA_CAT_IDS
+    by_group = {"Boissons": 0.0, "Food": 0.0, "Extras": 0.0, "Autre": 0.0}
+    for name, s in merged.items():
+        cid = catalog.get(name, {}).get("category_id")
+        if cid in DRINK_CAT_IDS:   by_group["Boissons"] += s["rev_ht"]
+        elif cid in FOOD_CAT_IDS:  by_group["Food"]     += s["rev_ht"]
+        elif cid in EXTRA_CAT_IDS: by_group["Extras"]   += s["rev_ht"]
+        else:                      by_group["Autre"]    += s["rev_ht"]
+    grand = sum(by_group.values()) or 1
+    return [{"label": k, "amount": round(v, 2), "pct": round(v / grand * 100)}
+            for k, v in by_group.items() if v > 0]
+
 
 def _load_preparations():
     rows = _supa_get("preparations")

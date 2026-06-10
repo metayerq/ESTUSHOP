@@ -477,7 +477,7 @@ def daily_breakdown(docs):
     ]
 
 
-def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
+def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_agg=None):
     """
     P&L entièrement en HT (hors taxes) — pour 1 jour ou une période.
     CA HT  = amount_net  (Vendus)
@@ -553,16 +553,21 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
         ca_ttc += float(d.get("amount_gross", 0))
         ca_ht  += float(d.get("amount_net",   0))
 
-        # COGS item par item (supply_price est HT dans Vendus)
-        for item in d.get("items", []):
-            qty    = float(item.get("qty", 0))
-            name   = item.get("title", "").strip()   # strip: titres Vendus ont parfois des espaces
-            net    = float(item.get("amounts", {}).get("net_total", 0))
-            items_ht += net
-            cat = catalog.get(name, {})
-            if cat.get("cost"):
-                cogs_ht    += cat["cost"] * qty
-                covered_ht += net
+        if cogs_agg is None:
+            # COGS item par item (supply_price est HT dans Vendus)
+            for item in d.get("items", []):
+                qty    = float(item.get("qty", 0))
+                name   = item.get("title", "").strip()   # strip: titres Vendus ont parfois des espaces
+                net    = float(item.get("amounts", {}).get("net_total", 0))
+                items_ht += net
+                cat = catalog.get(name, {})
+                if cat.get("cost"):
+                    cogs_ht    += cat["cost"] * qty
+                    covered_ht += net
+
+    if cogs_agg is not None:
+        # Agrégats pré-calculés (cache daily_summary) — pas besoin des items
+        cogs_ht, covered_ht, items_ht = cogs_agg
 
     tva_col = round(ca_ttc - ca_ht, 2)
 
