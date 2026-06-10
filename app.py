@@ -24,31 +24,31 @@ from vendus import (
 SEUIL_TRANSACTIONS = 40
 
 # ── Presets de période ────────────────────────────────────────────────────────
+def _week_start(d):
+    """Lundi de la semaine en cours."""
+    return d - timedelta(days=d.weekday())
+
 PRESET_RANGES = {
-    "today":     lambda d: (d, d),
-    "yesterday": lambda d: (d - timedelta(1), d - timedelta(1)),
-    "3d":        lambda d: (d - timedelta(2), d),
-    "7d":        lambda d: (d - timedelta(6), d),
-    "30d":       lambda d: (d - timedelta(29), d),
-    "month":     lambda d: (d.replace(day=1), d),
-    "year":      lambda d: (date(d.year, 1, 1), d),
-    "all":       lambda d: (date(2026, 5, 27), d),  # date d'ouverture Estudantina
+    "today":      lambda d: (d, d),
+    "yesterday":  lambda d: (d - timedelta(1), d - timedelta(1)),
+    "week":       lambda d: (_week_start(d), d),
+    "lastweek":   lambda d: (_week_start(d) - timedelta(7), _week_start(d) - timedelta(1)),
+    "month":      lambda d: (d.replace(day=1), d),
+    "all":        lambda d: (date(2026, 5, 27), d),  # date d'ouverture Estudantina
 }
 PRESET_LABELS = {
     "today":     "Aujourd'hui",
     "yesterday": "Hier",
-    "3d":        "3 derniers jours",
-    "7d":        "7 derniers jours",
-    "30d":       "30 derniers jours",
+    "week":      "Cette semaine",
+    "lastweek":  "Semaine dernière",
     "month":     "Ce mois-ci",
-    "year":      "Cette année",
     "all":       "Depuis l'ouverture",
 }
 # Presets pour lesquels on récupère le détail articles (COGS, produits, mix)
 # Tous les presets fetchent les items pour avoir le COGS réel.
 # Note : pour des périodes très longues (>3 mois, centaines de transactions),
 # repasser certains presets en estimation si le timeout Vercel devient un problème.
-FETCH_ITEMS_PRESETS = {"today", "yesterday", "3d", "7d", "30d", "month", "year", "all"}
+FETCH_ITEMS_PRESETS = {"today", "yesterday", "week", "lastweek", "month", "all"}
 
 app = Flask(__name__)
 

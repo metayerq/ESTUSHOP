@@ -65,14 +65,12 @@
 
   <!-- Filtres de période -->
   <div class="period-pills" id="period-pills">
-    <button class="pill active" data-preset="today"     onclick="setPreset('today')">Aujourd'hui</button>
+    <button class="pill active" data-preset="today"    onclick="setPreset('today')">Aujourd'hui</button>
     <button class="pill"        data-preset="yesterday" onclick="setPreset('yesterday')">Hier</button>
-    <button class="pill"        data-preset="3d"        onclick="setPreset('3d')">3 jours</button>
-    <button class="pill"        data-preset="7d"        onclick="setPreset('7d')">7 jours</button>
-    <button class="pill"        data-preset="30d"       onclick="setPreset('30d')">30 jours</button>
+    <button class="pill"        data-preset="week"      onclick="setPreset('week')">Cette semaine</button>
+    <button class="pill"        data-preset="lastweek"  onclick="setPreset('lastweek')">Semaine dernière</button>
     <button class="pill"        data-preset="month"     onclick="setPreset('month')">Ce mois</button>
-    <button class="pill"        data-preset="year"      onclick="setPreset('year')">Cette année</button>
-    <button class="pill"        data-preset="all"       onclick="setPreset('all')">Tout</button>
+    <button class="pill"        data-preset="all"       onclick="setPreset('all')">Depuis l'ouverture</button>
   </div>
 
   <!-- KPIs — label dynamique selon la période -->
