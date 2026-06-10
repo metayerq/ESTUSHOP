@@ -749,7 +749,7 @@
     <div style="position:relative;margin-bottom:16px;">
       <input id="prep-ac-input" class="field-input" placeholder="+ Ajouter un ingrédient…" autocomplete="off"
         oninput="prepAcSearch(this.value)" onfocus="prepAcSearch(this.value)" style="width:100%;">
-      <div id="prep-ac-dropdown" class="ac-dropdown" style="display:none;"></div>
+      <div id="prep-ac-dropdown" class="ac-dropdown"></div>
     </div>
     <!-- Coût calculé -->
     <div id="prep-cost-box" style="background:var(--bg-page);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:16px;display:none;">
@@ -1704,7 +1704,7 @@ function openPrepDrawer() {
 function closePrepDrawer() {
   document.getElementById('prep-drawer').style.transform = 'translateX(100%)';
   document.getElementById('prep-drawer-overlay').style.display = 'none';
-  document.getElementById('prep-ac-dropdown').style.display = 'none';
+  document.getElementById('prep-ac-dropdown').classList.remove('open');
 }
 
 function renderPrepIngredients() {
@@ -1759,19 +1759,18 @@ function updatePrepCost() {
 
 function prepAcSearch(q) {
   const dd = document.getElementById('prep-ac-dropdown');
-  if (!q) { dd.style.display = 'none'; return; }
   const names = Object.keys(ingrLib).filter(n =>
-    n.toLowerCase().includes(q.toLowerCase()) && !prepIngredients.find(i => i.name === n)
+    n.toLowerCase().includes((q||'').toLowerCase()) && !prepIngredients.find(i => i.name === n)
   );
-  if (!names.length) { dd.style.display = 'none'; return; }
-  dd.style.display = '';
-  dd.innerHTML = names.slice(0,12).map(n => {
+  if (!names.length) { dd.classList.remove('open'); return; }
+  dd.innerHTML = names.slice(0,14).map(n => {
     const lib = ingrLib[n];
     return `<div class="ac-item" onmousedown="prepAddIngredient(${JSON.stringify(n)})">
       <span>${n}</span>
-      <span style="color:var(--faint);font-size:11px;">${lib.price}€/${lib.unit_ref}</span>
+      <span class="ac-price">${lib.price}€/${lib.unit_ref}</span>
     </div>`;
   }).join('');
+  dd.classList.add('open');
 }
 
 function prepAddIngredient(name) {
@@ -1779,7 +1778,7 @@ function prepAddIngredient(name) {
   const defaultUnit = lib.unit_ref === 'kg' ? 'g' : lib.unit_ref === 'l' ? 'ml' : lib.unit_ref;
   prepIngredients.push({ name, qty: 100, unit: defaultUnit });
   document.getElementById('prep-ac-input').value = '';
-  document.getElementById('prep-ac-dropdown').style.display = 'none';
+  document.getElementById('prep-ac-dropdown').classList.remove('open');
   renderPrepIngredients();
   updatePrepCost();
 }
