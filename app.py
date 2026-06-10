@@ -348,6 +348,17 @@ def _save_recipe(title, ingredients, notes):
                                       "ingredients": ingredients, "notes": notes})
     return ok
 
+def _load_preparations():
+    rows = _supa_get("preparations")
+    return {r["name"]: r for r in rows}
+
+def _save_preparation(name, ingredients, yield_qty, yield_unit, notes):
+    ok, err = _supa_upsert("preparations", {
+        "name": name, "ingredients": ingredients,
+        "yield_qty": yield_qty, "yield_unit": yield_unit, "notes": notes,
+    })
+    return ok, err
+
 # ── Calcul COGS depuis une recette ────────────────────────────────────────────
 UNIT_CONVERSIONS = {
     # (unit, unit_ref) → factor pour obtenir le coût
@@ -361,31 +372,58 @@ UNIT_CONVERSIONS = {
     ("unit", "unit"): 1.0,
 }
 
-def calc_recipe_cogs(ingredients, ingr_lib):
-    """Calcule le COGS total d'une recette depuis la bibliothèque d'ingrédients."""
+def calc_recipe_cogs(ingredients, ingr_lib, prep_lib=None):
+    """Calcule le COGS total d'une recette.
+    Supporte les préparations (sous-recettes) : si un ingrédient n'est pas dans
+    ingr_lib mais dans prep_lib, son coût est calculé en cascade depuis sa propre
+    recette (1 niveau de profondeur — pas de nesting infini).
+    """
     total = 0.0
     breakdown = []
     for ing in ingredients:
-        name     = ing["name"]
-        qty      = float(ing["qty"])
-        unit     = ing["unit"]
+        name = ing["name"]
+        qty  = float(ing["qty"])
+        unit = ing["unit"]
+
+        # ── Cas 1 : ingrédient classique ──────────────────────────────────────
         lib_item = ingr_lib.get(name)
-        if not lib_item:
-            breakdown.append({**ing, "cost": None, "error": "ingrédient inconnu"})
+        if lib_item:
+            price    = float(lib_item["price"])
+            unit_ref = lib_item["unit_ref"]
+            factor   = UNIT_CONVERSIONS.get((unit, unit_ref))
+            if factor is None:
+                breakdown.append({**ing, "cost": None, "error": f"conversion {unit}→{unit_ref} inconnue"})
+                continue
+            cost = round(qty * factor * price, 5)
+            total += cost
+            breakdown.append({"name": name, "qty": qty, "unit": unit,
+                               "price_ref": price, "unit_ref": unit_ref,
+                               "cost": round(cost, 4), "type": "ingredient"})
             continue
-        price    = float(lib_item["price"])
-        unit_ref = lib_item["unit_ref"]
-        factor   = UNIT_CONVERSIONS.get((unit, unit_ref))
-        if factor is None:
-            breakdown.append({**ing, "cost": None, "error": f"conversion {unit}→{unit_ref} inconnue"})
+
+        # ── Cas 2 : préparation (sous-recette) ────────────────────────────────
+        prep = (prep_lib or {}).get(name)
+        if prep:
+            prep_total, prep_bd = calc_recipe_cogs(
+                prep["ingredients"], ingr_lib, prep_lib=None)  # pas de nesting infini
+            yield_qty = float(prep.get("yield_qty") or 1)
+            cost_per_unit = prep_total / yield_qty if yield_qty else 0
+            cost = round(qty * cost_per_unit, 5)
+            total += cost
+            breakdown.append({
+                "name": name, "qty": qty, "unit": unit,
+                "cost": round(cost, 4), "type": "preparation",
+                "prep_total": round(prep_total, 4),
+                "yield_qty": yield_qty,
+                "yield_unit": prep.get("yield_unit", "portion"),
+                "cost_per_unit": round(cost_per_unit, 4),
+                "prep_breakdown": prep_bd,
+            })
             continue
-        cost = round(qty * factor * price, 5)
-        total += cost
-        breakdown.append({
-            "name": name, "qty": qty, "unit": unit,
-            "price_ref": price, "unit_ref": unit_ref,
-            "cost": round(cost, 4),
-        })
+
+        # ── Cas 3 : inconnu ───────────────────────────────────────────────────
+        breakdown.append({**ing, "cost": None, "error": "ingrédient inconnu"})
+
     return round(total, 4), breakdown
 
 CATEGORY_NAMES = {
@@ -423,6 +461,7 @@ def api_cogs():
     raw      = r.json() if r.ok else []
     recipes  = _load_recipes()
     ingr_lib = _load_ingredients()
+    prep_lib = _load_preparations()
 
     products = []
     for p in raw:
@@ -440,7 +479,7 @@ def api_cogs():
         recipe_total = None
         breakdown    = []
         if has_recipe:
-            recipe_total, breakdown = calc_recipe_cogs(recipe_data["ingredients"], ingr_lib)
+            recipe_total, breakdown = calc_recipe_cogs(recipe_data["ingredients"], ingr_lib, prep_lib)
 
         effective_cogs = recipe_total if recipe_total is not None else supply
         marge_ht_eff   = round(price_ht - effective_cogs, 4) if price_ht else None
@@ -465,12 +504,66 @@ def api_cogs():
 
     order_map = {cat: i for i, cat in enumerate(CATEGORY_ORDER)}
     products.sort(key=lambda p: (order_map.get(p["category_id"], 99), p["title"]))
-    return jsonify({"products": products, "category_order": CATEGORY_ORDER, "category_names": CATEGORY_NAMES})
+    preps = _load_preparations()
+    ingr_lib2 = ingr_lib  # déjà chargé
+    prep_summary = {}
+    for pname, p in preps.items():
+        total, _ = calc_recipe_cogs(p["ingredients"], ingr_lib2)
+        yq = float(p.get("yield_qty") or 1)
+        prep_summary[pname] = {
+            "yield_qty":   yq,
+            "yield_unit":  p.get("yield_unit", "portion"),
+            "cost_per_unit": round(total / yq, 4) if yq else 0,
+            "notes":       p.get("notes", ""),
+        }
+    return jsonify({"products": products, "category_order": CATEGORY_ORDER,
+                    "category_names": CATEGORY_NAMES, "preparations": prep_summary})
 
 
 @app.route("/api/ingredients", methods=["GET"])
 def api_ingredients_get():
     return jsonify(_load_ingredients())
+
+
+# ── Préparations CRUD ─────────────────────────────────────────────────────────
+
+@app.route("/api/preparations", methods=["GET"])
+def api_preparations_get():
+    preps    = _load_preparations()
+    ingr_lib = _load_ingredients()
+    result   = {}
+    for name, p in preps.items():
+        total, breakdown = calc_recipe_cogs(p["ingredients"], ingr_lib)
+        yq = float(p.get("yield_qty") or 1)
+        result[name] = {
+            **p,
+            "total_cogs":    total,
+            "cost_per_unit": round(total / yq, 4) if yq else None,
+            "breakdown":     breakdown,
+        }
+    return jsonify(result)
+
+@app.route("/api/preparations", methods=["POST"])
+def api_preparations_post():
+    data        = request.get_json()
+    name        = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "name required"}), 400
+    ingredients = data.get("ingredients", [])
+    yield_qty   = float(data.get("yield_qty") or 1)
+    yield_unit  = (data.get("yield_unit") or "portion").strip()
+    notes       = (data.get("notes") or "").strip()
+    ingr_lib    = _load_ingredients()
+    total, breakdown = calc_recipe_cogs(ingredients, ingr_lib)
+    ok, err = _save_preparation(name, ingredients, yield_qty, yield_unit, notes)
+    return jsonify({"ok": ok, "error": err, "total_cogs": total,
+                    "cost_per_unit": round(total / yield_qty, 4) if yield_qty else None,
+                    "breakdown": breakdown})
+
+@app.route("/api/preparations/<path:name>", methods=["DELETE"])
+def api_preparations_delete(name):
+    ok = _supa_delete("preparations", "name", name)
+    return jsonify({"ok": ok})
 
 
 @app.route("/api/ingredients", methods=["POST"])
@@ -508,7 +601,7 @@ def api_recipe_get(product_id):
     recipes     = _load_recipes()
     ingr_lib    = _load_ingredients()
     recipe_data = recipes.get(title, {"ingredients": [], "notes": ""})
-    total, breakdown = calc_recipe_cogs(recipe_data["ingredients"], ingr_lib)
+    total, breakdown = calc_recipe_cogs(recipe_data["ingredients"], ingr_lib, _load_preparations())
     return jsonify({
         "ok": True, "title": title, "product_id": product_id,
         "ingredients": recipe_data["ingredients"],
@@ -530,7 +623,7 @@ def api_recipe_post(product_id):
     ingr_lib    = _load_ingredients()
     ingredients = data.get("ingredients", [])
     notes       = data.get("notes", "")
-    total, breakdown = calc_recipe_cogs(ingredients, ingr_lib)
+    total, breakdown = calc_recipe_cogs(ingredients, ingr_lib, _load_preparations())
     _save_recipe(title, ingredients, notes)
     patch_r = req.patch(
         f"https://www.vendus.pt/ws/v1.1/products/{product_id}/",
@@ -561,7 +654,7 @@ def api_recipe_recalculate_all():
         if not prod:
             results.append({"title": title, "status": "not_found_in_vendus"})
             continue
-        total, _ = calc_recipe_cogs(recipe_data["ingredients"], ingr_lib)
+        total, _ = calc_recipe_cogs(recipe_data["ingredients"], ingr_lib, _load_preparations())
         pr = req.patch(f"{BASE}/products/{prod['id']}/", auth=(VENDUS_API_KEY, ""),
                        json={"supply_price": round(total, 4)})
         results.append({"title": title, "cogs": total, "status": "ok" if pr.ok else "error"})
@@ -585,7 +678,7 @@ def api_product_create():
         return jsonify({"ok": False, "error": "title et price_ttc requis"}), 400
 
     ingr_lib          = _load_ingredients()
-    total, breakdown  = calc_recipe_cogs(ingredients, ingr_lib)
+    total, breakdown  = calc_recipe_cogs(ingredients, ingr_lib, _load_preparations())
 
     # Créer dans Vendus
     payload = {

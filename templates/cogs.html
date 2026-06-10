@@ -461,6 +461,9 @@
     <button class="view-tab active" id="tab-products" onclick="switchTab('products')">
       Produits &amp; marges <span class="tab-badge" id="tab-badge-products">—</span>
     </button>
+    <button class="view-tab" id="tab-preparations" onclick="switchTab('preparations')">
+      Préparations <span class="tab-badge" id="tab-badge-preparations">—</span>
+    </button>
     <button class="view-tab" id="tab-ingredients" onclick="switchTab('ingredients')">
       Ingrédients <span class="tab-badge" id="tab-badge-ingredients">—</span>
     </button>
@@ -496,6 +499,18 @@
   <div id="content"><div class="loading">Chargement…</div></div>
 
   </div><!-- /view-products -->
+
+  <!-- Vue préparations -->
+  <div id="view-preparations" style="display:none;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div>
+        <div class="section-label" style="margin:0;">Préparations maison</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;">Pain, sauces, bases — utilisables dans les recettes produit</div>
+      </div>
+      <button class="btn-add" onclick="openPrepDrawer()">+ Nouvelle préparation</button>
+    </div>
+    <div id="prep-list"><div class="loading" style="padding:32px;">Chargement…</div></div>
+  </div>
 
   <!-- Vue ingrédients -->
   <div id="view-ingredients" style="display:none;">
@@ -695,6 +710,67 @@
   </div>
 </div>
 
+<!-- ── Drawer Préparation ── -->
+<div id="prep-drawer-overlay" onclick="closePrepDrawer()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:99;"></div>
+<div id="prep-drawer" style="position:fixed;top:0;right:0;height:100vh;width:480px;background:var(--bg-card);box-shadow:-4px 0 24px rgba(0,0,0,.1);z-index:100;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);">
+  <div class="drawer-head" style="display:flex;align-items:flex-start;justify-content:space-between;">
+    <div>
+      <div class="drawer-title" id="prep-d-title">Nouvelle préparation</div>
+      <div class="drawer-subtitle" id="prep-d-sub"></div>
+    </div>
+    <button class="drawer-close" onclick="closePrepDrawer()">✕</button>
+  </div>
+  <div class="drawer-body">
+    <!-- Nom -->
+    <div style="margin-bottom:16px;">
+      <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:6px;">Nom de la préparation</label>
+      <input id="prep-name" class="field-input" style="width:100%;font-size:14px;font-weight:600;" placeholder="ex: Pain de mie shokupan">
+    </div>
+    <!-- Rendement -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
+      <div>
+        <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:6px;">Rendement (qté)</label>
+        <input id="prep-yield-qty" class="field-input" type="number" step="0.1" min="0.1" value="1" oninput="updatePrepCost()" style="width:100%;">
+      </div>
+      <div>
+        <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:6px;">Unité de portion</label>
+        <input id="prep-yield-unit" class="field-input" list="prep-unit-list" placeholder="tranche, portion, g…" style="width:100%;" oninput="updatePrepCost()">
+        <datalist id="prep-unit-list">
+          <option value="tranche"><option value="portion"><option value="g"><option value="ml"><option value="unit">
+        </datalist>
+      </div>
+    </div>
+    <!-- Ingrédients -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <div class="section-label" style="margin:0;">Ingrédients</div>
+    </div>
+    <div id="prep-ingredients-list" style="margin-bottom:12px;"></div>
+    <!-- Autocomplete -->
+    <div style="position:relative;margin-bottom:16px;">
+      <input id="prep-ac-input" class="field-input" placeholder="+ Ajouter un ingrédient…" autocomplete="off"
+        oninput="prepAcSearch(this.value)" onfocus="prepAcSearch(this.value)" style="width:100%;">
+      <div id="prep-ac-dropdown" class="ac-dropdown" style="display:none;"></div>
+    </div>
+    <!-- Coût calculé -->
+    <div id="prep-cost-box" style="background:var(--bg-page);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:16px;display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:12px;color:var(--muted);">Coût total préparation</span>
+        <span id="prep-cost-total" style="font-weight:700;font-size:15px;">—</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+        <span style="font-size:12px;color:var(--muted);" id="prep-cost-unit-label">Coût / portion</span>
+        <span id="prep-cost-unit" style="font-weight:600;font-size:14px;color:var(--green);">—</span>
+      </div>
+    </div>
+    <!-- Notes -->
+    <textarea id="prep-notes" class="drawer-notes" placeholder="Notes…" rows="2"></textarea>
+  </div>
+  <div class="drawer-footer">
+    <button class="btn-primary" style="flex:1;" onclick="savePrep()">Enregistrer</button>
+    <button class="btn-secondary" onclick="closePrepDrawer()">Annuler</button>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -705,6 +781,9 @@ let allProducts   = [];
 let categoryOrder = [];
 let categoryNames = {};
 let ingrLib       = {};          // {name: {price, unit_ref, category, note}}
+let prepLib       = {};          // {name: {yield_qty, yield_unit, cost_per_unit, ...}}
+let prepIngredients = [];        // ingrédients en cours d'édition dans le drawer prépa
+let editingPrepName = null;      // null = nouvelle prépa, sinon nom existant
 let drawerProd    = null;        // produit en cours d'édition
 let sortCol       = null;        // colonne de tri active
 let sortDir       = 1;           // 1=asc, -1=desc
@@ -713,19 +792,17 @@ let sortDir       = 1;           // 1=asc, -1=desc
 // ONGLETS
 // ══════════════════════════════════════════════════════════
 function switchTab(tab) {
-  const isProducts    = tab === 'products';
-  document.getElementById('view-products').style.display    = isProducts ? '' : 'none';
-  document.getElementById('view-ingredients').style.display = isProducts ? 'none' : '';
-  document.getElementById('tab-products').classList.toggle('active',    isProducts);
-  document.getElementById('tab-ingredients').classList.toggle('active', !isProducts);
-  // Scroll en haut à chaque changement d'onglet
+  ['products','preparations','ingredients'].forEach(t => {
+    document.getElementById(`view-${t}`).style.display = tab === t ? '' : 'none';
+    document.getElementById(`tab-${t}`).classList.toggle('active', tab === t);
+  });
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function updateTabBadges() {
-  document.getElementById('tab-badge-products').textContent    = allProducts.length || '—';
-  const ingrCount = Object.keys(ingrLib).length;
-  document.getElementById('tab-badge-ingredients').textContent = ingrCount || '—';
+  document.getElementById('tab-badge-products').textContent     = allProducts.length || '—';
+  document.getElementById('tab-badge-preparations').textContent = Object.keys(prepLib).length || '—';
+  document.getElementById('tab-badge-ingredients').textContent  = Object.keys(ingrLib).length || '—';
 }
 
 // ══════════════════════════════════════════════════════════
@@ -753,9 +830,11 @@ async function loadCogs(soft = false) {
   allProducts   = d.products;
   categoryOrder = d.category_order;
   categoryNames = d.category_names;
+  prepLib       = d.preparations || {};
   buildCatFilter();
-  applyFilters(); // applyFilters appelle buildSummary avec les produits filtrés
+  applyFilters();
   renderIngrLib();
+  renderPrepList();
   updateTabBadges();
   setLoading(false);
 }
@@ -1047,17 +1126,32 @@ function addIngRow(ing = {}) {
 function showAC(input) {
   const q   = input.value.toLowerCase();
   const dd  = input.nextElementSibling;
-  const all = Object.keys(ingrLib);
-  const matches = all.filter(n => n.toLowerCase().includes(q)).slice(0, 12);
-  if (!matches.length && !q) { dd.classList.remove('open'); return; }
-  let html = matches.map(n => {
+
+  const ingrMatches = Object.keys(ingrLib).filter(n => n.toLowerCase().includes(q));
+  const prepMatches = Object.keys(prepLib).filter(n => n.toLowerCase().includes(q));
+
+  if (!ingrMatches.length && !prepMatches.length && !q) { dd.classList.remove('open'); return; }
+
+  let html = '';
+  if (prepMatches.length) {
+    html += prepMatches.slice(0, 6).map(n => {
+      const p = prepLib[n];
+      const priceStr = p.cost_per_unit != null ? `${p.cost_per_unit.toFixed(4)} €/${p.yield_unit}` : '…';
+      const esc = n.replace(/'/g,"\\'");
+      return `<div class="ac-item" onmousedown="selectAC(event,'${esc}')">
+        🍞 ${n} <span class="ac-price">${priceStr}</span>
+      </div>`;
+    }).join('');
+  }
+  html += ingrMatches.slice(0, 12).map(n => {
     const lib  = ingrLib[n];
     const priceStr = `${lib.price} €/${lib.unit_ref}`;
-    return `<div class="ac-item" onmousedown="selectAC(event,'${n.replace(/'/g,"\\'")}')">
+    const esc = n.replace(/'/g,"\\'");
+    return `<div class="ac-item" onmousedown="selectAC(event,'${esc}')">
       ${n} <span class="ac-price">${priceStr}</span>
     </div>`;
   }).join('');
-  if (q && !matches.includes(q)) {
+  if (q && !ingrMatches.includes(q) && !prepMatches.includes(q)) {
     html += `<div class="ac-item ac-new" onmousedown="selectAC(event,'${q.replace(/'/g,"\\'")}',true)">+ Créer "${q}"</div>`;
   }
   dd.innerHTML = html;
@@ -1522,6 +1616,203 @@ async function createProduct() {
   } finally {
     btn.textContent = 'Créer dans Vendus'; btn.disabled = false;
   }
+}
+
+// ══════════════════════════════════════════════════════════
+// PRÉPARATIONS
+// ══════════════════════════════════════════════════════════
+const fmtP4 = v => v != null ? new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',minimumFractionDigits:4,maximumFractionDigits:4}).format(v) : '—';
+const fmt2c = v => v != null ? new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',minimumFractionDigits:2}).format(v) : '—';
+
+function renderPrepList() {
+  const el = document.getElementById('prep-list');
+  const entries = Object.entries(prepLib);
+  if (!entries.length) {
+    el.innerHTML = `<div style="text-align:center;color:var(--muted);padding:48px 0;">Aucune préparation — cliquez "+ Nouvelle préparation"</div>`;
+    return;
+  }
+  el.innerHTML = entries.map(([name, p]) => {
+    const totalCost = (p.cost_per_unit || 0) * (p.yield_qty || 1);
+    const usedIn = allProducts.filter(pr => pr.recipe && pr.recipe.some(r => r.name === name && r.type === 'preparation')).length;
+    return `<div style="border:1px solid var(--border);border-radius:8px;background:var(--bg-card);margin-bottom:12px;overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--bg-page);border-bottom:1px solid var(--border);">
+        <div>
+          <span style="font-size:15px;font-weight:600;">🍞 ${name}</span>
+          <span style="font-size:11px;color:var(--muted);margin-left:12px;">Rendement : ${p.yield_qty} ${p.yield_unit}</span>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button onclick="editPrep(${JSON.stringify(name)})"
+            style="font-size:12px;padding:5px 12px;border:1px solid var(--border);border-radius:5px;background:var(--bg-card);cursor:pointer;font-family:inherit;">Modifier</button>
+          <button onclick="deletePrep(${JSON.stringify(name)})"
+            style="font-size:12px;padding:5px 12px;border:1px solid var(--border);border-radius:5px;background:var(--bg-card);cursor:pointer;font-family:inherit;color:var(--red);">✕</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;padding:14px 20px;gap:16px;">
+        <div>
+          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Coût total recette</div>
+          <div style="font-size:15px;font-weight:600;">${fmt2c(totalCost)}</div>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Coût / ${p.yield_unit}</div>
+          <div style="font-size:15px;font-weight:600;color:var(--green);">${fmtP4(p.cost_per_unit)}</div>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Utilisée dans</div>
+          <div style="font-size:13px;color:var(--muted);">${usedIn} recette(s)</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function editPrep(name) {
+  editingPrepName = name;
+  // Recharger le détail complet depuis l'API
+  const res = await fetch('/api/preparations');
+  const data = await res.json();
+  const p = data[name];
+  if (!p) { showToast('Préparation introuvable'); return; }
+  prepIngredients = JSON.parse(JSON.stringify(p.ingredients || []));
+  document.getElementById('prep-d-title').textContent = 'Modifier la préparation';
+  document.getElementById('prep-d-sub').textContent = name;
+  document.getElementById('prep-name').value = name;
+  document.getElementById('prep-yield-qty').value = p.yield_qty || 1;
+  document.getElementById('prep-yield-unit').value = p.yield_unit || '';
+  document.getElementById('prep-notes').value = p.notes || '';
+  renderPrepIngredients();
+  updatePrepCost();
+  document.getElementById('prep-drawer').style.transform = 'translateX(0)';
+  document.getElementById('prep-drawer-overlay').style.display = '';
+}
+
+function openPrepDrawer() {
+  editingPrepName = null;
+  prepIngredients = [];
+  document.getElementById('prep-d-title').textContent = 'Nouvelle préparation';
+  document.getElementById('prep-d-sub').textContent = '';
+  document.getElementById('prep-name').value = '';
+  document.getElementById('prep-yield-qty').value = 1;
+  document.getElementById('prep-yield-unit').value = '';
+  document.getElementById('prep-notes').value = '';
+  document.getElementById('prep-ingredients-list').innerHTML = '';
+  document.getElementById('prep-cost-box').style.display = 'none';
+  document.getElementById('prep-drawer').style.transform = 'translateX(0)';
+  document.getElementById('prep-drawer-overlay').style.display = '';
+  setTimeout(() => document.getElementById('prep-name').focus(), 50);
+}
+
+function closePrepDrawer() {
+  document.getElementById('prep-drawer').style.transform = 'translateX(100%)';
+  document.getElementById('prep-drawer-overlay').style.display = 'none';
+  document.getElementById('prep-ac-dropdown').style.display = 'none';
+}
+
+function renderPrepIngredients() {
+  const el = document.getElementById('prep-ingredients-list');
+  if (!prepIngredients.length) { el.innerHTML = ''; return; }
+  // Simple conversion factors to price_unit
+  const CONV = {g:{kg:0.001,g:1},kg:{kg:1,g:1000},ml:{l:0.001,ml:1},cl:{l:0.01,cl:1},dl:{l:0.1},l:{l:1,ml:1000},unit:{unit:1}};
+  el.innerHTML = prepIngredients.map((ing, i) => {
+    const lib = ingrLib[ing.name];
+    let costStr = '—';
+    if (lib) {
+      const f = (CONV[ing.unit] || {})[lib.unit_ref];
+      if (f != null) costStr = fmt2c(ing.qty * f * parseFloat(lib.price));
+    }
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <span style="flex:1;font-size:13px;">${ing.name}</span>
+      <input type="number" value="${ing.qty}" step="0.1" min="0"
+        onchange="prepIngredients[${i}].qty=parseFloat(this.value)||0;renderPrepIngredients();updatePrepCost();"
+        style="width:70px;padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-family:inherit;font-size:13px;text-align:right;">
+      <select onchange="prepIngredients[${i}].unit=this.value;renderPrepIngredients();updatePrepCost();"
+        style="padding:4px 6px;border:1px solid var(--border);border-radius:5px;font-family:inherit;font-size:13px;">
+        ${['g','kg','ml','cl','l','unit'].map(u=>`<option ${u===ing.unit?'selected':''}>${u}</option>`).join('')}
+      </select>
+      <span style="width:64px;text-align:right;font-size:12px;color:var(--muted);">${costStr}</span>
+      <button onclick="prepIngredients.splice(${i},1);renderPrepIngredients();updatePrepCost();"
+        style="background:none;border:none;cursor:pointer;color:var(--faint);font-size:16px;padding:0 4px;line-height:1;">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function updatePrepCost() {
+  const CONV = {g:{kg:0.001,g:1},kg:{kg:1,g:1000},ml:{l:0.001,ml:1},cl:{l:0.01,cl:1},dl:{l:0.1},l:{l:1,ml:1000},unit:{unit:1}};
+  let total = 0;
+  for (const ing of prepIngredients) {
+    const lib = ingrLib[ing.name];
+    if (!lib) continue;
+    const f = (CONV[ing.unit] || {})[lib.unit_ref];
+    if (f != null) total += ing.qty * f * parseFloat(lib.price);
+  }
+  const yq = parseFloat(document.getElementById('prep-yield-qty').value) || 1;
+  const yu = document.getElementById('prep-yield-unit').value || 'portion';
+  const box = document.getElementById('prep-cost-box');
+  if (prepIngredients.length) {
+    box.style.display = '';
+    document.getElementById('prep-cost-total').textContent = fmt2c(total);
+    document.getElementById('prep-cost-unit-label').textContent = `Coût / ${yu}`;
+    document.getElementById('prep-cost-unit').textContent = fmtP4(total / yq);
+  } else {
+    box.style.display = 'none';
+  }
+}
+
+function prepAcSearch(q) {
+  const dd = document.getElementById('prep-ac-dropdown');
+  if (!q) { dd.style.display = 'none'; return; }
+  const names = Object.keys(ingrLib).filter(n =>
+    n.toLowerCase().includes(q.toLowerCase()) && !prepIngredients.find(i => i.name === n)
+  );
+  if (!names.length) { dd.style.display = 'none'; return; }
+  dd.style.display = '';
+  dd.innerHTML = names.slice(0,12).map(n => {
+    const lib = ingrLib[n];
+    return `<div class="ac-item" onmousedown="prepAddIngredient(${JSON.stringify(n)})">
+      <span>${n}</span>
+      <span style="color:var(--faint);font-size:11px;">${lib.price}€/${lib.unit_ref}</span>
+    </div>`;
+  }).join('');
+}
+
+function prepAddIngredient(name) {
+  const lib = ingrLib[name];
+  const defaultUnit = lib.unit_ref === 'kg' ? 'g' : lib.unit_ref === 'l' ? 'ml' : lib.unit_ref;
+  prepIngredients.push({ name, qty: 100, unit: defaultUnit });
+  document.getElementById('prep-ac-input').value = '';
+  document.getElementById('prep-ac-dropdown').style.display = 'none';
+  renderPrepIngredients();
+  updatePrepCost();
+}
+
+async function savePrep() {
+  const name      = document.getElementById('prep-name').value.trim();
+  const yieldQty  = parseFloat(document.getElementById('prep-yield-qty').value) || 1;
+  const yieldUnit = (document.getElementById('prep-yield-unit').value.trim()) || 'portion';
+  const notes     = document.getElementById('prep-notes').value.trim();
+  if (!name)                { showToast('Nom requis'); return; }
+  if (!prepIngredients.length) { showToast('Ajoutez au moins un ingrédient'); return; }
+  const body = { name, ingredients: prepIngredients, yield_qty: yieldQty, yield_unit: yieldUnit, notes };
+  const r = await fetch('/api/preparations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const d = await r.json();
+  if (d.ok) {
+    closePrepDrawer();
+    showToast(`🍞 "${name}" enregistré · ${fmtP4(d.cost_per_unit)}/${yieldUnit}`);
+    loadCogs(true);
+  } else {
+    showToast('Erreur : ' + (d.error || 'inconnue'));
+  }
+}
+
+async function deletePrep(name) {
+  if (!confirm(`Supprimer la préparation "${name}" ?`)) return;
+  const r = await fetch(`/api/preparations/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  const d = await r.json();
+  if (d.ok) { showToast(`"${name}" supprimé`); loadCogs(true); }
+  else showToast('Erreur suppression : ' + (d.error || ''));
 }
 
 // ══════════════════════════════════════════════════════════
