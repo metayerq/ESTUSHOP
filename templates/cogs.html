@@ -1765,18 +1765,31 @@ function prepAcSearch(q) {
   if (!names.length) { dd.classList.remove('open'); return; }
   dd.innerHTML = names.slice(0,14).map(n => {
     const lib = ingrLib[n];
-    return `<div class="ac-item" onmousedown="prepAddIngredient(${JSON.stringify(n)})">
-      <span>${n}</span>
-      <span class="ac-price">${lib.price}€/${lib.unit_ref}</span>
+    const defaultUnit = lib.unit_ref === 'kg' ? 'g' : lib.unit_ref === 'l' ? 'ml' : lib.unit_ref;
+    return `<div class="ac-item prep-ac-pick" data-name="${n.replace(/"/g,'&quot;')}" data-unit="${defaultUnit}"
+      style="display:flex;align-items:center;gap:8px;padding:6px 10px;">
+      <span style="flex:1;">${n}</span>
+      <input type="number" class="prep-ac-qty" placeholder="qté" step="any" min="0"
+        style="width:60px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-family:inherit;font-size:12px;text-align:right;"
+        onclick="event.stopPropagation();" value="">
+      <select class="prep-ac-unit"
+        style="padding:3px 4px;border:1px solid var(--border);border-radius:4px;font-family:inherit;font-size:12px;"
+        onclick="event.stopPropagation();">
+        ${['g','kg','ml','cl','l','unit'].map(u=>`<option value="${u}" ${u===defaultUnit?'selected':''}>${u}</option>`).join('')}
+      </select>
+      <button onmousedown="event.preventDefault();prepAddIngredientRow('${n.replace(/'/g,"\\'")}', this)"
+        style="padding:3px 8px;font-size:11px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:#fff;cursor:pointer;font-family:inherit;">+</button>
+      <span class="ac-price" style="min-width:60px;text-align:right;">${lib.price}€/${lib.unit_ref}</span>
     </div>`;
   }).join('');
   dd.classList.add('open');
 }
 
-function prepAddIngredient(name) {
-  const lib = ingrLib[name];
-  const defaultUnit = lib.unit_ref === 'kg' ? 'g' : lib.unit_ref === 'l' ? 'ml' : lib.unit_ref;
-  prepIngredients.push({ name, qty: 100, unit: defaultUnit });
+function prepAddIngredientRow(name, btn) {
+  const row  = btn.closest('.prep-ac-pick');
+  const qty  = parseFloat(row.querySelector('.prep-ac-qty').value) || 1;
+  const unit = row.querySelector('.prep-ac-unit').value;
+  prepIngredients.push({ name, qty, unit });
   document.getElementById('prep-ac-input').value = '';
   document.getElementById('prep-ac-dropdown').classList.remove('open');
   renderPrepIngredients();
