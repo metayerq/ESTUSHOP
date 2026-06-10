@@ -603,7 +603,13 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
         "marge_brute_ht":          marge_ht,
         "marge_brute_ht_pct":      marge_ht_pct,
         "marge_is_estimated":       is_estimated_margin,
-        # Charges HT/période (BP)
+        # Charges HT/période
+        "open_days":        open_days,           # vrais jours ouvrés dans la période
+        "cout_fixe_periode":   cout_fixe,        # total fixes sur la période
+        "cout_perso_periode":  cout_perso,       # total perso sur la période
+        "cout_total_periode":  cout_total,       # total charges sur la période
+        "cout_jour":           round(cout_jour, 2),        # coût par jour ouvré
+        # Compatibilité anciens noms (dashboard.js)
         "cout_fixe_jour":   cout_fixe,
         "cout_perso_jour":  cout_perso,
         "cout_total_jour":  cout_total,

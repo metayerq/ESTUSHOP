@@ -143,11 +143,12 @@ function render(d) {
       document.getElementById('eco-marge-pct').innerHTML = '<span style="color:var(--muted)">aucune vente</span>';
     }
 
-    // Charges
-    document.getElementById('eco-charges').textContent = fmt(eco.cout_total_jour);
+    // Charges — utilise les totaux période et open_days (pas n_days calendaires)
+    document.getElementById('eco-charges').textContent = fmt(eco.cout_total_periode ?? eco.cout_total_jour);
+    const openDays = eco.open_days || d.n_days;
     const chargesSub = d.is_single_day
-      ? `Fixe ${fmt(eco.cout_fixe_jour)} · Perso ${fmt(eco.cout_perso_jour)}`
-      : `${fmt(eco.cout_fixe_jour)} fixes · ${fmt(eco.cout_perso_jour)} perso · <span style="color:var(--faint)">${d.n_days}j × ${fmt(eco.cout_total_jour / d.n_days)}/j</span>`;
+      ? `Fixe ${fmt(eco.cout_fixe_periode ?? eco.cout_fixe_jour)} · Perso ${fmt(eco.cout_perso_periode ?? eco.cout_perso_jour)}`
+      : `${fmt(eco.cout_fixe_periode ?? eco.cout_fixe_jour)} fixes · ${fmt(eco.cout_perso_periode ?? eco.cout_perso_jour)} perso · <span style="color:var(--faint)">${openDays}j ouvrés × ${fmt(eco.cout_jour ?? (eco.cout_total_jour / openDays))}/j</span>`;
     document.getElementById('eco-charges-sub').innerHTML = chargesSub;
 
     // EBITDA
