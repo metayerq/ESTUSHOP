@@ -196,6 +196,101 @@ def cogs_page():
     return render_template("cogs.html")
 
 
+@app.route("/charges")
+def charges_page():
+    return render_template("charges.html")
+
+
+# ── Charges fixes CRUD ────────────────────────────────────────────────────────
+
+@app.route("/api/charges", methods=["GET"])
+def api_charges_get():
+    charges   = _supa_get("charges_fixes",  {"order": "category.asc,name.asc"})
+    employees = _supa_get("employees",       {"order": "name.asc"})
+    return jsonify({"charges": charges, "employees": employees})
+
+@app.route("/api/charges", methods=["POST"])
+def api_charges_post():
+    data = request.get_json()
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "name required"}), 400
+    row = {
+        "name":      name,
+        "amount":    round(float(data.get("amount", 0)), 2),
+        "frequency": data.get("frequency", "monthly"),
+        "category":  (data.get("category") or "").strip(),
+        "notes":     (data.get("notes") or "").strip(),
+        "active":    data.get("active", True),
+    }
+    if data.get("id"):
+        row["id"] = data["id"]
+    ok = _supa_upsert("charges_fixes", row)
+    return jsonify({"ok": ok})
+
+@app.route("/api/charges/<string:charge_id>", methods=["PATCH"])
+def api_charges_patch(charge_id):
+    data = request.get_json()
+    r = _req.patch(
+        f"{SUPA_URL}/rest/v1/charges_fixes",
+        json=data,
+        headers=_supa_headers(),
+        params={"id": f"eq.{charge_id}"},
+    )
+    return jsonify({"ok": r.ok})
+
+@app.route("/api/charges/<string:charge_id>", methods=["DELETE"])
+def api_charges_delete(charge_id):
+    ok = _supa_delete("charges_fixes", "id", charge_id)
+    return jsonify({"ok": ok})
+
+
+# ── Employees CRUD ────────────────────────────────────────────────────────────
+
+@app.route("/api/employees", methods=["GET"])
+def api_employees_get():
+    employees = _supa_get("employees", {"order": "name.asc"})
+    return jsonify(employees)
+
+@app.route("/api/employees", methods=["POST"])
+def api_employees_post():
+    data = request.get_json()
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "name required"}), 400
+    row = {
+        "name":             name,
+        "type":             data.get("type", "full_time"),
+        "gross_monthly":    round(float(data.get("gross_monthly", 0)), 2),
+        "hours_week":       float(data.get("hours_week", 40)),
+        "tsu_exempt":       bool(data.get("tsu_exempt", False)),
+        "meal_card_daily":  round(float(data.get("meal_card_daily", 10.20)), 2),
+        "days_per_month":   float(data.get("days_per_month", 21.25)),
+        "notes":            (data.get("notes") or "").strip(),
+        "active":           data.get("active", True),
+    }
+    if data.get("id"):
+        row["id"] = data["id"]
+    ok = _supa_upsert("employees", row)
+    return jsonify({"ok": ok})
+
+@app.route("/api/employees/<string:emp_id>", methods=["PATCH"])
+def api_employees_patch(emp_id):
+    data = request.get_json()
+    r = _req.patch(
+        f"{SUPA_URL}/rest/v1/employees",
+        json=data,
+        headers=_supa_headers(),
+        params={"id": f"eq.{emp_id}"},
+    )
+    return jsonify({"ok": r.ok})
+
+@app.route("/api/employees/<string:emp_id>", methods=["DELETE"])
+def api_employees_delete(emp_id):
+    ok = _supa_delete("employees", "id", emp_id)
+    return jsonify({"ok": ok})
+
+
 # ── Supabase ──────────────────────────────────────────────────────────────────
 import requests as _req
 

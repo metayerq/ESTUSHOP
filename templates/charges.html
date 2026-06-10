@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estudantina · Charges</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+/* ── Nav ── */
+.page-nav { display:flex; align-items:center; gap:12px; margin-bottom:36px; }
+.page-nav a { font-size:13px; color:var(--muted); text-decoration:none; }
+.page-nav a:hover { color:var(--text); }
+.page-nav .sep { color:var(--faint); }
+
+/* ── Tabs ── */
+.view-tabs {
+  display:flex; gap:0; margin-bottom:28px;
+  border:1px solid var(--border); border-radius:8px;
+  overflow:hidden; width:fit-content;
+}
+.view-tab {
+  font-family:inherit; font-size:13px; font-weight:500;
+  padding:8px 20px; border:none; background:transparent;
+  color:var(--muted); cursor:pointer;
+  transition:background .12s, color .12s;
+  border-right:1px solid var(--border);
+}
+.view-tab:last-child { border-right:none; }
+.view-tab:hover { background:var(--bg-hover); color:var(--text); }
+.view-tab.active {
+  background:var(--bg-card); color:var(--text);
+  font-weight:600; box-shadow:inset 0 -2px 0 var(--text);
+}
+.tab-badge {
+  display:inline-block; margin-left:6px; font-size:10px; font-weight:500;
+  background:var(--bg-hover); color:var(--faint);
+  padding:1px 6px; border-radius:10px; vertical-align:middle;
+}
+
+/* ── Summary bar ── */
+.summary-bar {
+  display:flex; gap:0; flex-wrap:nowrap;
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:8px; overflow:hidden; margin-bottom:28px;
+}
+.sum-item { flex:1; padding:16px 20px; border-right:1px solid var(--border); }
+.sum-item:last-child { border-right:none; }
+.sum-label { font-size:10px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+.sum-val   { font-size:20px; font-weight:600; letter-spacing:-.4px; color:var(--text); }
+.sum-sub   { font-size:11px; color:var(--faint); margin-top:2px; }
+
+/* ── Section header ── */
+.sec-header {
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom:16px;
+}
+.section-label {
+  font-size:10px; font-weight:600; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--muted);
+}
+
+/* ── Buttons ── */
+.btn-add {
+  font-family:inherit; font-size:12px; font-weight:500;
+  padding:6px 14px; border-radius:6px; cursor:pointer;
+  border:1px solid var(--border); background:var(--bg-card);
+  color:var(--text); transition:background .1s;
+}
+.btn-add:hover { background:var(--bg-hover); }
+.btn-primary {
+  font-family:inherit; font-size:12px; font-weight:600;
+  padding:7px 16px; border-radius:6px; cursor:pointer;
+  border:none; background:var(--text); color:#fff;
+  transition:opacity .1s;
+}
+.btn-primary:hover { opacity:.85; }
+.btn-ghost {
+  font-family:inherit; font-size:12px;
+  padding:5px 10px; border-radius:6px; cursor:pointer;
+  border:1px solid var(--border); background:transparent;
+  color:var(--muted); transition:background .1s;
+}
+.btn-ghost:hover { background:var(--bg-hover); color:var(--text); }
+.btn-danger {
+  font-family:inherit; font-size:12px;
+  padding:5px 10px; border-radius:6px; cursor:pointer;
+  border:1px solid transparent; background:transparent;
+  color:var(--red); transition:background .1s;
+}
+.btn-danger:hover { background:rgba(196,85,77,.07); }
+
+/* ── Table ── */
+.table-wrap { border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:32px; }
+table { width:100%; border-collapse:collapse; }
+th {
+  font-size:10px; font-weight:600; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--muted); padding:10px 16px; background:var(--bg-page);
+  border-bottom:1px solid var(--border); text-align:left;
+}
+th.right, td.right { text-align:right; }
+td { font-size:13px; padding:11px 16px; border-bottom:1px solid var(--border); color:var(--text); vertical-align:middle; }
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:var(--bg-hover); }
+.inactive td { opacity:.45; }
+
+.badge {
+  font-size:10px; font-weight:500; padding:2px 8px; border-radius:10px;
+  display:inline-block;
+}
+.badge-monthly  { background:#eef2ff; color:#4f46e5; }
+.badge-annual   { background:#fef3c7; color:#b45309; }
+.badge-quarterly{ background:#ecfdf5; color:#059669; }
+.badge-ft  { background:#f0fdf4; color:#16a34a; }
+.badge-pt  { background:#fff7ed; color:#c2410c; }
+.badge-ext { background:#f5f3ff; color:#7c3aed; }
+
+/* ── Inline form (add row) ── */
+.add-row { background:var(--bg-page); }
+.add-row td { padding:10px 8px; }
+.field-input {
+  font-family:inherit; font-size:13px;
+  padding:6px 10px; border:1px solid var(--border); border-radius:6px;
+  background:var(--bg-card); color:var(--text); outline:none; width:100%;
+  transition:border-color .15s;
+}
+.field-input:focus { border-color:var(--faint); }
+select.field-input { cursor:pointer; }
+
+/* ── Employee card ── */
+.emp-cards { display:flex; flex-direction:column; gap:12px; margin-bottom:32px; }
+.emp-card {
+  border:1px solid var(--border); border-radius:8px;
+  background:var(--bg-card); overflow:hidden;
+}
+.emp-card.inactive { opacity:.5; }
+.emp-card-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 20px; border-bottom:1px solid var(--border);
+  background:var(--bg-page);
+}
+.emp-name { font-size:15px; font-weight:600; }
+.emp-type { margin-left:10px; }
+.emp-actions { display:flex; gap:6px; }
+.emp-grid {
+  display:grid; grid-template-columns:repeat(4, 1fr);
+  gap:0;
+}
+.emp-cell {
+  padding:14px 20px; border-right:1px solid var(--border);
+}
+.emp-cell:last-child { border-right:none; }
+.emp-cell-label { font-size:10px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+.emp-cell-val   { font-size:14px; font-weight:600; }
+.emp-cell-sub   { font-size:11px; color:var(--faint); margin-top:2px; }
+.emp-cost-total { font-size:16px; font-weight:700; color:var(--text); }
+
+/* ── Modal ── */
+.modal-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,.35);
+  display:flex; align-items:center; justify-content:center;
+  z-index:100; opacity:0; pointer-events:none; transition:opacity .15s;
+}
+.modal-overlay.open { opacity:1; pointer-events:auto; }
+.modal {
+  background:var(--bg-card); border-radius:12px;
+  padding:28px 32px; width:500px; max-width:95vw;
+  box-shadow:0 8px 32px rgba(0,0,0,.12);
+  transform:translateY(8px); transition:transform .15s;
+}
+.modal-overlay.open .modal { transform:translateY(0); }
+.modal-title { font-size:16px; font-weight:700; margin-bottom:20px; }
+.modal-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.modal-grid .full { grid-column:1/-1; }
+.field-label { font-size:11px; font-weight:500; color:var(--muted); margin-bottom:5px; }
+.modal-footer { display:flex; justify-content:flex-end; gap:8px; margin-top:24px; }
+
+/* ── TSU info box ── */
+.tsu-box {
+  background:#f0fdf4; border:1px solid #bbf7d0;
+  border-radius:8px; padding:12px 16px;
+  font-size:12px; color:#15803d; margin-top:12px;
+}
+.tsu-box.warning { background:#fff7ed; border-color:#fed7aa; color:#c2410c; }
+.tsu-row { display:flex; justify-content:space-between; padding:2px 0; }
+
+/* ── Loading ── */
+.spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--muted); border-radius:50%; animation:spin .6s linear infinite; vertical-align:middle; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+.toast {
+  position:fixed; bottom:28px; left:50%; transform:translateX(-50%) translateY(20px);
+  background:var(--text); color:#fff; font-size:13px; font-weight:500;
+  padding:10px 20px; border-radius:8px; z-index:200;
+  opacity:0; transition:opacity .2s, transform .2s;
+}
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Nav -->
+  <div class="page-nav">
+    <a href="/">← Dashboard</a>
+    <span class="sep">/</span>
+    <a href="/cogs">COGS</a>
+    <span class="sep">/</span>
+    <span style="color:var(--text);font-weight:500;">Charges</span>
+  </div>
+
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <div class="header-title">Charges &amp; Personnel</div>
+      <div class="header-sub">Structure de coûts mensuelle — base des calculs de rentabilité</div>
+    </div>
+    <button class="btn-refresh" onclick="loadAll()" title="Rafraîchir">↻</button>
+  </div>
+
+  <!-- Summary bar -->
+  <div class="summary-bar">
+    <div class="sum-item">
+      <div class="sum-label">Total charges fixes / mois</div>
+      <div class="sum-val" id="sum-fixes">—</div>
+      <div class="sum-sub" id="sum-fixes-sub"></div>
+    </div>
+    <div class="sum-item">
+      <div class="sum-label">Total personnel / mois lissé</div>
+      <div class="sum-val" id="sum-perso">—</div>
+      <div class="sum-sub" id="sum-perso-sub">TSU + 13e/14e + repas inclus</div>
+    </div>
+    <div class="sum-item">
+      <div class="sum-label">Coût total / mois</div>
+      <div class="sum-val" id="sum-total">—</div>
+      <div class="sum-sub" id="sum-total-sub"></div>
+    </div>
+    <div class="sum-item">
+      <div class="sum-label">Coût / jour ouvré</div>
+      <div class="sum-val" id="sum-jour">—</div>
+      <div class="sum-sub">sur 21,25 j/mois</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="view-tabs">
+    <button class="view-tab active" id="tab-charges" onclick="switchTab('charges')">
+      Charges fixes <span class="tab-badge" id="badge-charges">—</span>
+    </button>
+    <button class="view-tab" id="tab-personnel" onclick="switchTab('personnel')">
+      Personnel <span class="tab-badge" id="badge-personnel">—</span>
+    </button>
+  </div>
+
+  <!-- ── Tab: Charges fixes ── -->
+  <div id="view-charges">
+    <div class="sec-header">
+      <div class="section-label">Charges fixes mensuelles</div>
+      <button class="btn-add" onclick="openChargeModal()">+ Ajouter</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Désignation</th>
+            <th>Catégorie</th>
+            <th>Fréquence</th>
+            <th class="right">Montant</th>
+            <th class="right">/ mois</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="charges-body">
+          <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px;"><span class="spinner"></span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Tab: Personnel ── -->
+  <div id="view-personnel" style="display:none;">
+    <div class="sec-header">
+      <div class="section-label">Équipe</div>
+      <button class="btn-add" onclick="openEmpModal()">+ Ajouter</button>
+    </div>
+    <div class="emp-cards" id="emp-cards">
+      <div style="text-align:center;color:var(--muted);padding:32px;"><span class="spinner"></span></div>
+    </div>
+
+    <!-- Info box TSU Portugal -->
+    <div style="border:1px solid var(--border);border-radius:8px;background:var(--bg-card);padding:20px 24px;margin-bottom:32px;">
+      <div class="section-label" style="margin-bottom:12px;">Règles TSU Portugal appliquées</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;font-size:12px;color:var(--muted);">
+        <div><strong style="color:var(--text);display:block;margin-bottom:4px;">CDI / Temps partiel</strong>
+          TSU employeur : 23,75%<br>TSU exonéré 1er emploi : 0%<br>Employee : 11% (déduit du brut)</div>
+        <div><strong style="color:var(--text);display:block;margin-bottom:4px;">13e &amp; 14e mois</strong>
+          Salaire × 14 ÷ 12<br>= +16,7% sur le mensuel brut<br>TSU appliquée sur les 14 mois</div>
+        <div><strong style="color:var(--text);display:block;margin-bottom:4px;">Carta refeição</strong>
+          Exonérée de TSU et IRS<br>jusqu'à 10,20€/jour (électronique)<br>~242 jours/an (11 mois × 22j)</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<!-- Modal Charge fixe -->
+<div class="modal-overlay" id="charge-modal" onclick="closeChargeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title" id="charge-modal-title">Nouvelle charge</div>
+    <input type="hidden" id="charge-id">
+    <div class="modal-grid">
+      <div class="full">
+        <div class="field-label">Désignation *</div>
+        <input class="field-input" id="charge-name" placeholder="ex: Loyer">
+      </div>
+      <div>
+        <div class="field-label">Montant (€) *</div>
+        <input class="field-input" id="charge-amount" type="number" step="0.01" placeholder="0.00">
+      </div>
+      <div>
+        <div class="field-label">Fréquence</div>
+        <select class="field-input" id="charge-frequency">
+          <option value="monthly">Mensuel</option>
+          <option value="quarterly">Trimestriel</option>
+          <option value="annual">Annuel</option>
+        </select>
+      </div>
+      <div class="full">
+        <div class="field-label">Catégorie</div>
+        <input class="field-input" id="charge-category" placeholder="ex: Énergie, Licences…" list="cat-list">
+        <datalist id="cat-list">
+          <option value="Immobilier">
+          <option value="Énergie & fluides">
+          <option value="Services">
+          <option value="Assurances">
+          <option value="Licences">
+          <option value="Télécoms">
+          <option value="Logiciels">
+          <option value="Banque">
+          <option value="Maintenance">
+          <option value="Divers">
+        </datalist>
+      </div>
+      <div class="full">
+        <div class="field-label">Notes</div>
+        <input class="field-input" id="charge-notes" placeholder="Optionnel">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeChargeModal()">Annuler</button>
+      <button class="btn-primary" onclick="saveCharge()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Employé -->
+<div class="modal-overlay" id="emp-modal" onclick="closeEmpModal(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="width:560px;">
+    <div class="modal-title" id="emp-modal-title">Nouvel employé</div>
+    <input type="hidden" id="emp-id">
+    <div class="modal-grid">
+      <div class="full">
+        <div class="field-label">Nom *</div>
+        <input class="field-input" id="emp-name" placeholder="Prénom Nom">
+      </div>
+      <div>
+        <div class="field-label">Type de contrat</div>
+        <select class="field-input" id="emp-type" onchange="updateEmpPreview()">
+          <option value="full_time">CDI temps plein</option>
+          <option value="part_time">CDI temps partiel</option>
+          <option value="extra">Extra / Recibos verdes</option>
+        </select>
+      </div>
+      <div>
+        <div class="field-label">Heures/semaine</div>
+        <input class="field-input" id="emp-hours" type="number" value="40" min="1" max="40" oninput="updateEmpPreview()">
+      </div>
+      <div>
+        <div class="field-label" id="emp-gross-label">Salaire brut mensuel (€) *</div>
+        <input class="field-input" id="emp-gross" type="number" step="0.01" placeholder="0.00" oninput="updateEmpPreview()">
+      </div>
+      <div>
+        <div class="field-label">Carta refeição (€/jour)</div>
+        <input class="field-input" id="emp-meal" type="number" step="0.01" value="10.20" oninput="updateEmpPreview()">
+      </div>
+      <div class="full" id="emp-tsu-wrap">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+          <input type="checkbox" id="emp-tsu-exempt" onchange="updateEmpPreview()" style="width:15px;height:15px;">
+          TSU employeur exonérée (1er emploi — 3 premières années)
+        </label>
+      </div>
+      <div class="full">
+        <div class="field-label">Notes</div>
+        <input class="field-input" id="emp-notes" placeholder="Optionnel">
+      </div>
+    </div>
+
+    <!-- Preview calcul -->
+    <div id="emp-preview" class="tsu-box" style="margin-top:16px;display:none;">
+      <div style="font-weight:600;margin-bottom:8px;font-size:13px;">Coût mensuel lissé estimé</div>
+      <div class="tsu-row"><span>Brut mensuel</span><span id="prev-brut">—</span></div>
+      <div class="tsu-row"><span>+ 13e &amp; 14e mois lissés (+16,7%)</span><span id="prev-mois">—</span></div>
+      <div class="tsu-row"><span id="prev-tsu-label">+ TSU employeur 23,75%</span><span id="prev-tsu">—</span></div>
+      <div class="tsu-row"><span>+ Carta refeição (~242j/an)</span><span id="prev-repas">—</span></div>
+      <div class="tsu-row" style="border-top:1px solid #bbf7d0;margin-top:6px;padding-top:6px;font-weight:700;font-size:13px;">
+        <span>Total / mois employeur</span><span id="prev-total">—</span>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeEmpModal()">Annuler</button>
+      <button class="btn-primary" onclick="saveEmployee()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const fmt = v => new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',minimumFractionDigits:2}).format(v);
+const fmt0 = v => new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',minimumFractionDigits:0,maximumFractionDigits:0}).format(v);
+
+let chargesData = [];
+let employeesData = [];
+
+// ── Tabs ──────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.getElementById('view-charges').style.display   = tab === 'charges'   ? '' : 'none';
+  document.getElementById('view-personnel').style.display = tab === 'personnel' ? '' : 'none';
+  document.getElementById('tab-charges').classList.toggle('active',   tab === 'charges');
+  document.getElementById('tab-personnel').classList.toggle('active', tab === 'personnel');
+}
+
+// ── Load ──────────────────────────────────────────────────────────────────
+async function loadAll() {
+  const [c, e] = await Promise.all([
+    fetch('/api/charges').then(r => r.json()),
+    fetch('/api/employees').then(r => r.json()),
+  ]);
+  chargesData   = c.charges   || [];
+  employeesData = c.employees || [];
+  // merge employees from second call
+  if (Array.isArray(e)) employeesData = e;
+  else if (e.employees) employeesData = e.employees;
+
+  renderCharges();
+  renderEmployees();
+  updateSummary();
+}
+
+// ── Charges ───────────────────────────────────────────────────────────────
+function freqLabel(f) {
+  return {monthly:'Mensuel', quarterly:'Trimestriel', annual:'Annuel'}[f] || f;
+}
+function freqBadge(f) {
+  const cls = {monthly:'badge-monthly', quarterly:'badge-quarterly', annual:'badge-annual'}[f] || '';
+  return `<span class="badge ${cls}">${freqLabel(f)}</span>`;
+}
+function toMonthly(amount, freq) {
+  if (freq === 'quarterly') return amount / 3;
+  if (freq === 'annual')    return amount / 12;
+  return amount;
+}
+
+function renderCharges() {
+  const tbody = document.getElementById('charges-body');
+  if (!chargesData.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px;">Aucune charge — cliquez "+ Ajouter"</td></tr>`;
+    document.getElementById('badge-charges').textContent = '0';
+    return;
+  }
+  // Grouper par catégorie
+  const byCat = {};
+  for (const c of chargesData) {
+    const cat = c.category || 'Divers';
+    if (!byCat[cat]) byCat[cat] = [];
+    byCat[cat].push(c);
+  }
+  let html = '';
+  for (const [cat, items] of Object.entries(byCat)) {
+    html += `<tr style="background:var(--bg-page);">
+      <td colspan="6" style="font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);padding:8px 16px 6px;">${cat}</td>
+    </tr>`;
+    for (const c of items) {
+      const monthly = toMonthly(c.amount, c.frequency);
+      const inactive = !c.active ? 'inactive' : '';
+      html += `<tr class="${inactive}" data-id="${c.id}">
+        <td>${c.name}${c.notes ? `<span style="color:var(--faint);font-size:11px;margin-left:8px;">${c.notes}</span>` : ''}</td>
+        <td><span style="color:var(--faint);font-size:12px;">${c.category||''}</span></td>
+        <td>${freqBadge(c.frequency)}</td>
+        <td class="right">${fmt(c.amount)}</td>
+        <td class="right" style="font-weight:600;">${c.frequency !== 'monthly' ? fmt(monthly) : '—'}</td>
+        <td class="right" style="white-space:nowrap;">
+          <button class="btn-ghost" onclick="editCharge('${c.id}')" style="margin-right:4px;">Modifier</button>
+          <button class="btn-danger" onclick="toggleChargeActive('${c.id}', ${c.active})">${c.active ? 'Désactiver' : 'Activer'}</button>
+          <button class="btn-danger" onclick="deleteCharge('${c.id}')">✕</button>
+        </td>
+      </tr>`;
+    }
+  }
+  // Total ligne
+  const totalMonthly = chargesData.filter(c=>c.active).reduce((s,c) => s + toMonthly(c.amount, c.frequency), 0);
+  html += `<tr style="background:var(--bg-page);">
+    <td colspan="3" style="font-weight:600;font-size:12px;color:var(--muted);">Total charges fixes actives</td>
+    <td></td>
+    <td class="right" style="font-weight:700;font-size:15px;">${fmt(totalMonthly)}</td>
+    <td></td>
+  </tr>`;
+  tbody.innerHTML = html;
+  document.getElementById('badge-charges').textContent = chargesData.filter(c=>c.active).length;
+}
+
+// ── Employees ─────────────────────────────────────────────────────────────
+const TYPE_LABELS = { full_time:'CDI temps plein', part_time:'CDI temps partiel', extra:'Extra / Recibos verdes' };
+const TYPE_BADGES = { full_time:'badge-ft', part_time:'badge-pt', extra:'badge-ext' };
+const TSU_EMPLOYER = 0.2375;
+const JOURS_REPAS_AN = 242; // ~11 mois × 22 jours
+
+function calcEmpCost(e) {
+  if (e.type === 'extra') {
+    // Extra : montant brut = coût direct (pas de TSU ni 13e/14e)
+    return { monthly: e.gross_monthly, tsu: 0, mois_sup: 0, repas: 0 };
+  }
+  const gross = parseFloat(e.gross_monthly) || 0;
+  const meal  = parseFloat(e.meal_card_daily) || 0;
+  const tsuRate = e.tsu_exempt ? 0 : TSU_EMPLOYER;
+
+  // 13e + 14e lissés : salaire annuel = gross × 14
+  const annualGross  = gross * 14;
+  const annualTsu    = annualGross * tsuRate;
+  const annualRepas  = meal * JOURS_REPAS_AN;
+  const monthlyCost  = (annualGross + annualTsu + annualRepas) / 12;
+  const moisSup      = gross * 14 / 12 - gross;   // delta 13e/14e lissés
+  const repasMonthly = annualRepas / 12;
+  const tsuMonthly   = annualTsu / 12;
+
+  return {
+    monthly: Math.round(monthlyCost * 100) / 100,
+    tsu:     Math.round(tsuMonthly  * 100) / 100,
+    mois_sup:Math.round(moisSup     * 100) / 100,
+    repas:   Math.round(repasMonthly* 100) / 100,
+  };
+}
+
+function renderEmployees() {
+  const container = document.getElementById('emp-cards');
+  if (!employeesData.length) {
+    container.innerHTML = `<div style="text-align:center;color:var(--muted);padding:32px;">Aucun employé — cliquez "+ Ajouter"</div>`;
+    document.getElementById('badge-personnel').textContent = '0';
+    return;
+  }
+  let html = '';
+  for (const e of employeesData) {
+    const cost = calcEmpCost(e);
+    const inactive = !e.active ? 'inactive' : '';
+    const tsuInfo = e.tsu_exempt
+      ? `<span style="color:var(--green);font-size:11px;">TSU exonérée</span>`
+      : `<span style="font-size:11px;color:var(--faint);">TSU ${fmt(cost.tsu)}/mois</span>`;
+
+    let detailCells = '';
+    if (e.type === 'extra') {
+      detailCells = `
+        <div class="emp-cell"><div class="emp-cell-label">Montant facture</div>
+          <div class="emp-cell-val">${fmt(e.gross_monthly)}</div>
+          <div class="emp-cell-sub">/ mois</div></div>
+        <div class="emp-cell"><div class="emp-cell-label">Coût total</div>
+          <div class="emp-cell-val emp-cost-total">${fmt(cost.monthly)}</div></div>
+        <div class="emp-cell"></div><div class="emp-cell"></div>`;
+    } else {
+      detailCells = `
+        <div class="emp-cell"><div class="emp-cell-label">Brut mensuel</div>
+          <div class="emp-cell-val">${fmt(e.gross_monthly)}</div>
+          <div class="emp-cell-sub">${tsuInfo}</div></div>
+        <div class="emp-cell"><div class="emp-cell-label">13e + 14e lissés</div>
+          <div class="emp-cell-val">+${fmt(cost.mois_sup)}</div>
+          <div class="emp-cell-sub">/ mois</div></div>
+        <div class="emp-cell"><div class="emp-cell-label">Carta refeição</div>
+          <div class="emp-cell-val">${fmt(e.meal_card_daily)}/j</div>
+          <div class="emp-cell-sub">+${fmt(cost.repas)}/mois</div></div>
+        <div class="emp-cell"><div class="emp-cell-label">Coût total / mois</div>
+          <div class="emp-cell-val emp-cost-total">${fmt(cost.monthly)}</div>
+          <div class="emp-cell-sub">employeur, lissé</div></div>`;
+    }
+
+    html += `<div class="emp-card ${inactive}" data-id="${e.id}">
+      <div class="emp-card-header">
+        <div style="display:flex;align-items:center;">
+          <span class="emp-name">${e.name}</span>
+          <span class="badge ${TYPE_BADGES[e.type]||''} emp-type">${TYPE_LABELS[e.type]||e.type}</span>
+          ${e.type === 'part_time' ? `<span style="font-size:12px;color:var(--muted);margin-left:8px;">${e.hours_week}h/sem</span>` : ''}
+          ${e.notes ? `<span style="font-size:11px;color:var(--faint);margin-left:10px;">${e.notes}</span>` : ''}
+        </div>
+        <div class="emp-actions">
+          <button class="btn-ghost" onclick="editEmployee('${e.id}')">Modifier</button>
+          <button class="btn-danger" onclick="toggleEmpActive('${e.id}', ${e.active})">${e.active ? 'Désactiver' : 'Activer'}</button>
+          <button class="btn-danger" onclick="deleteEmployee('${e.id}')">✕</button>
+        </div>
+      </div>
+      <div class="emp-grid">${detailCells}</div>
+    </div>`;
+  }
+  container.innerHTML = html;
+  document.getElementById('badge-personnel').textContent = employeesData.filter(e=>e.active).length;
+}
+
+// ── Summary ───────────────────────────────────────────────────────────────
+const JOURS_MOIS = 21.25;
+function updateSummary() {
+  const totalFixes = chargesData.filter(c=>c.active).reduce((s,c) => s + toMonthly(c.amount, c.frequency), 0);
+  const totalPerso = employeesData.filter(e=>e.active).reduce((s,e) => s + calcEmpCost(e).monthly, 0);
+  const total = totalFixes + totalPerso;
+  const parJour = total / JOURS_MOIS;
+
+  document.getElementById('sum-fixes').textContent = fmt(totalFixes);
+  document.getElementById('sum-fixes-sub').textContent = `${chargesData.filter(c=>c.active).length} postes actifs`;
+  document.getElementById('sum-perso').textContent = fmt(totalPerso);
+  document.getElementById('sum-perso-sub').textContent = `${employeesData.filter(e=>e.active).length} employé(s)`;
+  document.getElementById('sum-total').textContent = fmt(total);
+  document.getElementById('sum-total-sub').textContent = `dont amort. non inclus`;
+  document.getElementById('sum-jour').textContent = fmt(parJour);
+}
+
+// ── Modal Charges ─────────────────────────────────────────────────────────
+function openChargeModal(id) {
+  document.getElementById('charge-id').value = '';
+  document.getElementById('charge-name').value = '';
+  document.getElementById('charge-amount').value = '';
+  document.getElementById('charge-frequency').value = 'monthly';
+  document.getElementById('charge-category').value = '';
+  document.getElementById('charge-notes').value = '';
+  document.getElementById('charge-modal-title').textContent = 'Nouvelle charge';
+  document.getElementById('charge-modal').classList.add('open');
+  document.getElementById('charge-name').focus();
+}
+function editCharge(id) {
+  const c = chargesData.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('charge-id').value = c.id;
+  document.getElementById('charge-name').value = c.name;
+  document.getElementById('charge-amount').value = c.amount;
+  document.getElementById('charge-frequency').value = c.frequency;
+  document.getElementById('charge-category').value = c.category || '';
+  document.getElementById('charge-notes').value = c.notes || '';
+  document.getElementById('charge-modal-title').textContent = 'Modifier la charge';
+  document.getElementById('charge-modal').classList.add('open');
+}
+function closeChargeModal(e) {
+  if (e && e.target !== document.getElementById('charge-modal')) return;
+  document.getElementById('charge-modal').classList.remove('open');
+}
+async function saveCharge() {
+  const id     = document.getElementById('charge-id').value;
+  const name   = document.getElementById('charge-name').value.trim();
+  const amount = parseFloat(document.getElementById('charge-amount').value);
+  if (!name || isNaN(amount)) { showToast('Nom et montant requis'); return; }
+  const body = {
+    name, amount,
+    frequency: document.getElementById('charge-frequency').value,
+    category:  document.getElementById('charge-category').value.trim(),
+    notes:     document.getElementById('charge-notes').value.trim(),
+  };
+  if (id) body.id = id;
+  const r = await fetch('/api/charges', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  const d = await r.json();
+  if (d.ok) { document.getElementById('charge-modal').classList.remove('open'); showToast('Charge enregistrée'); loadAll(); }
+  else showToast('Erreur : ' + d.error);
+}
+async function deleteCharge(id) {
+  if (!confirm('Supprimer cette charge ?')) return;
+  const r = await fetch(`/api/charges/${id}`, { method:'DELETE' });
+  const d = await r.json();
+  if (d.ok) { showToast('Charge supprimée'); loadAll(); }
+}
+async function toggleChargeActive(id, current) {
+  const r = await fetch(`/api/charges/${id}`, {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ active: !current })
+  });
+  const d = await r.json();
+  if (d.ok) { loadAll(); }
+}
+
+// ── Modal Employees ───────────────────────────────────────────────────────
+function openEmpModal() {
+  document.getElementById('emp-id').value = '';
+  document.getElementById('emp-name').value = '';
+  document.getElementById('emp-type').value = 'full_time';
+  document.getElementById('emp-hours').value = 40;
+  document.getElementById('emp-gross').value = '';
+  document.getElementById('emp-meal').value = 10.20;
+  document.getElementById('emp-tsu-exempt').checked = false;
+  document.getElementById('emp-notes').value = '';
+  document.getElementById('emp-modal-title').textContent = 'Nouvel employé';
+  document.getElementById('emp-tsu-wrap').style.display = '';
+  document.getElementById('emp-preview').style.display = 'none';
+  document.getElementById('emp-modal').classList.add('open');
+  document.getElementById('emp-name').focus();
+}
+function editEmployee(id) {
+  const e = employeesData.find(x => x.id === id);
+  if (!e) return;
+  document.getElementById('emp-id').value = e.id;
+  document.getElementById('emp-name').value = e.name;
+  document.getElementById('emp-type').value = e.type;
+  document.getElementById('emp-hours').value = e.hours_week || 40;
+  document.getElementById('emp-gross').value = e.gross_monthly;
+  document.getElementById('emp-meal').value = e.meal_card_daily || 10.20;
+  document.getElementById('emp-tsu-exempt').checked = !!e.tsu_exempt;
+  document.getElementById('emp-notes').value = e.notes || '';
+  document.getElementById('emp-modal-title').textContent = 'Modifier l\'employé';
+  document.getElementById('emp-tsu-wrap').style.display = e.type === 'extra' ? 'none' : '';
+  document.getElementById('emp-modal').classList.add('open');
+  updateEmpPreview();
+}
+function closeEmpModal(e) {
+  if (e && e.target !== document.getElementById('emp-modal')) return;
+  document.getElementById('emp-modal').classList.remove('open');
+}
+
+function updateEmpPreview() {
+  const type  = document.getElementById('emp-type').value;
+  const gross = parseFloat(document.getElementById('emp-gross').value) || 0;
+  const meal  = parseFloat(document.getElementById('emp-meal').value) || 0;
+  const exempt = document.getElementById('emp-tsu-exempt').checked;
+  const preview = document.getElementById('emp-preview');
+
+  // Afficher/masquer TSU checkbox
+  document.getElementById('emp-tsu-wrap').style.display = type === 'extra' ? 'none' : '';
+  document.getElementById('emp-gross-label').textContent = type === 'extra'
+    ? 'Montant facture mensuel (€) *'
+    : 'Salaire brut mensuel (€) *';
+
+  if (!gross) { preview.style.display = 'none'; return; }
+  preview.style.display = '';
+
+  if (type === 'extra') {
+    preview.innerHTML = `<div style="font-weight:600;font-size:13px;">Coût mensuel — Extra</div>
+      <div class="tsu-row" style="margin-top:8px;"><span>Montant facture</span><span>${fmt(gross)}</span></div>
+      <div class="tsu-row" style="color:var(--faint);font-size:11px;"><span>Pas de TSU ni 13e/14e côté employeur</span><span></span></div>`;
+    return;
+  }
+
+  const tsuRate    = exempt ? 0 : TSU_EMPLOYER;
+  const annualGross = gross * 14;
+  const annualTsu   = annualGross * tsuRate;
+  const annualRepas = meal * JOURS_REPAS_AN;
+  const totalMonthly = (annualGross + annualTsu + annualRepas) / 12;
+  const moisSup  = gross * 14 / 12 - gross;
+  const tsuM     = annualTsu / 12;
+  const repasM   = annualRepas / 12;
+
+  document.getElementById('prev-brut').textContent = fmt(gross);
+  document.getElementById('prev-mois').textContent = `+${fmt(moisSup)}`;
+  document.getElementById('prev-tsu-label').textContent = exempt ? 'TSU employeur (exonérée)' : `TSU employeur ${(tsuRate*100).toFixed(2)}%`;
+  document.getElementById('prev-tsu').textContent = exempt ? '0,00 €' : `+${fmt(tsuM)}`;
+  document.getElementById('prev-repas').textContent = `+${fmt(repasM)}`;
+  document.getElementById('prev-total').textContent = fmt(totalMonthly);
+  preview.style.display = '';
+  preview.className = 'tsu-box';
+}
+
+async function saveEmployee() {
+  const id    = document.getElementById('emp-id').value;
+  const name  = document.getElementById('emp-name').value.trim();
+  const gross = parseFloat(document.getElementById('emp-gross').value);
+  if (!name || isNaN(gross)) { showToast('Nom et salaire requis'); return; }
+  const body = {
+    name, gross_monthly: gross,
+    type:          document.getElementById('emp-type').value,
+    hours_week:    parseFloat(document.getElementById('emp-hours').value) || 40,
+    meal_card_daily: parseFloat(document.getElementById('emp-meal').value) || 10.20,
+    tsu_exempt:    document.getElementById('emp-tsu-exempt').checked,
+    notes:         document.getElementById('emp-notes').value.trim(),
+  };
+  if (id) body.id = id;
+  const r = await fetch('/api/employees', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  const d = await r.json();
+  if (d.ok) { document.getElementById('emp-modal').classList.remove('open'); showToast('Employé enregistré'); loadAll(); }
+  else showToast('Erreur : ' + d.error);
+}
+async function deleteEmployee(id) {
+  if (!confirm('Supprimer cet employé ?')) return;
+  const r = await fetch(`/api/employees/${id}`, { method:'DELETE' });
+  const d = await r.json();
+  if (d.ok) { showToast('Employé supprimé'); loadAll(); }
+}
+async function toggleEmpActive(id, current) {
+  const r = await fetch(`/api/employees/${id}`, {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ active: !current })
+  });
+  if ((await r.json()).ok) loadAll();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+loadAll();
+</script>
+</body>
+</html>
