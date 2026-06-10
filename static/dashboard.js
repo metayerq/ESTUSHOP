@@ -141,15 +141,19 @@ function render(d) {
 
   const eco = d.economics;
   if (eco) {
-    // Marge brute
+    // Marge brute — 100% COGS réel, avec taux de couverture
     document.getElementById('eco-marge').textContent = eco.marge_brute_ht != null ? fmt(eco.marge_brute_ht) : '—';
     if (eco.marge_brute_ht != null) {
-      const cogsStr = eco.marge_is_estimated
-        ? `<span style="color:var(--amber)">* estimée via taux BP</span>`
-        : `<span style="color:var(--faint)">HT · COGS réel ${fmt(eco.cogs_ht)}</span>`;
-      document.getElementById('eco-marge-pct').innerHTML = `${eco.marge_brute_ht_pct}% ${cogsStr}`;
+      const cov = eco.cogs_coverage_pct;
+      const covColor = cov >= 90 ? 'var(--green)' : cov >= 60 ? '#b07d00' : 'var(--red)';
+      const covStr = cov != null
+        ? `<span style="color:${covColor}">couverture COGS ${cov}%</span>`
+        : '';
+      document.getElementById('eco-marge-pct').innerHTML =
+        `${eco.marge_brute_ht_pct}% <span style="color:var(--faint)">· COGS ${fmt(eco.cogs_ht)} · </span>${covStr}`;
     } else {
-      document.getElementById('eco-marge-pct').innerHTML = '<span style="color:var(--muted)">aucune vente</span>';
+      document.getElementById('eco-marge-pct').innerHTML =
+        '<span style="color:var(--muted)">aucun COGS renseigné — complétez vos fiches recettes</span>';
     }
 
     // Charges — utilise les totaux période et open_days (pas n_days calendaires)
@@ -171,17 +175,24 @@ function render(d) {
         : `<span style="color:var(--red)">Déficit ${fmt(Math.abs(eco.ebitda_ht))}</span>`;
     }
 
-    // Seuil CA — TTC en principal (ce qu'on lit en caisse), HT en note
-    document.getElementById('eco-seuil').textContent = fmt(eco.seuil_ca_ttc);
+    // Seuil CA — TTC en principal, calculé sur la marge réelle mesurée
     const seuilSub = document.getElementById('eco-seuil-sub');
-    if (eco.manque_seuil > 0) {
-      seuilSub.innerHTML = `<span style="color:var(--red)">Il manque ${fmt(eco.manque_seuil)} TTC</span>`
-        + ` <span style="color:var(--faint)">· ${fmt(eco.seuil_ca_ht)} HT</span>`;
+    if (eco.seuil_ca_ttc != null) {
+      document.getElementById('eco-seuil').textContent = fmt(eco.seuil_ca_ttc);
+      const margeNote = eco.seuil_margin_pct != null
+        ? ` <span style="color:var(--faint)">· marge réelle ${eco.seuil_margin_pct}%</span>`
+        : '';
+      if (eco.manque_seuil > 0) {
+        seuilSub.innerHTML = `<span style="color:var(--red)">Il manque ${fmt(eco.manque_seuil)} TTC</span>` + margeNote;
+      } else {
+        seuilSub.innerHTML = `<span style="color:var(--green)">Seuil dépassé ✓</span>` + margeNote;
+      }
+      document.getElementById('eco-seuil-bar').style.width = Math.min(100, eco.pct_seuil) + '%';
     } else {
-      seuilSub.innerHTML = `<span style="color:var(--green)">Seuil dépassé ✓</span>`
-        + ` <span style="color:var(--faint)">· ${fmt(eco.seuil_ca_ht)} HT</span>`;
+      document.getElementById('eco-seuil').textContent = '—';
+      seuilSub.innerHTML = '<span style="color:var(--muted)">marge réelle non mesurable</span>';
+      document.getElementById('eco-seuil-bar').style.width = '0%';
     }
-    document.getElementById('eco-seuil-bar').style.width = Math.min(100, eco.pct_seuil) + '%';
   }
 
   // ── Sparkline 7 derniers jours (toujours) ────────────────────────────────

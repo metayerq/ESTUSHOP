@@ -488,7 +488,7 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
       hors ouverture.
     """
     from config import (
-        MARGE_BP_GLOBALE, TVA_MOYENNE_BLENDED, AMORTISSEMENT_MOIS,
+        TVA_MOYENNE_BLENDED, AMORTISSEMENT_MOIS,
         JOURS_OUVERTS_MOIS, count_open_days,
     )
 
@@ -532,26 +532,21 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
 
     total_charges_mois = total_fixes_mois + total_perso_mois
 
-    # Fallback si Supabase vide ou injoignable
-    charges_source = "supabase"
-    if total_charges_mois == 0:
-        from config import TOTAL_CHARGES_MOIS as _TCM
-        total_charges_mois = _TCM
-        total_fixes_mois   = 0
-        total_perso_mois   = 0
-        charges_source     = "fallback_bp"
+    # Source unique : Supabase. Pas de fallback BP — si vide/injoignable,
+    # charges = 0 et le front affiche un warning (charges_source).
+    charges_source = "supabase" if total_charges_mois > 0 else "indisponible"
 
     cout_jour        = total_charges_mois / JOURS_OUVERTS_MOIS
     cout_fixe_jour   = total_fixes_mois   / JOURS_OUVERTS_MOIS
     cout_perso_jour  = total_perso_mois   / JOURS_OUVERTS_MOIS
     amort_jour       = AMORTISSEMENT_MOIS / JOURS_OUVERTS_MOIS
-    seuil_ca_jour    = cout_jour / MARGE_BP_GLOBALE
-    seuil_ca_jour_ttc = seuil_ca_jour * (1 + TVA_MOYENNE_BLENDED)
 
-    ca_ttc  = 0.0   # TTC  — affiché pour info
-    ca_ht   = 0.0   # HT   — base des calculs de rentabilité
-    cogs_ht = 0.0   # COGS HT (supply_price × qty)
-    tva_col = 0.0   # TVA collectée = ca_ttc - ca_ht
+    ca_ttc     = 0.0   # TTC  — affiché pour info
+    ca_ht      = 0.0   # HT   — base des calculs de rentabilité
+    cogs_ht    = 0.0   # COGS HT (supply_price × qty) — produits avec coût connu
+    covered_ht = 0.0   # CA HT des items dont le coût est connu (couverture COGS)
+    items_ht   = 0.0   # CA HT total des items (peut différer de ca_ht si remises doc)
+    tva_col    = 0.0   # TVA collectée = ca_ttc - ca_ht
 
     for d in docs:
         # CA au niveau du document (net = HT, gross = TTC)
@@ -560,31 +555,52 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
 
         # COGS item par item (supply_price est HT dans Vendus)
         for item in d.get("items", []):
-            qty  = float(item.get("qty", 0))
-            name = item.get("title", "").strip()   # strip: titres Vendus ont parfois des espaces
-            cat  = catalog.get(name, {})
+            qty    = float(item.get("qty", 0))
+            name   = item.get("title", "").strip()   # strip: titres Vendus ont parfois des espaces
+            net    = float(item.get("amounts", {}).get("net_total", 0))
+            items_ht += net
+            cat = catalog.get(name, {})
             if cat.get("cost"):
-                cogs_ht += cat["cost"] * qty
+                cogs_ht    += cat["cost"] * qty
+                covered_ht += net
 
     tva_col = round(ca_ttc - ca_ht, 2)
+
+    # ── Couverture COGS : % du CA dont on connaît réellement le coût ─────────
+    cogs_coverage_pct = round(covered_ht / items_ht * 100, 1) if items_ht else None
+
+    # ── Taux de marge : uniquement le réel mesuré (aucune hypothèse BP) ──────
+    # Marge réelle mesurée sur la partie couverte du CA.
+    marge_rate_real = (covered_ht - cogs_ht) / covered_ht if covered_ht > 0 else None
+
+    if marge_rate_real is not None and 0 < marge_rate_real < 1:
+        seuil_margin_rate = marge_rate_real
+        seuil_margin_src  = "reelle"
+        seuil_ca_jour     = cout_jour / seuil_margin_rate
+        seuil_ca_jour_ttc = seuil_ca_jour * (1 + TVA_MOYENNE_BLENDED)
+    else:
+        # Pas de COGS mesurable → pas de seuil affichable
+        seuil_margin_rate = None
+        seuil_margin_src  = "indisponible"
+        seuil_ca_jour     = None
+        seuil_ca_jour_ttc = None
 
     # Charges × jours_ouvrés_réels (live Supabase)
     cout_total   = round(cout_jour       * open_days, 2)
     cout_fixe    = round(cout_fixe_jour  * open_days, 2)
     cout_perso   = round(cout_perso_jour * open_days, 2)
     amort        = round(amort_jour      * open_days, 2)
-    seuil_ca     = round(seuil_ca_jour     * open_days, 2)      # HT
-    seuil_ca_ttc = round(seuil_ca_jour_ttc * open_days, 2)      # TTC
+    seuil_ca     = round(seuil_ca_jour     * open_days, 2) if seuil_ca_jour     is not None else None  # HT
+    seuil_ca_ttc = round(seuil_ca_jour_ttc * open_days, 2) if seuil_ca_jour_ttc is not None else None  # TTC
 
-    # Marge brute HT
+    # Marge brute HT — 100 % basée sur le COGS réel mesuré.
+    # Taux réel mesuré sur le CA couvert, extrapolé au CA total.
+    # is_estimated_margin = true si la couverture est partielle (extrapolation).
     is_estimated_margin = False
-    if cogs_ht:
-        marge_ht     = round(ca_ht - cogs_ht, 2)
-        marge_ht_pct = round(marge_ht / ca_ht * 100, 1) if ca_ht else None
-    elif ca_ht:
-        marge_ht          = round(ca_ht * MARGE_BP_GLOBALE, 2)
-        marge_ht_pct      = round(MARGE_BP_GLOBALE * 100, 1)
-        is_estimated_margin = True
+    if marge_rate_real is not None and ca_ht:
+        marge_ht     = round(ca_ht * marge_rate_real, 2)
+        marge_ht_pct = round(marge_rate_real * 100, 1)
+        is_estimated_margin = (cogs_coverage_pct or 0) < 95
     else:
         marge_ht = marge_ht_pct = None
 
@@ -592,8 +608,12 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
     ebitda_ht = round(marge_ht - cout_total, 2) if marge_ht is not None else None
 
     # Seuil rentabilité — comparaison TTC vs TTC (ce que tu vois en caisse)
-    manque_seuil = round(max(0, seuil_ca_ttc - ca_ttc), 2)
-    pct_seuil    = round(ca_ttc / seuil_ca_ttc * 100) if seuil_ca_ttc else 0
+    if seuil_ca_ttc is not None:
+        manque_seuil = round(max(0, seuil_ca_ttc - ca_ttc), 2)
+        pct_seuil    = round(ca_ttc / seuil_ca_ttc * 100) if seuil_ca_ttc else 0
+    else:
+        manque_seuil = None
+        pct_seuil    = 0
 
     return {
         # CA
@@ -625,6 +645,10 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
         "manque_seuil":     manque_seuil,   # en TTC
         "pct_seuil":        pct_seuil,      # basé sur TTC vs TTC
         "charges_source":   charges_source, # "supabase" ou "fallback_bp"
+        # Fiabilité du COGS
+        "cogs_coverage_pct": cogs_coverage_pct,   # % du CA avec coût connu
+        "seuil_margin_src":  seuil_margin_src,    # "reelle" ou "bp"
+        "seuil_margin_pct":  round(seuil_margin_rate * 100, 1) if seuil_margin_rate else None,
     }
 
 

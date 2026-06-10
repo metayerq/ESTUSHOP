@@ -267,8 +267,8 @@ def api_data():
     # ── Économie : toujours calculée (marge réelle si articles, estimée sinon) ─
     result["economics"] = daily_economics(docs_main, catalog, n_days,
                                            from_date=from_date, to_date=to_date)
-    if result["economics"].get("charges_source") == "fallback_bp":
-        warnings.append("Charges Supabase injoignables — valeurs du Business Plan utilisées")
+    if result["economics"].get("charges_source") == "indisponible":
+        warnings.append("Charges Supabase injoignables — charges et seuil non calculés")
     result["warnings"] = warnings
 
     # ── Produits et mix : uniquement si détail articles disponible ────────────
