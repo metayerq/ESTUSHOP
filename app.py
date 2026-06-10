@@ -683,7 +683,7 @@ def api_recipe_get(product_id):
     r = req.get(f"https://www.vendus.pt/ws/v1.1/products/{product_id}/", auth=(VENDUS_API_KEY, ""))
     if not r.ok:
         return jsonify({"ok": False, "error": "product not found"}), 404
-    title       = r.json().get("title", "")
+    title       = r.json().get("title", "").strip()
     recipes     = _load_recipes()
     ingr_lib    = _load_ingredients()
     recipe_data = recipes.get(title, {"ingredients": [], "notes": ""})
@@ -705,7 +705,7 @@ def api_recipe_post(product_id):
     r = req.get(f"https://www.vendus.pt/ws/v1.1/products/{product_id}/", auth=(VENDUS_API_KEY, ""))
     if not r.ok:
         return jsonify({"ok": False, "error": "product not found"}), 404
-    title       = r.json().get("title", "")
+    title       = r.json().get("title", "").strip()
     ingr_lib    = _load_ingredients()
     ingredients = data.get("ingredients", [])
     notes       = data.get("notes", "")
@@ -747,7 +747,7 @@ def api_recipe_recalculate_all():
     BASE     = "https://www.vendus.pt/ws/v1.1"
     r        = req.get(f"{BASE}/products/", auth=(VENDUS_API_KEY, ""), params={"per_page": 200})
     products = r.json() if r.ok else []
-    by_title = {p["title"]: p for p in products}
+    by_title = {p["title"].strip(): p for p in products}
     results  = []
     for title, recipe_data in recipes.items():
         if not recipe_data.get("ingredients"):
