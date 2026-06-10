@@ -1262,11 +1262,21 @@ const CONV = {
 };
 
 function calcIngCost(name, qty, unit) {
+  if (!qty) return null;
+  // Ingrédient classique
   const lib = ingrLib[name];
-  if (!lib || !qty) return null;
-  const f = (CONV[unit] || {})[lib.unit_ref];
-  if (f === undefined) return null;
-  return Math.round(qty * f * lib.price * 100000) / 100000;
+  if (lib) {
+    const f = (CONV[unit] || {})[lib.unit_ref];
+    if (f === undefined) return null;
+    return Math.round(qty * f * lib.price * 100000) / 100000;
+  }
+  // Préparation (sous-recette) — unit doit être "unit"
+  const prep = prepLib[name];
+  if (prep && prep.cost_per_unit != null) {
+    // qty = nombre de portions/tranches
+    return Math.round(qty * prep.cost_per_unit * 100000) / 100000;
+  }
+  return null;
 }
 
 function getDrawerPriceHt() {
