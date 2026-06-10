@@ -542,7 +542,11 @@
           <option value="l">€ / litre</option>
           <option value="unit">€ / unité</option>
         </select>
-        <button class="btn-primary" onclick="addIngredient()">+ Ajouter</button>
+        <button class="btn-primary" id="btn-add-ingr" onclick="addIngredient()">+ Ajouter</button>
+        <button class="btn-secondary" id="btn-cancel-edit-ingr" style="display:none;" onclick="cancelEditIngr()">Annuler</button>
+        </div>
+        <div id="edit-ingr-note" style="display:none;font-size:11px;color:var(--muted);margin-top:4px;padding:0 2px;">
+          ⚠ Le nom ne peut pas être modifié (clé primaire). Pour renommer, supprimez et recréez.
         </div>
     </div>
   </div><!-- /ingr-section -->
@@ -1406,7 +1410,10 @@ function renderIngrLib() {
       </td>
       <td style="color:var(--muted);">€ / ${lib.unit_ref}</td>
       <td style="color:var(--faint);font-size:12px;">${lib.note || ''}</td>
-      <td><button class="ingr-del" onclick="deleteIngr('${name.replace(/'/g,"\\'")}')">✕</button></td>
+      <td style="display:flex;gap:4px;">
+        <button class="ingr-del" style="background:none;border:1px solid var(--border);color:var(--muted);padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;" onclick="editIngr('${name.replace(/'/g,"\\'")}')">Modifier</button>
+        <button class="ingr-del" onclick="deleteIngr('${name.replace(/'/g,"\\'")}')">✕</button>
+      </td>
     </tr>`).join('');
 }
 
@@ -1426,20 +1433,51 @@ async function saveIngredient(name, data) {
   });
 }
 
+let editingIngrName = null;
+
+function editIngr(name) {
+  const lib = ingrLib[name];
+  if (!lib) return;
+  editingIngrName = name;
+  document.getElementById('new-name').value  = name;
+  document.getElementById('new-name').readOnly = true;
+  document.getElementById('new-name').style.opacity = '.5';
+  document.getElementById('new-cat').value   = lib.category || '';
+  document.getElementById('new-price').value = lib.price;
+  document.getElementById('new-unit').value  = lib.unit_ref;
+  document.getElementById('btn-add-ingr').textContent = 'Mettre à jour';
+  document.getElementById('btn-cancel-edit-ingr').style.display = '';
+  document.getElementById('edit-ingr-note').style.display = '';
+  // Scroll vers le formulaire
+  document.getElementById('new-name').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  document.getElementById('new-price').focus();
+}
+
+function cancelEditIngr() {
+  editingIngrName = null;
+  document.getElementById('new-name').value  = '';
+  document.getElementById('new-name').readOnly = false;
+  document.getElementById('new-name').style.opacity = '';
+  document.getElementById('new-cat').value   = '';
+  document.getElementById('new-price').value = '';
+  document.getElementById('btn-add-ingr').textContent = '+ Ajouter';
+  document.getElementById('btn-cancel-edit-ingr').style.display = 'none';
+  document.getElementById('edit-ingr-note').style.display = 'none';
+}
+
 async function addIngredient() {
   const name  = document.getElementById('new-name').value.trim();
   const cat   = document.getElementById('new-cat').value.trim();
   const price = parseFloat(document.getElementById('new-price').value);
   const unit  = document.getElementById('new-unit').value;
   if (!name || isNaN(price)) { showToast('Nom et prix requis'); return; }
-  await saveIngredient(name, { price, unit_ref: unit, category: cat, note: '' });
-  ingrLib[name] = { price, unit_ref: unit, category: cat, note: '' };
+  await saveIngredient(name, { price, unit_ref: unit, category: cat, note: ingrLib[name]?.note || '' });
+  ingrLib[name] = { ...(ingrLib[name] || {}), price, unit_ref: unit, category: cat };
   renderIngrLib();
   updateTabBadges();
-  document.getElementById('new-name').value  = '';
-  document.getElementById('new-cat').value   = '';
-  document.getElementById('new-price').value = '';
-  showToast(`✓ ${name} ajouté`);
+  const wasEdit = !!editingIngrName;
+  cancelEditIngr();
+  showToast(wasEdit ? `✓ ${name} mis à jour` : `✓ ${name} ajouté`);
 }
 
 async function deleteIngr(name) {
