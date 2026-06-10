@@ -573,13 +573,14 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None):
     # Marge réelle mesurée sur la partie couverte du CA.
     marge_rate_real = (covered_ht - cogs_ht) / covered_ht if covered_ht > 0 else None
 
-    if marge_rate_real is not None and 0 < marge_rate_real < 1:
+    # Seuil calculable seulement si marge réelle mesurable ET charges connues
+    if marge_rate_real is not None and 0 < marge_rate_real < 1 and cout_jour > 0:
         seuil_margin_rate = marge_rate_real
         seuil_margin_src  = "reelle"
         seuil_ca_jour     = cout_jour / seuil_margin_rate
         seuil_ca_jour_ttc = seuil_ca_jour * (1 + TVA_MOYENNE_BLENDED)
     else:
-        # Pas de COGS mesurable → pas de seuil affichable
+        # Pas de COGS mesurable ou charges absentes → pas de seuil affichable
         seuil_margin_rate = None
         seuil_margin_src  = "indisponible"
         seuil_ca_jour     = None
