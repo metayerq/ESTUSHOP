@@ -265,11 +265,14 @@ def unsold_today(docs, catalog):
 
 
 # Mapping category_id → groupe (dérivé de l'exploration du catalogue)
-# Food inclut les Extras (suppléments) ; Retail = Livres + Papeterie + non catégorisé
-FOOD_CAT_IDS   = {343042919, 343054458, 343065085, 343055566, 343079649, 343052198}
-DRINK_CAT_IDS  = {343052000, 343053226, 343046110, 343053550, 343055376}
-RETAIL_CAT_IDS = {343071668, 343077316}   # Livres, Papeterie
-EXTRA_CAT_IDS  = set()   # fusionné dans Food (conservé pour compat imports)
+# Food = fait maison (Pâtisserie, Brunch, Sandwiches, Granola, Extras)
+# Viennoiseries = achetées (Meia Lua) — marge plus basse, suivies à part
+# Retail = Livres + Papeterie + café en sac + non catégorisé
+FOOD_CAT_IDS         = {343042919, 343065085, 343055566, 343079649, 343052198}
+VIENNOISERIE_CAT_IDS = {343054458}
+DRINK_CAT_IDS        = {343052000, 343053226, 343046110, 343053550, 343055376}
+RETAIL_CAT_IDS       = {343071668, 343077316}   # Livres, Papeterie
+EXTRA_CAT_IDS        = set()   # fusionné dans Food (conservé pour compat imports)
 
 
 def upsell_rate(docs):
