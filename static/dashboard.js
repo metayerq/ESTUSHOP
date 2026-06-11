@@ -271,22 +271,31 @@ function render(d) {
     }).join('');
   }
 
-  // ── Mix produits ──────────────────────────────────────────────────────────
+  // ── Mix produits + rentabilité par groupe ────────────────────────────────
   const MIX_COLORS = {'Boissons':'rgba(55,53,47,1)','Food':'rgba(55,53,47,.55)','Extras':'rgba(55,53,47,.3)','Autre':'rgba(55,53,47,.15)'};
   if (d.mix && d.mix.length) {
-    document.getElementById('mix-bars').innerHTML = d.mix.map(m => `
-      <div style="margin-bottom:8px;">
+    document.getElementById('mix-bars').innerHTML = d.mix.map(m => {
+      const margeStr = m.marge_pct != null
+        ? `marge ${marginBadge(m.marge_pct)} · ${fmt(m.marge_eur)}`
+        : '<span style="color:var(--faint)">marge inconnue</span>';
+      return `
+      <div style="margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;">
-          <span style="color:var(--muted)">${m.label}</span>
-          <span style="font-weight:500">${m.pct}% <span style="color:var(--muted);font-weight:400">· ${fmt(m.amount)}</span></span>
+          <span style="color:var(--text);font-weight:500">${m.label}</span>
+          <span style="font-weight:500">${m.pct}% <span style="color:var(--muted);font-weight:400">· ${fmt(m.amount)} HT</span></span>
         </div>
         <div style="height:4px;background:var(--bar-bg);border-radius:2px;">
           <div style="height:4px;background:${MIX_COLORS[m.label]||'#888'};border-radius:2px;width:${m.pct}%"></div>
         </div>
-      </div>`).join('');
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:3px;">
+          <span>${margeStr}</span>
+          ${m.coverage != null && m.coverage < 95 ? `<span style="color:var(--faint)">couv. ${m.coverage}%</span>` : ''}
+        </div>
+      </div>`;
+    }).join('');
   } else {
     document.getElementById('mix-bars').innerHTML =
-      '<span style="font-size:12px;color:var(--muted);">Disponible pour ≤ 7 jours</span>';
+      '<span style="font-size:12px;color:var(--muted);">Aucune donnée</span>';
   }
 
   // Distribution tickets et TVA retirés du flux principal

@@ -617,17 +617,38 @@ def _upsell_from_rows(rows):
             "multi": multi, "single": total - multi, "total": total}
 
 def _mix_from_merged(merged, catalog):
+    """Mix CA + rentabilité par groupe (Boissons / Food / Extras).
+    Marge calculée sur les produits dont le coût est connu (couverture affichée)."""
     from vendus import DRINK_CAT_IDS, FOOD_CAT_IDS, EXTRA_CAT_IDS
-    by_group = {"Boissons": 0.0, "Food": 0.0, "Extras": 0.0, "Autre": 0.0}
+    groups = {k: {"rev_ht": 0.0, "cogs": 0.0, "covered": 0.0}
+              for k in ("Boissons", "Food", "Extras", "Autre")}
     for name, s in merged.items():
         cid = catalog.get(name, {}).get("category_id")
-        if cid in DRINK_CAT_IDS:   by_group["Boissons"] += s["rev_ht"]
-        elif cid in FOOD_CAT_IDS:  by_group["Food"]     += s["rev_ht"]
-        elif cid in EXTRA_CAT_IDS: by_group["Extras"]   += s["rev_ht"]
-        else:                      by_group["Autre"]    += s["rev_ht"]
-    grand = sum(by_group.values()) or 1
-    return [{"label": k, "amount": round(v, 2), "pct": round(v / grand * 100)}
-            for k, v in by_group.items() if v > 0]
+        if cid in DRINK_CAT_IDS:   g = groups["Boissons"]
+        elif cid in FOOD_CAT_IDS:  g = groups["Food"]
+        elif cid in EXTRA_CAT_IDS: g = groups["Extras"]
+        else:                      g = groups["Autre"]
+        g["rev_ht"] += s["rev_ht"]
+        cost = catalog.get(name, {}).get("cost")
+        if cost:
+            g["cogs"]    += cost * s["qty"]
+            g["covered"] += s["rev_ht"]
+    grand = sum(g["rev_ht"] for g in groups.values()) or 1
+    out = []
+    for label, g in groups.items():
+        if g["rev_ht"] <= 0:
+            continue
+        marge_pct = round((g["covered"] - g["cogs"]) / g["covered"] * 100, 1) if g["covered"] > 0 else None
+        out.append({
+            "label":      label,
+            "amount":     round(g["rev_ht"], 2),
+            "pct":        round(g["rev_ht"] / grand * 100),
+            "cogs":       round(g["cogs"], 2),
+            "marge_pct":  marge_pct,
+            "marge_eur":  round(g["rev_ht"] * marge_pct / 100, 2) if marge_pct is not None else None,
+            "coverage":   round(g["covered"] / g["rev_ht"] * 100) if g["rev_ht"] else None,
+        })
+    return out
 
 
 def _load_preparations():
