@@ -646,7 +646,7 @@ def _mix_from_merged(merged, catalog):
             "label":      label,
             "amount":     round(g["rev_ht"], 2),
             "amount_ttc": round(g["rev_ttc"], 2),
-            "pct":        round(g["rev_ht"] / grand * 100),
+            "pct":        round(g["rev_ht"] / grand * 100, 1),
             "cogs":       round(g["cogs"], 2),
             "marge_pct":  marge_pct,
             "marge_eur":  round(g["rev_ht"] * marge_pct / 100, 2) if marge_pct is not None else None,
