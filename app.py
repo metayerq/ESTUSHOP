@@ -371,13 +371,12 @@ def api_charges_post():
     if not name:
         return jsonify({"ok": False, "error": "name required"}), 400
     row = {
-        "name":       name,
-        "amount":     round(float(data.get("amount", 0)), 2),
-        "frequency":  data.get("frequency", "monthly"),
-        "category":   (data.get("category") or "").strip(),
-        "notes":      (data.get("notes") or "").strip(),
-        "active":     data.get("active", True),
-        "start_date": data.get("start_date") or None,
+        "name":      name,
+        "amount":    round(float(data.get("amount", 0)), 2),
+        "frequency": data.get("frequency", "monthly"),
+        "category":  (data.get("category") or "").strip(),
+        "notes":     (data.get("notes") or "").strip(),
+        "active":    data.get("active", True),
     }
     if data.get("id"):
         row["id"] = data["id"]
@@ -424,7 +423,6 @@ def api_employees_post():
         "days_per_month":   float(data.get("days_per_month", 21.25)),
         "notes":            (data.get("notes") or "").strip(),
         "active":           data.get("active", True),
-        "start_date":       data.get("start_date") or None,
     }
     if data.get("id"):
         row["id"] = data["id"]

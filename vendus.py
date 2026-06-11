@@ -482,31 +482,13 @@ def daily_breakdown(docs):
     ]
 
 
-def _monthly_due(items, month_start, month_end):
-    """Montant mensuel dû pour un mois donné, en tenant compte des dates de début.
-    items : liste de (montant_mensuel, start_date|None).
-    Démarrage en cours de mois → prorata jours calendaires (pratique paie PT)."""
-    days_in_month = (month_end - month_start).days + 1
-    total = 0.0
-    for monthly, sd in items:
-        if sd is None or sd <= month_start:
-            total += monthly
-        elif sd <= month_end:
-            total += monthly * ((month_end - sd).days + 1) / days_in_month
-        # start_date après le mois → 0
-    return total
-
-
-def _prorata_mensuel(items, from_date, to_date):
-    """Alloue des charges mensuelles au prorata des jours ouvrés du mois réel.
-    items : liste de (montant_mensuel, start_date|None) — ou un float (constante).
-    Pour chaque mois touché : dû_du_mois × (jours ouvrés de la période dans le
-    mois ÷ jours ouvrés totaux du mois). Un mois complet = exactement le dû."""
+def _prorata_mensuel(monthly_amount, from_date, to_date):
+    """Alloue une charge mensuelle au prorata des jours ouvrés du mois réel.
+    Pour chaque mois touché : montant × (jours ouvrés de la période dans le mois
+    ÷ jours ouvrés totaux du mois). Un mois complet = exactement 1× le montant."""
     import calendar
     from datetime import date as _date, timedelta as _td
     from config import count_open_days_raw
-    if isinstance(items, (int, float)):
-        items = [(float(items), None)]
     total = 0.0
     cur = _date(from_date.year, from_date.month, 1)
     while cur <= to_date:
@@ -516,8 +498,7 @@ def _prorata_mensuel(items, from_date, to_date):
         month_open = count_open_days_raw(cur, month_end)
         seg_open   = count_open_days_raw(seg_from, seg_to)
         if month_open > 0 and seg_open > 0:
-            due = _monthly_due(items, cur, month_end)
-            total += due * seg_open / month_open
+            total += monthly_amount * seg_open / month_open
         cur = month_end + _td(1)
     return total
 
@@ -557,40 +538,28 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         charges_rows  = []
         employee_rows = []
 
-    def _parse_start(row):
-        sd = row.get("start_date")
-        if not sd:
-            return None
-        try:
-            from datetime import date as _date
-            return _date.fromisoformat(str(sd)[:10])
-        except ValueError:
-            return None
-
-    # Charges fixes mensuelles : liste (mensuel, start_date)
+    # Total charges fixes mensuelles
     def _to_monthly(amount, freq):
         if freq == "quarterly": return amount / 3
         if freq == "annual":    return amount / 12
         return amount
 
-    fixes_items = [(_to_monthly(float(c["amount"]), c.get("frequency", "monthly")),
-                    _parse_start(c)) for c in charges_rows]
-    total_fixes_mois = sum(m for m, _ in fixes_items)
+    total_fixes_mois = sum(_to_monthly(float(c["amount"]), c.get("frequency","monthly"))
+                           for c in charges_rows)
 
-    # Personnel lissé mensuel (TSU + 13e/14e + repas) : liste (mensuel, start_date)
+    # Total personnel lissé mensuel (TSU + 13e/14e + repas)
     TSU_RATE    = 0.2375
     REPAS_JOURS = 242   # ~11 mois × 22 jours
-    perso_items = []
+    total_perso_mois = 0.0
     for e in employee_rows:
         gross = float(e.get("gross_monthly", 0))
         if e.get("type") == "extra":
-            monthly = gross
+            total_perso_mois += gross
         else:
             meal    = float(e.get("meal_card_daily", 10.20))
             tsu     = 0.0 if e.get("tsu_exempt") else TSU_RATE
             monthly = (gross * 14 * (1 + tsu) + meal * REPAS_JOURS) / 12
-        perso_items.append((monthly, _parse_start(e)))
-    total_perso_mois = sum(m for m, _ in perso_items)
+            total_perso_mois += monthly
 
     total_charges_mois = total_fixes_mois + total_perso_mois
 
@@ -599,11 +568,11 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
     charges_source = "supabase" if total_charges_mois > 0 else "indisponible"
 
     # ── Allocation des charges : prorata des jours ouvrés du mois réel ───────
-    # charges(période) = Σ par mois : dû_du_mois (start_dates incluses)
-    # × (j. ouvrés période ∩ mois ÷ j. ouvrés du mois).
+    # charges(période) = Σ par mois touché : mensuel × (j. ouvrés période ∩ mois
+    # ÷ j. ouvrés du mois). Un mois complet = exactement 100% des charges.
     if from_date is not None and to_date is not None:
-        cout_fixe  = round(_prorata_mensuel(fixes_items,        from_date, to_date), 2)
-        cout_perso = round(_prorata_mensuel(perso_items,        from_date, to_date), 2)
+        cout_fixe  = round(_prorata_mensuel(total_fixes_mois,   from_date, to_date), 2)
+        cout_perso = round(_prorata_mensuel(total_perso_mois,   from_date, to_date), 2)
         amort      = round(_prorata_mensuel(AMORTISSEMENT_MOIS, from_date, to_date), 2)
     else:
         # Fallback sans dates : ancien tarif journalier moyen

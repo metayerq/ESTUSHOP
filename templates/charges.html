@@ -342,11 +342,6 @@ select.field-input { cursor:pointer; }
           <option value="Divers">
         </datalist>
       </div>
-      <div>
-        <div class="field-label">Date de début</div>
-        <input class="field-input" id="charge-start" type="date">
-        <div style="font-size:11px;color:var(--muted);margin-top:3px;">Vide = depuis toujours. Mois de début → prorata.</div>
-      </div>
       <div class="full">
         <div class="field-label">Notes</div>
         <input class="field-input" id="charge-notes" placeholder="Optionnel">
@@ -394,11 +389,6 @@ select.field-input { cursor:pointer; }
           <input type="checkbox" id="emp-tsu-exempt" onchange="updateEmpPreview()" style="width:15px;height:15px;">
           TSU employeur exonérée (1er emploi — 3 premières années)
         </label>
-      </div>
-      <div>
-        <div class="field-label">Date d'embauche</div>
-        <input class="field-input" id="emp-start" type="date">
-        <div style="font-size:11px;color:var(--muted);margin-top:3px;">Mois d'embauche → coût au prorata des jours.</div>
       </div>
       <div class="full">
         <div class="field-label">Notes</div>
@@ -639,7 +629,6 @@ function openChargeModal(id) {
   document.getElementById('charge-frequency').value = 'monthly';
   document.getElementById('charge-category').value = '';
   document.getElementById('charge-notes').value = '';
-  document.getElementById('charge-start').value = '';
   document.getElementById('charge-modal-title').textContent = 'Nouvelle charge';
   document.getElementById('charge-modal').classList.add('open');
   document.getElementById('charge-name').focus();
@@ -653,7 +642,6 @@ function editCharge(id) {
   document.getElementById('charge-frequency').value = c.frequency;
   document.getElementById('charge-category').value = c.category || '';
   document.getElementById('charge-notes').value = c.notes || '';
-  document.getElementById('charge-start').value = c.start_date || '';
   document.getElementById('charge-modal-title').textContent = 'Modifier la charge';
   document.getElementById('charge-modal').classList.add('open');
 }
@@ -671,7 +659,6 @@ async function saveCharge() {
     frequency: document.getElementById('charge-frequency').value,
     category:  document.getElementById('charge-category').value.trim(),
     notes:     document.getElementById('charge-notes').value.trim(),
-    start_date: document.getElementById('charge-start').value || null,
   };
   if (id) body.id = id;
   const r = await fetch('/api/charges', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
@@ -704,7 +691,6 @@ function openEmpModal() {
   document.getElementById('emp-meal').value = 10.20;
   document.getElementById('emp-tsu-exempt').checked = false;
   document.getElementById('emp-notes').value = '';
-  document.getElementById('emp-start').value = '';
   document.getElementById('emp-modal-title').textContent = 'Nouvel employé';
   document.getElementById('emp-tsu-wrap').style.display = '';
   document.getElementById('emp-preview').style.display = 'none';
@@ -722,7 +708,6 @@ function editEmployee(id) {
   document.getElementById('emp-meal').value = e.meal_card_daily || 10.20;
   document.getElementById('emp-tsu-exempt').checked = !!e.tsu_exempt;
   document.getElementById('emp-notes').value = e.notes || '';
-  document.getElementById('emp-start').value = e.start_date || '';
   document.getElementById('emp-modal-title').textContent = 'Modifier l\'employé';
   document.getElementById('emp-tsu-wrap').style.display = e.type === 'extra' ? 'none' : '';
   document.getElementById('emp-modal').classList.add('open');
@@ -787,7 +772,6 @@ async function saveEmployee() {
     meal_card_daily: parseFloat(document.getElementById('emp-meal').value) || 10.20,
     tsu_exempt:    document.getElementById('emp-tsu-exempt').checked,
     notes:         document.getElementById('emp-notes').value.trim(),
-    start_date:    document.getElementById('emp-start').value || null,
   };
   if (id) body.id = id;
   const r = await fetch('/api/employees', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
