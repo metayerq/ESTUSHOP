@@ -482,27 +482,6 @@ def daily_breakdown(docs):
     ]
 
 
-def _prorata_mensuel(monthly_amount, from_date, to_date):
-    """Alloue une charge mensuelle au prorata des jours ouvrés du mois réel.
-    Pour chaque mois touché : montant × (jours ouvrés de la période dans le mois
-    ÷ jours ouvrés totaux du mois). Un mois complet = exactement 1× le montant."""
-    import calendar
-    from datetime import date as _date, timedelta as _td
-    from config import count_open_days_raw
-    total = 0.0
-    cur = _date(from_date.year, from_date.month, 1)
-    while cur <= to_date:
-        month_end = _date(cur.year, cur.month, calendar.monthrange(cur.year, cur.month)[1])
-        seg_from  = max(from_date, cur)
-        seg_to    = min(to_date, month_end)
-        month_open = count_open_days_raw(cur, month_end)
-        seg_open   = count_open_days_raw(seg_from, seg_to)
-        if month_open > 0 and seg_open > 0:
-            total += monthly_amount * seg_open / month_open
-        cur = month_end + _td(1)
-    return total
-
-
 def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_agg=None,
                     open_days_override=None):
     """
@@ -567,20 +546,10 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
     # charges = 0 et le front affiche un warning (charges_source).
     charges_source = "supabase" if total_charges_mois > 0 else "indisponible"
 
-    # ── Allocation des charges : prorata des jours ouvrés du mois réel ───────
-    # charges(période) = Σ par mois touché : mensuel × (j. ouvrés période ∩ mois
-    # ÷ j. ouvrés du mois). Un mois complet = exactement 100% des charges.
-    if from_date is not None and to_date is not None:
-        cout_fixe  = round(_prorata_mensuel(total_fixes_mois,   from_date, to_date), 2)
-        cout_perso = round(_prorata_mensuel(total_perso_mois,   from_date, to_date), 2)
-        amort      = round(_prorata_mensuel(AMORTISSEMENT_MOIS, from_date, to_date), 2)
-    else:
-        # Fallback sans dates : ancien tarif journalier moyen
-        cout_fixe  = round(total_fixes_mois   / JOURS_OUVERTS_MOIS * open_days, 2)
-        cout_perso = round(total_perso_mois   / JOURS_OUVERTS_MOIS * open_days, 2)
-        amort      = round(AMORTISSEMENT_MOIS / JOURS_OUVERTS_MOIS * open_days, 2)
-    cout_total = round(cout_fixe + cout_perso, 2)
-    cout_jour  = cout_total / open_days   # coût moyen par jour ouvré de la période
+    cout_jour        = total_charges_mois / JOURS_OUVERTS_MOIS
+    cout_fixe_jour   = total_fixes_mois   / JOURS_OUVERTS_MOIS
+    cout_perso_jour  = total_perso_mois   / JOURS_OUVERTS_MOIS
+    amort_jour       = AMORTISSEMENT_MOIS / JOURS_OUVERTS_MOIS
 
     ca_ttc     = 0.0   # TTC  — affiché pour info
     ca_ht      = 0.0   # HT   — base des calculs de rentabilité
@@ -620,18 +589,25 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
     marge_rate_real = (covered_ht - cogs_ht) / covered_ht if covered_ht > 0 else None
 
     # Seuil calculable seulement si marge réelle mesurable ET charges connues
-    # Seuil = charges totales de la période ÷ taux de marge réel
-    if marge_rate_real is not None and 0 < marge_rate_real < 1 and cout_total > 0:
+    if marge_rate_real is not None and 0 < marge_rate_real < 1 and cout_jour > 0:
         seuil_margin_rate = marge_rate_real
         seuil_margin_src  = "reelle"
-        seuil_ca          = round(cout_total / seuil_margin_rate, 2)             # HT
-        seuil_ca_ttc      = round(seuil_ca * (1 + TVA_MOYENNE_BLENDED), 2)       # TTC
+        seuil_ca_jour     = cout_jour / seuil_margin_rate
+        seuil_ca_jour_ttc = seuil_ca_jour * (1 + TVA_MOYENNE_BLENDED)
     else:
         # Pas de COGS mesurable ou charges absentes → pas de seuil affichable
         seuil_margin_rate = None
         seuil_margin_src  = "indisponible"
-        seuil_ca          = None
-        seuil_ca_ttc      = None
+        seuil_ca_jour     = None
+        seuil_ca_jour_ttc = None
+
+    # Charges × jours_ouvrés_réels (live Supabase)
+    cout_total   = round(cout_jour       * open_days, 2)
+    cout_fixe    = round(cout_fixe_jour  * open_days, 2)
+    cout_perso   = round(cout_perso_jour * open_days, 2)
+    amort        = round(amort_jour      * open_days, 2)
+    seuil_ca     = round(seuil_ca_jour     * open_days, 2) if seuil_ca_jour     is not None else None  # HT
+    seuil_ca_ttc = round(seuil_ca_jour_ttc * open_days, 2) if seuil_ca_jour_ttc is not None else None  # TTC
 
     # Marge brute HT — 100 % basée sur le COGS réel mesuré.
     # Taux réel mesuré sur le CA couvert, extrapolé au CA total.

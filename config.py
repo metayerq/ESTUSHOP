@@ -21,8 +21,8 @@ LAUNCH_OPEN_DAYS = {
 }
 SCHEDULE_CUTOVER = date(2026, 6, 12)   # à partir d'ici : calendrier OPEN_WEEKDAYS
 
-def count_open_days_raw(from_date: date, to_date: date) -> int:
-    """Nombre de jours d'ouverture effectifs entre deux dates incluses (peut être 0)."""
+def count_open_days(from_date: date, to_date: date) -> int:
+    """Nombre de jours d'ouverture effectifs entre deux dates incluses."""
     n = 0
     cur = from_date
     while cur <= to_date:
@@ -32,11 +32,7 @@ def count_open_days_raw(from_date: date, to_date: date) -> int:
         elif cur.weekday() in OPEN_WEEKDAYS:
             n += 1
         cur += timedelta(1)
-    return n
-
-def count_open_days(from_date: date, to_date: date) -> int:
-    """Comme count_open_days_raw mais ≥ 1 (évite les divisions par zéro)."""
-    return max(count_open_days_raw(from_date, to_date), 1)
+    return max(n, 1)   # au moins 1 pour éviter la division par zéro
 
 # ── Charges fixes opérationnelles / mois (€) ────────────────────────────────
 # Source : feuille 4_Charges_fixes, mois stabilisés (Juil 26+)
