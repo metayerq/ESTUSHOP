@@ -617,17 +617,17 @@ def _upsell_from_rows(rows):
             "multi": multi, "single": total - multi, "total": total}
 
 def _mix_from_merged(merged, catalog):
-    """Mix CA + rentabilité par groupe (Boissons / Food / Extras).
+    """Mix CA + rentabilité par groupe (Boissons / Food / Retail).
+    Retail = Livres, Papeterie, café en sac et tout produit non catégorisé.
     Marge calculée sur les produits dont le coût est connu (couverture affichée)."""
-    from vendus import DRINK_CAT_IDS, FOOD_CAT_IDS, EXTRA_CAT_IDS
+    from vendus import DRINK_CAT_IDS, FOOD_CAT_IDS
     groups = {k: {"rev_ht": 0.0, "cogs": 0.0, "covered": 0.0}
-              for k in ("Boissons", "Food", "Extras", "Autre")}
+              for k in ("Boissons", "Food", "Retail")}
     for name, s in merged.items():
         cid = catalog.get(name, {}).get("category_id")
         if cid in DRINK_CAT_IDS:   g = groups["Boissons"]
         elif cid in FOOD_CAT_IDS:  g = groups["Food"]
-        elif cid in EXTRA_CAT_IDS: g = groups["Extras"]
-        else:                      g = groups["Autre"]
+        else:                      g = groups["Retail"]
         g["rev_ht"] += s["rev_ht"]
         cost = catalog.get(name, {}).get("cost")
         if cost:
