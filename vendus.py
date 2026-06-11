@@ -482,7 +482,8 @@ def daily_breakdown(docs):
     ]
 
 
-def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_agg=None):
+def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_agg=None,
+                    open_days_override=None):
     """
     P&L entièrement en HT (hors taxes) — pour 1 jour ou une période.
     CA HT  = amount_net  (Vendus)
@@ -497,8 +498,12 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         JOURS_OUVERTS_MOIS, count_open_days,
     )
 
-    # Jours d'ouverture effectifs dans la période
-    if from_date is not None and to_date is not None:
+    # Jours d'ouverture effectifs dans la période.
+    # Priorité au réel observé (jours avec ventes, passé par l'appelant) —
+    # robuste aux changements d'horaires ; fallback calendrier théorique.
+    if open_days_override is not None:
+        open_days = max(1, open_days_override)
+    elif from_date is not None and to_date is not None:
         open_days = count_open_days(from_date, to_date)
     else:
         open_days = max(1, round(n_days * 5 / 7))

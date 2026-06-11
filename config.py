@@ -7,14 +7,29 @@ from datetime import date, timedelta
 
 # ── Calendrier d'ouverture ───────────────────────────────────────────────────
 # weekday() : 0=lun, 1=mar, 2=mer, 3=jeu, 4=ven, 5=sam, 6=dim
+# Depuis le 12 juin 2026 : fermé mardi et mercredi.
 OPEN_WEEKDAYS = frozenset({0, 3, 4, 5, 6})   # lun, jeu, ven, sam, dim
+
+# Période de lancement (horaires irréguliers, saisie manuelle) — jours réels
+# d'ouverture confirmés par Quentin. Avant le cutover, seuls ces jours comptent.
+LAUNCH_OPEN_DAYS = {
+    date(2026, 5, 27), date(2026, 5, 28), date(2026, 5, 29),
+    date(2026, 5, 30), date(2026, 5, 31),
+    date(2026, 6, 3), date(2026, 6, 4), date(2026, 6, 5),
+    date(2026, 6, 6), date(2026, 6, 7), date(2026, 6, 8),
+    date(2026, 6, 10), date(2026, 6, 11),
+}
+SCHEDULE_CUTOVER = date(2026, 6, 12)   # à partir d'ici : calendrier OPEN_WEEKDAYS
 
 def count_open_days(from_date: date, to_date: date) -> int:
     """Nombre de jours d'ouverture effectifs entre deux dates incluses."""
     n = 0
     cur = from_date
     while cur <= to_date:
-        if cur.weekday() in OPEN_WEEKDAYS:
+        if cur < SCHEDULE_CUTOVER:
+            if cur in LAUNCH_OPEN_DAYS:
+                n += 1
+        elif cur.weekday() in OPEN_WEEKDAYS:
             n += 1
         cur += timedelta(1)
     return max(n, 1)   # au moins 1 pour éviter la division par zéro
