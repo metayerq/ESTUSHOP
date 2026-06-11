@@ -136,6 +136,13 @@ button {{ width:100%; padding:10px; background:#37352f; color:#fff; border:none;
 </body></html>"""
 
 
+@app.route("/logout")
+def logout():
+    resp = make_response(redirect("/login"))
+    resp.set_cookie("estu_auth", "", max_age=0)
+    return resp
+
+
 @app.route("/")
 def index():
     return render_template("index.html", seuil=SEUIL_TRANSACTIONS)
