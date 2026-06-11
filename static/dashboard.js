@@ -282,7 +282,7 @@ function render(d) {
       <div style="margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;">
           <span style="color:var(--text);font-weight:500">${m.label}</span>
-          <span style="font-weight:500">${m.pct}% <span style="color:var(--muted);font-weight:400">· ${fmt(m.amount)} HT</span></span>
+          <span style="font-weight:500">${m.pct}% <span style="color:var(--muted);font-weight:400">· ${fmt(m.amount_ttc ?? m.amount)} TTC <span style="color:var(--faint)">(${fmt(m.amount)} HT)</span></span></span>
         </div>
         <div style="height:4px;background:var(--bar-bg);border-radius:2px;">
           <div style="height:4px;background:${MIX_COLORS[m.label]||'#888'};border-radius:2px;width:${m.pct}%"></div>

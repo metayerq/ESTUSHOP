@@ -622,7 +622,7 @@ def _mix_from_merged(merged, catalog):
     Retail = Livres, Papeterie, café en sac et tout produit non catégorisé.
     Marge calculée sur les produits dont le coût est connu (couverture affichée)."""
     from vendus import DRINK_CAT_IDS, FOOD_CAT_IDS, VIENNOISERIE_CAT_IDS
-    groups = {k: {"rev_ht": 0.0, "cogs": 0.0, "covered": 0.0}
+    groups = {k: {"rev_ht": 0.0, "rev_ttc": 0.0, "cogs": 0.0, "covered": 0.0}
               for k in ("Boissons", "Food maison", "Viennoiseries", "Retail")}
     for name, s in merged.items():
         cid = catalog.get(name, {}).get("category_id")
@@ -630,7 +630,8 @@ def _mix_from_merged(merged, catalog):
         elif cid in FOOD_CAT_IDS:           g = groups["Food maison"]
         elif cid in VIENNOISERIE_CAT_IDS:   g = groups["Viennoiseries"]
         else:                               g = groups["Retail"]
-        g["rev_ht"] += s["rev_ht"]
+        g["rev_ht"]  += s["rev_ht"]
+        g["rev_ttc"] += s["rev_ttc"]
         cost = catalog.get(name, {}).get("cost")
         if cost:
             g["cogs"]    += cost * s["qty"]
@@ -644,6 +645,7 @@ def _mix_from_merged(merged, catalog):
         out.append({
             "label":      label,
             "amount":     round(g["rev_ht"], 2),
+            "amount_ttc": round(g["rev_ttc"], 2),
             "pct":        round(g["rev_ht"] / grand * 100),
             "cogs":       round(g["cogs"], 2),
             "marge_pct":  marge_pct,
