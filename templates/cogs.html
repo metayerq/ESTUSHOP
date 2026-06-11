@@ -452,6 +452,7 @@
       <span class="spin-badge" id="spin-badge"></span>
       <button class="btn-primary" onclick="openNewProdModal()">+ Nouveau produit</button>
       <button class="btn-secondary" id="btn-recalc" onclick="recalculateAll()">↺ Tout recalculer</button>
+      <button class="btn-secondary" id="btn-rebuild" onclick="rebuildHistory()" title="Recalcule les marges du dashboard avec les prix de revient actuels">↻ Recalculer l'historique</button>
       <button class="btn-secondary" onclick="loadCogs()">↻ Rafraîchir</button>
     </div>
   </div>
@@ -1555,6 +1556,22 @@ async function recalculateAll() {
     showToast('Erreur réseau');
   } finally {
     btn.textContent = '↺ Tout recalculer'; btn.disabled = false;
+  }
+}
+
+async function rebuildHistory() {
+  if (!confirm(`Recalculer l'historique du dashboard avec les prix de revient actuels ?\nLes marges de toutes les journées passées seront recalculées.`)) return;
+  const btn = document.getElementById('btn-rebuild');
+  btn.textContent = '↻ Recalcul…'; btn.disabled = true;
+  try {
+    const r = await fetch('/api/summary/rebuild', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) showToast(`✓ ${d.days_rebuilt} journées recalculées`);
+    else showToast('Erreur : ' + (d.error || 'inconnue'));
+  } catch(e) {
+    showToast('Erreur réseau');
+  } finally {
+    btn.textContent = '↻ Recalculer l\'historique'; btn.disabled = false;
   }
 }
 
