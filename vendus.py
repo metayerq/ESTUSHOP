@@ -924,13 +924,16 @@ def top_products(docs, catalog=None, n=10):
 
 
 def recent_docs(docs, n=10):
+    """Liste des transactions, plus récente d'abord. n=None → toutes."""
     sorted_docs = sorted(
         docs,
         key=lambda d: d.get("local_time", d.get("date", "")),
         reverse=True,
     )
+    if n is not None:
+        sorted_docs = sorted_docs[:n]
     result = []
-    for d in sorted_docs[:n]:
+    for d in sorted_docs:
         payments = d.get("payments", [])
         items    = d.get("items", [])
         result.append({

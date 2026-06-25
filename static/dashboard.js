@@ -455,13 +455,58 @@ function render(d) {
     return;
   }
   window._txData = d.recent;
+  const recCount = document.getElementById('recent-count');
+  if (recCount) recCount.textContent = d.is_single_day
+    ? `${d.recent.length} transaction${d.recent.length > 1 ? 's' : ''}`
+    : `${d.recent.length} dernières`;
+  const recLabel = document.getElementById('recent-label');
+  if (recLabel) recLabel.textContent = d.is_single_day ? 'Transactions du jour' : 'Transactions récentes';
   document.getElementById('recent-body').innerHTML = d.recent.map((t, i) => `
-    <tr style="cursor:pointer;" onclick="openDrawer(${i})">
+    <tr style="cursor:pointer;" onclick="openDrawer(${i})"
+        onmouseenter="showTxTooltip(event, ${i})" onmousemove="moveTxTooltip(event)" onmouseleave="hideTxTooltip()">
       <td class="time">${t.time}</td>
       <td class="num">${t.number}</td>
       <td><span class="badge">${t.type}</span></td>
       <td class="amount">${fmt(t.amount)}</td>
     </tr>`).join('');
+}
+
+// ── Tooltip survol transaction ───────────────────────────────────────────────
+function showTxTooltip(e, idx) {
+  const t = window._txData[idx];
+  if (!t) return;
+  const tip = document.getElementById('tx-tooltip');
+  const itemsHtml = (t.items && t.items.length)
+    ? t.items.map(it => `
+        <div style="display:flex;justify-content:space-between;gap:14px;padding:2px 0;">
+          <span>${it.qty > 1 ? `<span style="color:var(--muted)">${it.qty}×</span> ` : ''}${it.name}</span>
+          <span style="color:var(--muted);white-space:nowrap;">${fmt(it.total)}</span>
+        </div>`).join('')
+    : '<div style="color:var(--muted);">Détail non disponible</div>';
+  const payHtml = (t.payments && t.payments.length)
+    ? `<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;color:var(--muted);">${t.payments.map(p => p.label).join(' · ')}</div>`
+    : '';
+  tip.innerHTML = `
+    <div style="font-weight:600;margin-bottom:6px;">${t.number} · ${t.time}</div>
+    ${itemsHtml}
+    <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:6px;padding-top:6px;font-weight:600;">
+      <span>Total</span><span>${fmt(t.amount)}</span>
+    </div>${payHtml}`;
+  tip.style.display = 'block';
+  moveTxTooltip(e);
+}
+function moveTxTooltip(e) {
+  const tip = document.getElementById('tx-tooltip');
+  if (tip.style.display === 'none') return;
+  const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.clientX + pad, y = e.clientY + pad;
+  if (x + w > window.innerWidth)  x = e.clientX - w - pad;
+  if (y + h > window.innerHeight) y = e.clientY - h - pad;
+  tip.style.left = x + 'px';
+  tip.style.top  = y + 'px';
+}
+function hideTxTooltip() {
+  document.getElementById('tx-tooltip').style.display = 'none';
 }
 
 // ── Graphe horaire ─────────────────────────────────────────────────────────

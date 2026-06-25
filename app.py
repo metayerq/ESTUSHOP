@@ -289,7 +289,7 @@ def api_data():
         # Produits sur 7j glissants — depuis le cache + aujourd'hui live
         "products_7d":   _products_list(merged_7d, catalog, n=None),
         # Transactions récentes
-        "recent":        recent_docs(docs_main),
+        "recent":        recent_docs(docs_main, n=(None if is_single else 10)),
     }
 
     # ── Économie : COGS depuis le cache (multi-jours) ou les items (jour) ─────

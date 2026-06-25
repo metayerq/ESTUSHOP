@@ -261,7 +261,10 @@
   </div>
 
   <!-- Transactions récentes -->
-  <div class="section-label">Transactions récentes</div>
+  <div style="display:flex;align-items:baseline;justify-content:space-between;">
+    <div class="section-label" id="recent-label">Transactions récentes</div>
+    <div class="section-label" id="recent-count" style="color:var(--faint);"></div>
+  </div>
   <div class="table-wrap">
     <div id="recent-list">
       <table>
@@ -286,6 +289,9 @@
 <div id="warn-banner" style="display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#fff8e1;border:1px solid #ffe082;color:#795548;padding:10px 18px;border-radius:8px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:50;max-width:90vw;">
   ⚠ Données incomplètes : <span id="warn-msg"></span>
 </div>
+
+<!-- Tooltip survol transaction -->
+<div id="tx-tooltip" style="display:none;position:fixed;z-index:300;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.14);padding:10px 12px;font-size:12px;max-width:280px;pointer-events:none;"></div>
 
 <!-- Drawer ticket -->
 <div id="drawer-overlay" onclick="closeDrawer()"></div>
