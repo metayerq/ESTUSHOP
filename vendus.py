@@ -47,11 +47,33 @@ def vendus(endpoint, params=None):
     return r.json()
 
 
-SALE_TYPES = {"FT", "FS", "FR", "FG"}
+SALE_TYPES   = {"FT", "FS", "FR", "FG"}
+REFUND_TYPES = {"NC"}   # notas de crédito — soustraites du CA
+
+
+def _negate_refund(d):
+    """Négative tous les montants/quantités d'une nota de crédito pour qu'elle
+    se soustraie naturellement du CA, du COGS, des quantités et des paiements."""
+    d["_refund"] = True
+    for k in ("amount_gross", "amount_net"):
+        if d.get(k) is not None:
+            d[k] = -abs(float(d[k]))
+    for it in d.get("items", []):
+        if it.get("qty") is not None:
+            it["qty"] = -abs(float(it["qty"]))
+        am = it.get("amounts", {})
+        for k in ("net_total", "gross_total"):
+            if am.get(k) is not None:
+                am[k] = -abs(float(am[k]))
+    for p in d.get("payments", []):
+        if p.get("amount") is not None:
+            p["amount"] = -abs(float(p["amount"]))
+    return d
 
 
 def get_documents(since: str, until: str):
-    """Récupère TOUS les documents de la période (pagination complète)."""
+    """Récupère ventes + avoirs (NC) de la période (pagination complète).
+    Les NC sont retournées avec montants négatifs → CA net automatique."""
     PER_PAGE = 200
     all_raw  = []
     page     = 1
@@ -70,8 +92,14 @@ def get_documents(since: str, until: str):
         if len(raw) < PER_PAGE:
             break   # dernière page
         page += 1
-    # Exclure les RG (reçus globaux) qui doublonnent les FT
-    return [d for d in all_raw if d.get("type") in SALE_TYPES]
+    out = []
+    for d in all_raw:
+        t = d.get("type")
+        if t in SALE_TYPES:
+            out.append(d)
+        elif t in REFUND_TYPES:
+            out.append(_negate_refund(d))
+    return out
 
 
 def get_document_detail(doc_id: int):
@@ -96,10 +124,13 @@ def get_documents_with_items(since: str, until: str):
             detail = future.result()
             if detail:
                 results[doc_id] = detail
-    # Réassembler dans l'ordre original, enrichi des items
+    # Réassembler dans l'ordre original, enrichi des items.
+    # Le détail brut (API) écrase la négation des NC → re-négativer.
     enriched = []
     for d in docs:
         detail = results.get(d["id"], d)
+        if d.get("_refund") and not detail.get("_refund"):
+            detail = _negate_refund(detail)
         enriched.append(detail)
     return enriched
 
@@ -142,11 +173,11 @@ def get_balance():
 
 
 def calc_stats(docs):
-    ca_ttc = sum(float(d.get("amount_gross", 0)) for d in docs)
+    ca_ttc = sum(float(d.get("amount_gross", 0)) for d in docs)   # NC négatives → net
     ca_ht  = sum(float(d.get("amount_net",   0)) for d in docs)
-    nb     = len(docs)
+    nb     = sum(1 for d in docs if not d.get("_refund"))         # avoirs ≠ ventes
     return {
-        "ca":         round(ca_ttc, 2),   # TTC — affiché en principal
+        "ca":         round(ca_ttc, 2),   # TTC net — affiché en principal
         "ca_ht":      round(ca_ht, 2),
         "nb":         nb,
         "ticket":     round(ca_ttc / nb, 2) if nb else 0.0,   # TTC
@@ -314,8 +345,8 @@ def category_mix(docs, catalog):
 
 
 def ticket_median(docs):
-    """Ticket médian TTC (robuste face aux valeurs extrêmes)."""
-    amounts = sorted(float(d.get("amount_gross", 0)) for d in docs)
+    """Ticket médian TTC (robuste face aux valeurs extrêmes) — ventes seules."""
+    amounts = sorted(float(d.get("amount_gross", 0)) for d in docs if not d.get("_refund"))
     if not amounts:
         return None
     n = len(amounts)

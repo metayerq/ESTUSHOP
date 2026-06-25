@@ -521,7 +521,7 @@ def _summarize_docs_items(docs, catalog):
     products = {}
     for d in docs:
         its = d.get("items", [])
-        if len(its) >= 2:
+        if len(its) >= 2 and not d.get("_refund"):
             multi += 1
         for item in its:
             name = item.get("title", "").strip()
@@ -539,7 +539,7 @@ def _summarize_docs_items(docs, catalog):
                 cogs    += c["cost"] * qty
                 covered += net
     return {
-        "nb":          len(docs),
+        "nb":          sum(1 for d in docs if not d.get("_refund")),   # avoirs ≠ ventes
         "ca_ttc":      round(sum(float(d.get("amount_gross", 0)) for d in docs), 2),
         "ca_ht":       round(sum(float(d.get("amount_net",   0)) for d in docs), 2),
         "cogs_ht":     round(cogs, 2),
