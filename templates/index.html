@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -53,33 +53,33 @@
   <div class="header">
     <div>
       <div class="header-title">Estudantina</div>
-      <div class="header-sub" id="subtitle">Alcântara — chargement…</div>
+      <div class="header-sub" id="subtitle">Alcântara — loading…</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
-      <a href="/cogs" style="font-size:12px;color:var(--muted);text-decoration:none;border:1px solid var(--border);padding:5px 12px;border-radius:6px;background:var(--bg-card);" title="Fiche COGS">COGS</a>
-      <a href="/charges" style="font-size:12px;color:var(--muted);text-decoration:none;border:1px solid var(--border);padding:5px 12px;border-radius:6px;background:var(--bg-card);" title="Charges & Personnel">Charges</a>
+      <a href="/cogs" style="font-size:12px;color:var(--muted);text-decoration:none;border:1px solid var(--border);padding:5px 12px;border-radius:6px;background:var(--bg-card);" title="COGS sheet">COGS</a>
+      <a href="/charges" style="font-size:12px;color:var(--muted);text-decoration:none;border:1px solid var(--border);padding:5px 12px;border-radius:6px;background:var(--bg-card);" title="Costs & Staff">Costs</a>
       <div class="updated" id="updated-at" style="display:none;"></div>
-      <button class="btn-refresh" onclick="loadData()" title="Rafraîchir">↻</button>
-      <a href="/logout" title="Se déconnecter" style="font-size:12px;color:var(--faint);text-decoration:none;padding:5px 8px;">⎋</a>
+      <button class="btn-refresh" onclick="loadData()" title="Refresh">↻</button>
+      <a href="/logout" title="Log out" style="font-size:12px;color:var(--faint);text-decoration:none;padding:5px 8px;">⎋</a>
     </div>
   </div>
 
   <!-- Filtres de période -->
   <div class="period-pills" id="period-pills">
-    <button class="pill active" data-preset="today"    onclick="setPreset('today')">Aujourd'hui</button>
-    <button class="pill"        data-preset="yesterday" onclick="setPreset('yesterday')">Hier</button>
-    <button class="pill"        data-preset="week"      onclick="setPreset('week')">Cette semaine</button>
-    <button class="pill"        data-preset="lastweek"  onclick="setPreset('lastweek')">Semaine dernière</button>
-    <button class="pill"        data-preset="month"     onclick="setPreset('month')">Ce mois</button>
-    <button class="pill"        data-preset="all"       onclick="setPreset('all')">Depuis l'ouverture</button>
+    <button class="pill active" data-preset="today"    onclick="setPreset('today')">Today</button>
+    <button class="pill"        data-preset="yesterday" onclick="setPreset('yesterday')">Yesterday</button>
+    <button class="pill"        data-preset="week"      onclick="setPreset('week')">This week</button>
+    <button class="pill"        data-preset="lastweek"  onclick="setPreset('lastweek')">Last week</button>
+    <button class="pill"        data-preset="month"     onclick="setPreset('month')">This month</button>
+    <button class="pill"        data-preset="all"       onclick="setPreset('all')">Since opening</button>
   </div>
 
   <!-- KPIs — label dynamique selon la période -->
-  <div class="section-label" id="kpi-section-label">Aujourd'hui</div>
+  <div class="section-label" id="kpi-section-label">Today</div>
   <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:32px;">
     <div class="kpi-grid">
       <div class="kpi-cell">
-        <div class="kpi-label">CA TTC</div>
+        <div class="kpi-label">Revenue (incl. VAT)</div>
         <div class="kpi-value" id="kpi-ca">—</div>
         <div class="kpi-delta" id="kpi-ca-delta"></div>
         <div class="kpi-delta" id="kpi-ca-ht" style="color:var(--muted);margin-top:2px;"></div>
@@ -90,21 +90,21 @@
         <div class="kpi-delta" id="kpi-nb-delta"></div>
         <div class="progress-wrap">
           <div class="progress-track"><div class="progress-fill" id="seuil-bar" style="width:0%"></div></div>
-          <div class="progress-meta" id="seuil-meta">Seuil rentabilité : {{ seuil }} tx/j</div>
+          <div class="progress-meta" id="seuil-meta">Break-even: {{ seuil }} tx/day</div>
         </div>
       </div>
       <div class="kpi-cell">
-        <div class="kpi-label">Ticket moyen</div>
+        <div class="kpi-label">Average ticket</div>
         <div class="kpi-value" id="kpi-ticket">—</div>
         <div class="kpi-delta" id="kpi-ticket-delta"></div>
       </div>
       <div class="kpi-cell">
-        <div class="kpi-label">Solde caisse</div>
+        <div class="kpi-label">Cash balance</div>
         <div class="kpi-value" id="kpi-balance">—</div>
-        <div class="kpi-delta" style="color:var(--muted)">en temps réel</div>
+        <div class="kpi-delta" style="color:var(--muted)">real-time</div>
       </div>
       <div class="kpi-cell" id="kpi-tempo-cell" style="display:none;">
-        <div class="kpi-label">Tempo service</div>
+        <div class="kpi-label">Service pace</div>
         <div class="kpi-value" id="kpi-tempo">—</div>
         <div class="kpi-delta" id="kpi-tempo-sub" style="color:var(--muted)"></div>
       </div>
@@ -112,26 +112,26 @@
   </div>
 
   <!-- Économie -->
-  <div class="section-label" id="eco-label" style="margin-top:32px;">Économie du jour</div>
+  <div class="section-label" id="eco-label" style="margin-top:32px;">Today's economics</div>
   <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:32px;background:var(--bg-card);">
     <div class="kpi-grid">
       <div class="kpi-cell">
-        <div class="kpi-label" id="eco-marge-label">Marge brute</div>
+        <div class="kpi-label" id="eco-marge-label">Gross margin</div>
         <div class="kpi-value" id="eco-marge">—</div>
         <div class="kpi-delta" id="eco-marge-pct" style="color:var(--muted)"></div>
       </div>
       <div class="kpi-cell">
-        <div class="kpi-label" id="eco-charges-label">Charges du jour</div>
+        <div class="kpi-label" id="eco-charges-label">Costs (day)</div>
         <div class="kpi-value" id="eco-charges">—</div>
         <div class="kpi-delta" id="eco-charges-sub" style="color:var(--muted)"></div>
       </div>
       <div class="kpi-cell">
-        <div class="kpi-label" id="eco-ebitda-label">EBITDA estimé</div>
+        <div class="kpi-label" id="eco-ebitda-label">Est. EBITDA</div>
         <div class="kpi-value" id="eco-ebitda">—</div>
         <div class="kpi-delta" id="eco-ebitda-sub" style="color:var(--muted)"></div>
       </div>
       <div class="kpi-cell" style="border-right:none;">
-        <div class="kpi-label" id="eco-seuil-label">Seuil rentabilité CA</div>
+        <div class="kpi-label" id="eco-seuil-label">Break-even revenue</div>
         <div class="kpi-value" id="eco-seuil">—</div>
         <div class="kpi-delta" id="eco-seuil-sub"></div>
         <div class="progress-wrap">
@@ -142,7 +142,7 @@
   </div>
 
   <!-- Sparkline 7j + strip WoW fusionné -->
-  <div class="section-label">7 derniers jours</div>
+  <div class="section-label">Last 7 days</div>
   <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:32px;">
     <div style="padding:20px 24px 12px;">
       <canvas id="chart-week" height="55"></canvas>
@@ -151,7 +151,7 @@
     <!-- WoW + meilleur jour intégrés sous la sparkline -->
     <div class="wow-strip" id="wow-strip" style="display:none;">
       <div class="wow-item">
-        <span>Semaine en cours</span>
+        <span>Current week</span>
         <strong id="kpi-wow-ca">—</strong>
         <span id="kpi-wow-ca-delta"></span>
       </div>
@@ -162,7 +162,7 @@
       </div>
       <span class="wow-sep">·</span>
       <div class="wow-item" id="weekday-cell">
-        <span>Meilleur jour :</span>
+        <span>Best day:</span>
         <strong id="kpi-best-day">—</strong>
         <span id="kpi-best-day-sub" style="color:var(--faint)"></span>
       </div>
@@ -170,36 +170,36 @@
   </div>
 
   <!-- Répartition : graphe temporel + paiements compacts -->
-  <div class="section-label">Répartition</div>
+  <div class="section-label">Breakdown</div>
   <div class="charts-grid" style="margin-bottom:32px;">
     <div class="chart-block">
-      <div class="section-label" id="time-chart-label" style="margin-bottom:16px;">CA par heure (€)</div>
+      <div class="section-label" id="time-chart-label" style="margin-bottom:16px;">Revenue by hour (€)</div>
       <canvas id="chart-hourly" height="130"></canvas>
       <canvas id="chart-daily"  height="130" style="display:none;"></canvas>
     </div>
     <div class="chart-block">
-      <div class="section-label" style="margin-bottom:12px;">Modes de paiement</div>
+      <div class="section-label" style="margin-bottom:12px;">Payment methods</div>
       <div id="payment-compact" class="pay-compact"></div>
     </div>
   </div>
 
   <!-- Mix boissons / food -->
-  <div class="section-label" style="margin-top:4px;">Mix produits</div>
+  <div class="section-label" style="margin-top:4px;">Product mix</div>
   <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:32px;background:var(--bg-card);">
     <div style="padding:16px 20px;" id="mix-bars">
-      <span style="font-size:12px;color:var(--muted);">Chargement…</span>
+      <span style="font-size:12px;color:var(--muted);">Loading…</span>
     </div>
   </div>
 
   <!-- Pics d'activité (conditionnel — jour unique) -->
   <div id="rush-section" style="display:none;margin-bottom:32px;">
-    <div class="section-label">Pics d'activité</div>
+    <div class="section-label">Activity peaks</div>
     <div id="rush-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
   </div>
 
   <!-- Courbe cumulative (conditionnel — jour unique) -->
   <div id="curve-section" style="display:none;margin-bottom:32px;">
-    <div class="section-label">Évolution des ventes</div>
+    <div class="section-label">Sales evolution</div>
     <div class="card" style="padding:20px 22px;">
       <canvas id="chart-curve" height="90"></canvas>
     </div>
@@ -208,10 +208,10 @@
   <!-- Produits — un seul tableau avec toggle période / 7j -->
   <div id="top-products-section">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-      <div class="section-label" style="margin:0;" id="products-section-label">Top produits</div>
+      <div class="section-label" style="margin:0;" id="products-section-label">Top products</div>
       <div class="prod-tabs">
-        <button class="prod-tab active" id="tab-prod-period" onclick="switchProdTab('period')">Période</button>
-        <button class="prod-tab"        id="tab-prod-7d"     onclick="switchProdTab('7d')">7 jours</button>
+        <button class="prod-tab active" id="tab-prod-period" onclick="switchProdTab('period')">Period</button>
+        <button class="prod-tab"        id="tab-prod-7d"     onclick="switchProdTab('7d')">7 days</button>
       </div>
     </div>
 
@@ -220,16 +220,16 @@
       <table>
         <thead>
           <tr>
-            <th>Produit</th>
-            <th class="right">Qté</th>
-            <th class="right">Prix unit.</th>
-            <th class="right">CA total</th>
-            <th class="right">Marge</th>
+            <th>Product</th>
+            <th class="right">Qty</th>
+            <th class="right">Unit price</th>
+            <th class="right">Revenue</th>
+            <th class="right">Margin</th>
             <th style="width:100px;"></th>
           </tr>
         </thead>
         <tbody id="products-body">
-          <tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Chargement…</td></tr>
+          <tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Loading…</td></tr>
         </tbody>
       </table>
     </div>
@@ -239,16 +239,16 @@
       <table>
         <thead>
           <tr>
-            <th>Produit</th>
-            <th class="right">Jours vendus</th>
-            <th class="right">Qté</th>
-            <th class="right">CA total</th>
-            <th class="right">Marge</th>
-            <th class="right">CA moy/jour</th>
+            <th>Product</th>
+            <th class="right">Days sold</th>
+            <th class="right">Qty</th>
+            <th class="right">Revenue</th>
+            <th class="right">Margin</th>
+            <th class="right">Avg/day</th>
           </tr>
         </thead>
         <tbody id="products7d-body">
-          <tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Chargement…</td></tr>
+          <tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Loading…</td></tr>
         </tbody>
       </table>
     </div>
@@ -256,13 +256,13 @@
 
   <!-- Produits non vendus (conditionnel) -->
   <div id="unsold-section" style="display:none;margin-bottom:32px;">
-    <div class="section-label">Pas vendus aujourd'hui</div>
+    <div class="section-label">Not sold today</div>
     <div id="unsold-list" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
   </div>
 
   <!-- Transactions récentes -->
   <div style="display:flex;align-items:baseline;justify-content:space-between;">
-    <div class="section-label" id="recent-label">Transactions récentes</div>
+    <div class="section-label" id="recent-label">Recent transactions</div>
     <div class="section-label" id="recent-count" style="color:var(--faint);"></div>
   </div>
   <div class="table-wrap">
@@ -270,14 +270,14 @@
       <table>
         <thead>
           <tr>
-            <th>Heure</th>
+            <th>Time</th>
             <th>Document</th>
             <th>Type</th>
-            <th class="right">Montant</th>
+            <th class="right">Amount</th>
           </tr>
         </thead>
         <tbody id="recent-body">
-          <tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">Chargement…</td></tr>
+          <tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">Loading…</td></tr>
         </tbody>
       </table>
     </div>
@@ -287,7 +287,7 @@
 
 <div id="error-banner">⚠ <span id="error-msg"></span></div>
 <div id="warn-banner" style="display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#fff8e1;border:1px solid #ffe082;color:#795548;padding:10px 18px;border-radius:8px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:50;max-width:90vw;">
-  ⚠ Données incomplètes : <span id="warn-msg"></span>
+  ⚠ Incomplete data: <span id="warn-msg"></span>
 </div>
 
 <!-- Tooltip survol transaction -->
@@ -303,9 +303,9 @@
     </div>
     <button class="drawer-close" onclick="closeDrawer()">✕</button>
   </div>
-  <div class="drawer-section-label">Articles</div>
+  <div class="drawer-section-label">Items</div>
   <table class="drawer-table" id="drawer-items"></table>
-  <div class="drawer-section-label" style="margin-top:20px;">Paiement</div>
+  <div class="drawer-section-label" style="margin-top:20px;">Payment</div>
   <div id="drawer-payments"></div>
   <div class="drawer-total" id="drawer-total"></div>
 </div>

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Estudantina · Charges</title>
+<title>Estudantina · Costs</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
@@ -207,67 +207,67 @@ select.field-input { cursor:pointer; }
     <span class="sep">/</span>
     <a href="/cogs">COGS</a>
     <span class="sep">/</span>
-    <span style="color:var(--text);font-weight:500;">Charges</span>
+    <span style="color:var(--text);font-weight:500;">Costs</span>
   </div>
 
   <!-- Header -->
   <div class="header">
     <div>
-      <div class="header-title">Charges &amp; Personnel</div>
-      <div class="header-sub">Structure de coûts mensuelle — base des calculs de rentabilité</div>
+      <div class="header-title">Costs &amp; Staff</div>
+      <div class="header-sub">Monthly cost structure — basis for profitability calculations</div>
     </div>
-    <button class="btn-refresh" onclick="loadAll()" title="Rafraîchir">↻</button>
+    <button class="btn-refresh" onclick="loadAll()" title="Refresh">↻</button>
   </div>
 
   <!-- Summary bar -->
   <div class="summary-bar">
     <div class="sum-item">
-      <div class="sum-label">Total charges fixes / mois</div>
+      <div class="sum-label">Total fixed costs / month</div>
       <div class="sum-val" id="sum-fixes">—</div>
       <div class="sum-sub" id="sum-fixes-sub"></div>
     </div>
     <div class="sum-item">
-      <div class="sum-label">Total personnel / mois lissé</div>
+      <div class="sum-label">Total staff / month (smoothed)</div>
       <div class="sum-val" id="sum-perso">—</div>
-      <div class="sum-sub" id="sum-perso-sub">TSU + 13e/14e + repas inclus</div>
+      <div class="sum-sub" id="sum-perso-sub">incl. TSU + 13th/14th + meals</div>
     </div>
     <div class="sum-item">
-      <div class="sum-label">Coût total / mois</div>
+      <div class="sum-label">Total cost / month</div>
       <div class="sum-val" id="sum-total">—</div>
       <div class="sum-sub" id="sum-total-sub"></div>
     </div>
     <div class="sum-item">
-      <div class="sum-label">Coût / jour ouvré</div>
+      <div class="sum-label">Cost / open day</div>
       <div class="sum-val" id="sum-jour">—</div>
-      <div class="sum-sub">sur 21,25 j/mois</div>
+      <div class="sum-sub">over 21.25 days/month</div>
     </div>
   </div>
 
   <!-- Tabs -->
   <div class="view-tabs">
     <button class="view-tab active" id="tab-charges" onclick="switchTab('charges')">
-      Charges fixes <span class="tab-badge" id="badge-charges">—</span>
+      Fixed costs <span class="tab-badge" id="badge-charges">—</span>
     </button>
     <button class="view-tab" id="tab-personnel" onclick="switchTab('personnel')">
-      Personnel <span class="tab-badge" id="badge-personnel">—</span>
+      Staff <span class="tab-badge" id="badge-personnel">—</span>
     </button>
   </div>
 
   <!-- ── Tab: Charges fixes ── -->
   <div id="view-charges">
     <div class="sec-header">
-      <div class="section-label">Charges fixes mensuelles</div>
-      <button class="btn-add" onclick="openChargeModal()">+ Ajouter</button>
+      <div class="section-label">Monthly fixed costs</div>
+      <button class="btn-add" onclick="openChargeModal()">+ Add</button>
     </div>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th>Désignation</th>
-            <th>Catégorie</th>
-            <th>Fréquence</th>
-            <th class="right">Montant</th>
-            <th class="right">/ mois</th>
+            <th>Name</th>
+            <th>Category</th>
+            <th>Frequency</th>
+            <th class="right">Amount</th>
+            <th class="right">/ month</th>
             <th></th>
           </tr>
         </thead>
@@ -281,8 +281,8 @@ select.field-input { cursor:pointer; }
   <!-- ── Tab: Personnel ── -->
   <div id="view-personnel" style="display:none;">
     <div class="sec-header">
-      <div class="section-label">Équipe</div>
-      <button class="btn-add" onclick="openEmpModal()">+ Ajouter</button>
+      <div class="section-label">Team</div>
+      <button class="btn-add" onclick="openEmpModal()">+ Add</button>
     </div>
     <div class="emp-cards" id="emp-cards">
       <div style="text-align:center;color:var(--muted);padding:32px;"><span class="spinner"></span></div>
@@ -290,14 +290,14 @@ select.field-input { cursor:pointer; }
 
     <!-- Info box TSU Portugal -->
     <div style="border:1px solid var(--border);border-radius:8px;background:var(--bg-card);padding:20px 24px;margin-bottom:32px;">
-      <div class="section-label" style="margin-bottom:12px;">Règles TSU Portugal appliquées</div>
+      <div class="section-label" style="margin-bottom:12px;">Portugal TSU rules applied</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;font-size:12px;color:var(--muted);">
-        <div><strong style="color:var(--text);display:block;margin-bottom:4px;">CDI / Temps partiel</strong>
-          TSU employeur : 23,75%<br>TSU exonéré 1er emploi : 0%<br>Employee : 11% (déduit du brut)</div>
-        <div><strong style="color:var(--text);display:block;margin-bottom:4px;">13e &amp; 14e mois</strong>
-          Salaire × 14 ÷ 12<br>= +16,7% sur le mensuel brut<br>TSU appliquée sur les 14 mois</div>
-        <div><strong style="color:var(--text);display:block;margin-bottom:4px;">Carta refeição</strong>
-          Exonérée de TSU et IRS<br>jusqu'à 10,20€/jour (électronique)<br>~242 jours/an (11 mois × 22j)</div>
+        <div><strong style="color:var(--text);display:block;margin-bottom:4px;">Permanent / Part-time</strong>
+          Employer TSU: 23.75%<br>TSU exempt (first job): 0%<br>Employee: 11% (deducted from gross)</div>
+        <div><strong style="color:var(--text);display:block;margin-bottom:4px;">13th &amp; 14th month</strong>
+          Salary × 14 ÷ 12<br>= +16.7% on monthly gross<br>TSU applied over 14 months</div>
+        <div><strong style="color:var(--text);display:block;margin-bottom:4px;">Meal allowance</strong>
+          Exempt from TSU and IRS<br>up to €10.20/day (electronic)<br>~242 days/year (11 months × 22d)</div>
       </div>
     </div>
   </div>
@@ -307,49 +307,49 @@ select.field-input { cursor:pointer; }
 <!-- Modal Charge fixe -->
 <div class="modal-overlay" id="charge-modal" onclick="closeChargeModal(event)">
   <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-title" id="charge-modal-title">Nouvelle charge</div>
+    <div class="modal-title" id="charge-modal-title">New cost</div>
     <input type="hidden" id="charge-id">
     <div class="modal-grid">
       <div class="full">
-        <div class="field-label">Désignation *</div>
-        <input class="field-input" id="charge-name" placeholder="ex: Loyer">
+        <div class="field-label">Name *</div>
+        <input class="field-input" id="charge-name" placeholder="e.g. Rent">
       </div>
       <div>
-        <div class="field-label">Montant (€) *</div>
+        <div class="field-label">Amount (€) *</div>
         <input class="field-input" id="charge-amount" type="number" step="0.01" placeholder="0.00">
       </div>
       <div>
-        <div class="field-label">Fréquence</div>
+        <div class="field-label">Frequency</div>
         <select class="field-input" id="charge-frequency">
-          <option value="monthly">Mensuel</option>
-          <option value="quarterly">Trimestriel</option>
-          <option value="annual">Annuel</option>
+          <option value="monthly">Monthly</option>
+          <option value="quarterly">Quarterly</option>
+          <option value="annual">Annual</option>
         </select>
       </div>
       <div class="full">
-        <div class="field-label">Catégorie</div>
-        <input class="field-input" id="charge-category" placeholder="ex: Énergie, Licences…" list="cat-list">
+        <div class="field-label">Category</div>
+        <input class="field-input" id="charge-category" placeholder="e.g. Energy, Licenses…" list="cat-list">
         <datalist id="cat-list">
-          <option value="Immobilier">
-          <option value="Énergie & fluides">
+          <option value="Real estate">
+          <option value="Energy & utilities">
           <option value="Services">
-          <option value="Assurances">
+          <option value="Insurance">
           <option value="Licences">
-          <option value="Télécoms">
-          <option value="Logiciels">
+          <option value="Telecom">
+          <option value="Software">
           <option value="Banque">
           <option value="Maintenance">
-          <option value="Divers">
+          <option value="Misc">
         </datalist>
       </div>
       <div class="full">
         <div class="field-label">Notes</div>
-        <input class="field-input" id="charge-notes" placeholder="Optionnel">
+        <input class="field-input" id="charge-notes" placeholder="Optional">
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeChargeModal()">Annuler</button>
-      <button class="btn-primary" onclick="saveCharge()">Enregistrer</button>
+      <button class="btn-ghost" onclick="closeChargeModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveCharge()">Save</button>
     </div>
   </div>
 </div>
@@ -357,54 +357,54 @@ select.field-input { cursor:pointer; }
 <!-- Modal Employé -->
 <div class="modal-overlay" id="emp-modal" onclick="closeEmpModal(event)">
   <div class="modal" onclick="event.stopPropagation()" style="width:560px;">
-    <div class="modal-title" id="emp-modal-title">Nouvel employé</div>
+    <div class="modal-title" id="emp-modal-title">New employee</div>
     <input type="hidden" id="emp-id">
     <div class="modal-grid">
       <div class="full">
-        <div class="field-label">Nom *</div>
-        <input class="field-input" id="emp-name" placeholder="Prénom Nom">
+        <div class="field-label">Name *</div>
+        <input class="field-input" id="emp-name" placeholder="First Last">
       </div>
       <div>
-        <div class="field-label">Type de contrat</div>
+        <div class="field-label">Contract type</div>
         <select class="field-input" id="emp-type" onchange="updateEmpPreview()">
-          <option value="full_time">CDI temps plein</option>
-          <option value="part_time">CDI temps partiel</option>
+          <option value="full_time">Permanent full-time</option>
+          <option value="part_time">Permanent part-time</option>
           <option value="extra">Extra / Recibos verdes</option>
         </select>
       </div>
       <div>
-        <div class="field-label">Heures/semaine</div>
+        <div class="field-label">Hours/week</div>
         <input class="field-input" id="emp-hours" type="number" value="40" min="1" max="40" oninput="updateEmpPreview()">
       </div>
       <div>
-        <div class="field-label" id="emp-gross-label">Salaire brut mensuel (€) *</div>
+        <div class="field-label" id="emp-gross-label">Gross monthly salary (€) *</div>
         <input class="field-input" id="emp-gross" type="number" step="0.01" placeholder="0.00" oninput="updateEmpPreview()">
       </div>
       <div>
-        <div class="field-label">Carta refeição (€/jour)</div>
+        <div class="field-label">Meal allowance (€/day)</div>
         <input class="field-input" id="emp-meal" type="number" step="0.01" value="10.20" oninput="updateEmpPreview()">
       </div>
       <div class="full" id="emp-tsu-wrap">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
           <input type="checkbox" id="emp-tsu-exempt" onchange="updateEmpPreview()" style="width:15px;height:15px;">
-          TSU employeur exonérée (1er emploi — 3 premières années)
+          Employer TSU exempt (first job — first 3 years)
         </label>
       </div>
       <div class="full">
         <div class="field-label">Notes</div>
-        <input class="field-input" id="emp-notes" placeholder="Optionnel">
+        <input class="field-input" id="emp-notes" placeholder="Optional">
       </div>
     </div>
 
     <!-- Preview calcul -->
     <div id="emp-preview" class="tsu-box" style="margin-top:16px;display:none;">
-      <div style="font-weight:600;margin-bottom:8px;font-size:13px;">Coût mensuel lissé estimé</div>
-      <div class="tsu-row"><span>Brut mensuel</span><span id="prev-brut">—</span></div>
-      <div class="tsu-row"><span>+ 13e &amp; 14e mois lissés (+16,7%)</span><span id="prev-mois">—</span></div>
-      <div class="tsu-row"><span id="prev-tsu-label">+ TSU employeur 23,75%</span><span id="prev-tsu">—</span></div>
-      <div class="tsu-row"><span>+ Carta refeição (~242j/an)</span><span id="prev-repas">—</span></div>
+      <div style="font-weight:600;margin-bottom:8px;font-size:13px;">Estimated smoothed monthly cost</div>
+      <div class="tsu-row"><span>Monthly gross</span><span id="prev-brut">—</span></div>
+      <div class="tsu-row"><span>+ 13th &amp; 14th smoothed (+16.7%)</span><span id="prev-mois">—</span></div>
+      <div class="tsu-row"><span id="prev-tsu-label">+ Employer TSU 23.75%</span><span id="prev-tsu">—</span></div>
+      <div class="tsu-row"><span>+ Meal allowance (~242d/yr)</span><span id="prev-repas">—</span></div>
       <div class="tsu-row" style="border-top:1px solid #bbf7d0;margin-top:6px;padding-top:6px;font-weight:700;font-size:13px;">
-        <span>Total / mois employeur</span><span id="prev-total">—</span>
+        <span>Total / month (employer)</span><span id="prev-total">—</span>
       </div>
     </div>
 
@@ -418,8 +418,8 @@ select.field-input { cursor:pointer; }
 <div class="toast" id="toast"></div>
 
 <script>
-const fmt = v => new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',minimumFractionDigits:2}).format(v);
-const fmt0 = v => new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',minimumFractionDigits:0,maximumFractionDigits:0}).format(v);
+const fmt = v => new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR',minimumFractionDigits:2}).format(v);
+const fmt0 = v => new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR',minimumFractionDigits:0,maximumFractionDigits:0}).format(v);
 
 let chargesData = [];
 let employeesData = [];
@@ -451,7 +451,7 @@ async function loadAll() {
 
 // ── Charges ───────────────────────────────────────────────────────────────
 function freqLabel(f) {
-  return {monthly:'Mensuel', quarterly:'Trimestriel', annual:'Annuel'}[f] || f;
+  return {monthly:'Monthly', quarterly:'Quarterly', annual:'Annual'}[f] || f;
 }
 function freqBadge(f) {
   const cls = {monthly:'badge-monthly', quarterly:'badge-quarterly', annual:'badge-annual'}[f] || '';
@@ -466,14 +466,14 @@ function toMonthly(amount, freq) {
 function renderCharges() {
   const tbody = document.getElementById('charges-body');
   if (!chargesData.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px;">Aucune charge — cliquez "+ Ajouter"</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px;">No costs — click "+ Add"</td></tr>`;
     document.getElementById('badge-charges').textContent = '0';
     return;
   }
   // Grouper par catégorie
   const byCat = {};
   for (const c of chargesData) {
-    const cat = c.category || 'Divers';
+    const cat = c.category || 'Misc';
     if (!byCat[cat]) byCat[cat] = [];
     byCat[cat].push(c);
   }
@@ -492,8 +492,8 @@ function renderCharges() {
         <td class="right">${fmt(c.amount)}</td>
         <td class="right" style="font-weight:600;">${c.frequency !== 'monthly' ? fmt(monthly) : '—'}</td>
         <td class="right" style="white-space:nowrap;">
-          <button class="btn-ghost" onclick="editCharge('${c.id}')" style="margin-right:4px;">Modifier</button>
-          <button class="btn-danger" onclick="toggleChargeActive('${c.id}', ${c.active})">${c.active ? 'Désactiver' : 'Activer'}</button>
+          <button class="btn-ghost" onclick="editCharge('${c.id}')" style="margin-right:4px;">Edit</button>
+          <button class="btn-danger" onclick="toggleChargeActive('${c.id}', ${c.active})">${c.active ? 'Disable' : 'Enable'}</button>
           <button class="btn-danger" onclick="deleteCharge('${c.id}')">✕</button>
         </td>
       </tr>`;
@@ -502,7 +502,7 @@ function renderCharges() {
   // Total ligne
   const totalMonthly = chargesData.filter(c=>c.active).reduce((s,c) => s + toMonthly(c.amount, c.frequency), 0);
   html += `<tr style="background:var(--bg-page);">
-    <td colspan="3" style="font-weight:600;font-size:12px;color:var(--muted);">Total charges fixes actives</td>
+    <td colspan="3" style="font-weight:600;font-size:12px;color:var(--muted);">Total active fixed costs</td>
     <td></td>
     <td class="right" style="font-weight:700;font-size:15px;">${fmt(totalMonthly)}</td>
     <td></td>
@@ -512,7 +512,7 @@ function renderCharges() {
 }
 
 // ── Employees ─────────────────────────────────────────────────────────────
-const TYPE_LABELS = { full_time:'CDI temps plein', part_time:'CDI temps partiel', extra:'Extra / Recibos verdes' };
+const TYPE_LABELS = { full_time:'Permanent full-time', part_time:'Permanent part-time', extra:'Extra / Recibos verdes' };
 const TYPE_BADGES = { full_time:'badge-ft', part_time:'badge-pt', extra:'badge-ext' };
 const TSU_EMPLOYER = 0.2375;
 const JOURS_REPAS_AN = 242; // ~11 mois × 22 jours
@@ -546,7 +546,7 @@ function calcEmpCost(e) {
 function renderEmployees() {
   const container = document.getElementById('emp-cards');
   if (!employeesData.length) {
-    container.innerHTML = `<div style="text-align:center;color:var(--muted);padding:32px;">Aucun employé — cliquez "+ Ajouter"</div>`;
+    container.innerHTML = `<div style="text-align:center;color:var(--muted);padding:32px;">No employees — click "+ Add"</div>`;
     document.getElementById('badge-personnel').textContent = '0';
     return;
   }
@@ -555,32 +555,32 @@ function renderEmployees() {
     const cost = calcEmpCost(e);
     const inactive = !e.active ? 'inactive' : '';
     const tsuInfo = e.tsu_exempt
-      ? `<span style="color:var(--green);font-size:11px;">TSU exonérée</span>`
-      : `<span style="font-size:11px;color:var(--faint);">TSU ${fmt(cost.tsu)}/mois</span>`;
+      ? `<span style="color:var(--green);font-size:11px;">TSU exempt</span>`
+      : `<span style="font-size:11px;color:var(--faint);">TSU ${fmt(cost.tsu)}/mo</span>`;
 
     let detailCells = '';
     if (e.type === 'extra') {
       detailCells = `
-        <div class="emp-cell"><div class="emp-cell-label">Montant facture</div>
+        <div class="emp-cell"><div class="emp-cell-label">Invoice amount</div>
           <div class="emp-cell-val">${fmt(e.gross_monthly)}</div>
-          <div class="emp-cell-sub">/ mois</div></div>
-        <div class="emp-cell"><div class="emp-cell-label">Coût total</div>
+          <div class="emp-cell-sub">/ month</div></div>
+        <div class="emp-cell"><div class="emp-cell-label">Total cost</div>
           <div class="emp-cell-val emp-cost-total">${fmt(cost.monthly)}</div></div>
         <div class="emp-cell"></div><div class="emp-cell"></div>`;
     } else {
       detailCells = `
-        <div class="emp-cell"><div class="emp-cell-label">Brut mensuel</div>
+        <div class="emp-cell"><div class="emp-cell-label">Monthly gross</div>
           <div class="emp-cell-val">${fmt(e.gross_monthly)}</div>
           <div class="emp-cell-sub">${tsuInfo}</div></div>
-        <div class="emp-cell"><div class="emp-cell-label">13e + 14e lissés</div>
+        <div class="emp-cell"><div class="emp-cell-label">13th + 14th smoothed</div>
           <div class="emp-cell-val">+${fmt(cost.mois_sup)}</div>
-          <div class="emp-cell-sub">/ mois</div></div>
-        <div class="emp-cell"><div class="emp-cell-label">Carta refeição</div>
+          <div class="emp-cell-sub">/ month</div></div>
+        <div class="emp-cell"><div class="emp-cell-label">Meal allowance</div>
           <div class="emp-cell-val">${fmt(e.meal_card_daily)}/j</div>
-          <div class="emp-cell-sub">+${fmt(cost.repas)}/mois</div></div>
-        <div class="emp-cell"><div class="emp-cell-label">Coût total / mois</div>
+          <div class="emp-cell-sub">+${fmt(cost.repas)}/mo</div></div>
+        <div class="emp-cell"><div class="emp-cell-label">Total cost / month</div>
           <div class="emp-cell-val emp-cost-total">${fmt(cost.monthly)}</div>
-          <div class="emp-cell-sub">employeur, lissé</div></div>`;
+          <div class="emp-cell-sub">employer, smoothed</div></div>`;
     }
 
     html += `<div class="emp-card ${inactive}" data-id="${e.id}">
@@ -588,12 +588,12 @@ function renderEmployees() {
         <div style="display:flex;align-items:center;">
           <span class="emp-name">${e.name}</span>
           <span class="badge ${TYPE_BADGES[e.type]||''} emp-type">${TYPE_LABELS[e.type]||e.type}</span>
-          ${e.type === 'part_time' ? `<span style="font-size:12px;color:var(--muted);margin-left:8px;">${e.hours_week}h/sem</span>` : ''}
+          ${e.type === 'part_time' ? `<span style="font-size:12px;color:var(--muted);margin-left:8px;">${e.hours_week}h/wk</span>` : ''}
           ${e.notes ? `<span style="font-size:11px;color:var(--faint);margin-left:10px;">${e.notes}</span>` : ''}
         </div>
         <div class="emp-actions">
-          <button class="btn-ghost" onclick="editEmployee('${e.id}')">Modifier</button>
-          <button class="btn-danger" onclick="toggleEmpActive('${e.id}', ${e.active})">${e.active ? 'Désactiver' : 'Activer'}</button>
+          <button class="btn-ghost" onclick="editEmployee('${e.id}')">Edit</button>
+          <button class="btn-danger" onclick="toggleEmpActive('${e.id}', ${e.active})">${e.active ? 'Disable' : 'Enable'}</button>
           <button class="btn-danger" onclick="deleteEmployee('${e.id}')">✕</button>
         </div>
       </div>
@@ -613,11 +613,11 @@ function updateSummary() {
   const parJour = total / JOURS_MOIS;
 
   document.getElementById('sum-fixes').textContent = fmt(totalFixes);
-  document.getElementById('sum-fixes-sub').textContent = `${chargesData.filter(c=>c.active).length} postes actifs`;
+  document.getElementById('sum-fixes-sub').textContent = `${chargesData.filter(c=>c.active).length} active items`;
   document.getElementById('sum-perso').textContent = fmt(totalPerso);
-  document.getElementById('sum-perso-sub').textContent = `${employeesData.filter(e=>e.active).length} employé(s)`;
+  document.getElementById('sum-perso-sub').textContent = `${employeesData.filter(e=>e.active).length} employee(s)`;
   document.getElementById('sum-total').textContent = fmt(total);
-  document.getElementById('sum-total-sub').textContent = `dont amort. non inclus`;
+  document.getElementById('sum-total-sub').textContent = `excl. depreciation`;
   document.getElementById('sum-jour').textContent = fmt(parJour);
 }
 
@@ -663,14 +663,14 @@ async function saveCharge() {
   if (id) body.id = id;
   const r = await fetch('/api/charges', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
   const d = await r.json();
-  if (d.ok) { document.getElementById('charge-modal').classList.remove('open'); showToast('Charge enregistrée'); loadAll(); }
-  else showToast('Erreur : ' + d.error);
+  if (d.ok) { document.getElementById('charge-modal').classList.remove('open'); showToast('Cost saved'); loadAll(); }
+  else showToast('Error: ' + d.error);
 }
 async function deleteCharge(id) {
-  if (!confirm('Supprimer cette charge ?')) return;
+  if (!confirm('Delete this cost?')) return;
   const r = await fetch(`/api/charges/${id}`, { method:'DELETE' });
   const d = await r.json();
-  if (d.ok) { showToast('Charge supprimée'); loadAll(); }
+  if (d.ok) { showToast('Cost deleted'); loadAll(); }
 }
 async function toggleChargeActive(id, current) {
   const r = await fetch(`/api/charges/${id}`, {
@@ -691,7 +691,7 @@ function openEmpModal() {
   document.getElementById('emp-meal').value = 10.20;
   document.getElementById('emp-tsu-exempt').checked = false;
   document.getElementById('emp-notes').value = '';
-  document.getElementById('emp-modal-title').textContent = 'Nouvel employé';
+  document.getElementById('emp-modal-title').textContent = 'New employee';
   document.getElementById('emp-tsu-wrap').style.display = '';
   document.getElementById('emp-preview').style.display = 'none';
   document.getElementById('emp-modal').classList.add('open');
@@ -708,7 +708,7 @@ function editEmployee(id) {
   document.getElementById('emp-meal').value = e.meal_card_daily || 10.20;
   document.getElementById('emp-tsu-exempt').checked = !!e.tsu_exempt;
   document.getElementById('emp-notes').value = e.notes || '';
-  document.getElementById('emp-modal-title').textContent = 'Modifier l\'employé';
+  document.getElementById('emp-modal-title').textContent = 'Edit employee';
   document.getElementById('emp-tsu-wrap').style.display = e.type === 'extra' ? 'none' : '';
   document.getElementById('emp-modal').classList.add('open');
   updateEmpPreview();
@@ -728,16 +728,16 @@ function updateEmpPreview() {
   // Afficher/masquer TSU checkbox
   document.getElementById('emp-tsu-wrap').style.display = type === 'extra' ? 'none' : '';
   document.getElementById('emp-gross-label').textContent = type === 'extra'
-    ? 'Montant facture mensuel (€) *'
-    : 'Salaire brut mensuel (€) *';
+    ? 'Monthly invoice amount (€) *'
+    : 'Gross monthly salary (€) *';
 
   if (!gross) { preview.style.display = 'none'; return; }
   preview.style.display = '';
 
   if (type === 'extra') {
-    preview.innerHTML = `<div style="font-weight:600;font-size:13px;">Coût mensuel — Extra</div>
-      <div class="tsu-row" style="margin-top:8px;"><span>Montant facture</span><span>${fmt(gross)}</span></div>
-      <div class="tsu-row" style="color:var(--faint);font-size:11px;"><span>Pas de TSU ni 13e/14e côté employeur</span><span></span></div>`;
+    preview.innerHTML = `<div style="font-weight:600;font-size:13px;">Monthly cost — Extra</div>
+      <div class="tsu-row" style="margin-top:8px;"><span>Invoice amount</span><span>${fmt(gross)}</span></div>
+      <div class="tsu-row" style="color:var(--faint);font-size:11px;"><span>No employer TSU or 13th/14th</span><span></span></div>`;
     return;
   }
 
@@ -752,7 +752,7 @@ function updateEmpPreview() {
 
   document.getElementById('prev-brut').textContent = fmt(gross);
   document.getElementById('prev-mois').textContent = `+${fmt(moisSup)}`;
-  document.getElementById('prev-tsu-label').textContent = exempt ? 'TSU employeur (exonérée)' : `TSU employeur ${(tsuRate*100).toFixed(2)}%`;
+  document.getElementById('prev-tsu-label').textContent = exempt ? 'Employer TSU (exempt)' : `Employer TSU ${(tsuRate*100).toFixed(2)}%`;
   document.getElementById('prev-tsu').textContent = exempt ? '0,00 €' : `+${fmt(tsuM)}`;
   document.getElementById('prev-repas').textContent = `+${fmt(repasM)}`;
   document.getElementById('prev-total').textContent = fmt(totalMonthly);
@@ -776,14 +776,14 @@ async function saveEmployee() {
   if (id) body.id = id;
   const r = await fetch('/api/employees', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
   const d = await r.json();
-  if (d.ok) { document.getElementById('emp-modal').classList.remove('open'); showToast('Employé enregistré'); loadAll(); }
-  else showToast('Erreur : ' + d.error);
+  if (d.ok) { document.getElementById('emp-modal').classList.remove('open'); showToast('Employee saved'); loadAll(); }
+  else showToast('Error: ' + d.error);
 }
 async function deleteEmployee(id) {
-  if (!confirm('Supprimer cet employé ?')) return;
+  if (!confirm('Delete this employee?')) return;
   const r = await fetch(`/api/employees/${id}`, { method:'DELETE' });
   const d = await r.json();
-  if (d.ok) { showToast('Employé supprimé'); loadAll(); }
+  if (d.ok) { showToast('Employee deleted'); loadAll(); }
 }
 async function toggleEmpActive(id, current) {
   const r = await fetch(`/api/employees/${id}`, {

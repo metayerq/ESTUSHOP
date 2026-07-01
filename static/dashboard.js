@@ -22,12 +22,12 @@ function marginBadge(pct) {
   return `<span style="color:${color};font-weight:500">${pct}%</span>`;
 }
 
-const fmt = n => new Intl.NumberFormat('fr-FR', {
+const fmt = n => new Intl.NumberFormat('en-IE', {
   style: 'currency', currency: 'EUR', minimumFractionDigits: 2
 }).format(n);
 
 function delta(cur, prev, label) {
-  label = label || 'vs période préc.';
+  label = label || 'vs prev. period';
   if (prev == null || prev === 0) return '';
   const pct = ((cur - prev) / Math.abs(prev) * 100).toFixed(0);
   const cls = pct >= 0 ? 'delta-up' : 'delta-down';
@@ -35,7 +35,7 @@ function delta(cur, prev, label) {
 }
 
 function fmtDate(iso) {
-  return new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', {
+  return new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
 }
@@ -72,35 +72,35 @@ function render(d) {
     subtitle += ' — ' + fmtDate(d.date);
   } else {
     subtitle += ' — ' + d.period_label
-      + ' (' + new Date(d.from_date+'T12:00:00').toLocaleDateString('fr-FR', {day:'numeric',month:'short'})
-      + ' → ' + new Date(d.to_date  +'T12:00:00').toLocaleDateString('fr-FR', {day:'numeric',month:'short',year:'numeric'})
+      + ' (' + new Date(d.from_date+'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short'})
+      + ' → ' + new Date(d.to_date  +'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})
       + ')';
   }
   document.getElementById('subtitle').textContent = subtitle;
 
   // Label KPI dynamique
   const kpiLabel = d.is_single_day
-    ? (d.is_today ? 'Aujourd\'hui' : fmtDate(d.date).replace(/^\w/, c => c.toUpperCase()))
+    ? (d.is_today ? 'Today' : fmtDate(d.date).replace(/^\w/, c => c.toUpperCase()))
     : d.period_label;
   document.getElementById('kpi-section-label').textContent = kpiLabel;
 
   // Mis à jour
   const updatedEl = document.getElementById('updated-at');
   if (d.is_today) {
-    updatedEl.textContent = 'Mis à jour à ' + d.updated_at;
+    updatedEl.textContent = 'Updated at ' + d.updated_at;
     updatedEl.style.display = '';
   } else {
     updatedEl.style.display = 'none';
   }
 
   // Label comparaison
-  const compLabel = d.is_single_day ? 'vs hier' : 'vs période préc.';
+  const compLabel = d.is_single_day ? 'vs yesterday' : 'vs prev. period';
 
   // ── KPIs ─────────────────────────────────────────────────────────────────
   document.getElementById('kpi-ca').textContent = fmt(d.today.ca);
   if (d.economics) {
     document.getElementById('kpi-ca-ht').textContent =
-      `${fmt(d.economics.ca_ht)} HT · TVA ${fmt(d.economics.tva_collectee)}`;
+      `${fmt(d.economics.ca_ht)} excl. VAT · VAT ${fmt(d.economics.tva_collectee)}`;
   } else {
     document.getElementById('kpi-ca-ht').textContent = '';
   }
@@ -109,7 +109,7 @@ function render(d) {
   document.getElementById('kpi-nb-delta').innerHTML     = delta(d.today.nb,     d.yesterday.nb,     compLabel);
   document.getElementById('kpi-ticket').textContent     = fmt(d.today.ticket);
   document.getElementById('kpi-ticket-delta').innerHTML = delta(d.today.ticket, d.yesterday.ticket, compLabel)
-    + (d.today.ticket_ht ? `<span style="color:var(--faint)"> · ${fmt(d.today.ticket_ht)} HT</span>` : '');
+    + (d.today.ticket_ht ? `<span style="color:var(--faint)"> · ${fmt(d.today.ticket_ht)} excl. VAT</span>` : '');
   document.getElementById('kpi-balance').textContent    = d.balance != null ? fmt(d.balance) : '—';
 
   // Seuil transactions — proportionnel aux jours ouvrés de la période
@@ -118,8 +118,8 @@ function render(d) {
   const pct = Math.min(100, Math.round(d.today.nb / seuilTarget * 100));
   document.getElementById('seuil-bar').style.width = pct + '%';
   document.getElementById('seuil-meta').textContent = d.is_single_day
-    ? `Seuil rentabilité : ${d.seuil} tx/j`
-    : `Seuil : ${seuilTarget} tx (${d.seuil}/j × ${openDaysTx}j ouvrés)`;
+    ? `Break-even: ${d.seuil} tx/day`
+    : `Break-even: ${seuilTarget} tx (${d.seuil}/day × ${openDaysTx} open days)`;
 
   // Tempo service (jour unique seulement)
   const tempoCell = document.getElementById('kpi-tempo-cell');
@@ -130,19 +130,19 @@ function render(d) {
       ? `${Math.round(gap * 60)}s/tx`
       : `${gap}min/tx`;
     document.getElementById('kpi-tempo-sub').textContent =
-      `${d.tempo.tx_per_hour} tx/h · pic ${d.tempo.busiest}`;
+      `${d.tempo.tx_per_hour} tx/h · peak ${d.tempo.busiest}`;
   } else {
     tempoCell.style.display = 'none';
   }
 
   // ── Économie ──────────────────────────────────────────────────────────────
   // Labels dynamiques selon la période
-  const periodSuffix = d.is_single_day ? 'du jour' : `· ${d.n_days} jours`;
-  document.getElementById('eco-label').textContent      = `Économie ${periodSuffix}`;
-  document.getElementById('eco-charges-label').textContent = `Charges ${periodSuffix}`;
+  const periodSuffix = d.is_single_day ? '(day)' : `· ${d.n_days} days`;
+  document.getElementById('eco-label').textContent      = `Economics ${periodSuffix}`;
+  document.getElementById('eco-charges-label').textContent = `Costs ${periodSuffix}`;
   document.getElementById('eco-ebitda-label').textContent  = `EBITDA ${periodSuffix}`;
-  document.getElementById('eco-seuil-label').textContent   = `Seuil CA TTC ${periodSuffix}`;
-  document.getElementById('eco-marge-label').textContent   = 'Marge brute';
+  document.getElementById('eco-seuil-label').textContent   = `Break-even revenue ${periodSuffix}`;
+  document.getElementById('eco-marge-label').textContent   = 'Gross margin';
 
   const eco = d.economics;
   if (eco) {
@@ -152,21 +152,21 @@ function render(d) {
       const cov = eco.cogs_coverage_pct;
       const covColor = cov >= 90 ? 'var(--green)' : cov >= 60 ? '#b07d00' : 'var(--red)';
       const covStr = cov != null
-        ? `<span style="color:${covColor}">couverture COGS ${cov}%</span>`
+        ? `<span style="color:${covColor}">COGS coverage ${cov}%</span>`
         : '';
       document.getElementById('eco-marge-pct').innerHTML =
         `${eco.marge_brute_ht_pct}% <span style="color:var(--faint)">· COGS ${fmt(eco.cogs_ht)} · </span>${covStr}`;
     } else {
       document.getElementById('eco-marge-pct').innerHTML =
-        '<span style="color:var(--muted)">aucun COGS renseigné — complétez vos fiches recettes</span>';
+        '<span style="color:var(--muted)">no COGS set — complete your recipe sheets</span>';
     }
 
     // Charges — utilise les totaux période et open_days (pas n_days calendaires)
     document.getElementById('eco-charges').textContent = fmt(eco.cout_total_periode ?? eco.cout_total_jour);
     const openDays = eco.open_days || d.n_days;
     const chargesSub = d.is_single_day
-      ? `Fixe ${fmt(eco.cout_fixe_periode ?? eco.cout_fixe_jour)} · Perso ${fmt(eco.cout_perso_periode ?? eco.cout_perso_jour)}`
-      : `${fmt(eco.cout_fixe_periode ?? eco.cout_fixe_jour)} fixes · ${fmt(eco.cout_perso_periode ?? eco.cout_perso_jour)} perso · <span style="color:var(--faint)">${openDays}j ouvrés × ${fmt(eco.cout_jour ?? (eco.cout_total_jour / openDays))}/j</span>`;
+      ? `Fixed ${fmt(eco.cout_fixe_periode ?? eco.cout_fixe_jour)} · Staff ${fmt(eco.cout_perso_periode ?? eco.cout_perso_jour)}`
+      : `${fmt(eco.cout_fixe_periode ?? eco.cout_fixe_jour)} fixed · ${fmt(eco.cout_perso_periode ?? eco.cout_perso_jour)} staff · <span style="color:var(--faint)">${openDays} open days × ${fmt(eco.cout_jour ?? (eco.cout_total_jour / openDays))}/day</span>`;
     document.getElementById('eco-charges-sub').innerHTML = chargesSub;
 
     // EBITDA
@@ -176,8 +176,8 @@ function render(d) {
     const ebitdaSub = document.getElementById('eco-ebitda-sub');
     if (eco.ebitda_ht != null) {
       ebitdaSub.innerHTML = eco.ebitda_ht > 0
-        ? `<span style="color:var(--green)">Rentable ✓</span>`
-        : `<span style="color:var(--red)">Déficit ${fmt(Math.abs(eco.ebitda_ht))}</span>`;
+        ? `<span style="color:var(--green)">Profitable ✓</span>`
+        : `<span style="color:var(--red)">Loss ${fmt(Math.abs(eco.ebitda_ht))}</span>`;
     }
 
     // Seuil CA — TTC en principal, calculé sur la marge réelle mesurée
@@ -185,17 +185,17 @@ function render(d) {
     if (eco.seuil_ca_ttc != null) {
       document.getElementById('eco-seuil').textContent = fmt(eco.seuil_ca_ttc);
       const margeNote = eco.seuil_margin_pct != null
-        ? ` <span style="color:var(--faint)">· marge réelle ${eco.seuil_margin_pct}%</span>`
+        ? ` <span style="color:var(--faint)">· real margin ${eco.seuil_margin_pct}%</span>`
         : '';
       if (eco.manque_seuil > 0) {
-        seuilSub.innerHTML = `<span style="color:var(--red)">Il manque ${fmt(eco.manque_seuil)} TTC</span>` + margeNote;
+        seuilSub.innerHTML = `<span style="color:var(--red)">${fmt(eco.manque_seuil)} short (incl. VAT)</span>` + margeNote;
       } else {
-        seuilSub.innerHTML = `<span style="color:var(--green)">Seuil dépassé ✓</span>` + margeNote;
+        seuilSub.innerHTML = `<span style="color:var(--green)">Break-even reached ✓</span>` + margeNote;
       }
       document.getElementById('eco-seuil-bar').style.width = Math.min(100, eco.pct_seuil) + '%';
     } else {
       document.getElementById('eco-seuil').textContent = '—';
-      seuilSub.innerHTML = '<span style="color:var(--muted)">marge réelle non mesurable</span>';
+      seuilSub.innerHTML = '<span style="color:var(--muted)">real margin not measurable</span>';
       document.getElementById('eco-seuil-bar').style.width = '0%';
     }
   }
@@ -253,7 +253,7 @@ function render(d) {
   // ── Paiements compacts (remplace le donut) ───────────────────────────────
   const payEl = document.getElementById('payment-compact');
   if (!d.payments.labels.length) {
-    payEl.innerHTML = '<p style="font-size:12px;color:var(--muted);">Aucun mouvement enregistré.</p>';
+    payEl.innerHTML = '<p style="font-size:12px;color:var(--muted);">No movements recorded.</p>';
   } else {
     const total = d.payments.values.reduce((a, b) => a + b, 0);
     payEl.innerHTML = d.payments.labels.map((l, i) => {
@@ -276,26 +276,26 @@ function render(d) {
   if (d.mix && d.mix.length) {
     document.getElementById('mix-bars').innerHTML = d.mix.map(m => {
       const margeStr = m.marge_pct != null
-        ? `marge ${marginBadge(m.marge_pct)} · ${fmt(m.marge_eur)}`
-        : '<span style="color:var(--faint)">marge inconnue</span>';
+        ? `margin ${marginBadge(m.marge_pct)} · ${fmt(m.marge_eur)}`
+        : '<span style="color:var(--faint)">margin unknown</span>';
       return `
       <div style="margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;">
           <span style="color:var(--text);font-weight:500">${m.label}</span>
-          <span style="font-weight:500">${m.pct}% <span style="color:var(--muted);font-weight:400">· ${fmt(m.amount_ttc ?? m.amount)} TTC <span style="color:var(--faint)">(${fmt(m.amount)} HT)</span></span></span>
+          <span style="font-weight:500">${m.pct}% <span style="color:var(--muted);font-weight:400">· ${fmt(m.amount_ttc ?? m.amount)} incl.VAT <span style="color:var(--faint)">(${fmt(m.amount)} excl.VAT)</span></span></span>
         </div>
         <div style="height:4px;background:var(--bar-bg);border-radius:2px;">
           <div style="height:4px;background:${MIX_COLORS[m.label]||'#888'};border-radius:2px;width:${m.pct}%"></div>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:3px;">
           <span>${margeStr}</span>
-          ${m.coverage != null && m.coverage < 95 ? `<span style="color:var(--faint)">couv. ${m.coverage}%</span>` : ''}
+          ${m.coverage != null && m.coverage < 95 ? `<span style="color:var(--faint)">cov. ${m.coverage}%</span>` : ''}
         </div>
       </div>`;
     }).join('');
   } else {
     document.getElementById('mix-bars').innerHTML =
-      '<span style="font-size:12px;color:var(--muted);">Aucune donnée</span>';
+      '<span style="font-size:12px;color:var(--muted);">No data</span>';
   }
 
   // Distribution tickets et TVA retirés du flux principal
@@ -380,8 +380,8 @@ function render(d) {
   if (topSection) {
     topSection.style.display = '';
     // Mettre à jour le label selon la période active
-    const periodLbl = d.is_single_day ? (d.is_today ? 'aujourd\'hui' : 'cette journée') : d.period_label?.toLowerCase() || 'la période';
-    document.getElementById('products-section-label').textContent = `Produits vendus`;
+    const periodLbl = d.is_single_day ? (d.is_today ? 'today' : 'this day') : d.period_label?.toLowerCase() || 'the period';
+    document.getElementById('products-section-label').textContent = `Products sold`;
     // Activer le tab période seulement si on a des items
     document.getElementById('tab-prod-period').style.display = d.has_items ? '' : 'none';
     if (!d.has_items && activeProdTab === 'period') switchProdTab('7d');
@@ -390,7 +390,7 @@ function render(d) {
     const maxQty = d.products.length ? d.products[0].qty : 1;
     if (!d.products.length) {
       document.getElementById('products-body').innerHTML =
-        '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">Aucun produit vendu.</td></tr>';
+        '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">No products sold.</td></tr>';
     } else {
       document.getElementById('products-body').innerHTML = d.products.map((p, i) => {
         const barW = Math.round(p.qty / maxQty * 100);
@@ -415,7 +415,7 @@ function render(d) {
   // ── CA moyen 7j par produit ───────────────────────────────────────────────
   if (!d.products_7d || !d.products_7d.length) {
     document.getElementById('products7d-body').innerHTML =
-      '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">Aucune donnée sur 7 jours.</td></tr>';
+      '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">No data over 7 days.</td></tr>';
   } else {
     const maxRev7 = d.products_7d[0].revenue;
     document.getElementById('products7d-body').innerHTML = d.products_7d.map((p, i) => {
@@ -451,16 +451,16 @@ function render(d) {
   // ── Transactions récentes ────────────────────────────────────────────────
   if (!d.recent || !d.recent.length) {
     document.getElementById('recent-body').innerHTML =
-      '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">Aucune transaction.</td></tr>';
+      '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">No transactions.</td></tr>';
     return;
   }
   window._txData = d.recent;
   const recCount = document.getElementById('recent-count');
   if (recCount) recCount.textContent = d.is_single_day
     ? `${d.recent.length} transaction${d.recent.length > 1 ? 's' : ''}`
-    : `${d.recent.length} dernières`;
+    : `${d.recent.length} latest`;
   const recLabel = document.getElementById('recent-label');
-  if (recLabel) recLabel.textContent = d.is_single_day ? 'Transactions du jour' : 'Transactions récentes';
+  if (recLabel) recLabel.textContent = d.is_single_day ? "Today's transactions" : 'Recent transactions';
   document.getElementById('recent-body').innerHTML = d.recent.map((t, i) => `
     <tr style="cursor:pointer;" onclick="openDrawer(${i})"
         onmouseenter="showTxTooltip(event, ${i})" onmousemove="moveTxTooltip(event)" onmouseleave="hideTxTooltip()">
@@ -482,7 +482,7 @@ function showTxTooltip(e, idx) {
           <span>${it.qty > 1 ? `<span style="color:var(--muted)">${it.qty}×</span> ` : ''}${it.name}</span>
           <span style="color:var(--muted);white-space:nowrap;">${fmt(it.total)}</span>
         </div>`).join('')
-    : '<div style="color:var(--muted);">Détail non disponible</div>';
+    : '<div style="color:var(--muted);">Detail unavailable</div>';
   const payHtml = (t.payments && t.payments.length)
     ? `<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;color:var(--muted);">${t.payments.map(p => p.label).join(' · ')}</div>`
     : '';
@@ -572,7 +572,7 @@ function renderDailyChart(daily) {
     data: {
       labels: daily.map(d => {
         const dt = new Date(d.date + 'T12:00:00');
-        return dt.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+        return dt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
       }),
       datasets: [{
         data: daily.map(d => d.ca_ttc),
@@ -612,7 +612,7 @@ function openDrawer(idx) {
           <td class="dt-qty">${item.qty > 1 ? item.qty + ' ×' : ''} ${fmt(item.unit)}</td>
           <td class="dt-amt">${fmt(item.total)}</td>
         </tr>`).join('')
-    : '<tr><td colspan="3" style="color:var(--muted);font-size:12px;padding:8px 0;">Détail non disponible</td></tr>';
+    : '<tr><td colspan="3" style="color:var(--muted);font-size:12px;padding:8px 0;">Detail unavailable</td></tr>';
   document.getElementById('drawer-payments').innerHTML = t.payments.map(p => `
     <div class="drawer-pay-row">
       <span>${p.label}</span>

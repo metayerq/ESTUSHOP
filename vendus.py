@@ -19,16 +19,16 @@ def _supa_get_economics(table, params=None):
     return r.json() if r.ok else []
 
 PAYMENT_LABELS = {
-    "NU":      "Espèces",
-    "CC":      "Carte crédit",
-    "CD":      "Carte débit",
+    "NU":      "Cash",
+    "CC":      "Credit card",
+    "CD":      "Debit card",
     "MB":      "MB Ref",
     "MBWAY":   "MB WAY",
-    "TB":      "Virement",
-    "TR":      "Ticket repas",
-    "CO":      "Carte cadeau",
+    "TB":      "Transfer",
+    "TR":      "Meal voucher",
+    "CO":      "Gift card",
     "TPASIBS": "TPA SIBS",
-    "OU":      "Autre",
+    "OU":      "Other",
 }
 
 

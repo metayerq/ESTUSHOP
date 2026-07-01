@@ -39,12 +39,12 @@ PRESET_RANGES = {
     "all":        lambda d: (date(2026, 5, 27), d),  # date d'ouverture Estudantina
 }
 PRESET_LABELS = {
-    "today":     "Aujourd'hui",
-    "yesterday": "Hier",
-    "week":      "Cette semaine",
-    "lastweek":  "Semaine dernière",
-    "month":     "Ce mois-ci",
-    "all":       "Depuis l'ouverture",
+    "today":     "Today",
+    "yesterday": "Yesterday",
+    "week":      "This week",
+    "lastweek":  "Last week",
+    "month":     "This month",
+    "all":       "Since opening",
 }
 # Le détail articles des jours passés vient du cache daily_summary (Supabase) ;
 # seul le jour courant est détaillé en live via l'API Vendus.
@@ -97,11 +97,11 @@ def _require_auth():
         return redirect("/login")
     # Investisseur : lecture seule — toute écriture est bloquée
     if role == "investor" and request.method not in ("GET", "HEAD"):
-        return jsonify({"error": "lecture seule — accès investisseur"}), 403
+        return jsonify({"error": "read-only — investor access"}), 403
     # Staff : accès limité à la page COGS (recettes) et ses APIs
     if role == "staff" and not request.path.startswith(STAFF_ALLOWED_PREFIXES):
         if request.path.startswith("/api/"):
-            return jsonify({"error": "accès réservé — recettes uniquement"}), 403
+            return jsonify({"error": "restricted — recipes only"}), 403
         return redirect("/cogs")
 
 @app.route("/login", methods=["GET", "POST"])
@@ -123,11 +123,11 @@ def login():
                             max_age=30*24*3600, httponly=True,
                             secure=True, samesite="Lax")
             return resp
-        error = "Mot de passe incorrect"
+        error = "Incorrect password"
     return f"""<!DOCTYPE html>
-<html lang="fr"><head><meta charset="UTF-8">
+<html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Estudantina — Connexion</title>
+<title>Estudantina — Sign in</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 body {{ font-family:'Inter',sans-serif; background:#faf9f5; display:flex; align-items:center;
@@ -144,11 +144,11 @@ button {{ width:100%; padding:10px; background:#37352f; color:#fff; border:none;
 </style></head><body>
 <div class="box">
   <h1>Estudantina</h1>
-  <p>Dashboard privé — entrez le mot de passe</p>
+  <p>Private dashboard — enter password</p>
   {f'<div class="err">{error}</div>' if error else ''}
   <form method="POST">
-    <input type="password" name="password" placeholder="Mot de passe" autofocus>
-    <button type="submit">Se connecter</button>
+    <input type="password" name="password" placeholder="Password" autofocus>
+    <button type="submit">Sign in</button>
   </form>
 </div>
 </body></html>"""

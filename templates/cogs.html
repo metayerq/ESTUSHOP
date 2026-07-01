@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -440,33 +440,33 @@
   <div class="cogs-nav">
     <a href="/">← Dashboard</a>
     <span class="sep">·</span>
-    <span style="font-size:13px;color:var(--text);font-weight:500;">COGS &amp; Recettes</span>
+    <span style="font-size:13px;color:var(--text);font-weight:500;">COGS &amp; Recipes</span>
   </div>
 
   <div class="header" style="margin-bottom:20px;">
     <div>
-      <div class="header-title">COGS &amp; Recettes</div>
-      <div class="header-sub">Coût matière · Marge brute · Éditeur de recettes</div>
+      <div class="header-title">COGS &amp; Recipes</div>
+      <div class="header-sub">Food cost · Gross margin · Recipe editor</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
       <span class="spin-badge" id="spin-badge"></span>
-      <button class="btn-primary" onclick="openNewProdModal()">+ Nouveau produit</button>
-      <button class="btn-secondary" id="btn-recalc" onclick="recalculateAll()">↺ Tout recalculer</button>
-      <button class="btn-secondary" id="btn-rebuild" onclick="rebuildHistory()" title="Recalcule les marges du dashboard avec les prix de revient actuels">↻ Recalculer l'historique</button>
-      <button class="btn-secondary" onclick="loadCogs()">↻ Rafraîchir</button>
+      <button class="btn-primary" onclick="openNewProdModal()">+ New product</button>
+      <button class="btn-secondary" id="btn-recalc" onclick="recalculateAll()">↺ Recalculate all</button>
+      <button class="btn-secondary" id="btn-rebuild" onclick="rebuildHistory()" title="Recompute dashboard margins with current cost prices">↻ Rebuild history</button>
+      <button class="btn-secondary" onclick="loadCogs()">↻ Refresh</button>
     </div>
   </div>
 
   <!-- Onglets de vue -->
   <div class="view-tabs">
     <button class="view-tab active" id="tab-products" onclick="switchTab('products')">
-      Produits &amp; marges <span class="tab-badge" id="tab-badge-products">—</span>
+      Products &amp; margins <span class="tab-badge" id="tab-badge-products">—</span>
     </button>
     <button class="view-tab" id="tab-preparations" onclick="switchTab('preparations')">
-      Préparations <span class="tab-badge" id="tab-badge-preparations">—</span>
+      Preparations <span class="tab-badge" id="tab-badge-preparations">—</span>
     </button>
     <button class="view-tab" id="tab-ingredients" onclick="switchTab('ingredients')">
-      Ingrédients <span class="tab-badge" id="tab-badge-ingredients">—</span>
+      Ingredients <span class="tab-badge" id="tab-badge-ingredients">—</span>
     </button>
   </div>
 
@@ -475,29 +475,29 @@
 
   <!-- Summary -->
   <div class="summary-bar" id="summary-bar" style="display:none;">
-    <div class="sum-item"><div class="sum-label">Produits</div><div class="sum-val" id="s-total">—</div></div>
-    <div class="sum-item"><div class="sum-label">Avec recette</div><div class="sum-val" id="s-recipe">—</div></div>
-    <div class="sum-item"><div class="sum-label">Marge moy.</div><div class="sum-val" id="s-avg">—</div></div>
-    <div class="sum-item clickable" title="Voir les pires marges" onclick="showWorstMargins()"><div class="sum-label">Min marge</div><div class="sum-val" id="s-min">—</div></div>
-    <div class="sum-item clickable" title="Voir les meilleures marges" onclick="showBestMargins()"><div class="sum-label">Max marge</div><div class="sum-val" id="s-max">—</div></div>
+    <div class="sum-item"><div class="sum-label">Products</div><div class="sum-val" id="s-total">—</div></div>
+    <div class="sum-item"><div class="sum-label">With recipe</div><div class="sum-val" id="s-recipe">—</div></div>
+    <div class="sum-item"><div class="sum-label">Avg margin</div><div class="sum-val" id="s-avg">—</div></div>
+    <div class="sum-item clickable" title="View worst margins" onclick="showWorstMargins()"><div class="sum-label">Min margin</div><div class="sum-val" id="s-min">—</div></div>
+    <div class="sum-item clickable" title="View best margins" onclick="showBestMargins()"><div class="sum-label">Max margin</div><div class="sum-val" id="s-max">—</div></div>
   </div>
 
   <!-- Filters -->
   <div class="filter-bar">
-    <input id="search" type="text" placeholder="Rechercher…" oninput="applyFilters()">
+    <input id="search" type="text" placeholder="Search…" oninput="applyFilters()">
     <select id="cat-filter" onchange="applyFilters()">
-      <option value="">Toutes catégories</option>
+      <option value="">All categories</option>
     </select>
     <select id="recipe-filter" onchange="applyFilters()">
-      <option value="">Toutes recettes</option>
-      <option value="yes">Avec recette</option>
-      <option value="no">Sans recette</option>
+      <option value="">All recipes</option>
+      <option value="yes">With recipe</option>
+      <option value="no">Without recipe</option>
     </select>
     <span class="count-badge" id="shown-count"></span>
   </div>
 
   <!-- Products -->
-  <div id="content"><div class="loading">Chargement…</div></div>
+  <div id="content"><div class="loading">Loading…</div></div>
 
   </div><!-- /view-products -->
 
@@ -505,36 +505,36 @@
   <div id="view-preparations" style="display:none;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
       <div>
-        <div class="section-label" style="margin:0;">Préparations maison</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:4px;">Pain, sauces, bases — utilisables dans les recettes produit</div>
+        <div class="section-label" style="margin:0;">House preparations</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;">Breads, sauces, bases — usable in product recipes</div>
       </div>
-      <button class="btn-add" onclick="openPrepDrawer()">+ Nouvelle préparation</button>
+      <button class="btn-add" onclick="openPrepDrawer()">+ New preparation</button>
     </div>
-    <div id="prep-list"><div class="loading" style="padding:32px;">Chargement…</div></div>
+    <div id="prep-list"><div class="loading" style="padding:32px;">Loading…</div></div>
   </div>
 
   <!-- Vue ingrédients -->
   <div id="view-ingredients" style="display:none;">
   <div id="ingr-section" style="margin-top:0;">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-      <input id="ingr-search" type="text" placeholder="🔍 Rechercher un ingrédient…"
+      <input id="ingr-search" type="text" placeholder="🔍 Search an ingredient…"
         oninput="renderIngrLib()"
         style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;background:var(--bg-card);color:var(--text);">
-      <button class="btn-add" onclick="openIngrModal()">+ Nouvel ingrédient</button>
+      <button class="btn-add" onclick="openIngrModal()">+ New ingredient</button>
     </div>
     <div class="table-wrap">
       <table class="ingr-table">
         <thead>
           <tr>
-            <th>Ingrédient</th>
-            <th>Catégorie</th>
-            <th class="r">Prix</th>
-            <th>Unité ref.</th>
+            <th>Ingredient</th>
+            <th>Category</th>
+            <th class="r">Price</th>
+            <th>Ref. unit</th>
             <th>Note</th>
             <th style="width:80px;"></th>
           </tr>
         </thead>
-        <tbody id="ingr-body"><tr><td colspan="6" class="loading" style="padding:24px;">Chargement…</td></tr></tbody>
+        <tbody id="ingr-body"><tr><td colspan="6" class="loading" style="padding:24px;">Loading…</td></tr></tbody>
       </table>
     </div>
   </div><!-- /ingr-section -->
@@ -544,43 +544,43 @@
   <div id="ingr-modal-overlay" onclick="closeIngrModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;"></div>
   <div id="ingr-modal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;background:var(--bg-card);border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.18);z-index:201;padding:28px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-      <div style="font-size:16px;font-weight:700;" id="ingr-modal-title">Nouvel ingrédient</div>
+      <div style="font-size:16px;font-weight:700;" id="ingr-modal-title">New ingredient</div>
       <button onclick="closeIngrModal()" style="background:none;border:1px solid var(--border);border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:14px;color:var(--muted);">✕</button>
     </div>
     <div id="ingr-modal-rename-note" style="display:none;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:8px 12px;font-size:12px;color:#795548;margin-bottom:14px;">
-      ⚠ Le nom est la clé — pour renommer, supprimez et recréez.
+      ⚠ The name is the key — to rename, delete and recreate.
     </div>
     <div style="display:flex;flex-direction:column;gap:12px;">
       <div>
-        <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:5px;">Nom *</label>
-        <input id="new-name" class="field-input" type="text" placeholder="ex: Farine T65" style="width:100%;">
+        <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:5px;">Name *</label>
+        <input id="new-name" class="field-input" type="text" placeholder="e.g. Flour T65" style="width:100%;">
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
-          <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:5px;">Prix *</label>
+          <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:5px;">Price *</label>
           <input id="new-price" class="field-input" type="number" step="0.01" min="0" placeholder="0.00" style="width:100%;">
         </div>
         <div>
-          <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:5px;">Unité de référence</label>
+          <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:5px;">Reference unit</label>
           <select id="new-unit" class="field-input" style="width:100%;">
             <option value="kg">€ / kg</option>
             <option value="l">€ / litre</option>
-            <option value="unit">€ / unité</option>
+            <option value="unit">€ / unit</option>
           </select>
         </div>
       </div>
       <div>
-        <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:5px;">Catégorie</label>
-        <input id="new-cat" class="field-input" type="text" placeholder="ex: Frais, Épicerie…" style="width:100%;">
+        <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:5px;">Category</label>
+        <input id="new-cat" class="field-input" type="text" placeholder="e.g. Fresh, Grocery…" style="width:100%;">
       </div>
       <div>
         <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:5px;">Note</label>
-        <input id="new-note" class="field-input" type="text" placeholder="Fournisseur, conditionnement…" style="width:100%;">
+        <input id="new-note" class="field-input" type="text" placeholder="Supplier, packaging…" style="width:100%;">
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:20px;">
-      <button class="btn-primary" style="flex:1;" id="btn-add-ingr" onclick="addIngredient()">Ajouter</button>
-      <button class="btn-secondary" onclick="closeIngrModal()">Annuler</button>
+      <button class="btn-primary" style="flex:1;" id="btn-add-ingr" onclick="addIngredient()">Add</button>
+      <button class="btn-secondary" onclick="closeIngrModal()">Cancel</button>
     </div>
   </div>
 
@@ -593,8 +593,8 @@
   <div id="new-prod-modal">
     <div class="modal-head">
       <div>
-        <div class="modal-title">Nouveau produit</div>
-        <div class="modal-sub">Crée dans Vendus + recette sauvegardée</div>
+        <div class="modal-title">New product</div>
+        <div class="modal-sub">Created in Vendus + recipe saved</div>
       </div>
       <button class="drawer-close" onclick="closeNewProdModal()">✕</button>
     </div>
@@ -603,47 +603,47 @@
       <!-- Infos produit -->
       <div class="field-row">
         <div class="field" style="grid-column:1/3;">
-          <label>Nom du produit *</label>
-          <input id="np-title" type="text" placeholder="Ex: Oat Espresso Tonic">
+          <label>Product name *</label>
+          <input id="np-title" type="text" placeholder="e.g. Oat Espresso Tonic">
         </div>
         <div class="field">
-          <label>Catégorie</label>
+          <label>Category</label>
           <select id="np-category">
-            <option value="">— Choisir —</option>
+            <option value="">— Choose —</option>
           </select>
         </div>
       </div>
 
       <div class="field-row">
         <div class="field">
-          <label>Prix TTC (€) *</label>
+          <label>Price incl. VAT (€) *</label>
           <input id="np-price" type="number" step="0.10" min="0" placeholder="3.50" oninput="updateModalCogs()">
         </div>
         <div class="field">
           <label>TVA</label>
           <select id="np-tax" onchange="updateModalCogs()">
-            <option value="INT">13% — Boissons</option>
-            <option value="NOR">23% — Normal</option>
-            <option value="RED">6% — Réduit</option>
+            <option value="INT">13% — Drinks</option>
+            <option value="NOR">23% — Standard</option>
+            <option value="RED">6% — Reduced</option>
           </select>
         </div>
         <div class="field">
-          <label>Prix HT</label>
+          <label>Price excl. VAT</label>
           <input id="np-price-ht" type="text" readonly style="background:var(--bg-page);color:var(--muted);" placeholder="—">
         </div>
       </div>
 
       <!-- Recette -->
-      <div class="section-label" style="margin-bottom:8px;margin-top:4px;">Recette</div>
+      <div class="section-label" style="margin-bottom:8px;margin-top:4px;">Recipe</div>
       <div class="ing-row-header" style="margin-bottom:6px;">
-        <span>Ingrédient</span>
-        <span style="text-align:right;">Qté</span>
-        <span>Unité</span>
-        <span style="text-align:right;">Coût</span>
+        <span>Ingredient</span>
+        <span style="text-align:right;">Qty</span>
+        <span>Unit</span>
+        <span style="text-align:right;">Cost</span>
         <span></span>
       </div>
       <div class="ing-rows" id="np-ing-rows"></div>
-      <button class="btn-secondary" style="width:100%;margin-bottom:12px;" onclick="addNpIngRow()">+ Ajouter un ingrédient</button>
+      <button class="btn-secondary" style="width:100%;margin-bottom:12px;" onclick="addNpIngRow()">+ Add ingredient</button>
 
       <!-- COGS live -->
       <div class="modal-cogs-live">
@@ -652,7 +652,7 @@
           <div style="font-size:20px;font-weight:600;" id="np-cogs-val">0.00 €</div>
         </div>
         <div style="text-align:right;">
-          <div style="font-size:10px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Marge brute</div>
+          <div style="font-size:10px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Gross margin</div>
           <div style="font-size:14px;font-weight:600;" id="np-margin-val">—</div>
         </div>
       </div>
@@ -660,12 +660,12 @@
       <!-- Notes -->
       <div class="field">
         <label>Notes</label>
-        <textarea class="drawer-notes" id="np-notes" placeholder="Préparation, variante, saisonnier…"></textarea>
+        <textarea class="drawer-notes" id="np-notes" placeholder="Prep, variant, seasonal…"></textarea>
       </div>
     </div>
     <div class="modal-foot">
-      <button class="btn-primary" style="flex:1;" id="np-save-btn" onclick="createProduct()">Créer dans Vendus</button>
-      <button class="btn-secondary" onclick="closeNewProdModal()">Annuler</button>
+      <button class="btn-primary" style="flex:1;" id="np-save-btn" onclick="createProduct()">Create in Vendus</button>
+      <button class="btn-secondary" onclick="closeNewProdModal()">Cancel</button>
     </div>
   </div>
 </div>
@@ -677,7 +677,7 @@
 <div id="recipe-drawer">
   <div class="drawer-head" style="display:flex;align-items:flex-start;justify-content:space-between;">
     <div>
-      <div class="drawer-title" id="d-title">Recette</div>
+      <div class="drawer-title" id="d-title">Recipe</div>
       <div class="drawer-subtitle" id="d-subtitle"></div>
     </div>
     <button class="drawer-close" onclick="closeDrawer()">✕</button>
@@ -687,15 +687,15 @@
     <!-- Nom + Prix éditables -->
     <div class="drawer-fields">
       <div class="drawer-field" style="grid-column:1/3;">
-        <label>Nom produit</label>
-        <input id="d-prod-title" type="text" placeholder="Nom…" oninput="updateLiveCogs()">
+        <label>Product name</label>
+        <input id="d-prod-title" type="text" placeholder="Name…" oninput="updateLiveCogs()">
       </div>
       <div class="drawer-field">
-        <label>Prix TTC (€)</label>
+        <label>Price incl. VAT (€)</label>
         <input id="d-price-ttc" type="number" step="0.10" min="0" placeholder="3.50" oninput="updateLiveCogs()">
       </div>
       <div class="drawer-field">
-        <label>Prix HT</label>
+        <label>Price excl. VAT</label>
         <input id="d-price-ht" type="text" readonly>
       </div>
     </div>
@@ -707,43 +707,43 @@
         <div class="cogs-live-val" id="d-cogs-val">0.00 €</div>
       </div>
       <div style="text-align:right;">
-        <div class="cogs-live-label">Marge brute</div>
+        <div class="cogs-live-label">Gross margin</div>
         <div class="cogs-live-margin" id="d-margin-val">—</div>
       </div>
     </div>
 
-    <!-- Simulateur de prix -->
+    <!-- Price simulator -->
     <div class="price-sim">
-      <div class="price-sim-title">Simulateur — quel prix pour atteindre X% de marge ?</div>
+      <div class="price-sim-title">Simulator — what price to reach X% margin?</div>
       <div class="price-sim-row">
-        <span style="font-size:12px;color:var(--muted);">Cible</span>
+        <span style="font-size:12px;color:var(--muted);">Target</span>
         <input id="sim-target" type="number" value="80" min="0" max="99" step="1" oninput="runSim()">
         <span style="font-size:12px;color:var(--muted);">%</span>
-        <span style="font-size:12px;color:var(--muted);margin-left:4px;">→ prix TTC</span>
+        <span style="font-size:12px;color:var(--muted);margin-left:4px;">→ price incl. VAT</span>
         <span class="sim-result" id="sim-result">—</span>
       </div>
     </div>
 
     <!-- Ingrédients -->
-    <div class="section-label" style="margin-bottom:6px;">Recette</div>
+    <div class="section-label" style="margin-bottom:6px;">Recipe</div>
     <div class="ing-row-header" style="margin-bottom:6px;">
-      <span>Ingrédient</span>
-      <span style="text-align:right;">Qté</span>
-      <span>Unité</span>
-      <span style="text-align:right;">Coût</span>
+      <span>Ingredient</span>
+      <span style="text-align:right;">Qty</span>
+      <span>Unit</span>
+      <span style="text-align:right;">Cost</span>
       <span></span>
     </div>
     <div class="ing-rows" id="ing-rows"></div>
-    <button class="btn-secondary" style="width:100%;margin-bottom:16px;" onclick="addIngRow()">+ Ajouter un ingrédient</button>
+    <button class="btn-secondary" style="width:100%;margin-bottom:16px;" onclick="addIngRow()">+ Add ingredient</button>
 
     <!-- Notes -->
     <div class="section-label" style="margin-bottom:6px;">Notes</div>
-    <textarea class="drawer-notes" id="d-notes" placeholder="Double ristretto, lait texturé 65°C…" oninput="updateLiveCogs()"></textarea>
+    <textarea class="drawer-notes" id="d-notes" placeholder="Double ristretto, milk steamed 65°C…" oninput="updateLiveCogs()"></textarea>
   </div>
   <div class="drawer-footer">
-    <button class="btn-primary" style="flex:1;" onclick="saveRecipe()">Enregistrer la recette</button>
-    <button class="btn-secondary" onclick="closeDrawer()">Annuler</button>
-    <button class="btn-secondary" id="btn-delete-recipe" style="display:none;color:var(--red);border-color:var(--red);" onclick="deleteRecipe()">Supprimer</button>
+    <button class="btn-primary" style="flex:1;" onclick="saveRecipe()">Save recipe</button>
+    <button class="btn-secondary" onclick="closeDrawer()">Cancel</button>
+    <button class="btn-secondary" id="btn-delete-recipe" style="display:none;color:var(--red);border-color:var(--red);" onclick="deleteRecipe()">Delete</button>
   </div>
 </div>
 
@@ -752,7 +752,7 @@
 <div id="prep-drawer" style="position:fixed;top:0;right:0;height:100vh;width:480px;background:var(--bg-card);box-shadow:-4px 0 24px rgba(0,0,0,.1);z-index:100;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);">
   <div class="drawer-head" style="display:flex;align-items:flex-start;justify-content:space-between;">
     <div>
-      <div class="drawer-title" id="prep-d-title">Nouvelle préparation</div>
+      <div class="drawer-title" id="prep-d-title">New preparation</div>
       <div class="drawer-subtitle" id="prep-d-sub"></div>
     </div>
     <button class="drawer-close" onclick="closePrepDrawer()">✕</button>
@@ -760,18 +760,18 @@
   <div class="drawer-body">
     <!-- Nom -->
     <div style="margin-bottom:16px;">
-      <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:6px;">Nom de la préparation</label>
-      <input id="prep-name" class="field-input" style="width:100%;font-size:14px;font-weight:600;" placeholder="ex: Pain de mie shokupan">
+      <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:6px;">Preparation name</label>
+      <input id="prep-name" class="field-input" style="width:100%;font-size:14px;font-weight:600;" placeholder="e.g. Shokupan milk bread">
     </div>
-    <!-- Rendement -->
+    <!-- Yield -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
       <div>
-        <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:6px;">Rendement (qté)</label>
+        <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:6px;">Yield (qty)</label>
         <input id="prep-yield-qty" class="field-input" type="number" step="0.1" min="0.1" value="1" oninput="updatePrepCost()" style="width:100%;">
       </div>
       <div>
-        <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:6px;">Unité de portion</label>
-        <input id="prep-yield-unit" class="field-input" list="prep-unit-list" placeholder="tranche, portion, g…" style="width:100%;" oninput="updatePrepCost()">
+        <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:6px;">Portion unit</label>
+        <input id="prep-yield-unit" class="field-input" list="prep-unit-list" placeholder="slice, portion, g…" style="width:100%;" oninput="updatePrepCost()">
         <datalist id="prep-unit-list">
           <option value="tranche"><option value="portion"><option value="g"><option value="ml"><option value="unit">
         </datalist>
@@ -779,23 +779,23 @@
     </div>
     <!-- Ingrédients -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-      <div class="section-label" style="margin:0;">Ingrédients</div>
+      <div class="section-label" style="margin:0;">Ingredients</div>
     </div>
     <div id="prep-ingredients-list" style="margin-bottom:12px;"></div>
     <!-- Autocomplete -->
     <div style="position:relative;margin-bottom:16px;">
-      <input id="prep-ac-input" class="field-input" placeholder="+ Ajouter un ingrédient…" autocomplete="off"
+      <input id="prep-ac-input" class="field-input" placeholder="+ Add ingredient…" autocomplete="off"
         oninput="prepAcSearch(this.value)" onfocus="prepAcSearch(this.value)" style="width:100%;">
       <div id="prep-ac-dropdown" class="ac-dropdown"></div>
     </div>
     <!-- Coût calculé -->
     <div id="prep-cost-box" style="background:var(--bg-page);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:16px;display:none;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
-        <span style="font-size:12px;color:var(--muted);">Coût total préparation</span>
+        <span style="font-size:12px;color:var(--muted);">Total preparation cost</span>
         <span id="prep-cost-total" style="font-weight:700;font-size:15px;">—</span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
-        <span style="font-size:12px;color:var(--muted);" id="prep-cost-unit-label">Coût / portion</span>
+        <span style="font-size:12px;color:var(--muted);" id="prep-cost-unit-label">Cost / portion</span>
         <span id="prep-cost-unit" style="font-weight:600;font-size:14px;color:var(--green);">—</span>
       </div>
     </div>
@@ -803,8 +803,8 @@
     <textarea id="prep-notes" class="drawer-notes" placeholder="Notes…" rows="2"></textarea>
   </div>
   <div class="drawer-footer">
-    <button class="btn-primary" style="flex:1;" onclick="savePrep()">Enregistrer</button>
-    <button class="btn-secondary" onclick="closePrepDrawer()">Annuler</button>
+    <button class="btn-primary" style="flex:1;" onclick="savePrep()">Save</button>
+    <button class="btn-secondary" onclick="closePrepDrawer()">Cancel</button>
   </div>
 </div>
 
@@ -934,23 +934,23 @@ function sortIcon(col) {
 
 function flatTableHeaders() {
   return `<thead><tr>
-    <th style="width:30%">Produit &amp; Recette</th>
-    <th>Catégorie</th>
-    <th class="r sortable" onclick="sortBy('price_ttc')">TTC ${sortIcon('price_ttc')}</th>
+    <th style="width:30%">Product &amp; Recipe</th>
+    <th>Category</th>
+    <th class="r sortable" onclick="sortBy('price_ttc')">Incl.VAT ${sortIcon('price_ttc')}</th>
     <th class="r sortable" onclick="sortBy('recipe_total')">COGS ${sortIcon('recipe_total')}</th>
-    <th class="r sortable" onclick="sortBy('marge_ht')">Marge € ${sortIcon('marge_ht')}</th>
-    <th class="r sortable" onclick="sortBy('marge_pct')">Marge % ${sortIcon('marge_pct')}</th>
+    <th class="r sortable" onclick="sortBy('marge_ht')">Margin € ${sortIcon('marge_ht')}</th>
+    <th class="r sortable" onclick="sortBy('marge_pct')">Margin % ${sortIcon('marge_pct')}</th>
     <th style="width:100px;"></th>
   </tr></thead>`;
 }
 
 function groupedTableHeaders() {
   return `<thead><tr>
-    <th style="width:34%">Produit &amp; Recette</th>
-    <th class="r sortable" onclick="sortBy('price_ttc')">TTC ${sortIcon('price_ttc')}</th>
+    <th style="width:34%">Product &amp; Recipe</th>
+    <th class="r sortable" onclick="sortBy('price_ttc')">Incl.VAT ${sortIcon('price_ttc')}</th>
     <th class="r sortable" onclick="sortBy('recipe_total')">COGS ${sortIcon('recipe_total')}</th>
-    <th class="r sortable" onclick="sortBy('marge_ht')">Marge € ${sortIcon('marge_ht')}</th>
-    <th class="r sortable" onclick="sortBy('marge_pct')">Marge % ${sortIcon('marge_pct')}</th>
+    <th class="r sortable" onclick="sortBy('marge_ht')">Margin € ${sortIcon('marge_ht')}</th>
+    <th class="r sortable" onclick="sortBy('marge_pct')">Margin % ${sortIcon('marge_pct')}</th>
     <th style="width:100px;"></th>
   </tr></thead>`;
 }
@@ -960,13 +960,13 @@ function renderProducts(products) {
 
   // ── Mode liste plate (tri actif) ──────────────────────────
   if (sortCol) {
-    const colLabels = { price_ttc:'TTC', recipe_total:'COGS', marge_ht:'Marge €', marge_pct:'Marge %' };
-    const dirLabel  = sortDir > 0 ? '↑ croissant' : '↓ décroissant';
+    const colLabels = { price_ttc:'Incl.VAT', recipe_total:'COGS', marge_ht:'Margin €', marge_pct:'Margin %' };
+    const dirLabel  = sortDir > 0 ? '↑ ascending' : '↓ descending';
     html = `
       <div class="sort-strip">
-        Tri par <strong>${colLabels[sortCol] || sortCol}</strong> · ${dirLabel}
-        &nbsp;·&nbsp; ${products.length} produit${products.length !== 1 ? 's' : ''}
-        <button class="reset-sort" onclick="resetSort()">✕ Revenir aux catégories</button>
+        Sorted by <strong>${colLabels[sortCol] || sortCol}</strong> · ${dirLabel}
+        &nbsp;·&nbsp; ${products.length} product${products.length !== 1 ? 's' : ''}
+        <button class="reset-sort" onclick="resetSort()">✕ Back to categories</button>
       </div>
       <div class="table-wrap">
         <table class="cogs-table">
@@ -1003,14 +1003,14 @@ function renderProducts(products) {
   }
   if (other.length) {
     html += `<div class="cogs-section">
-      <div class="cogs-section-title">Autres <span class="badge-cat">${other.length}</span></div>
+      <div class="cogs-section-title">Other <span class="badge-cat">${other.length}</span></div>
       <div class="table-wrap"><table class="cogs-table">
         ${groupedTableHeaders()}
         <tbody>${other.map(p => rowHtml(p)).join('')}</tbody>
       </table></div>
     </div>`;
   }
-  document.getElementById('content').innerHTML = html || '<div class="loading">Aucun produit</div>';
+  document.getElementById('content').innerHTML = html || '<div class="loading">No products</div>';
 }
 
 function rowHtml(p) {
@@ -1027,7 +1027,7 @@ function rowHtml(p) {
     const moreBadge = hidden > 0 ? `<span class="ing-chip" style="color:var(--faint);font-style:italic;">+${hidden}</span>` : '';
     recipeHtml = `<div class="recipe-wrap">${chips}${moreBadge}</div>`;
   } else {
-    recipeHtml = `<div class="no-recipe">Pas de recette — cliquer pour créer</div>`;
+    recipeHtml = `<div class="no-recipe">No recipe — click to create</div>`;
   }
 
   const cogs = p.recipe_total !== null ? p.recipe_total : p.supply_price;
@@ -1093,11 +1093,11 @@ function showBestMargins() {
 async function openDrawer(id, title, priceHt, priceTtc, taxRate) {
   drawerProd = { id, title, priceHt, priceTtc, taxRate };
   document.getElementById('d-title').textContent    = title;
-  document.getElementById('d-subtitle').textContent = `TVA ${taxRate}%`;
+  document.getElementById('d-subtitle').textContent = `VAT ${taxRate}%`;
   document.getElementById('d-prod-title').value     = title;
   document.getElementById('d-price-ttc').value      = priceTtc || '';
   document.getElementById('d-price-ht').value       = priceHt ? priceHt.toFixed(2) + ' €' : '';
-  document.getElementById('ing-rows').innerHTML = '<div class="loading" style="padding:16px;">Chargement…</div>';
+  document.getElementById('ing-rows').innerHTML = '<div class="loading" style="padding:16px;">Loading…</div>';
   document.getElementById('d-notes').value = '';
   openDrawerUI();
 
@@ -1147,12 +1147,12 @@ function addIngRow(ing = {}) {
 
   div.innerHTML = `
     <div class="ac-wrap">
-      <input type="text" class="ing-name" placeholder="Ingrédient…" value="${ing.name||''}"
+      <input type="text" class="ing-name" placeholder="Ingredient…" value="${ing.name||''}"
              oninput="showAC(this)" onblur="hideAC(this,200)" onfocus="showAC(this)"
              onchange="updateLiveCogs()">
       <div class="ac-dropdown"></div>
     </div>
-    <input type="number" class="ing-qty" step="any" min="0" placeholder="Qté" value="${ing.qty||''}"
+    <input type="number" class="ing-qty" step="any" min="0" placeholder="Qty" value="${ing.qty||''}"
            oninput="updateLiveCogs()">
     <select class="ing-unit" onchange="updateLiveCogs()">${unitOpts}</select>
     <div class="cost-preview" data-cost="">—</div>
@@ -1192,7 +1192,7 @@ function showAC(input) {
     </div>`;
   }).join('');
   if (q && !ingrMatches.includes(q) && !prepMatches.includes(q)) {
-    html += `<div class="ac-item ac-new" onmousedown="selectAC(event,'${q.replace(/'/g,"\\'")}',true)">+ Créer "${q}"</div>`;
+    html += `<div class="ac-item ac-new" onmousedown="selectAC(event,'${q.replace(/'/g,"\\'")}',true)">+ Create "${q}"</div>`;
   }
   dd.innerHTML = html;
   dd.classList.add('open');
@@ -1230,15 +1230,15 @@ function showAcCreateForm(dd, nameInput, name) {
 
   dd.innerHTML = `
     <div class="ac-create-form">
-      <div class="ac-cf-title">Nouvel ingrédient</div>
-      <input class="ac-cf-name" type="text" id="acf-name" value="${name.replace(/"/g,'&quot;')}" placeholder="Nom…">
+      <div class="ac-cf-title">New ingredient</div>
+      <input class="ac-cf-name" type="text" id="acf-name" value="${name.replace(/"/g,'&quot;')}" placeholder="Name…">
       <div class="ac-cf-row">
-        <input type="number" id="acf-price" step="0.01" min="0" placeholder="Prix (€)" autofocus>
+        <input type="number" id="acf-price" step="0.01" min="0" placeholder="Price (€)" autofocus>
         <select id="acf-unit">${unitOpts}</select>
-        <input type="text" id="acf-cat" placeholder="Catégorie">
+        <input type="text" id="acf-cat" placeholder="Category">
       </div>
       <div class="ac-cf-btns">
-        <button class="btn-cf-create" id="acf-btn" onclick="submitAcCreate(event)">Créer</button>
+        <button class="btn-cf-create" id="acf-btn" onclick="submitAcCreate(event)">Create</button>
         <button class="btn-cf-cancel" onmousedown="cancelAcCreate(event)">✕</button>
       </div>
     </div>`;
@@ -1284,7 +1284,7 @@ async function submitAcCreate(e) {
   dd.classList.remove('open');
   dd.innerHTML = '';
   updateLiveCogs();
-  showToast(`✓ "${name}" créé · ${price} €/${unit}`);
+  showToast(`✓ "${name}" created · ${price} €/${unit}`);
 }
 
 function cancelAcCreate(e) {
@@ -1379,7 +1379,7 @@ async function saveRecipe() {
     if (name && qty > 0) ingredients.push({ name, qty, unit });
     else if (name || qty) valid = false;
   });
-  if (!valid) { showToast('⚠ Vérifiez les ingrédients'); return; }
+  if (!valid) { showToast('⚠ Check the ingredients'); return; }
 
   const notes    = document.getElementById('d-notes').value.trim();
   const newTitle = document.getElementById('d-prod-title').value.trim();
@@ -1408,18 +1408,18 @@ async function saveRecipe() {
         body: JSON.stringify(updates),
       });
       const d2 = await r2.json();
-      if (!d2.ok) showToast('⚠ Prix/nom non mis à jour : ' + d2.error);
+      if (!d2.ok) showToast('⚠ Price/name not updated: ' + d2.error);
     }
 
     if (d.ok) {
-      showToast(`✓ Sauvegardé · COGS ${fmt(d.total_cogs)} · Vendus ${d.vendus_patched ? '✓' : '⚠'}`);
+      showToast(`✓ Saved · COGS ${fmt(d.total_cogs)} · Vendus ${d.vendus_patched ? '✓' : '⚠'}`);
       closeDrawer();
       await loadCogs(true); // soft reload — garde le contenu visible
     } else {
-      showToast('Erreur : ' + (d.error || 'inconnue'));
+      showToast('Error: ' + (d.error || 'unknown'));
     }
   } catch(e) {
-    showToast('Erreur réseau');
+    showToast('Network error');
   } finally {
     btn.textContent = 'Enregistrer la recette'; btn.disabled = false;
   }
@@ -1434,7 +1434,7 @@ function renderIngrLib() {
   let items = Object.entries(ingrLib).sort((a,b) => a[0].localeCompare(b[0]));
   if (q) items = items.filter(([name, lib]) =>
     name.toLowerCase().includes(q) || (lib.category||'').toLowerCase().includes(q));
-  if (!items.length) { body.innerHTML = '<tr><td colspan="6" style="padding:20px;color:var(--muted);text-align:center;">Aucun résultat</td></tr>'; return; }
+  if (!items.length) { body.innerHTML = '<tr><td colspan="6" style="padding:20px;color:var(--muted);text-align:center;">No results</td></tr>'; return; }
   body.innerHTML = items.map(([name, lib]) => `
     <tr data-ingr="${encodeURIComponent(name)}">
       <td style="font-weight:500;">${name}</td>
@@ -1472,7 +1472,7 @@ let editingIngrName = null;
 
 function openIngrModal() {
   editingIngrName = null;
-  document.getElementById('ingr-modal-title').textContent = 'Nouvel ingrédient';
+  document.getElementById('ingr-modal-title').textContent = 'New ingredient';
   document.getElementById('ingr-modal-rename-note').style.display = 'none';
   document.getElementById('new-name').value    = '';
   document.getElementById('new-name').readOnly = false;
@@ -1481,7 +1481,7 @@ function openIngrModal() {
   document.getElementById('new-price').value   = '';
   document.getElementById('new-note').value    = '';
   document.getElementById('new-unit').value    = 'kg';
-  document.getElementById('btn-add-ingr').textContent = 'Ajouter';
+  document.getElementById('btn-add-ingr').textContent = 'Add';
   document.getElementById('ingr-modal').style.display = '';
   document.getElementById('ingr-modal-overlay').style.display = '';
   setTimeout(() => document.getElementById('new-name').focus(), 50);
@@ -1491,7 +1491,7 @@ function editIngr(name) {
   const lib = ingrLib[name];
   if (!lib) return;
   editingIngrName = name;
-  document.getElementById('ingr-modal-title').textContent = 'Modifier l\'ingrédient';
+  document.getElementById('ingr-modal-title').textContent = 'Edit ingredient';
   document.getElementById('ingr-modal-rename-note').style.display = '';
   document.getElementById('new-name').value    = name;
   document.getElementById('new-name').readOnly = true;
@@ -1500,7 +1500,7 @@ function editIngr(name) {
   document.getElementById('new-price').value   = lib.price;
   document.getElementById('new-note').value    = lib.note || '';
   document.getElementById('new-unit').value    = lib.unit_ref;
-  document.getElementById('btn-add-ingr').textContent = 'Mettre à jour';
+  document.getElementById('btn-add-ingr').textContent = 'Update';
   document.getElementById('ingr-modal').style.display = '';
   document.getElementById('ingr-modal-overlay').style.display = '';
   setTimeout(() => document.getElementById('new-price').focus(), 50);
@@ -1518,23 +1518,23 @@ async function addIngredient() {
   const price = parseFloat(document.getElementById('new-price').value);
   const unit  = document.getElementById('new-unit').value;
   const note  = document.getElementById('new-note').value.trim();
-  if (!name || isNaN(price)) { showToast('Nom et prix requis'); return; }
+  if (!name || isNaN(price)) { showToast('Name and price required'); return; }
   const wasEdit = !!editingIngrName;
   await saveIngredient(name, { price, unit_ref: unit, category: cat, note });
   ingrLib[name] = { ...(ingrLib[name] || {}), price, unit_ref: unit, category: cat, note };
   closeIngrModal();
   renderIngrLib();
   updateTabBadges();
-  showToast(wasEdit ? `✓ ${name} mis à jour` : `✓ ${name} ajouté`);
+  showToast(wasEdit ? `✓ ${name} updated` : `✓ ${name} added`);
 }
 
 async function deleteIngr(name) {
-  if (!confirm(`Supprimer "${name}" de la bibliothèque ?`)) return;
+  if (!confirm(`Delete "${name}" from the library?`)) return;
   await fetch(`/api/ingredients/${encodeURIComponent(name)}`, { method: 'DELETE' });
   delete ingrLib[name];
   renderIngrLib();
   updateTabBadges();
-  showToast(`✓ ${name} supprimé`);
+  showToast(`✓ ${name} deleted`);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1542,36 +1542,36 @@ async function deleteIngr(name) {
 // ══════════════════════════════════════════════════════════
 async function recalculateAll() {
   const withRecipe = allProducts.filter(p => p.has_recipe).length;
-  if (!confirm(`Recalculer les COGS de ${withRecipe} produits et mettre à jour Vendus ?\nCette action écrase les prix de revient dans votre caisse.`)) return;
+  if (!confirm(`Recompute COGS for ${withRecipe} products and update Vendus?\nThis overwrites the cost prices in your POS.`)) return;
   const btn = document.getElementById('btn-recalc');
-  btn.textContent = '↺ Calcul…'; btn.disabled = true;
+  btn.textContent = '↺ Computing…'; btn.disabled = true;
   try {
     const r = await fetch('/api/recipe/recalculate-all', { method: 'POST' });
     const d = await r.json();
     const ok  = d.results.filter(x => x.status === 'ok').length;
     const err = d.results.filter(x => x.status !== 'ok' && x.status !== 'not_found_in_vendus').length;
-    showToast(`✓ ${ok} COGS recalculés${err ? ` · ${err} erreurs` : ''}`);
+    showToast(`✓ ${ok} COGS recomputed${err ? ` · ${err} errors` : ''}`);
     await loadCogs(true);
   } catch(e) {
-    showToast('Erreur réseau');
+    showToast('Network error');
   } finally {
-    btn.textContent = '↺ Tout recalculer'; btn.disabled = false;
+    btn.textContent = '↺ Recalculate all'; btn.disabled = false;
   }
 }
 
 async function rebuildHistory() {
-  if (!confirm(`Recalculer l'historique du dashboard avec les prix de revient actuels ?\nLes marges de toutes les journées passées seront recalculées.`)) return;
+  if (!confirm(`Rebuild dashboard history with current cost prices?\nMargins for all past days will be recomputed.`)) return;
   const btn = document.getElementById('btn-rebuild');
-  btn.textContent = '↻ Recalcul…'; btn.disabled = true;
+  btn.textContent = '↻ Rebuilding…'; btn.disabled = true;
   try {
     const r = await fetch('/api/summary/rebuild', { method: 'POST' });
     const d = await r.json();
-    if (d.ok) showToast(`✓ ${d.days_rebuilt} journées recalculées`);
-    else showToast('Erreur : ' + (d.error || 'inconnue'));
+    if (d.ok) showToast(`✓ ${d.days_rebuilt} days rebuilt`);
+    else showToast('Error: ' + (d.error || 'unknown'));
   } catch(e) {
-    showToast('Erreur réseau');
+    showToast('Network error');
   } finally {
-    btn.textContent = '↻ Recalculer l\'historique'; btn.disabled = false;
+    btn.textContent = '↻ Rebuild history'; btn.disabled = false;
   }
 }
 
@@ -1649,12 +1649,12 @@ function addNpIngRow(ing = {}) {
   ).join('');
   div.innerHTML = `
     <div class="ac-wrap">
-      <input type="text" class="ing-name" placeholder="Ingrédient…" value="${ing.name||''}"
+      <input type="text" class="ing-name" placeholder="Ingredient…" value="${ing.name||''}"
              oninput="showAC(this)" onblur="hideAC(this,200)" onfocus="showAC(this)"
              onchange="updateModalCogs()">
       <div class="ac-dropdown"></div>
     </div>
-    <input type="number" class="ing-qty" step="any" min="0" placeholder="Qté" value="${ing.qty||''}"
+    <input type="number" class="ing-qty" step="any" min="0" placeholder="Qty" value="${ing.qty||''}"
            oninput="updateModalCogs()">
     <select class="ing-unit" onchange="updateModalCogs()">${unitOpts}</select>
     <div class="cost-preview">—</div>
@@ -1699,7 +1699,7 @@ async function createProduct() {
   const catId    = document.getElementById('np-category').value;
   const notes    = document.getElementById('np-notes').value.trim();
 
-  if (!title || !priceTtc) { showToast('⚠ Nom et prix requis'); return; }
+  if (!title || !priceTtc) { showToast('⚠ Name and price required'); return; }
 
   const ingredients = [];
   document.querySelectorAll('#np-ing-rows .ing-row').forEach(row => {
@@ -1710,7 +1710,7 @@ async function createProduct() {
   });
 
   const btn = document.getElementById('np-save-btn');
-  btn.textContent = 'Création…'; btn.disabled = true;
+  btn.textContent = 'Creating…'; btn.disabled = true;
 
   try {
     const r = await fetch('/api/product/create', {
@@ -1721,30 +1721,30 @@ async function createProduct() {
     });
     const d = await r.json();
     if (d.ok) {
-      showToast(`✓ "${d.title}" créé dans Vendus (id ${d.product_id}) · COGS ${fmt(d.total_cogs)}`);
+      showToast(`✓ "${d.title}" created in Vendus (id ${d.product_id}) · COGS ${fmt(d.total_cogs)}`);
       closeNewProdModal();
       await loadCogs();
     } else {
-      showToast('Erreur : ' + (d.error || 'inconnue'));
+      showToast('Error: ' + (d.error || 'unknown'));
     }
   } catch(e) {
-    showToast('Erreur réseau');
+    showToast('Network error');
   } finally {
-    btn.textContent = 'Créer dans Vendus'; btn.disabled = false;
+    btn.textContent = 'Create in Vendus'; btn.disabled = false;
   }
 }
 
 // ══════════════════════════════════════════════════════════
 // PRÉPARATIONS
 // ══════════════════════════════════════════════════════════
-const fmtP4 = v => v != null ? new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',minimumFractionDigits:4,maximumFractionDigits:4}).format(v) : '—';
-const fmt2c = v => v != null ? new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',minimumFractionDigits:2}).format(v) : '—';
+const fmtP4 = v => v != null ? new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR',minimumFractionDigits:4,maximumFractionDigits:4}).format(v) : '—';
+const fmt2c = v => v != null ? new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR',minimumFractionDigits:2}).format(v) : '—';
 
 function renderPrepList() {
   const el = document.getElementById('prep-list');
   const entries = Object.entries(prepLib);
   if (!entries.length) {
-    el.innerHTML = `<div style="text-align:center;color:var(--muted);padding:48px 0;">Aucune préparation — cliquez "+ Nouvelle préparation"</div>`;
+    el.innerHTML = `<div style="text-align:center;color:var(--muted);padding:48px 0;">No preparation — click "+ New preparation"</div>`;
     return;
   }
   el.innerHTML = entries.map(([name, p]) => {
@@ -1754,7 +1754,7 @@ function renderPrepList() {
       <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--bg-page);border-bottom:1px solid var(--border);">
         <div>
           <span style="font-size:15px;font-weight:600;">🍞 ${name}</span>
-          <span style="font-size:11px;color:var(--muted);margin-left:12px;">Rendement : ${p.yield_qty} ${p.yield_unit}</span>
+          <span style="font-size:11px;color:var(--muted);margin-left:12px;">Yield: ${p.yield_qty} ${p.yield_unit}</span>
         </div>
         <div style="display:flex;gap:8px;">
           <button onclick="editPrep('${name.replace(/'/g,"\\'")}')"
@@ -1765,16 +1765,16 @@ function renderPrepList() {
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;padding:14px 20px;gap:16px;">
         <div>
-          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Coût total recette</div>
+          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Total recipe cost</div>
           <div style="font-size:15px;font-weight:600;">${fmt2c(totalCost)}</div>
         </div>
         <div>
-          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Coût / ${p.yield_unit}</div>
+          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Cost / ${p.yield_unit}</div>
           <div style="font-size:15px;font-weight:600;color:var(--green);">${fmtP4(p.cost_per_unit)}</div>
         </div>
         <div>
-          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Utilisée dans</div>
-          <div style="font-size:13px;color:var(--muted);">${usedIn} recette(s)</div>
+          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Used in</div>
+          <div style="font-size:13px;color:var(--muted);">${usedIn} recipe(s)</div>
         </div>
       </div>
     </div>`;
@@ -1787,9 +1787,9 @@ async function editPrep(name) {
   const res = await fetch('/api/preparations');
   const data = await res.json();
   const p = data[name];
-  if (!p) { showToast('Préparation introuvable'); return; }
+  if (!p) { showToast('Preparation not found'); return; }
   prepIngredients = JSON.parse(JSON.stringify(p.ingredients || []));
-  document.getElementById('prep-d-title').textContent = 'Modifier la préparation';
+  document.getElementById('prep-d-title').textContent = 'Edit preparation';
   document.getElementById('prep-d-sub').textContent = name;
   document.getElementById('prep-name').value = name;
   document.getElementById('prep-yield-qty').value = p.yield_qty || 1;
@@ -1804,7 +1804,7 @@ async function editPrep(name) {
 function openPrepDrawer() {
   editingPrepName = null;
   prepIngredients = [];
-  document.getElementById('prep-d-title').textContent = 'Nouvelle préparation';
+  document.getElementById('prep-d-title').textContent = 'New preparation';
   document.getElementById('prep-d-sub').textContent = '';
   document.getElementById('prep-name').value = '';
   document.getElementById('prep-yield-qty').value = 1;
@@ -1866,7 +1866,7 @@ function updatePrepCost() {
   if (prepIngredients.length) {
     box.style.display = '';
     document.getElementById('prep-cost-total').textContent = fmt2c(total);
-    document.getElementById('prep-cost-unit-label').textContent = `Coût / ${yu}`;
+    document.getElementById('prep-cost-unit-label').textContent = `Cost / ${yu}`;
     document.getElementById('prep-cost-unit').textContent = fmtP4(total / yq);
   } else {
     box.style.display = 'none';
@@ -1885,7 +1885,7 @@ function prepAcSearch(q) {
     return `<div class="ac-item prep-ac-pick" data-name="${n.replace(/"/g,'&quot;')}" data-unit="${defaultUnit}"
       style="display:flex;align-items:center;gap:8px;padding:6px 10px;">
       <span style="flex:1;">${n}</span>
-      <input type="number" class="prep-ac-qty" placeholder="qté" step="any" min="0"
+      <input type="number" class="prep-ac-qty" placeholder="qty" step="any" min="0"
         style="width:60px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-family:inherit;font-size:12px;text-align:right;"
         onclick="event.stopPropagation();" value="">
       <select class="prep-ac-unit"
@@ -1914,15 +1914,15 @@ function prepAddIngredientRow(name, btn) {
 
 async function deleteRecipe() {
   if (!drawerProd) return;
-  if (!confirm(`Supprimer la recette de "${drawerProd.title}" ?`)) return;
+  if (!confirm(`Delete the recipe for "${drawerProd.title}"?`)) return;
   const r = await fetch(`/api/recipe/${drawerProd.id}`, { method: 'DELETE' });
   const d = await r.json();
   if (d.ok) {
     closeDrawer();
-    showToast(`Recette "${drawerProd ? drawerProd.title : ''}" supprimée`);
+    showToast(`Recipe "${drawerProd ? drawerProd.title : ''}" deleted`);
     loadCogs(true);
   } else {
-    showToast('Erreur suppression : ' + (d.error || ''));
+    showToast('Delete error: ' + (d.error || ''));
   }
 }
 
@@ -1931,8 +1931,8 @@ async function savePrep() {
   const yieldQty  = parseFloat(document.getElementById('prep-yield-qty').value) || 1;
   const yieldUnit = (document.getElementById('prep-yield-unit').value.trim()) || 'portion';
   const notes     = document.getElementById('prep-notes').value.trim();
-  if (!name)                { showToast('Nom requis'); return; }
-  if (!prepIngredients.length) { showToast('Ajoutez au moins un ingrédient'); return; }
+  if (!name)                { showToast('Name required'); return; }
+  if (!prepIngredients.length) { showToast('Add at least one ingredient'); return; }
   const body = { name, ingredients: prepIngredients, yield_qty: yieldQty, yield_unit: yieldUnit, notes };
   const r = await fetch('/api/preparations', {
     method: 'POST',
@@ -1942,25 +1942,25 @@ async function savePrep() {
   const d = await r.json();
   if (d.ok) {
     closePrepDrawer();
-    showToast(`🍞 "${name}" enregistré · ${fmtP4(d.cost_per_unit)}/${yieldUnit}`);
+    showToast(`🍞 "${name}" saved · ${fmtP4(d.cost_per_unit)}/${yieldUnit}`);
     loadCogs(true);
   } else {
-    showToast('Erreur : ' + (d.error || 'inconnue'));
+    showToast('Error: ' + (d.error || 'unknown'));
   }
 }
 
 async function deletePrep(name) {
-  if (!confirm(`Supprimer la préparation "${name}" ?`)) return;
+  if (!confirm(`Delete preparation "${name}"?`)) return;
   let r = await fetch(`/api/preparations/${encodeURIComponent(name)}`, { method: 'DELETE' });
   let d = await r.json();
   if (r.status === 409 && d.error === 'used_in_recipes') {
     const list = (d.used_in || []).join(', ');
-    if (!confirm(`⚠ "${name}" est utilisée dans ${d.used_in.length} recette(s) :\n${list}\n\nSupprimer quand même ? Ces recettes afficheront "ingrédient inconnu" et leur COGS chutera.`)) return;
+    if (!confirm(`⚠ "${name}" is used in ${d.used_in.length} recipe(s):\n${list}\n\nDelete anyway? These recipes will show "unknown ingredient" and their COGS will drop.`)) return;
     r = await fetch(`/api/preparations/${encodeURIComponent(name)}?force=1`, { method: 'DELETE' });
     d = await r.json();
   }
-  if (d.ok) { showToast(`"${name}" supprimé`); loadCogs(true); }
-  else showToast('Erreur suppression : ' + (d.error || ''));
+  if (d.ok) { showToast(`"${name}" deleted`); loadCogs(true); }
+  else showToast('Delete error: ' + (d.error || ''));
 }
 
 // ══════════════════════════════════════════════════════════
