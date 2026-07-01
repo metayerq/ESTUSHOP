@@ -55,16 +55,24 @@ app = Flask(__name__)
 # ── Authentification ──────────────────────────────────────────────────────────
 # DASHBOARD_PASSWORD non défini → auth désactivée (dev local).
 # INVESTOR_PASSWORD (optionnel) → accès lecture seule (GET uniquement).
+# STAFF_PASSWORD    (optionnel) → accès limité à la page COGS (recettes).
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
 INVESTOR_PASSWORD  = os.environ.get("INVESTOR_PASSWORD", "")
+STAFF_PASSWORD     = os.environ.get("STAFF_PASSWORD", "")
 AUTH_SECRET        = os.environ.get("AUTH_SECRET", DASHBOARD_PASSWORD)
+
+# Chemins autorisés pour le rôle staff : COGS et ses APIs uniquement.
+STAFF_ALLOWED_PREFIXES = (
+    "/cogs", "/api/cogs", "/api/ingredients", "/api/preparations",
+    "/api/recipe", "/api/product", "/logout",
+)
 
 def _auth_token(role):
     return hmac.new(AUTH_SECRET.encode(), f"estushop-auth-v1:{role}".encode(),
                     hashlib.sha256).hexdigest()
 
 def _current_role():
-    """'admin', 'investor' ou None."""
+    """'admin', 'investor', 'staff' ou None."""
     cookie = request.cookies.get("estu_auth", "")
     if not cookie:
         return None
@@ -72,6 +80,8 @@ def _current_role():
         return "admin"
     if INVESTOR_PASSWORD and hmac.compare_digest(cookie, _auth_token("investor")):
         return "investor"
+    if STAFF_PASSWORD and hmac.compare_digest(cookie, _auth_token("staff")):
+        return "staff"
     return None
 
 @app.before_request
@@ -88,6 +98,11 @@ def _require_auth():
     # Investisseur : lecture seule — toute écriture est bloquée
     if role == "investor" and request.method not in ("GET", "HEAD"):
         return jsonify({"error": "lecture seule — accès investisseur"}), 403
+    # Staff : accès limité à la page COGS (recettes) et ses APIs
+    if role == "staff" and not request.path.startswith(STAFF_ALLOWED_PREFIXES):
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "accès réservé — recettes uniquement"}), 403
+        return redirect("/cogs")
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -99,8 +114,11 @@ def login():
             role = "admin"
         elif INVESTOR_PASSWORD and hmac.compare_digest(pw, INVESTOR_PASSWORD):
             role = "investor"
+        elif STAFF_PASSWORD and hmac.compare_digest(pw, STAFF_PASSWORD):
+            role = "staff"
         if role:
-            resp = make_response(redirect("/"))
+            dest = "/cogs" if role == "staff" else "/"
+            resp = make_response(redirect(dest))
             resp.set_cookie("estu_auth", _auth_token(role),
                             max_age=30*24*3600, httponly=True,
                             secure=True, samesite="Lax")
