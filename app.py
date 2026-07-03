@@ -61,10 +61,10 @@ INVESTOR_PASSWORD  = os.environ.get("INVESTOR_PASSWORD", "")
 STAFF_PASSWORD     = os.environ.get("STAFF_PASSWORD", "")
 AUTH_SECRET        = os.environ.get("AUTH_SECRET", DASHBOARD_PASSWORD)
 
-# Chemins autorisés pour le rôle staff : COGS et ses APIs uniquement.
+# Chemins autorisés pour le rôle staff : COGS et Stock (recettes + appro).
 STAFF_ALLOWED_PREFIXES = (
     "/cogs", "/api/cogs", "/api/ingredients", "/api/preparations",
-    "/api/recipe", "/api/product", "/logout",
+    "/api/recipe", "/api/product", "/stock", "/api/supplies", "/logout",
 )
 
 def _auth_token(role):
@@ -372,6 +372,51 @@ def cogs_page():
 @app.route("/charges")
 def charges_page():
     return render_template("charges.html")
+
+
+@app.route("/stock")
+def stock_page():
+    return render_template("stock.html")
+
+
+# ── Supplies / Stock CRUD ─────────────────────────────────────────────────────
+
+@app.route("/api/supplies", methods=["GET"])
+def api_supplies_get():
+    rows = _supa_get("supplies", {"order": "category.asc,name.asc"})
+    return jsonify(rows)
+
+@app.route("/api/supplies", methods=["POST"])
+def api_supplies_post():
+    data = request.get_json()
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "name required"}), 400
+    row = {
+        "name":     name,
+        "category": (data.get("category") or "").strip(),
+        "status":   data.get("status", "ok"),
+        "alert":    bool(data.get("alert", False)),
+        "notes":    (data.get("notes") or "").strip(),
+        "active":   data.get("active", True),
+    }
+    if data.get("id"):
+        row["id"] = data["id"]
+    ok, err = _supa_upsert("supplies", row)
+    return jsonify({"ok": ok, "error": err})
+
+@app.route("/api/supplies/<string:sid>", methods=["PATCH"])
+def api_supplies_patch(sid):
+    data = request.get_json() or {}
+    data["updated_at"] = datetime.now().isoformat()
+    r = _req.patch(f"{SUPA_URL}/rest/v1/supplies", json=data,
+                   headers=_supa_headers(), params={"id": f"eq.{sid}"})
+    return jsonify({"ok": r.ok})
+
+@app.route("/api/supplies/<string:sid>", methods=["DELETE"])
+def api_supplies_delete(sid):
+    ok = _supa_delete("supplies", "id", sid)
+    return jsonify({"ok": ok})
 
 
 # ── Charges fixes CRUD ────────────────────────────────────────────────────────
