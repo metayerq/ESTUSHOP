@@ -418,6 +418,60 @@ def api_supplies_delete(sid):
     ok = _supa_delete("supplies", "id", sid)
     return jsonify({"ok": ok})
 
+SUPPLIES_SEED = [
+    ("Coffee El Tambo","Coffee & tea"),("Coffee Guitare","Coffee & tea"),("Matcha","Coffee & tea"),
+    ("Cacao","Coffee & tea"),("Caxemira tea","Coffee & tea"),("Darjeeling tea","Coffee & tea"),
+    ("Toranja & manjericão tea","Coffee & tea"),("Houjicha tea","Coffee & tea"),
+    ("Vigor milk","Milk & dairy"),("Oat milk","Milk & dairy"),("Milk","Milk & dairy"),
+    ("Cream 35%","Milk & dairy"),("Greek yogurt","Milk & dairy"),("Cheese","Milk & dairy"),
+    ("Butter","Milk & dairy"),("Feta","Milk & dairy"),
+    ("Oranges","Fresh produce"),("Lemons","Fresh produce"),("Banana","Fresh produce"),
+    ("Blueberries","Fresh produce"),("Cherry","Fresh produce"),("Yuzu","Fresh produce"),
+    ("Verbena (verveine)","Fresh produce"),
+    ("Ham","Meat & fish"),("Bacon","Meat & fish"),("Anchovy","Meat & fish"),
+    ("Flour T55 National","Dry goods & baking"),("Flour Caputo T0","Dry goods & baking"),
+    ("Baking powder","Dry goods & baking"),("Baking soda","Dry goods & baking"),
+    ("Active dry yeast","Dry goods & baking"),("Egg","Dry goods & baking"),
+    ("Cornstarch (maizena)","Dry goods & baking"),("Sugar","Dry goods & baking"),
+    ("Brown sugar (Silver Spoon)","Dry goods & baking"),("Flor de Sal","Dry goods & baking"),
+    ("Honey","Dry goods & baking"),("Cardamom","Dry goods & baking"),("Cinnamon","Dry goods & baking"),
+    ("Oats","Dry goods & baking"),("Pecans","Dry goods & baking"),("Hazelnuts","Dry goods & baking"),
+    ("Pumpkin seeds","Dry goods & baking"),("Chocolate 70% Pantagruel","Dry goods & baking"),
+    ("Pollen","Dry goods & baking"),
+    ("Salt","Spices & condiments"),("Pepper","Spices & condiments"),("Paprika","Spices & condiments"),
+    ("Nutmeg","Spices & condiments"),("Dijon mustard","Spices & condiments"),
+    ("Olive oil","Spices & condiments"),("Sunflower oil","Spices & condiments"),("Vinegar","Spices & condiments"),
+    ("Sparkling water","Drinks"),
+    ("Coffee cup large","Packaging & takeaway"),("Coffee cup small","Packaging & takeaway"),
+    ("Plastic cup","Packaging & takeaway"),("Small square food box","Packaging & takeaway"),
+    ("Medium food box","Packaging & takeaway"),("Large food box","Packaging & takeaway"),
+    ("Takeaway paper bag","Packaging & takeaway"),("Napkins","Packaging & takeaway"),
+    ("Takeaway lid","Packaging & takeaway"),("Plastic takeaway lid","Packaging & takeaway"),
+    ("Straw","Packaging & takeaway"),("Stickers Estudantina","Packaging & takeaway"),
+    ("Validation date stickers","Packaging & takeaway"),
+    ("V60 filters size 02","Coffee equipment"),("Moccamaster filters size 04","Coffee equipment"),
+    ("Ethyl alcohol 70% (machine cleaning)","Coffee equipment"),("Puly Caff machine detergent","Coffee equipment"),
+    ("Baking paper","Kitchen wrap & storage"),("Cling film","Kitchen wrap & storage"),
+    ("Aluminium foil","Kitchen wrap & storage"),("Ziplock bag 3l","Kitchen wrap & storage"),
+    ("Ziplock bag 5l","Kitchen wrap & storage"),("Vacuum bag","Kitchen wrap & storage"),
+    ("Paper","Cleaning"),("Toilet paper","Cleaning"),("Hand tissue","Cleaning"),
+    ("Cleaning cream","Cleaning"),("Dishwasher detergent","Cleaning"),("Manual dishwashing liquid","Cleaning"),
+    ("Household vinegar","Cleaning"),("Floor cleaner","Cleaning"),("Trash bag 10l","Cleaning"),
+    ("Trash bag 30l","Cleaning"),("Trash bag 50l","Cleaning"),("Sponges","Cleaning"),
+    ("Cleaning gloves","Cleaning"),("Oven cleaner","Cleaning"),("Hand soap","Cleaning"),
+    ("WC gel","Cleaning"),("Window cleaner","Cleaning"),
+]
+
+@app.route("/api/supplies/seed", methods=["POST"])
+def api_supplies_seed():
+    """Charge la liste de départ (94 articles) — uniquement si la table est vide."""
+    existing = _supa_get("supplies")
+    if isinstance(existing, list) and existing:
+        return jsonify({"ok": False, "error": "already has items", "count": len(existing)}), 409
+    rows = [{"name": n, "category": c, "status": "ok"} for n, c in SUPPLIES_SEED]
+    ok, err = _supa_upsert("supplies", rows)   # bulk insert (PostgREST accepte un tableau)
+    return jsonify({"ok": ok, "error": err, "count": len(rows) if ok else 0})
+
 
 # ── Charges fixes CRUD ────────────────────────────────────────────────────────
 

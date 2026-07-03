@@ -207,8 +207,15 @@ function render(){
   if (q) list = list.filter(i => i.name.toLowerCase().includes(q) || (i.category||'').toLowerCase().includes(q));
 
   if (!list.length){
-    document.getElementById('list').innerHTML =
-      `<div class="empty">${tab==='order' ? '🎉 Nothing to order — all stocked up.' : 'No items.'}</div>`;
+    if (tab==='order'){
+      document.getElementById('list').innerHTML = `<div class="empty">🎉 Nothing to order — all stocked up.</div>`;
+    } else if (!active.length && !q){
+      document.getElementById('list').innerHTML =
+        `<div class="empty">No items yet.<br><br>
+         <button class="btn-primary" onclick="seedList()">Load starter list (94 items)</button></div>`;
+    } else {
+      document.getElementById('list').innerHTML = `<div class="empty">No items.</div>`;
+    }
     return;
   }
 
@@ -277,6 +284,14 @@ async function saveItem(){
   const d = await r.json();
   if(d.ok){ closeModal(); showToast(`"${name}" added`); loadStock(); }
   else showToast('Error: ' + (d.error||'unknown'));
+}
+
+async function seedList(){
+  showToast('Loading starter list…');
+  const r = await fetch('/api/supplies/seed', {method:'POST'});
+  const d = await r.json();
+  if(d.ok){ showToast(`✓ ${d.count} items loaded`); loadStock(); }
+  else showToast('Error: ' + (d.error || 'unknown'));
 }
 
 loadStock();
