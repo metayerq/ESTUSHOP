@@ -52,8 +52,15 @@
 .item-row:last-child { border-bottom:none; }
 .item-row.st-low { border-left-color:#e0a11a; }
 .item-row.st-out { border-left-color:var(--red); }
-.item-name { flex:1; font-size:14px; }
-.item-name .note { font-size:11px; color:var(--faint); margin-left:8px; }
+.item-name { flex:1; font-size:14px; min-width:120px; }
+.item-note { width:150px; font-family:inherit; font-size:12px; padding:5px 8px;
+  border:1px solid var(--border); border-radius:6px; background:var(--bg-page); color:var(--text); }
+.item-note:focus { border-color:var(--faint); background:var(--bg-card); outline:none; }
+.btn-restock { font-family:inherit; font-size:11px; font-weight:600; padding:5px 10px;
+  border:1px solid #1f7a44; border-radius:6px; background:#e7f5ec; color:#1f7a44; cursor:pointer; white-space:nowrap; }
+.btn-restock:hover { background:#d5edde; }
+.btn-restock-all { font-family:inherit; font-size:12px; font-weight:600; padding:8px 16px;
+  border:1px solid #1f7a44; border-radius:6px; background:#1f7a44; color:#fff; cursor:pointer; margin-bottom:16px; }
 .flag-star { cursor:pointer; font-size:15px; color:var(--faint); user-select:none; padding:0 4px; }
 .flag-star.on { color:#e0a11a; }
 
@@ -160,6 +167,8 @@
 <script>
 let items = [];
 let tab = 'all';
+const ROLE = "{{ role }}";
+const IS_ADMIN = ROLE === 'admin';
 
 const CAT_ORDER = [
   'Coffee & tea','Milk & dairy','Fresh produce','Meat & fish','Dry goods & baking',
@@ -228,19 +237,28 @@ function render(){
   });
 
   let html='';
+  if (tab==='order' && IS_ADMIN){
+    html += `<button class="btn-restock-all" onclick="restockAll()">✓ Mark all restocked</button>`;
+  }
   for (const c of cats){
     const rows = byCat[c].sort((a,b)=>a.name.localeCompare(b.name));
     html += `<div class="cat-group"><div class="cat-title">${c} · ${rows.length}</div><div class="cat-items">`;
     for (const i of rows){
+      const noteVal = (i.notes||'').replace(/"/g,'&quot;');
+      const esc = i.name.replace(/'/g,"\\'");
+      const restockBtn = (IS_ADMIN && needsOrder(i))
+        ? `<button class="btn-restock" title="Reset to OK after buying" onclick="restockItem('${i.id}')">✓ Bought</button>` : '';
       html += `<div class="item-row st-${i.status}">
         <span class="flag-star ${i.alert?'on':''}" title="Flag to order" onclick="toggleAlert('${i.id}')">${i.alert?'🚩':'⚑'}</span>
-        <span class="item-name">${i.name}${i.notes?`<span class="note">${i.notes}</span>`:''}</span>
+        <span class="item-name">${i.name}</span>
+        <input class="item-note" value="${noteVal}" placeholder="note / qty…" onchange="saveNote('${i.id}', this.value)">
         <div class="status-seg">
           <button class="status-btn ok ${i.status==='ok'?'active':''}"  onclick="setStatus('${i.id}','ok')">OK</button>
           <button class="status-btn low ${i.status==='low'?'active':''}" onclick="setStatus('${i.id}','low')">Low</button>
           <button class="status-btn out ${i.status==='out'?'active':''}" onclick="setStatus('${i.id}','out')">Out</button>
         </div>
-        <button class="item-del" onclick="delItem('${i.id}','${i.name.replace(/'/g,"\\'")}')">✕</button>
+        ${restockBtn}
+        <button class="item-del" onclick="delItem('${i.id}','${esc}')">✕</button>
       </div>`;
     }
     html += `</div></div>`;
@@ -258,6 +276,24 @@ async function toggleAlert(id){
   it.alert = !it.alert; render();
   await fetch(`/api/supplies/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({alert:it.alert})});
 }
+async function saveNote(id, val){
+  const it = items.find(x=>x.id===id); if(it) it.notes=val;
+  await fetch(`/api/supplies/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({notes:val})});
+}
+async function restockItem(id){
+  const it = items.find(x=>x.id===id); if(it){ it.status='ok'; it.alert=false; }
+  render();
+  await fetch(`/api/supplies/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status:'ok', alert:false})});
+}
+async function restockAll(){
+  const n = items.filter(needsOrder).length;
+  if(!confirm(`Reset ${n} item(s) back to OK? Do this after your shopping run.`)) return;
+  const r = await fetch('/api/supplies/restock-all', {method:'POST'});
+  const d = await r.json();
+  if(d.ok){ showToast(`✓ ${d.reset} items reset to OK`); loadStock(); }
+  else showToast('Error: ' + (d.error||'unknown'));
+}
+
 async function delItem(id, name){
   if(!confirm(`Delete "${name}" from the list?`)) return;
   const r = await fetch(`/api/supplies/${id}`, {method:'DELETE'});

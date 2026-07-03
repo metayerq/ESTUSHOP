@@ -374,9 +374,14 @@ def charges_page():
     return render_template("charges.html")
 
 
+def _is_admin():
+    """Admin réel (ou dev local sans mot de passe)."""
+    return not DASHBOARD_PASSWORD or _current_role() == "admin"
+
 @app.route("/stock")
 def stock_page():
-    return render_template("stock.html")
+    role = _current_role() or "admin"
+    return render_template("stock.html", role=role)
 
 
 # ── Supplies / Stock CRUD ─────────────────────────────────────────────────────
@@ -461,6 +466,24 @@ SUPPLIES_SEED = [
     ("Cleaning gloves","Cleaning"),("Oven cleaner","Cleaning"),("Hand soap","Cleaning"),
     ("WC gel","Cleaning"),("Window cleaner","Cleaning"),
 ]
+
+@app.route("/api/supplies/restock-all", methods=["POST"])
+def api_supplies_restock_all():
+    """Remet tous les articles à commander (low/out/flaggés) au niveau neutre.
+    Réservé admin — après une session d'achats."""
+    if not _is_admin():
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    rows = _supa_get("supplies")
+    n = 0
+    for r in rows if isinstance(rows, list) else []:
+        if r.get("status") in ("low", "out") or r.get("alert"):
+            _req.patch(f"{SUPA_URL}/rest/v1/supplies",
+                       json={"status": "ok", "alert": False,
+                             "updated_at": datetime.now().isoformat()},
+                       headers=_supa_headers(), params={"id": f"eq.{r['id']}"})
+            n += 1
+    return jsonify({"ok": True, "reset": n})
+
 
 @app.route("/api/supplies/seed", methods=["POST"])
 def api_supplies_seed():
