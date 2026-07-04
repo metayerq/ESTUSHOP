@@ -762,11 +762,17 @@ def _mix_from_merged(merged, catalog):
     Retail = Livres, Papeterie, café en sac et tout produit non catégorisé.
     Marge calculée sur les produits dont le coût est connu (couverture affichée)."""
     from vendus import DRINK_CAT_IDS, FOOD_CAT_IDS, VIENNOISERIE_CAT_IDS
+    # Viennoiseries achetées identifiées par NOM (leur catégorie Vendus varie —
+    # ex. rangées dans "Brunch" à côté des cookies/clafoutis maison).
+    VIENNOISERIE_NAMES = ("croissant", "pain au chocolat", "pain au choco")
     groups = {k: {"rev_ht": 0.0, "rev_ttc": 0.0, "cogs": 0.0, "covered": 0.0}
               for k in ("Boissons", "Food maison", "Viennoiseries", "Retail")}
     for name, s in merged.items():
-        cid = catalog.get(name, {}).get("category_id")
-        if cid in DRINK_CAT_IDS:            g = groups["Boissons"]
+        cid  = catalog.get(name, {}).get("category_id")
+        low  = name.lower()
+        if any(k in low for k in VIENNOISERIE_NAMES):
+            g = groups["Viennoiseries"]           # override par nom, prioritaire
+        elif cid in DRINK_CAT_IDS:          g = groups["Boissons"]
         elif cid in FOOD_CAT_IDS:           g = groups["Food maison"]
         elif cid in VIENNOISERIE_CAT_IDS:   g = groups["Viennoiseries"]
         else:                               g = groups["Retail"]
