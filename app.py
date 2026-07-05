@@ -47,7 +47,7 @@ SEUIL_TRANSACTIONS = 40
 
 def _heatmap_from_docs(docs):
     """CA par (jour de semaine × heure) — docs document-level, 28 derniers jours."""
-    hours = list(range(8, 18))
+    hours = list(range(8, 17))   # ouverture 8h30–16h
     grid  = {}   # (weekday, hour) -> ca
     for doc in docs:
         lt = doc.get("local_time") or ""
@@ -109,6 +109,29 @@ def _month_series(rows_month, cout_jour, fallback_rate, today_real):
             "cross_date": cross, "month_end": month_end.isoformat()}
 
 
+SEATS_TERRACE = 10
+SEATS_INSIDE  = 6
+SEATS_TOTAL   = SEATS_TERRACE + SEATS_INSIDE   # 16
+
+def _rush_concentration(docs):
+    """Part du CA réalisée sur les 3 heures les plus fortes (28 jours)."""
+    by_hour = {}
+    for d in docs:
+        lt = d.get("local_time") or ""
+        try:
+            h = int(lt[11:13])
+        except (ValueError, IndexError):
+            continue
+        by_hour[h] = by_hour.get(h, 0.0) + float(d.get("amount_gross", 0))
+    total = sum(by_hour.values())
+    if total <= 0:
+        return None
+    top = sorted(by_hour.items(), key=lambda x: -x[1])[:3]
+    return {"top_share": round(sum(v for _, v in top) / total * 100),
+            "hours": sorted(h for h, _ in top),
+            "peak_hour": max(by_hour, key=by_hour.get)}
+
+
 def _movers(cur_merged, prev_merged, min_rev=10.0, n=3):
     """Produits en plus forte hausse/baisse de CA semaine vs semaine."""
     changes = []
@@ -161,7 +184,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260705a"
+ASSET_VERSION = "20260705b"
 
 @app.context_processor
 def _inject_asset_version():
@@ -514,11 +537,32 @@ def api_data():
         # 6. Top movers : 7 derniers jours vs 7 précédents
         movers = _movers(merged_7d, _merge_products(prev))
 
+        # Articles par ticket + taux multi-articles (période sélectionnée)
+        total_units = sum(p["qty"] for p in merged_products.values())
+        total_tx    = sum(r.get("nb", 0) for r in period_rows)
+        up          = _upsell_from_rows(period_rows)
+        basket = {
+            "items_per_ticket": round(total_units / total_tx, 2) if total_tx else None,
+            "attach_pct":       up["rate"],
+        }
+
+        # CA par place assise (période) — 16 places (10 terrasse + 6 intérieur)
+        ca_ttc_p  = eco.get("ca_ttc") or 0
+        open_days = eco.get("open_days") or 1
+        seat = {
+            "seats": SEATS_TOTAL, "terrace": SEATS_TERRACE, "inside": SEATS_INSIDE,
+            "per_seat_day": round(ca_ttc_p / SEATS_TOTAL / open_days, 2) if ca_ttc_p else None,
+            "per_seat_period": round(ca_ttc_p / SEATS_TOTAL, 2) if ca_ttc_p else None,
+        }
+
         result["insights"] = {
             "today_gauge": {"ca": ts["ca"], "seuil": today_seuil},
             "heatmap":     _heatmap_from_docs(heatmap_docs) if heatmap_docs else None,
+            "rush":        _rush_concentration(heatmap_docs) if heatmap_docs else None,
             "month":       month,
             "movers":      movers,
+            "basket":      basket,
+            "seat":        seat,
         }
     except Exception as e:
         result["insights"] = None

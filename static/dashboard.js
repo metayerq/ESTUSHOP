@@ -560,10 +560,14 @@ function renderInsights(d) {
       }
     }
     html += `</div>`;
+    const rush = ins.rush;
+    const rushLine = rush
+      ? `<strong>${rush.top_share}%</strong> of revenue in the 3 busiest hours (${rush.hours.map(h => h + 'h').join(', ')})`
+      : 'darker = more revenue · hours 8–16';
     document.getElementById('ins-heatmap').innerHTML = `
       <div class="ins-label">Rush heatmap — revenue by hour (28 days)</div>
       ${html}
-      <div class="ins-sub">darker = more revenue · hours 8–17</div>`;
+      <div class="ins-sub">${rushLine}</div>`;
   } else {
     document.getElementById('ins-heatmap').innerHTML = `<div class="ins-label">Rush heatmap</div><div class="ins-sub">Not enough data yet.</div>`;
   }
@@ -624,16 +628,46 @@ function renderInsights(d) {
     const prime = (eco.cogs_ht + perso) / eco.ca_ht * 100;
     const pc = Math.min(100, Math.max(0, prime));
     const color = prime <= 67 ? 'var(--green)' : prime <= 75 ? '#b07d00' : 'var(--red)';
+    const cogsPct = eco.marge_brute_ht_pct != null ? (100 - eco.marge_brute_ht_pct) : (eco.cogs_ht / eco.ca_ht * 100);
+    const labPct  = perso / eco.ca_ht * 100;
+    const cCol = cogsPct <= 32 ? 'var(--green)' : cogsPct <= 38 ? '#b07d00' : 'var(--red)';
+    const lCol = labPct  <= 32 ? 'var(--green)' : labPct  <= 40 ? '#b07d00' : 'var(--red)';
     document.getElementById('ins-prime').innerHTML = `
       <div class="ins-label">Prime cost — COGS + labour (${d.period_label.toLowerCase()})</div>
       <div class="ins-big" style="color:${color}">${prime.toFixed(1)}%</div>
-      <div style="position:relative;height:8px;background:var(--bar-bg);border-radius:4px;margin-top:10px;">
-        <div style="position:absolute;left:55%;width:12%;height:8px;background:rgba(80,161,116,.35);"></div>
-        <div style="position:absolute;left:${pc}%;top:-3px;width:2px;height:14px;background:var(--text);"></div>
+      <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin-top:10px;background:var(--bar-bg);">
+        <div style="width:${Math.min(100,cogsPct)}%;background:rgba(55,53,47,.75);"></div>
+        <div style="width:${Math.min(100,labPct)}%;background:rgba(55,53,47,.35);"></div>
       </div>
-      <div class="ins-sub">COGS ${fmt(eco.cogs_ht)} + labour ${fmt(perso)} — target band 55–67%</div>`;
+      <div class="ins-sub">
+        <span style="color:${cCol}">COGS ${cogsPct.toFixed(0)}%</span> ·
+        <span style="color:${lCol}">Labour ${labPct.toFixed(0)}%</span>
+        <span style="color:var(--faint)"> — targets 28–32% each · prime &lt;65%</span>
+      </div>`;
   } else {
     document.getElementById('ins-prime').innerHTML = `<div class="ins-label">Prime cost</div><div class="ins-sub">Not measurable for this period.</div>`;
+  }
+
+  // 5b. Articles par ticket (attach)
+  const bk = ins.basket;
+  if (bk && bk.items_per_ticket != null) {
+    document.getElementById('ins-basket').innerHTML = `
+      <div class="ins-label">Items per ticket (${d.period_label.toLowerCase()})</div>
+      <div class="ins-big">${bk.items_per_ticket.toFixed(2)}</div>
+      <div class="ins-sub">${bk.attach_pct}% of tickets have 2+ items — the cheapest growth lever</div>`;
+  } else {
+    document.getElementById('ins-basket').innerHTML = `<div class="ins-label">Items per ticket</div><div class="ins-sub">Not enough data yet.</div>`;
+  }
+
+  // 7. CA par place assise
+  const st = ins.seat;
+  if (st && st.per_seat_day != null) {
+    document.getElementById('ins-seat').innerHTML = `
+      <div class="ins-label">Revenue per seat / open day</div>
+      <div class="ins-big">${fmt(st.per_seat_day)}</div>
+      <div class="ins-sub">${st.seats} seats (${st.terrace} terrace + ${st.inside} inside) · ${fmt(st.per_seat_period)}/seat over the period</div>`;
+  } else {
+    document.getElementById('ins-seat').innerHTML = `<div class="ins-label">Revenue per seat</div><div class="ins-sub">Not enough data yet.</div>`;
   }
 
   // 6. Top movers semaine vs semaine
