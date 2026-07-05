@@ -515,10 +515,12 @@ function hideTxTooltip() {
 const WD_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
 function renderInsights(d) {
-  const ins = d.insights;
+  const ins  = d.insights;
   const grid = document.getElementById('insights-grid');
-  if (!ins) { grid.style.display = 'none'; return; }
-  grid.style.display = '';
+  const lbl  = document.getElementById('insights-label');
+  if (!ins) { grid.classList.remove('on'); if (lbl) lbl.style.display = 'none'; return; }
+  grid.classList.add('on');
+  if (lbl) lbl.style.display = '';
 
   // 1. Jauge du jour vs break-even
   const g = ins.today_gauge || {};
@@ -528,9 +530,9 @@ function renderInsights(d) {
     const barColor = done ? 'var(--green)' : (pct >= 70 ? '#b07d00' : 'var(--red)');
     document.getElementById('ins-gauge').innerHTML = `
       <div class="ins-label">Today vs break-even (live)</div>
-      <div class="ins-big">${fmt(g.ca)} <span style="font-size:13px;color:var(--muted);font-weight:400">/ ${fmt(g.seuil)}</span></div>
-      <div style="height:10px;background:var(--bar-bg);border-radius:5px;margin-top:10px;overflow:hidden;">
-        <div style="width:${pct}%;height:10px;background:${barColor};border-radius:5px;"></div>
+      <div class="ins-big">${fmt(g.ca)} <span style="font-size:12px;color:var(--muted);font-weight:400">/ ${fmt(g.seuil)}</span></div>
+      <div style="height:8px;background:var(--bar-bg);border-radius:4px;margin-top:10px;overflow:hidden;">
+        <div style="width:${pct}%;height:8px;background:${barColor};border-radius:4px;"></div>
       </div>
       <div class="ins-sub">${done
         ? `<span style="color:var(--green)">Break-even reached ✓ · +${fmt(g.ca - g.seuil)}</span>`
@@ -541,85 +543,14 @@ function renderInsights(d) {
       <div class="ins-sub">Break-even not measurable yet today.</div>`;
   }
 
-  // 2+3. Mois : cumul EBITDA + projection / calendrier break-even
-  const m = ins.month;
-  if (m && m.days && m.days.length) {
-    const opens = m.days.filter(x => x.open);
-    const pts   = opens.map(x => x.cum);
-    const allVals = pts.concat([m.proj_end, 0]);
-    const lo = Math.min(...allVals), hi = Math.max(...allVals);
-    const W = 260, H = 70, span = (hi - lo) || 1;
-    const y = v => 6 + (H - 12) * (1 - (v - lo) / span);
-    const n = opens.length;
-    const x = i => n > 1 ? (i / (n - 1)) * (W * 0.72) : 0;
-    let path = pts.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-    const projPath = `M${x(n - 1).toFixed(1)},${y(pts[n - 1]).toFixed(1)} L${W - 4},${y(m.proj_end).toFixed(1)}`;
-    const projColor = m.proj_end >= 0 ? 'var(--green)' : 'var(--red)';
-    document.getElementById('ins-month').innerHTML = `
-      <div class="ins-label">Month EBITDA — cumulative + projection</div>
-      <svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;">
-        <line x1="0" y1="${y(0)}" x2="${W}" y2="${y(0)}" stroke="var(--border)" stroke-width="1"/>
-        <path d="${path}" fill="none" stroke="rgba(55,53,47,.85)" stroke-width="2"/>
-        <path d="${projPath}" fill="none" stroke="rgba(55,53,47,.45)" stroke-width="2" stroke-dasharray="4 4"/>
-        <text x="4" y="${y(0) - 4}" font-size="10" fill="var(--faint)">€0</text>
-      </svg>
-      <div class="ins-sub">
-        MTD <strong style="color:${m.cum_now >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.cum_now)}</strong>
-        · projected <strong style="color:${projColor}">${fmt(m.proj_end)}</strong> by month end
-        ${m.cross_date ? ` · crossed €0 on ${new Date(m.cross_date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short'})}` : ''}
-      </div>`;
-
-    // Calendrier break-even
-    const first = new Date(m.days[0].date + 'T12:00:00');
-    const lead  = (first.getDay() + 6) % 7;   // lundi = 0
-    let cal = WD_SHORT.map(w => `<div class="hm-lbl">${w[0]}</div>`).join('');
-    for (let i = 0; i < lead; i++) cal += `<div></div>`;
-    for (const day of m.days) {
-      const dt = new Date(day.date + 'T12:00:00');
-      let bg = 'var(--bg-page)', color = 'var(--faint)';
-      if (day.open && day.ebitda != null) {
-        bg = day.ebitda >= 0 ? 'rgba(80,161,116,.25)' : 'rgba(196,85,77,.22)';
-        color = 'var(--text)';
-      }
-      cal += `<div class="cal-cell" style="background:${bg};color:${color};" title="${day.date}${day.ebitda != null ? ' · ' + fmt(day.ebitda) : ''}">${dt.getDate()}</div>`;
-    }
-    const greens = opens.filter(x => x.ebitda >= 0).length;
-    document.getElementById('ins-calendar').innerHTML = `
-      <div class="ins-label">Break-even calendar</div>
-      <div class="cal-grid">${cal}</div>
-      <div class="ins-sub">${greens}/${opens.length} open days above break-even</div>`;
-  } else {
-    document.getElementById('ins-month').innerHTML = `<div class="ins-label">Month EBITDA</div><div class="ins-sub">Not enough data yet.</div>`;
-    document.getElementById('ins-calendar').innerHTML = `<div class="ins-label">Break-even calendar</div><div class="ins-sub">Not enough data yet.</div>`;
-  }
-
-  // 4. Prime cost (période sélectionnée)
-  const eco = d.economics || {};
-  const perso = eco.cout_perso_periode ?? eco.cout_perso_jour;
-  if (eco.ca_ht > 0 && eco.cogs_ht != null && perso != null) {
-    const prime = (eco.cogs_ht + perso) / eco.ca_ht * 100;
-    const pc = Math.min(100, Math.max(0, prime));
-    const color = prime <= 67 ? 'var(--green)' : prime <= 75 ? '#b07d00' : 'var(--red)';
-    document.getElementById('ins-prime').innerHTML = `
-      <div class="ins-label">Prime cost — COGS + labour (${d.period_label.toLowerCase()})</div>
-      <div class="ins-big" style="color:${color}">${prime.toFixed(1)}%</div>
-      <div style="position:relative;height:10px;background:var(--bar-bg);border-radius:5px;margin-top:10px;">
-        <div style="position:absolute;left:55%;width:12%;height:10px;background:rgba(80,161,116,.35);"></div>
-        <div style="position:absolute;left:${pc}%;top:-3px;width:2px;height:16px;background:var(--text);"></div>
-      </div>
-      <div class="ins-sub">COGS ${fmt(eco.cogs_ht)} + labour ${fmt(perso)} ÷ revenue ${fmt(eco.ca_ht)} — target band 55–67%</div>`;
-  } else {
-    document.getElementById('ins-prime').innerHTML = `<div class="ins-label">Prime cost</div><div class="ins-sub">Not measurable for this period.</div>`;
-  }
-
-  // 5. Heatmap heure × jour (28 derniers jours)
+  // 2. Heatmap heure × jour (28 derniers jours)
   const hm = ins.heatmap;
   if (hm && hm.cells && hm.cells.length) {
     const byKey = {};
     for (const c of hm.cells) byKey[c.d + '_' + c.h] = c.v;
     const daysWithData = [...new Set(hm.cells.map(c => c.d))].sort();
-    let html = `<div class="hm-grid" style="grid-template-columns:44px repeat(${hm.hours.length},1fr);">`;
-    html += `<div></div>` + hm.hours.map(h => `<div class="hm-lbl">${h}h</div>`).join('');
+    let html = `<div class="hm-grid" style="grid-template-columns:34px repeat(${hm.hours.length},1fr);">`;
+    html += `<div></div>` + hm.hours.map(h => `<div class="hm-lbl">${h}</div>`).join('');
     for (const wd of daysWithData) {
       html += `<div class="hm-lbl">${WD_SHORT[wd]}</div>`;
       for (const h of hm.hours) {
@@ -630,31 +561,96 @@ function renderInsights(d) {
     }
     html += `</div>`;
     document.getElementById('ins-heatmap').innerHTML = `
-      <div class="ins-label">Rush heatmap — revenue by hour × weekday (last 28 days)</div>
+      <div class="ins-label">Rush heatmap — revenue by hour (28 days)</div>
       ${html}
-      <div class="ins-sub">darker = more revenue — plan staffing on facts</div>`;
+      <div class="ins-sub">darker = more revenue · hours 8–17</div>`;
   } else {
     document.getElementById('ins-heatmap').innerHTML = `<div class="ins-label">Rush heatmap</div><div class="ins-sub">Not enough data yet.</div>`;
+  }
+
+  // 3+4. Mois : cumul EBITDA + projection / calendrier break-even
+  const m = ins.month;
+  if (m && m.days && m.days.length) {
+    const opens = m.days.filter(x => x.open);
+    const pts   = opens.map(x => x.cum);
+    const allVals = pts.concat([m.proj_end, 0]);
+    const lo = Math.min(...allVals), hi = Math.max(...allVals);
+    const W = 600, H = 100, span = (hi - lo) || 1;
+    const y = v => 8 + (H - 16) * (1 - (v - lo) / span);
+    const n = opens.length;
+    const x = i => n > 1 ? (i / (n - 1)) * (W * 0.72) : 0;
+    const path = pts.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    const projPath = `M${x(n - 1).toFixed(1)},${y(pts[n - 1]).toFixed(1)} L${W - 4},${y(m.proj_end).toFixed(1)}`;
+    document.getElementById('ins-month').innerHTML = `
+      <div class="ins-label">Month EBITDA — cumulative + projection</div>
+      <svg class="ins-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+        <line x1="0" y1="${y(0).toFixed(1)}" x2="${W}" y2="${y(0).toFixed(1)}" stroke="var(--border)" stroke-width="1.5"/>
+        <path d="${path}" fill="none" stroke="rgba(55,53,47,.85)" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+        <path d="${projPath}" fill="none" stroke="rgba(55,53,47,.4)" stroke-width="2.5" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>
+      </svg>
+      <div class="ins-sub">
+        MTD <strong style="color:${m.cum_now >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.cum_now)}</strong>
+        · projected <strong style="color:${m.proj_end >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.proj_end)}</strong> by month end
+        ${m.cross_date ? ` · crossed €0 on ${new Date(m.cross_date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short'})}` : ''}
+      </div>`;
+
+    const first = new Date(m.days[0].date + 'T12:00:00');
+    const lead  = (first.getDay() + 6) % 7;
+    let cal = WD_SHORT.map(w => `<div class="hm-lbl">${w[0]}</div>`).join('');
+    for (let i = 0; i < lead; i++) cal += `<div></div>`;
+    for (const day of m.days) {
+      const dt = new Date(day.date + 'T12:00:00');
+      let bg = 'var(--bg-page)', color = 'var(--faint)';
+      if (day.open && day.ebitda != null) {
+        bg = day.ebitda >= 0 ? 'rgba(80,161,116,.28)' : 'rgba(196,85,77,.24)';
+        color = 'var(--text)';
+      }
+      cal += `<div class="cal-cell" style="background:${bg};color:${color};" title="${day.date}${day.ebitda != null ? ' · ' + fmt(day.ebitda) : ''}">${dt.getDate()}</div>`;
+    }
+    const greens = opens.filter(x => x.ebitda >= 0).length;
+    document.getElementById('ins-calendar').innerHTML = `
+      <div class="ins-label">Break-even calendar</div>
+      <div class="cal-grid">${cal}</div>
+      <div class="ins-sub">green = above break-even · ${greens}/${opens.length} open days</div>`;
+  } else {
+    document.getElementById('ins-month').innerHTML = `<div class="ins-label">Month EBITDA</div><div class="ins-sub">Not enough data yet.</div>`;
+    document.getElementById('ins-calendar').innerHTML = `<div class="ins-label">Break-even calendar</div><div class="ins-sub">Not enough data yet.</div>`;
+  }
+
+  // 5. Prime cost (période sélectionnée)
+  const eco = d.economics || {};
+  const perso = eco.cout_perso_periode ?? eco.cout_perso_jour;
+  if (eco.ca_ht > 0 && eco.cogs_ht != null && perso != null) {
+    const prime = (eco.cogs_ht + perso) / eco.ca_ht * 100;
+    const pc = Math.min(100, Math.max(0, prime));
+    const color = prime <= 67 ? 'var(--green)' : prime <= 75 ? '#b07d00' : 'var(--red)';
+    document.getElementById('ins-prime').innerHTML = `
+      <div class="ins-label">Prime cost — COGS + labour (${d.period_label.toLowerCase()})</div>
+      <div class="ins-big" style="color:${color}">${prime.toFixed(1)}%</div>
+      <div style="position:relative;height:8px;background:var(--bar-bg);border-radius:4px;margin-top:10px;">
+        <div style="position:absolute;left:55%;width:12%;height:8px;background:rgba(80,161,116,.35);"></div>
+        <div style="position:absolute;left:${pc}%;top:-3px;width:2px;height:14px;background:var(--text);"></div>
+      </div>
+      <div class="ins-sub">COGS ${fmt(eco.cogs_ht)} + labour ${fmt(perso)} — target band 55–67%</div>`;
+  } else {
+    document.getElementById('ins-prime').innerHTML = `<div class="ins-label">Prime cost</div><div class="ins-sub">Not measurable for this period.</div>`;
   }
 
   // 6. Top movers semaine vs semaine
   const mv = ins.movers || {};
   const rowHtml = (c, up) => `
     <div class="mv-row">
-      <span>${c.name}</span>
-      <span style="color:${up ? 'var(--green)' : 'var(--red)'};font-weight:500;">
+      <span class="mv-name">${c.name}</span>
+      <span style="color:${up ? 'var(--green)' : 'var(--red)'};font-weight:500;white-space:nowrap;">
         ${c.pct == null ? 'new' : (up ? '▲ +' : '▼ ') + c.pct + '%'}
-        <span style="color:var(--faint);font-weight:400;"> · ${fmt(c.cur)}</span>
+        <span style="color:var(--faint);font-weight:400;">· ${fmt(c.cur)}</span>
       </span>
     </div>`;
-  const ups = (mv.up || []).map(c => rowHtml(c, true)).join('');
-  const downs = (mv.down || []).map(c => rowHtml(c, false)).join('');
+  const rowsHtml = (mv.up || []).map(c => rowHtml(c, true)).join('')
+                 + (mv.down || []).map(c => rowHtml(c, false)).join('');
   document.getElementById('ins-movers').innerHTML = `
     <div class="ins-label">Top movers — last 7 days vs previous 7</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 24px;">
-      <div>${ups || '<div class="ins-sub">No risers</div>'}</div>
-      <div>${downs || '<div class="ins-sub">No fallers</div>'}</div>
-    </div>`;
+    ${rowsHtml || '<div class="ins-sub">Not enough history yet.</div>'}`;
 }
 
 // ── Graphe horaire ─────────────────────────────────────────────────────────

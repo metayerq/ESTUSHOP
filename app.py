@@ -158,6 +158,14 @@ PRESET_LABELS = {
 # seul le jour courant est détaillé en live via l'API Vendus.
 
 app = Flask(__name__)
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
+
+# Version des assets — bump à chaque changement de dashboard.js/style.css
+ASSET_VERSION = "20260705a"
+
+@app.context_processor
+def _inject_asset_version():
+    return {"v": ASSET_VERSION}
 
 
 # ── Authentification ──────────────────────────────────────────────────────────
@@ -478,38 +486,43 @@ def api_data():
     result["warnings"] = warnings
 
     # ── Insights visuels (indépendants du preset sélectionné) ─────────────────
-    eco = result["economics"]
-    fallback_rate = (eco.get("marge_brute_ht_pct") or 70) / 100.0
-    cout_jour     = eco.get("cout_jour") or 0
+    # Jamais bloquant : une erreur ici ne doit pas casser le dashboard.
+    try:
+        eco = result["economics"]
+        fallback_rate = (eco.get("marge_brute_ht_pct") or 70) / 100.0
+        cout_jour     = eco.get("cout_jour") or 0
 
-    # 1. Jauge du jour vs seuil
-    if is_today_single:
-        today_seuil = eco.get("seuil_ca_ttc")
-    else:
-        eco_today = daily_economics(today_docs or [], catalog, 1,
-                                    from_date=today_real, to_date=today_real,
-                                    cogs_agg=(today_sum["cogs_ht"], today_sum["covered_ht"],
-                                              today_sum["items_ht"]))
-        today_seuil = eco_today.get("seuil_ca_ttc")
+        # 1. Jauge du jour vs seuil
+        if is_today_single:
+            today_seuil = eco.get("seuil_ca_ttc")
+        else:
+            eco_today = daily_economics(today_docs or [], catalog, 1,
+                                        from_date=today_real, to_date=today_real,
+                                        cogs_agg=(today_sum["cogs_ht"], today_sum["covered_ht"],
+                                                  today_sum["items_ht"]))
+            today_seuil = eco_today.get("seuil_ca_ttc")
 
-    # 3+4. Série EBITDA du mois (cumul, projection, calendrier)
-    month_start = today_real.replace(day=1)
-    rows_month  = _ensure_summaries(month_start, today_real - timedelta(1), catalog) \
-                  if month_start < today_real else []
-    if ts["nb"]:
-        rows_month = rows_month + [{"day": today_iso, **today_sum}]
-    month = _month_series(rows_month, cout_jour, fallback_rate, today_real) \
-            if cout_jour else None
+        # 3+4. Série EBITDA du mois (cumul, projection, calendrier)
+        month_start = today_real.replace(day=1)
+        rows_month  = _ensure_summaries(month_start, today_real - timedelta(1), catalog) \
+                      if month_start < today_real else []
+        if ts["nb"]:
+            rows_month = rows_month + [{"day": today_iso, **today_sum}]
+        month = _month_series(rows_month, cout_jour, fallback_rate, today_real) \
+                if cout_jour else None
 
-    # 6. Top movers : 7 derniers jours vs 7 précédents
-    movers = _movers(merged_7d, _merge_products(prev))
+        # 6. Top movers : 7 derniers jours vs 7 précédents
+        movers = _movers(merged_7d, _merge_products(prev))
 
-    result["insights"] = {
-        "today_gauge": {"ca": ts["ca"], "seuil": today_seuil},
-        "heatmap":     _heatmap_from_docs(heatmap_docs) if heatmap_docs else None,
-        "month":       month,
-        "movers":      movers,
-    }
+        result["insights"] = {
+            "today_gauge": {"ca": ts["ca"], "seuil": today_seuil},
+            "heatmap":     _heatmap_from_docs(heatmap_docs) if heatmap_docs else None,
+            "month":       month,
+            "movers":      movers,
+        }
+    except Exception as e:
+        result["insights"] = None
+        warnings.append(f"Insights unavailable ({type(e).__name__})")
 
     # ── Produits et mix — depuis les agrégats fusionnés ───────────────────────
     result["products"] = _products_list(merged_products, catalog, n=10)
