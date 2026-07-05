@@ -1,10 +1,26 @@
 """Vendus API helpers."""
 
 import os
+import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
+
+# ── Micro-cache TTL (survit tant que l'instance serverless est chaude) ───────
+_TTL_CACHE = {}
+
+def _ttl_get(key, ttl, loader, cacheable=lambda v: bool(v)):
+    """Retourne la valeur en cache si fraîche, sinon recharge.
+    Les échecs (valeur non `cacheable`) ne sont jamais mis en cache."""
+    hit = _TTL_CACHE.get(key)
+    now = time.time()
+    if hit and now - hit[0] < ttl:
+        return hit[1]
+    val = loader()
+    if cacheable(val):
+        _TTL_CACHE[key] = (now, val)
+    return val
 
 API_KEY   = os.environ.get("VENDUS_API_KEY", "")
 BASE_URL  = "https://www.vendus.pt/ws/v1.1"
@@ -13,10 +29,13 @@ SUPA_URL  = os.environ.get("SUPABASE_URL", "")
 SUPA_KEY  = os.environ.get("SUPABASE_KEY", "")
 
 def _supa_get_economics(table, params=None):
-    """Lecture Supabase légère pour les calculs economics (indépendant de app.py)."""
-    h = {"apikey": SUPA_KEY, "Authorization": f"Bearer {SUPA_KEY}"}
-    r = requests.get(f"{SUPA_URL}/rest/v1/{table}", headers=h, params=params or {})
-    return r.json() if r.ok else []
+    """Lecture Supabase légère pour les calculs economics (indépendant de app.py).
+    Micro-cache 60s : les charges/employés changent rarement."""
+    def _load():
+        h = {"apikey": SUPA_KEY, "Authorization": f"Bearer {SUPA_KEY}"}
+        r = requests.get(f"{SUPA_URL}/rest/v1/{table}", headers=h, params=params or {})
+        return r.json() if r.ok else []
+    return _ttl_get(("eco", table, str(params)), 60, _load)
 
 PAYMENT_LABELS = {
     "NU":      "Cash",
@@ -160,7 +179,12 @@ def get_register_movements(since: str, until: str):
 
 
 def get_balance():
-    """Retourne le solde caisse, ou None si l'API échoue (≠ 0 = vraie valeur)."""
+    """Retourne le solde caisse, ou None si l'API échoue (≠ 0 = vraie valeur).
+    Micro-cache 60s."""
+    return _ttl_get("balance", 60, _fetch_balance, cacheable=lambda v: v is not None)
+
+
+def _fetch_balance():
     try:
         data = vendus("/registers/balance/")
         if isinstance(data, list) and data:
@@ -250,18 +274,22 @@ def payment_breakdown(docs):
 
 
 def get_catalog():
-    """Retourne tous les produits actifs avec coût (toutes pages)."""
+    """Retourne tous les produits actifs avec coût. Micro-cache 3 min."""
+    return _ttl_get("catalog", 180, _fetch_catalog)
+
+
+def _fetch_catalog():
     try:
         all_products = []
         page = 1
         while True:
-            batch = vendus("/products/", {"page": page})
+            batch = vendus("/products/", {"page": page, "per_page": 200})
             if not isinstance(batch, list):
                 batch = batch.get("products", batch.get("data", []))
             if not batch:
                 break
             all_products.extend(batch)
-            if len(batch) < 20:
+            if len(batch) < 200:
                 break
             page += 1
 

@@ -9,6 +9,7 @@ Usage:
 
 import os
 import hmac
+import time
 import hashlib
 from datetime import date, timedelta, datetime
 from concurrent.futures import ThreadPoolExecutor
@@ -17,11 +18,27 @@ from flask import Flask, jsonify, render_template, request, redirect, make_respo
 from vendus import (
     get_documents, get_documents_with_items, get_balance, get_catalog,
     calc_stats, hourly_breakdown, payment_breakdown, top_products, recent_docs,
-    weekly_sparkline, rush_detector, unsold_today, product_stats_from_docs,
+    rush_detector, unsold_today, product_stats_from_docs,
     tva_breakdown, service_tempo, upsell_rate, category_mix, ticket_median,
-    best_weekday, wow_growth, daily_economics, cumulative_curve, ticket_distribution,
+    daily_economics, cumulative_curve, ticket_distribution,
     daily_breakdown,
 )
+
+# ── Micro-cache des docs du jour (45s) ────────────────────────────────────────
+# Les items du jour coûtent ~1 appel Vendus par ticket ; on les partage entre
+# toutes les vues pendant 45s. Le bouton ↻ du dashboard force le refresh.
+_TODAY_DOCS_CACHE = {"ts": 0.0, "day": None, "docs": None}
+_TODAY_TTL = 45
+
+def _get_today_docs_cached(force=False):
+    today_iso = date.today().isoformat()
+    c = _TODAY_DOCS_CACHE
+    if (not force and c["docs"] is not None and c["day"] == today_iso
+            and time.time() - c["ts"] < _TODAY_TTL):
+        return c["docs"]
+    docs = get_documents_with_items(today_iso, today_iso)
+    c.update(ts=time.time(), day=today_iso, docs=docs)
+    return docs
 
 SEUIL_TRANSACTIONS = 40
 
@@ -181,19 +198,25 @@ def api_data():
     comp_from = comp_to   - timedelta(n_days - 1)
 
     # ── Stratégie de chargement ──────────────────────────────────────────────
-    # Jour unique : items en live (peu de tickets).
-    # Multi-jours : documents légers (1-2 appels) + cache daily_summary pour
-    # les agrégats item-level des jours passés ; seul aujourd'hui est détaillé.
+    # Aujourd'hui : items live avec micro-cache 45s (partagé entre les vues).
+    # Jour passé unique : items live (peu de tickets).
+    # Multi-jours : documents légers + cache daily_summary pour les jours passés.
+    # Sparkline / WoW / meilleur jour : dérivés du cache — zéro appel Vendus.
+    is_today_single = is_single and from_date == today_real
+    force_fresh     = request.args.get("fresh") == "1"
+
     def _load_docs_main():
+        if is_today_single:
+            return _get_today_docs_cached(force=force_fresh)
         if is_single:
             return get_documents_with_items(from_date.isoformat(), to_date.isoformat())
         return get_documents(from_date.isoformat(), to_date.isoformat())
 
-    def _load_today_items():
-        """Items du jour courant (si inclus dans une période multi-jours)."""
-        if not is_single and from_date <= today_real <= to_date:
-            return get_documents_with_items(today_real.isoformat(), today_real.isoformat())
-        return []
+    def _load_today_docs():
+        """Docs du jour (micro-cache) — pour le live des périodes et la sparkline."""
+        if is_today_single:
+            return None   # déjà chargés par docs_main
+        return _get_today_docs_cached(force=force_fresh)
 
     def _load_comp():
         try:
@@ -202,15 +225,12 @@ def api_data():
             return None   # échec ≠ zéro vente
 
     # Appels indépendants en parallèle avec le fetch principal
-    with ThreadPoolExecutor(max_workers=7) as pool:
+    with ThreadPoolExecutor(max_workers=5) as pool:
         fut_docs    = pool.submit(_load_docs_main)
-        fut_today   = pool.submit(_load_today_items)
+        fut_today   = pool.submit(_load_today_docs)
         fut_comp    = pool.submit(_load_comp)
         fut_balance = pool.submit(get_balance)
         fut_catalog = pool.submit(get_catalog)
-        fut_week    = pool.submit(weekly_sparkline, 7)
-        fut_wow     = pool.submit(wow_growth)
-        fut_weekday = pool.submit(best_weekday)
 
         try:
             docs_main = fut_docs.result(timeout=55)
@@ -222,33 +242,31 @@ def api_data():
         try:
             today_docs = fut_today.result(timeout=30)
         except Exception:
-            today_docs = []
-            warnings.append("Détail du jour indisponible — COGS du jour estimé")
+            today_docs = None
+            warnings.append("Today's detail unavailable — today's COGS estimated")
+        if is_today_single:
+            today_docs = docs_main
 
         docs_comp = fut_comp.result(timeout=5)
         if docs_comp is None:
-            warnings.append("Comparaison période précédente indisponible")
+            warnings.append("Previous-period comparison unavailable")
             docs_comp = []
 
         balance = fut_balance.result(timeout=5)
         if balance is None:
-            warnings.append("Solde caisse indisponible (API Vendus)")
+            warnings.append("Cash balance unavailable (Vendus API)")
 
         catalog = fut_catalog.result(timeout=10) or {}
         if not catalog:
-            warnings.append("Catalogue produits indisponible — marges et COGS non calculés")
+            warnings.append("Product catalog unavailable — margins and COGS not computed")
 
-        week_data = fut_week.result(timeout=5)
-        if week_data is None:
-            warnings.append("Historique 7 jours indisponible")
-            week_data = []
-
-        wow_data     = fut_wow.result(timeout=5)
-        weekday_data = fut_weekday.result(timeout=5)
+    today_iso = today_real.isoformat()
+    today_sum = _summarize_docs_items(today_docs or [], catalog)
+    ts        = calc_stats(today_docs or [])   # CA/nb du jour — sparkline & WoW
 
     # ── Agrégats item-level : cache pour les jours passés + live aujourd'hui ──
     if is_single:
-        day_summary = _summarize_docs_items(docs_main, catalog)
+        day_summary = today_sum if is_today_single else _summarize_docs_items(docs_main, catalog)
         # Cache opportuniste : une journée passée consultée = summary persisté
         if to_date < today_real and catalog:
             _upsert_summary(to_date.isoformat(), day_summary)
@@ -256,9 +274,8 @@ def api_data():
     else:
         past_to     = min(to_date, today_real - timedelta(1))
         period_rows = _ensure_summaries(from_date, past_to, catalog) if from_date <= past_to else []
-        if today_docs:
-            period_rows = period_rows + [{"day": today_real.isoformat(),
-                                          **_summarize_docs_items(today_docs, catalog)}]
+        if today_docs and from_date <= today_real <= to_date:
+            period_rows = period_rows + [{"day": today_iso, **today_sum}]
 
     cogs_agg = (
         round(sum(r.get("cogs_ht",    0) for r in period_rows), 2),
@@ -267,12 +284,55 @@ def api_data():
     )
     merged_products = _merge_products(period_rows)
 
-    # Produits 7 jours glissants : summaries des 6 derniers jours + aujourd'hui
-    rows_7d = _ensure_summaries(today_real - timedelta(6), today_real - timedelta(1), catalog)
-    today_row_7d = ([{"day": today_real.isoformat(),
-                      **(_summarize_docs_items(docs_main if (is_single and to_date == today_real) else today_docs, catalog))}]
-                    if (is_single and to_date == today_real) or today_docs else [])
-    merged_7d = _merge_products(rows_7d + today_row_7d)
+    # ── Séries dérivées du cache daily_summary (zéro appel Vendus) ───────────
+    rows_14 = _ensure_summaries(today_real - timedelta(13), today_real - timedelta(1), catalog)
+    iso_7   = (today_real - timedelta(6)).isoformat()
+    rows_7d = [r for r in rows_14 if r["day"] >= iso_7]
+
+    today_has_data = bool(today_docs)
+    merged_7d = _merge_products(rows_7d + ([{"day": today_iso, **today_sum}] if today_has_data else []))
+
+    # Sparkline 7 derniers jours
+    week_data = []
+    for i in range(7):
+        d7  = today_real - timedelta(days=6 - i)
+        iso = d7.isoformat()
+        if d7 == today_real:
+            ca, nb = ts["ca"], ts["nb"]
+        else:
+            row = next((r for r in rows_7d if r["day"] == iso), None)
+            ca, nb = (float(row["ca_ttc"]), row["nb"]) if row else (0.0, 0)
+        week_data.append({"date": iso, "label": d7.strftime("%a"), "ca": round(ca, 2), "nb": nb})
+
+    # Croissance 7 jours vs 7 jours précédents
+    cur_ca  = round(sum(float(r["ca_ttc"]) for r in rows_7d) + ts["ca"], 2)
+    cur_nb  = sum(r["nb"] for r in rows_7d) + ts["nb"]
+    prev    = [r for r in rows_14 if r["day"] < iso_7]
+    prev_ca = round(sum(float(r["ca_ttc"]) for r in prev), 2)
+    prev_nb = sum(r["nb"] for r in prev)
+    wow_data = {
+        "cur_ca": cur_ca, "prev_ca": prev_ca, "cur_nb": cur_nb, "prev_nb": prev_nb,
+        "growth_ca": round((cur_ca - prev_ca) / prev_ca * 100) if prev_ca else None,
+        "growth_nb": round((cur_nb - prev_nb) / prev_nb * 100) if prev_nb else None,
+    }
+
+    # Meilleur jour de la semaine — historique complet depuis le cache
+    older = _get_summaries("2026-05-27", (today_real - timedelta(14)).isoformat())
+    wd_rows = (older if isinstance(older, list) else []) + rows_14
+    if ts["nb"]:
+        wd_rows = wd_rows + [{"day": today_iso, "ca_ttc": ts["ca"], "nb": ts["nb"]}]
+    by_wd = {}
+    for r in wd_rows:
+        if (r.get("nb") or 0) <= 0:
+            continue
+        wd  = date.fromisoformat(r["day"]).strftime("%A")
+        acc = by_wd.setdefault(wd, {"ca": 0.0, "n": 0})
+        acc["ca"] += float(r.get("ca_ttc") or 0)
+        acc["n"]  += 1
+    weekday_data = sorted(
+        [{"day": wd, "avg_ca": round(v["ca"] / v["n"], 2), "n_days": v["n"]}
+         for wd, v in by_wd.items()],
+        key=lambda x: -x["avg_ca"]) or None
 
     result = {
         # Méta
@@ -315,7 +375,7 @@ def api_data():
                                            from_date=from_date, to_date=to_date,
                                            cogs_agg=cogs_agg)
     if result["economics"].get("charges_source") == "indisponible":
-        warnings.append("Charges Supabase injoignables — charges et seuil non calculés")
+        warnings.append("Supabase costs unreachable — costs and break-even not computed")
     result["warnings"] = warnings
 
     # ── Produits et mix — depuis les agrégats fusionnés ───────────────────────

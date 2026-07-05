@@ -40,14 +40,26 @@ function fmtDate(iso) {
   });
 }
 
-// ── Chargement ────────────────────────────────────────────────────────────────
-async function loadData() {
+// ── Chargement (stale-while-revalidate) ──────────────────────────────────────
+// Affiche instantanément les dernières données connues (localStorage), puis
+// rafraîchit en arrière-plan. force=true (bouton ↻) bypasse les caches serveur.
+async function loadData(force = false) {
+  const preset = currentPreset;
+  const cacheKey = 'estu_data_' + preset;
+  if (!force) {
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) render(JSON.parse(cached));
+    } catch(e) {}
+  }
   try {
-    const r = await fetch('/api/data?preset=' + currentPreset);
+    const r = await fetch('/api/data?preset=' + preset + (force ? '&fresh=1' : ''));
     if (!r.ok) throw new Error(await r.text());
     const d = await r.json();
     if (d.error) throw new Error(d.error);
+    if (preset !== currentPreset) return;   // l'utilisateur a changé de vue entre-temps
     render(d);
+    try { localStorage.setItem(cacheKey, JSON.stringify(d)); } catch(e) {}
     document.getElementById('error-banner').style.display = 'none';
   } catch(e) {
     document.getElementById('error-msg').textContent = e.message;
