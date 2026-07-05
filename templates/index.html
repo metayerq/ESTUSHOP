@@ -33,6 +33,27 @@
 .wow-strip .wow-item { display:flex; align-items:center; gap:6px; }
 .wow-strip .wow-sep  { color:var(--faint); margin:0 10px; }
 
+/* ── Insights cards ── */
+.ins-card {
+  border:1px solid var(--border); border-radius:8px;
+  background:var(--bg-card); padding:16px 20px;
+}
+.ins-label {
+  font-size:10px; font-weight:600; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--muted); margin-bottom:10px;
+}
+.ins-big { font-size:22px; font-weight:600; letter-spacing:-.4px; }
+.ins-sub { font-size:12px; color:var(--muted); margin-top:6px; }
+.hm-grid { display:grid; gap:3px; }
+.hm-cell { height:18px; border-radius:3px; background:var(--bar-bg); }
+.hm-lbl  { font-size:10px; color:var(--faint); display:flex; align-items:center; justify-content:center; }
+.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-top:4px; }
+.cal-cell { height:22px; border-radius:5px; font-size:10px; display:flex; align-items:center;
+  justify-content:center; color:var(--faint); background:var(--bg-page); }
+.mv-row { display:flex; justify-content:space-between; font-size:13px; padding:4px 0;
+  border-bottom:1px solid var(--border); }
+.mv-row:last-child { border-bottom:none; }
+
 /* ── Product tab toggle ── */
 .prod-tabs { display:flex; gap:0; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
 .prod-tab  {
@@ -135,6 +156,17 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- Insights visuels -->
+  <div class="section-label">Insights</div>
+  <div id="insights-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:32px;">
+    <div class="ins-card" id="ins-gauge"></div>
+    <div class="ins-card" id="ins-month"></div>
+    <div class="ins-card" id="ins-calendar"></div>
+    <div class="ins-card" id="ins-prime"></div>
+    <div class="ins-card" id="ins-heatmap" style="grid-column:1/3;"></div>
+    <div class="ins-card" id="ins-movers" style="grid-column:1/3;"></div>
   </div>
 
   <!-- Sparkline 7j + strip WoW fusionné -->

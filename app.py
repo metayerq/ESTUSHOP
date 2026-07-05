@@ -42,6 +42,97 @@ def _get_today_docs_cached(force=False):
 
 SEUIL_TRANSACTIONS = 40
 
+
+# ── Insights helpers (visuels dashboard) ─────────────────────────────────────
+
+def _heatmap_from_docs(docs):
+    """CA par (jour de semaine × heure) — docs document-level, 28 derniers jours."""
+    hours = list(range(8, 18))
+    grid  = {}   # (weekday, hour) -> ca
+    for doc in docs:
+        lt = doc.get("local_time") or ""
+        try:
+            day = date.fromisoformat(lt[:10])
+            h   = int(lt[11:13])
+        except (ValueError, IndexError):
+            continue
+        if h not in hours:
+            continue
+        key = (day.weekday(), h)
+        grid[key] = grid.get(key, 0.0) + float(doc.get("amount_gross", 0))
+    cells = [{"d": d, "h": h, "v": round(grid[(d, h)], 2)}
+             for d in range(7) for h in hours if grid.get((d, h))]
+    return {"hours": hours, "cells": cells,
+            "max": max((c["v"] for c in cells), default=0)}
+
+
+def _day_margin(row, fallback_rate):
+    """Marge brute HT d'une journée depuis son summary (taux réel du jour)."""
+    ca_ht   = float(row.get("ca_ht") or 0)
+    covered = float(row.get("covered_ht") or 0)
+    cogs    = float(row.get("cogs_ht") or 0)
+    if covered > 0:
+        return ca_ht * (covered - cogs) / covered
+    return ca_ht * fallback_rate
+
+
+def _month_series(rows_month, cout_jour, fallback_rate, today_real):
+    """Série EBITDA/jour du mois + cumul + projection fin de mois."""
+    import calendar as _cal
+    from config import count_open_days_raw
+    month_start = today_real.replace(day=1)
+    month_end   = date(today_real.year, today_real.month,
+                       _cal.monthrange(today_real.year, today_real.month)[1])
+    by_day = {r["day"]: r for r in rows_month}
+    days, cum, cross = [], 0.0, None
+    cur = month_start
+    while cur <= today_real:
+        iso  = cur.isoformat()
+        row  = by_day.get(iso)
+        is_open = count_open_days_raw(cur, cur) == 1 or bool(row and (row.get("nb") or 0) > 0)
+        if is_open:
+            ebitda = round(_day_margin(row or {}, fallback_rate) - cout_jour, 2)
+            was_negative = cum < 0
+            cum += ebitda
+            if cross is None and was_negative and cum >= 0:
+                cross = iso   # jour où le mois passe dans le vert
+        else:
+            ebitda = None
+        days.append({"date": iso, "ebitda": ebitda, "cum": round(cum, 2), "open": is_open})
+        cur += timedelta(1)
+    # Projection : moyenne des 7 derniers jours ouvrés × jours ouvrés restants
+    opened = [d["ebitda"] for d in days if d["ebitda"] is not None]
+    avg7   = sum(opened[-7:]) / len(opened[-7:]) if opened else 0
+    remaining = count_open_days_raw(today_real + timedelta(1), month_end)
+    proj = round(cum + avg7 * remaining, 2)
+    return {"days": days, "cum_now": round(cum, 2), "proj_end": proj,
+            "cross_date": cross, "month_end": month_end.isoformat()}
+
+
+def _movers(cur_merged, prev_merged, min_rev=10.0, n=3):
+    """Produits en plus forte hausse/baisse de CA semaine vs semaine."""
+    changes = []
+    for name in set(cur_merged) | set(prev_merged):
+        if name.lower().startswith("vendas"):   # artefacts de saisie groupée
+            continue
+        cur  = float(cur_merged.get(name, {}).get("rev_ttc", 0))
+        prev = float(prev_merged.get(name, {}).get("rev_ttc", 0))
+        if max(cur, prev) < min_rev:
+            continue
+        if prev > 0:
+            pct = round((cur - prev) / prev * 100)
+        elif cur > 0:
+            pct = None   # nouveau produit (pas de base de comparaison)
+        else:
+            continue
+        changes.append({"name": name, "cur": round(cur, 2), "prev": round(prev, 2), "pct": pct})
+    ups   = sorted([c for c in changes if c["pct"] is None or c["pct"] > 0],
+                   key=lambda c: -(c["pct"] if c["pct"] is not None else 999))[:n]
+    downs = sorted([c for c in changes if c["pct"] is not None and c["pct"] < 0],
+                   key=lambda c: c["pct"])[:n]
+    return {"up": ups, "down": downs}
+
+
 # ── Presets de période ────────────────────────────────────────────────────────
 def _week_start(d):
     """Lundi de la semaine en cours."""
@@ -224,12 +315,21 @@ def api_data():
         except Exception:
             return None   # échec ≠ zéro vente
 
+    def _load_heatmap_docs():
+        """28 derniers jours, document-level (léger) — pour la heatmap horaire."""
+        try:
+            return get_documents((today_real - timedelta(27)).isoformat(),
+                                 today_real.isoformat())
+        except Exception:
+            return None
+
     # Appels indépendants en parallèle avec le fetch principal
     with ThreadPoolExecutor(max_workers=5) as pool:
         fut_docs    = pool.submit(_load_docs_main)
         fut_today   = pool.submit(_load_today_docs)
         fut_comp    = pool.submit(_load_comp)
         fut_catalog = pool.submit(get_catalog)
+        fut_hm      = pool.submit(_load_heatmap_docs)
 
         try:
             docs_main = fut_docs.result(timeout=55)
@@ -254,6 +354,11 @@ def api_data():
         catalog = fut_catalog.result(timeout=10) or {}
         if not catalog:
             warnings.append("Product catalog unavailable — margins and COGS not computed")
+
+        try:
+            heatmap_docs = fut_hm.result(timeout=15)
+        except Exception:
+            heatmap_docs = None
 
     today_iso = today_real.isoformat()
     today_sum = _summarize_docs_items(today_docs or [], catalog)
@@ -371,6 +476,40 @@ def api_data():
     if result["economics"].get("charges_source") == "indisponible":
         warnings.append("Supabase costs unreachable — costs and break-even not computed")
     result["warnings"] = warnings
+
+    # ── Insights visuels (indépendants du preset sélectionné) ─────────────────
+    eco = result["economics"]
+    fallback_rate = (eco.get("marge_brute_ht_pct") or 70) / 100.0
+    cout_jour     = eco.get("cout_jour") or 0
+
+    # 1. Jauge du jour vs seuil
+    if is_today_single:
+        today_seuil = eco.get("seuil_ca_ttc")
+    else:
+        eco_today = daily_economics(today_docs or [], catalog, 1,
+                                    from_date=today_real, to_date=today_real,
+                                    cogs_agg=(today_sum["cogs_ht"], today_sum["covered_ht"],
+                                              today_sum["items_ht"]))
+        today_seuil = eco_today.get("seuil_ca_ttc")
+
+    # 3+4. Série EBITDA du mois (cumul, projection, calendrier)
+    month_start = today_real.replace(day=1)
+    rows_month  = _ensure_summaries(month_start, today_real - timedelta(1), catalog) \
+                  if month_start < today_real else []
+    if ts["nb"]:
+        rows_month = rows_month + [{"day": today_iso, **today_sum}]
+    month = _month_series(rows_month, cout_jour, fallback_rate, today_real) \
+            if cout_jour else None
+
+    # 6. Top movers : 7 derniers jours vs 7 précédents
+    movers = _movers(merged_7d, _merge_products(prev))
+
+    result["insights"] = {
+        "today_gauge": {"ca": ts["ca"], "seuil": today_seuil},
+        "heatmap":     _heatmap_from_docs(heatmap_docs) if heatmap_docs else None,
+        "month":       month,
+        "movers":      movers,
+    }
 
     # ── Produits et mix — depuis les agrégats fusionnés ───────────────────────
     result["products"] = _products_list(merged_products, catalog, n=10)
