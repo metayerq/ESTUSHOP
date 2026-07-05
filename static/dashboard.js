@@ -122,7 +122,7 @@ function render(d) {
   document.getElementById('kpi-ticket').textContent     = fmt(d.today.ticket);
   document.getElementById('kpi-ticket-delta').innerHTML = delta(d.today.ticket, d.yesterday.ticket, compLabel)
     + (d.today.ticket_ht ? `<span style="color:var(--faint)"> · ${fmt(d.today.ticket_ht)} excl. VAT</span>` : '');
-  document.getElementById('kpi-balance').textContent    = d.balance != null ? fmt(d.balance) : '—';
+  document.getElementById('kpi-median').textContent     = d.median != null ? fmt(d.median) : '—';
 
   // Seuil transactions — proportionnel aux jours ouvrés de la période
   const openDaysTx = (d.economics && d.economics.open_days) || 1;
@@ -133,19 +133,6 @@ function render(d) {
     ? `Break-even: ${d.seuil} tx/day`
     : `Break-even: ${seuilTarget} tx (${d.seuil}/day × ${openDaysTx} open days)`;
 
-  // Tempo service (jour unique seulement)
-  const tempoCell = document.getElementById('kpi-tempo-cell');
-  if (d.is_single_day && d.tempo && d.tempo.avg_gap_min != null) {
-    tempoCell.style.display = '';
-    const gap = d.tempo.avg_gap_min;
-    document.getElementById('kpi-tempo').textContent = gap < 1
-      ? `${Math.round(gap * 60)}s/tx`
-      : `${gap}min/tx`;
-    document.getElementById('kpi-tempo-sub').textContent =
-      `${d.tempo.tx_per_hour} tx/h · peak ${d.tempo.busiest}`;
-  } else {
-    tempoCell.style.display = 'none';
-  }
 
   // ── Économie ──────────────────────────────────────────────────────────────
   // Labels dynamiques selon la période

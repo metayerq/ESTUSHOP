@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from flask import Flask, jsonify, render_template, request, redirect, make_response
 from vendus import (
-    get_documents, get_documents_with_items, get_balance, get_catalog,
+    get_documents, get_documents_with_items, get_catalog,
     calc_stats, hourly_breakdown, payment_breakdown, top_products, recent_docs,
     rush_detector, unsold_today, product_stats_from_docs,
     tva_breakdown, service_tempo, upsell_rate, category_mix, ticket_median,
@@ -229,7 +229,6 @@ def api_data():
         fut_docs    = pool.submit(_load_docs_main)
         fut_today   = pool.submit(_load_today_docs)
         fut_comp    = pool.submit(_load_comp)
-        fut_balance = pool.submit(get_balance)
         fut_catalog = pool.submit(get_catalog)
 
         try:
@@ -251,10 +250,6 @@ def api_data():
         if docs_comp is None:
             warnings.append("Previous-period comparison unavailable")
             docs_comp = []
-
-        balance = fut_balance.result(timeout=5)
-        if balance is None:
-            warnings.append("Cash balance unavailable (Vendus API)")
 
         catalog = fut_catalog.result(timeout=10) or {}
         if not catalog:
@@ -349,7 +344,6 @@ def api_data():
         # Stats globales
         "today":         calc_stats(docs_main),
         "yesterday":     calc_stats(docs_comp),
-        "balance":       balance,
         "seuil":         SEUIL_TRANSACTIONS,
         # Graphe temporel
         "daily":         daily_breakdown(docs_main),
