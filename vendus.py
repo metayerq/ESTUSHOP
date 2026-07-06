@@ -282,11 +282,30 @@ def get_categories():
 
 def _fetch_categories():
     try:
-        raw = vendus("/categories/", {"per_page": 200})
-        if not isinstance(raw, list):
-            raw = raw.get("categories", raw.get("data", []))
-        return {str(c["id"]): c.get("title", str(c["id"])) for c in raw}
-    except Exception:
+        all_cats = []
+        page = 1
+        while True:
+            batch = vendus("/categories/", {"page": page, "per_page": 200})
+            if not isinstance(batch, list):
+                batch = batch.get("categories", batch.get("data", batch.get("items", [])))
+            if not batch:
+                break
+            all_cats.extend(batch)
+            if len(batch) < 200:
+                break
+            page += 1
+        result = {}
+        for c in all_cats:
+            cid = c.get("id")
+            if cid is None:
+                continue
+            name = c.get("title") or c.get("name") or c.get("description") or str(cid)
+            result[str(cid)] = name
+        if not result:
+            print(f"[vendus] _fetch_categories: 0 catégorie résolue, raw sample={all_cats[:2]!r}")
+        return result
+    except Exception as e:
+        print(f"[vendus] _fetch_categories a échoué: {type(e).__name__}: {e}")
         return {}
 
 

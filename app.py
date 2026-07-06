@@ -1179,6 +1179,18 @@ CATEGORY_ORDER = [
 TAX_RATES = {"NOR": 0.23, "INT": 0.13, "RED": 0.06}
 
 
+@app.route("/api/debug/categories")
+def api_debug_categories():
+    """Diagnostic admin : catégories live Vendus + le groupe de mix résolu
+    pour chacune. Sert à vérifier/ajuster _group_for_category sans avoir
+    besoin de la clé API en dehors de l'app."""
+    if not _is_admin():
+        return jsonify({"error": "admin only"}), 403
+    cats = get_categories()
+    rows = [{"id": cid, "name": name, "mix_group": _group_for_category(name)}
+            for cid, name in sorted(cats.items(), key=lambda x: x[1])]
+    return jsonify({"count": len(rows), "categories": rows})
+
 
 @app.route("/api/cogs")
 def api_cogs():
