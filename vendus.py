@@ -273,6 +273,23 @@ def payment_breakdown(docs):
     }
 
 
+def get_categories():
+    """Retourne les catégories réelles du compte Vendus ({id: title}).
+    Micro-cache 3 min — source de vérité, remplace tout mapping codé en dur
+    (les IDs changent si une catégorie est supprimée/recréée côté Vendus)."""
+    return _ttl_get("categories", 180, _fetch_categories)
+
+
+def _fetch_categories():
+    try:
+        raw = vendus("/categories/", {"per_page": 200})
+        if not isinstance(raw, list):
+            raw = raw.get("categories", raw.get("data", []))
+        return {str(c["id"]): c.get("title", str(c["id"])) for c in raw}
+    except Exception:
+        return {}
+
+
 def get_catalog():
     """Retourne tous les produits actifs avec coût. Micro-cache 3 min."""
     return _ttl_get("catalog", 180, _fetch_catalog)

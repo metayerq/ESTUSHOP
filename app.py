@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from flask import Flask, jsonify, render_template, request, redirect, make_response
 from vendus import (
-    get_documents, get_documents_with_items, get_catalog,
+    get_documents, get_documents_with_items, get_catalog, get_categories,
     calc_stats, hourly_breakdown, payment_breakdown, top_products, recent_docs,
     rush_detector, unsold_today, product_stats_from_docs,
     tva_breakdown, service_tempo, upsell_rate, category_mix, ticket_median,
@@ -184,7 +184,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260705b"
+ASSET_VERSION = "20260705c"
 
 @app.context_processor
 def _inject_asset_version():
@@ -1129,7 +1129,11 @@ def calc_recipe_cogs(ingredients, ingr_lib, prep_lib=None):
 
     return round(total, 4), breakdown
 
-CATEGORY_NAMES = {
+# Fallback si l'API Vendus est injoignable — ne pas utiliser comme source de
+# vérité. Les vraies catégories (et leurs ids) sont lues en direct via
+# get_categories() : un id supprimé/recréé côté Vendus casse ce mapping figé
+# (erreur P005 à la création de produit), d'où la résolution dynamique.
+CATEGORY_NAMES_FALLBACK = {
     "343052000": "Espresso",
     "343053226": "Iced drinks",
     "343046110": "Matcha & Tea",
@@ -1167,6 +1171,12 @@ def api_cogs():
     ingr_lib = _load_ingredients()
     prep_lib = _load_preparations()
 
+    # Catégories réelles depuis Vendus (source de vérité) ; fallback si l'API
+    # est injoignable. Ne jamais mélanger les deux : un id supprimé côté
+    # Vendus doit disparaître des noms, pas persister via le fallback.
+    live_categories = get_categories()
+    category_names  = live_categories if live_categories else CATEGORY_NAMES_FALLBACK
+
     products = []
     for p in raw:
         title     = p.get("title", "")
@@ -1193,7 +1203,7 @@ def api_cogs():
             "id":           p.get("id"),
             "title":        title,
             "category_id":  cat_id,
-            "category":     CATEGORY_NAMES.get(cat_id, cat_id),
+            "category":     category_names.get(cat_id, cat_id),
             "tax_rate":     int(rate * 100),
             "price_ttc":    price_ttc,
             "price_ht":     price_ht,
@@ -1206,7 +1216,14 @@ def api_cogs():
             "has_recipe":   has_recipe,
         })
 
-    order_map = {cat: i for i, cat in enumerate(CATEGORY_ORDER)}
+    # Ordre d'affichage : ids connus dans l'ordre habituel, puis les catégories
+    # live restantes (nouvelles/renommées) triées par nom, en fin de liste.
+    known_ids   = [c for c in CATEGORY_ORDER if c in category_names]
+    extra_ids   = sorted((c for c in category_names if c not in known_ids),
+                         key=lambda c: category_names[c])
+    category_order = known_ids + extra_ids
+
+    order_map = {cat: i for i, cat in enumerate(category_order)}
     products.sort(key=lambda p: (order_map.get(p["category_id"], 99), p["title"]))
     preps = _load_preparations()
     ingr_lib2 = ingr_lib  # déjà chargé
@@ -1220,8 +1237,8 @@ def api_cogs():
             "cost_per_unit": round(total / yq, 4) if yq else 0,
             "notes":       p.get("notes", ""),
         }
-    return jsonify({"products": products, "category_order": CATEGORY_ORDER,
-                    "category_names": CATEGORY_NAMES, "preparations": prep_summary})
+    return jsonify({"products": products, "category_order": category_order,
+                    "category_names": category_names, "preparations": prep_summary})
 
 
 @app.route("/api/ingredients", methods=["GET"])
