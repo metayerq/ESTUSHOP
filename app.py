@@ -184,7 +184,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260705c"
+ASSET_VERSION = "20260705d"
 
 @app.context_processor
 def _inject_asset_version():
@@ -1006,26 +1006,46 @@ def _upsell_from_rows(rows):
     return {"rate": round(multi / total * 100) if total else 0,
             "multi": multi, "single": total - multi, "total": total}
 
+# Mots-clés de nom de catégorie → groupe du mix. Résolu par NOM (pas par id) :
+# les ids Vendus changent dès qu'une catégorie est supprimée/recréée ou que
+# les catégories sont réorganisées (ex. fusion de toute la nourriture en une
+# seule catégorie "FOOD"). Ordre = du plus spécifique au plus générique.
+_MIX_KEYWORDS = [
+    ("Retail",        ("retail", "livre", "book", "papeterie", "paper", "stationery")),
+    ("Viennoiseries",  ("viennoiserie", "pastry bought", "boulangerie")),
+    ("Food maison",   ("food", "pâtisserie", "patisserie", "brunch", "sandwich",
+                        "granola", "extra", "snack")),
+    ("Boissons",      ("boisson", "drink", "coffee", "café", "espresso", "tea",
+                        "thé", "matcha", "cold", "iced", "filter", "filtre")),
+]
+
+def _group_for_category(cat_name):
+    low = (cat_name or "").strip().lower()
+    for label, keywords in _MIX_KEYWORDS:
+        if any(k in low for k in keywords):
+            return label
+    return "Retail"   # non catégorisé / catégorie inconnue
+
+
 def _mix_from_merged(merged, catalog):
     """Mix CA + rentabilité par groupe (Boissons / Food maison / Viennoiseries / Retail).
     Viennoiseries (achetées) séparées du Food maison — marges très différentes.
     Retail = Livres, Papeterie, café en sac et tout produit non catégorisé.
+    Groupe résolu par NOM de catégorie Vendus (voir _group_for_category) —
+    robuste aux changements de catégories, contrairement à un mapping par id.
     Marge calculée sur les produits dont le coût est connu (couverture affichée)."""
-    from vendus import DRINK_CAT_IDS, FOOD_CAT_IDS, VIENNOISERIE_CAT_IDS
-    # Viennoiseries achetées identifiées par NOM (leur catégorie Vendus varie —
-    # ex. rangées dans "Brunch" à côté des cookies/clafoutis maison).
+    # Viennoiseries achetées identifiées par NOM DE PRODUIT (prioritaire sur la
+    # catégorie — ex. rangées dans "FOOD" à côté des cookies/clafoutis maison).
     VIENNOISERIE_NAMES = ("croissant", "pain au chocolat", "pain au choco")
     groups = {k: {"rev_ht": 0.0, "rev_ttc": 0.0, "cogs": 0.0, "covered": 0.0}
               for k in ("Boissons", "Food maison", "Viennoiseries", "Retail")}
     for name, s in merged.items():
-        cid  = catalog.get(name, {}).get("category_id")
+        cat_name = catalog.get(name, {}).get("category_name")
         low  = name.lower()
         if any(k in low for k in VIENNOISERIE_NAMES):
-            g = groups["Viennoiseries"]           # override par nom, prioritaire
-        elif cid in DRINK_CAT_IDS:          g = groups["Boissons"]
-        elif cid in FOOD_CAT_IDS:           g = groups["Food maison"]
-        elif cid in VIENNOISERIE_CAT_IDS:   g = groups["Viennoiseries"]
-        else:                               g = groups["Retail"]
+            g = groups["Viennoiseries"]           # override par nom de produit, prioritaire
+        else:
+            g = groups[_group_for_category(cat_name)]
         g["rev_ht"]  += s["rev_ht"]
         g["rev_ttc"] += s["rev_ttc"]
         cost = catalog.get(name, {}).get("cost")

@@ -310,6 +310,8 @@ def _fetch_catalog():
                 break
             page += 1
 
+        cat_names = get_categories()   # {id: title} — noms réels, jamais figés
+
         result = {}
         for p in all_products:
             if p.get("status") != "on":
@@ -317,14 +319,16 @@ def _fetch_catalog():
             gross  = float(p.get("gross_price", 0))
             supply = float(p.get("supply_price", 0))
             margin_pct = round((gross - supply) / gross * 100, 1) if gross and supply else None
+            cat_id = p.get("category_id")
             result[p["title"].strip()] = {
-                "id":          p["id"],
-                "name":        p["title"],
-                "category":    p.get("class_name", ""),
-                "category_id": p.get("category_id"),
-                "price":       gross,
-                "cost":        supply,
-                "margin_pct":  margin_pct,
+                "id":            p["id"],
+                "name":          p["title"],
+                "category":      p.get("class_name", ""),
+                "category_id":   cat_id,
+                "category_name": cat_names.get(str(cat_id), ""),
+                "price":         gross,
+                "cost":          supply,
+                "margin_pct":    margin_pct,
             }
         return result
     except Exception:
