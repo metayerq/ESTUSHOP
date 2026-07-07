@@ -196,22 +196,31 @@ select.field-input { cursor:pointer; }
   opacity:0; transition:opacity .2s, transform .2s;
 }
 .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* ── App nav (barre d'onglets partagée) ── */
+.app-nav { display:flex; gap:4px; margin-bottom:28px; border-bottom:1px solid var(--border); }
+.app-nav-item {
+  display:flex; align-items:center; gap:8px; padding:11px 18px;
+  font-size:13px; font-weight:500; color:var(--muted); text-decoration:none;
+  border-radius:8px 8px 0 0; border:1px solid transparent; border-bottom:none;
+  margin-bottom:-1px; white-space:nowrap;
+}
+.app-nav-item svg { width:16px; height:16px; flex-shrink:0; }
+.app-nav-item:hover { color:var(--text); background:var(--bg-hover); }
+.app-nav-item.active { color:var(--text); background:var(--bg-card); border-color:var(--border); font-weight:600; }
+@media (max-width:760px) { .app-nav { overflow-x:auto; } .app-nav-item span { display:none; } .app-nav-item { padding:11px 13px; } }
+
 </style>
 </head>
 <body>
 <div class="page">
 
-  <!-- Nav -->
-  <div class="page-nav">
-    <a href="/">← Dashboard</a>
-    <span class="sep">/</span>
-    <a href="/cogs">COGS</a>
-    <span class="sep">/</span>
-    <a href="/stock">Stock</a>
-    <span class="sep">/</span>
-    <span style="color:var(--text);font-weight:500;">Costs</span>
-    <span class="sep">/</span>
-    <a href="/expenses">Expenses</a>
+  <div class="app-nav">
+    <a href="/" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg><span>Dashboard</span></a>
+    <a href="/cogs" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"/></svg><span>COGS</span></a>
+    <a href="/stock" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5-9 4.5-9-4.5Z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg><span>Stock</span></a>
+    <a href="/charges" class="app-nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1" fill="currentColor" stroke="none"/></svg><span>Costs</span></a>
+    <a href="/expenses" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 9h20L12 3Z"/><path d="M4 9v10M9 9v10M15 9v10M20 9v10"/><path d="M2.5 21.5h19"/></svg><span>Expenses</span></a>
   </div>
 
   <!-- Header -->

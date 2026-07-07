@@ -89,21 +89,31 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
   background:var(--text); color:#fff; padding:10px 18px; border-radius:8px; font-size:13px;
   opacity:0; transition:all .25s; z-index:200; }
 .toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
+
+/* ── App nav (barre d'onglets partagée) ── */
+.app-nav { display:flex; gap:4px; margin-bottom:28px; border-bottom:1px solid var(--border); }
+.app-nav-item {
+  display:flex; align-items:center; gap:8px; padding:11px 18px;
+  font-size:13px; font-weight:500; color:var(--muted); text-decoration:none;
+  border-radius:8px 8px 0 0; border:1px solid transparent; border-bottom:none;
+  margin-bottom:-1px; white-space:nowrap;
+}
+.app-nav-item svg { width:16px; height:16px; flex-shrink:0; }
+.app-nav-item:hover { color:var(--text); background:var(--bg-hover); }
+.app-nav-item.active { color:var(--text); background:var(--bg-card); border-color:var(--border); font-weight:600; }
+@media (max-width:760px) { .app-nav { overflow-x:auto; } .app-nav-item span { display:none; } .app-nav-item { padding:11px 13px; } }
+
 </style>
 </head>
 <body>
 <div class="page">
 
-  <div class="page-nav">
-    <a href="/">← Dashboard</a>
-    <span class="sep">/</span>
-    <a href="/cogs">COGS</a>
-    <span class="sep">/</span>
-    <a href="/stock">Stock</a>
-    <span class="sep">/</span>
-    <a href="/charges">Costs</a>
-    <span class="sep">/</span>
-    <span style="color:var(--text);font-weight:500;">Expenses</span>
+  <div class="app-nav">
+    <a href="/" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg><span>Dashboard</span></a>
+    <a href="/cogs" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"/></svg><span>COGS</span></a>
+    <a href="/stock" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5-9 4.5-9-4.5Z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg><span>Stock</span></a>
+    <a href="/charges" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1" fill="currentColor" stroke="none"/></svg><span>Costs</span></a>
+    <a href="/expenses" class="app-nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 9h20L12 3Z"/><path d="M4 9v10M9 9v10M15 9v10M20 9v10"/><path d="M2.5 21.5h19"/></svg><span>Expenses</span></a>
   </div>
 
   <div class="header">
@@ -141,10 +151,13 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
       <button class="pill" data-filter="other" onclick="setFilter('other')">Materials / other</button>
     </div>
     <div style="display:flex;gap:8px;">
+      <button class="btn-add" onclick="exportCsv()">⇩ Export CSV</button>
       <button class="btn-add" onclick="openImport()">⇪ Import statement</button>
       <button class="btn-add" onclick="openModal()">+ Add expense</button>
     </div>
   </div>
+
+  <div id="cat-breakdown" class="table-wrap" style="padding:16px 18px;"></div>
 
   <div class="table-wrap">
     <table>
@@ -334,6 +347,8 @@ function render(){
   document.getElementById('progress-fill').style.width = pct + '%';
   document.getElementById('progress-text').textContent = `${checked.length} / ${rows.length} lines checked (${pct}%)`;
 
+  renderCategoryBreakdown(rows, total);
+
   let list = rows;
   if (currentFilter === 'missing') list = list.filter(e => !e.has_invoice);
   else if (currentFilter !== 'all') list = list.filter(e => e.category === currentFilter);
@@ -359,6 +374,52 @@ function render(){
       </td>
     </tr>`;
   }).join('');
+}
+
+// ── Répartition par catégorie (période affichée) ─────────────────────────────
+function renderCategoryBreakdown(rows, total){
+  const box = document.getElementById('cat-breakdown');
+  if (!rows.length){ box.innerHTML = '<div class="empty" style="padding:0;">No data for this view.</div>'; return; }
+  const byCat = {};
+  for (const e of rows) byCat[e.category] = (byCat[e.category] || 0) + Number(e.amount);
+  const sorted = Object.entries(byCat).sort((a,b) => b[1] - a[1]);
+  const BAR_COLORS = { groceries:'#2e7d32', supplier:'#1565c0', works:'#e65100', rent:'#880e4f',
+                       payroll:'#5e35b1', admin:'#00695c', other:'#777' };
+  box.innerHTML = `<div class="ins-label" style="margin-bottom:12px;">Breakdown by category</div>` +
+    sorted.map(([cat, amt]) => {
+      const pct = total ? Math.round(amt / total * 100) : 0;
+      return `<div style="margin-bottom:9px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+          <span>${CAT_LABEL[cat] || cat}</span>
+          <span style="color:var(--muted);">${fmt(amt)} · ${pct}%</span>
+        </div>
+        <div style="height:5px;background:var(--bg-page);border-radius:3px;">
+          <div style="height:5px;border-radius:3px;width:${pct}%;background:${BAR_COLORS[cat]||'#999'};"></div>
+        </div>
+      </div>`;
+    }).join('');
+}
+
+// ── Export CSV (vue actuelle : mois + compte, toutes catégories) ─────────────
+function exportCsv(){
+  const rows = currentRows().slice().sort((a,b) => (a.date||'').localeCompare(b.date||''));
+  if (!rows.length){ showToast('Nothing to export'); return; }
+  const header = ['Date','Account','Supplier','Note','Category','Amount','Receipt in Drive'];
+  const csvEsc = v => `"${String(v ?? '').replace(/"/g,'""')}"`;
+  const lines = [header.map(csvEsc).join(',')];
+  for (const e of rows){
+    lines.push([e.date, e.account || 'Revolut Business', e.supplier, e.label || '',
+                CAT_LABEL[e.category] || e.category, e.amount, e.has_invoice ? 'Yes' : 'No']
+                .map(csvEsc).join(','));
+  }
+  const blob = new Blob([lines.join('\r\n')], {type: 'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const scope = (currentAccount === 'all' ? 'all-accounts' : currentAccount.replace(/\s+/g,'-'))
+              + '_' + (currentMonth === 'all' ? 'all-time' : currentMonth);
+  a.download = `expenses_${scope}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  showToast(`Exported ${rows.length} line(s)`);
 }
 
 async function toggleInvoice(id, val){
@@ -527,17 +588,35 @@ function parseStatementText(text, includePositive, account){
   return { rows, skippedCount: skipped.length, internalCount };
 }
 
+// Doublon = même date + compte + fournisseur (insensible casse) + montant
+// déjà présent en base. Coché par défaut sur "ne pas importer" pour éviter
+// de dupliquer un relevé qui chevauche une période déjà importée.
+function isDuplicate(row){
+  const sup = row.supplier.trim().toLowerCase();
+  return expenses.some(e =>
+    e.date === row.date &&
+    (e.account || 'Revolut Business') === row.account &&
+    (e.supplier || '').trim().toLowerCase() === sup &&
+    Math.abs(Number(e.amount) - row.amount) < 0.005);
+}
+
 function parseImport(){
   const text = document.getElementById('import-text').value;
   const includePositive = document.getElementById('import-incl-positive').checked;
   const account = document.getElementById('import-account').value;
   const { rows, skippedCount, internalCount } = parseStatementText(text, includePositive, account);
+  let dupCount = 0;
+  for (const r of rows) {
+    r.duplicate = isDuplicate(r);
+    if (r.duplicate) { r.include = false; dupCount++; }
+  }
   importRows = rows;
   if (!rows.length) { showToast('No transactions recognised in this text'); return; }
   document.getElementById('import-summary').textContent =
     `${rows.length} transaction(s) recognised on ${account}`
     + (internalCount ? ` · ${internalCount} internal transfer(s) excluded` : '')
-    + (skippedCount ? ` · ${skippedCount} line(s) skipped (no date/amount found)` : '');
+    + (skippedCount ? ` · ${skippedCount} line(s) skipped (no date/amount found)` : '')
+    + (dupCount ? ` · ${dupCount} possible duplicate(s) unchecked (already in your data)` : '');
   renderImportPreview();
   document.getElementById('import-step-paste').style.display = 'none';
   document.getElementById('import-step-preview').style.display = '';
@@ -545,11 +624,14 @@ function parseImport(){
 
 function renderImportPreview(){
   document.getElementById('import-preview-body').innerHTML = importRows.map((r, i) => `
-    <tr>
+    <tr style="${r.duplicate ? 'background:#fff8e1;' : ''}">
       <td><input type="checkbox" ${r.include?'checked':''} onchange="importRows[${i}].include=this.checked"></td>
       <td class="date">${r.date}</td>
-      <td><input class="field-input" style="font-size:12px;padding:4px 6px;" value="${r.supplier.replace(/"/g,'&quot;')}"
-            onchange="importRows[${i}].supplier=this.value"></td>
+      <td>
+        <input class="field-input" style="font-size:12px;padding:4px 6px;" value="${r.supplier.replace(/"/g,'&quot;')}"
+              onchange="importRows[${i}].supplier=this.value">
+        ${r.duplicate ? '<div style="font-size:10px;color:#a86a10;margin-top:2px;">⚠ possible duplicate</div>' : ''}
+      </td>
       <td>
         <select class="field-input" style="font-size:12px;padding:4px 6px;" onchange="importRows[${i}].category=this.value">
           ${Object.keys(CAT_LABEL).map(c => `<option value="${c}" ${c===r.category?'selected':''}>${CAT_LABEL[c]}</option>`).join('')}
