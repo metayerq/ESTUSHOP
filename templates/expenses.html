@@ -135,7 +135,10 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
       <button class="pill" data-filter="rent" onclick="setFilter('rent')">Rent</button>
       <button class="pill" data-filter="other" onclick="setFilter('other')">Materials / other</button>
     </div>
-    <button class="btn-add" onclick="openModal()">+ Add expense</button>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-add" onclick="openImport()">⇪ Import statement</button>
+      <button class="btn-add" onclick="openModal()">+ Add expense</button>
+    </div>
   </div>
 
   <div class="table-wrap">
@@ -196,6 +199,41 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
     <div class="modal-foot">
       <button class="btn-primary" style="flex:1;" onclick="saveExpense()">Save</button>
       <button class="btn-ghost" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import modal -->
+<div class="modal-overlay" id="import-modal" onclick="if(event.target===this)closeImport()">
+  <div class="modal" style="width:820px;max-height:85vh;overflow-y:auto;">
+    <div class="modal-title">Import bank statement</div>
+    <div id="import-step-paste">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+        Paste raw lines from your bank / Revolut statement below (copy straight from your online banking —
+        any format works as long as each transaction has a date and an amount with cents). We'll only pick up
+        <strong>outgoing</strong> amounts by default.
+      </p>
+      <textarea id="import-text" rows="12" class="field-input" style="font-family:monospace;font-size:12px;resize:vertical;" placeholder="21/04/2026  Leroy Merlin Alfragide  -155.12&#10;22/04/2026  Loyer Rosa Maria  -400.00&#10;..."></textarea>
+      <label class="check-row" style="margin-top:10px;"><input type="checkbox" id="import-incl-positive"> Also include incoming (positive) amounts</label>
+      <div class="modal-foot">
+        <button class="btn-primary" style="flex:1;" onclick="parseImport()">Parse</button>
+        <button class="btn-ghost" onclick="closeImport()">Cancel</button>
+      </div>
+    </div>
+    <div id="import-step-preview" style="display:none;">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px;" id="import-summary"></p>
+      <div class="table-wrap" style="margin-bottom:16px;">
+        <table>
+          <thead><tr>
+            <th style="width:30px;"></th><th>Date</th><th>Supplier</th><th>Category</th><th class="right">Amount</th>
+          </tr></thead>
+          <tbody id="import-preview-body"></tbody>
+        </table>
+      </div>
+      <div class="modal-foot">
+        <button class="btn-primary" style="flex:1;" onclick="confirmImport()">Import selected</button>
+        <button class="btn-ghost" onclick="backToPaste()">Back</button>
+      </div>
     </div>
   </div>
 </div>
@@ -336,6 +374,142 @@ async function delExpense(id, supplier){
   if (!confirm(`Delete expense "${supplier}"?`)) return;
   const r = await fetch(`/api/expenses/${id}`, {method:'DELETE'});
   if ((await r.json()).ok){ expenses = expenses.filter(x => x.id !== id); buildMonthPills(); render(); showToast('Expense deleted'); }
+}
+
+// ══════════════════════════════════════════════════════════
+// IMPORT — coller un relevé bancaire brut, parser, aperçu, envoyer
+// ══════════════════════════════════════════════════════════
+let importRows = [];
+
+function openImport(){
+  document.getElementById('import-text').value = '';
+  document.getElementById('import-incl-positive').checked = false;
+  document.getElementById('import-step-paste').style.display = '';
+  document.getElementById('import-step-preview').style.display = 'none';
+  document.getElementById('import-modal').classList.add('open');
+}
+function closeImport(){ document.getElementById('import-modal').classList.remove('open'); }
+function backToPaste(){
+  document.getElementById('import-step-paste').style.display = '';
+  document.getElementById('import-step-preview').style.display = 'none';
+}
+
+const CATEGORY_KEYWORDS = {
+  rent:      ['loyer', 'rent', 'renda'],
+  works:     ['leroy merlin', 'brico', 'bricolage', 'obras', 'pintura', 'vidro', 'vidraceiro',
+              'azulejo', 'mobiliário', 'mobiliario', 'jardins', 'ikea'],
+  groceries: ['continente', 'pingo doce', 'mercadona', 'lidl', 'auchan', 'make bio', 'el corte'],
+  supplier:  ['el tambo', 'gitare', 'roasters', 'meia lua', 'padaria'],
+};
+function guessCategory(desc){
+  const low = (desc || '').toLowerCase();
+  for (const [cat, words] of Object.entries(CATEGORY_KEYWORDS)) {
+    if (words.some(w => low.includes(w))) return cat;
+  }
+  return 'other';
+}
+
+function normalizeAmount(raw){
+  let s = raw.trim();
+  const neg = s.startsWith('-');
+  s = s.replace(/^[+-]/, '');
+  const lastComma = s.lastIndexOf(',');
+  const lastDot   = s.lastIndexOf('.');
+  let decSep = lastComma > lastDot ? ',' : (lastDot > lastComma ? '.' : null);
+  if (decSep) {
+    const thouSep = decSep === ',' ? '.' : ',';
+    s = s.split(thouSep).join('');
+    s = s.replace(decSep, '.');
+  }
+  const v = parseFloat(s);
+  return neg ? -v : v;
+}
+
+function normalizeDate(raw){
+  raw = raw.trim();
+  let m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return raw;
+  m = raw.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if (m) {
+    let [, d, mo, y] = m;
+    if (y.length === 2) y = '20' + y;
+    return `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+  return null;
+}
+
+// Repère un montant (partie décimale obligatoire, format EU ou US) et une
+// date sur chaque ligne ; le reste de la ligne devient le nom du fournisseur.
+// Marche que la source soit un CSV exporté ou du texte copié tel quel
+// depuis l'interface web de la banque.
+function parseStatementText(text, includePositive){
+  const AMOUNT_RE = /[+-]?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\b/g;
+  const DATE_RE   = /\d{4}-\d{2}-\d{2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/;
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const rows = [], skipped = [];
+  for (const line of lines) {
+    const amounts = line.match(AMOUNT_RE);
+    if (!amounts || !amounts.length) { skipped.push(line); continue; }
+    const amtRaw = amounts[amounts.length - 1];
+    const amt = normalizeAmount(amtRaw);
+    if (!includePositive && amt > 0) continue;   // on ne garde que les sorties par défaut
+    const dateMatch = line.match(DATE_RE);
+    const date = dateMatch ? normalizeDate(dateMatch[0]) : null;
+    if (!date) { skipped.push(line); continue; }
+    let desc = line.replace(dateMatch[0], '').split(amtRaw).join('');
+    desc = desc.replace(/[;,\t|]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+    if (!desc) desc = '(unlabelled)';
+    rows.push({ date, supplier: desc, amount: Math.abs(amt), category: guessCategory(desc),
+                has_invoice: false, include: true });
+  }
+  return { rows, skippedCount: skipped.length };
+}
+
+function parseImport(){
+  const text = document.getElementById('import-text').value;
+  const includePositive = document.getElementById('import-incl-positive').checked;
+  const { rows, skippedCount } = parseStatementText(text, includePositive);
+  importRows = rows;
+  if (!rows.length) { showToast('No transactions recognised in this text'); return; }
+  document.getElementById('import-summary').textContent =
+    `${rows.length} transaction(s) recognised` + (skippedCount ? ` · ${skippedCount} line(s) skipped (no date/amount found)` : '');
+  renderImportPreview();
+  document.getElementById('import-step-paste').style.display = 'none';
+  document.getElementById('import-step-preview').style.display = '';
+}
+
+function renderImportPreview(){
+  document.getElementById('import-preview-body').innerHTML = importRows.map((r, i) => `
+    <tr>
+      <td><input type="checkbox" ${r.include?'checked':''} onchange="importRows[${i}].include=this.checked"></td>
+      <td class="date">${r.date}</td>
+      <td><input class="field-input" style="font-size:12px;padding:4px 6px;" value="${r.supplier.replace(/"/g,'&quot;')}"
+            onchange="importRows[${i}].supplier=this.value"></td>
+      <td>
+        <select class="field-input" style="font-size:12px;padding:4px 6px;" onchange="importRows[${i}].category=this.value">
+          ${Object.keys(CAT_LABEL).map(c => `<option value="${c}" ${c===r.category?'selected':''}>${CAT_LABEL[c]}</option>`).join('')}
+        </select>
+      </td>
+      <td class="amount right">${fmt(r.amount)}</td>
+    </tr>`).join('');
+}
+
+async function confirmImport(){
+  const rows = importRows.filter(r => r.include);
+  if (!rows.length) { showToast('Nothing selected'); return; }
+  const r = await fetch('/api/expenses/bulk', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ rows })
+  });
+  const d = await r.json();
+  if (d.ok) {
+    closeImport();
+    showToast(`✓ ${d.count} expense(s) imported`);
+    currentMonth = null;
+    loadAll();
+  } else {
+    showToast('Error: ' + (d.error || 'unknown'));
+  }
 }
 
 loadAll();

@@ -184,7 +184,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260705e"
+ASSET_VERSION = "20260705f"
 
 @app.context_processor
 def _inject_asset_version():
@@ -882,6 +882,33 @@ def api_expenses_patch(eid):
 def api_expenses_delete(eid):
     ok = _supa_delete("expenses", "id", eid)
     return jsonify({"ok": ok})
+
+@app.route("/api/expenses/bulk", methods=["POST"])
+def api_expenses_bulk():
+    """Import en masse (relevé bancaire collé/parsé côté client).
+    Body: {"rows": [{date, supplier, amount, category, has_invoice, label}, ...]}"""
+    data = request.get_json() or {}
+    raw_rows = data.get("rows") or []
+    if not isinstance(raw_rows, list) or not raw_rows:
+        return jsonify({"ok": False, "error": "rows required"}), 400
+    rows = []
+    for r in raw_rows:
+        supplier = (r.get("supplier") or "").strip()
+        if not supplier or not r.get("date"):
+            continue
+        rows.append({
+            "date":        r["date"],
+            "supplier":    supplier,
+            "label":       (r.get("label") or "").strip(),
+            "amount":      round(abs(float(r.get("amount", 0))), 2),
+            "category":    r.get("category", "other"),
+            "has_invoice": bool(r.get("has_invoice", False)),
+            "active":      True,
+        })
+    if not rows:
+        return jsonify({"ok": False, "error": "no valid rows"}), 400
+    ok, err = _supa_upsert("expenses", rows)   # POST avec tableau = insert en masse
+    return jsonify({"ok": ok, "error": err, "count": len(rows) if ok else 0})
 
 
 # ── Supabase ──────────────────────────────────────────────────────────────────
