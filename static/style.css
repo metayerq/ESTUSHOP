@@ -364,10 +364,20 @@ td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
-  .page { padding: 28px 20px 60px; }
+  .page { padding: 20px 14px 60px; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .kpi-cell:nth-child(2n)  { border-right: none; }
   .kpi-cell:nth-child(4n)  { border-right: 1px solid var(--border); }
   .charts-grid { grid-template-columns: 1fr; }
   .chart-block + .chart-block { border-left: none; border-top: 1px solid var(--border); }
+  /* Tables : scroll horizontal au lieu d'être coupées */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .table-wrap table { min-width: 560px; }
+  /* Drawers latéraux : ne jamais dépasser la largeur de l'écran */
+  #drawer, #recipe-drawer, #prep-drawer { width: 100vw !important; max-width: 100vw !important; }
+}
+
+@media (max-width: 480px) {
+  .period-pills, .filters, .month-pills { gap: 6px; }
+  .pill, .filter-btn { padding: 7px 12px; font-size: 12px; }
 }
