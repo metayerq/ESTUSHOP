@@ -184,7 +184,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260705f"
+ASSET_VERSION = "20260705g"
 
 @app.context_processor
 def _inject_asset_version():
@@ -862,6 +862,7 @@ def api_expenses_post():
         "label":       (data.get("label") or "").strip(),
         "amount":      round(float(data.get("amount", 0)), 2),
         "category":    data.get("category", "other"),
+        "account":     data.get("account", "Revolut Business"),
         "has_invoice": bool(data.get("has_invoice", False)),
         "notes":       (data.get("notes") or "").strip(),
         "active":      data.get("active", True),
@@ -902,6 +903,7 @@ def api_expenses_bulk():
             "label":       (r.get("label") or "").strip(),
             "amount":      round(abs(float(r.get("amount", 0))), 2),
             "category":    r.get("category", "other"),
+            "account":     r.get("account", "Revolut Business"),
             "has_invoice": bool(r.get("has_invoice", False)),
             "active":      True,
         })

@@ -66,6 +66,8 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
 .badge-supplier  { background:#e3f2fd; color:#1565c0; }
 .badge-works     { background:#fff3e0; color:#e65100; }
 .badge-rent      { background:#fce4ec; color:#880e4f; }
+.badge-payroll   { background:#ede7f6; color:#5e35b1; }
+.badge-admin     { background:#e0f2f1; color:#00695c; }
 .badge-other     { background:#f5f5f5; color:#555; }
 
 .empty { text-align:center; color:var(--muted); padding:40px; font-size:13px; }
@@ -123,6 +125,7 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
     <div class="progress-text" id="progress-text">0 / 0 lines checked</div>
   </div>
 
+  <div class="month-pills" id="account-pills"></div>
   <div class="month-pills" id="month-pills"></div>
 
   <div class="toolbar">
@@ -133,6 +136,8 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
       <button class="pill" data-filter="supplier" onclick="setFilter('supplier')">Supplier</button>
       <button class="pill" data-filter="works" onclick="setFilter('works')">Works &amp; fit-out</button>
       <button class="pill" data-filter="rent" onclick="setFilter('rent')">Rent</button>
+      <button class="pill" data-filter="payroll" onclick="setFilter('payroll')">Payroll</button>
+      <button class="pill" data-filter="admin" onclick="setFilter('admin')">Admin &amp; fees</button>
       <button class="pill" data-filter="other" onclick="setFilter('other')">Materials / other</button>
     </div>
     <div style="display:flex;gap:8px;">
@@ -147,6 +152,7 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
         <tr>
           <th style="width:34px;"></th>
           <th>Date</th>
+          <th>Account</th>
           <th>Supplier</th>
           <th>Note</th>
           <th>Category</th>
@@ -154,7 +160,7 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
           <th style="width:80px;"></th>
         </tr>
       </thead>
-      <tbody id="tbody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+      <tbody id="tbody"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
     </table>
   </div>
 
@@ -182,13 +188,22 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
         <label class="field-label">Note</label>
         <input class="field-input" id="f-label" placeholder="What was it for? (optional)">
       </div>
-      <div class="full">
+      <div>
+        <label class="field-label">Account</label>
+        <select class="field-input" id="f-account">
+          <option value="Revolut Business">Revolut Business</option>
+          <option value="Caixa Geral">Caixa Geral</option>
+        </select>
+      </div>
+      <div>
         <label class="field-label">Category</label>
         <select class="field-input" id="f-category">
           <option value="groceries">Groceries</option>
           <option value="supplier">Supplier</option>
           <option value="works">Works &amp; fit-out</option>
           <option value="rent">Rent</option>
+          <option value="payroll">Payroll</option>
+          <option value="admin">Admin &amp; fees</option>
           <option value="other" selected>Materials / other</option>
         </select>
       </div>
@@ -214,6 +229,13 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
         <strong>outgoing</strong> amounts by default.
       </p>
       <textarea id="import-text" rows="12" class="field-input" style="font-family:monospace;font-size:12px;resize:vertical;" placeholder="21/04/2026  Leroy Merlin Alfragide  -155.12&#10;22/04/2026  Loyer Rosa Maria  -400.00&#10;..."></textarea>
+      <div style="margin-top:10px;">
+        <label class="field-label">Account this statement is from</label>
+        <select class="field-input" id="import-account" style="width:220px;">
+          <option value="Revolut Business">Revolut Business</option>
+          <option value="Caixa Geral">Caixa Geral</option>
+        </select>
+      </div>
       <label class="check-row" style="margin-top:10px;"><input type="checkbox" id="import-incl-positive"> Also include incoming (positive) amounts</label>
       <div class="modal-foot">
         <button class="btn-primary" style="flex:1;" onclick="parseImport()">Parse</button>
@@ -242,11 +264,14 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
 
 <script>
 const fmt = v => new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR',minimumFractionDigits:2}).format(v);
-const CAT_LABEL = { groceries:'Groceries', supplier:'Supplier', works:'Works & fit-out', rent:'Rent', other:'Materials / other' };
-const CAT_CLASS = { groceries:'badge-groceries', supplier:'badge-supplier', works:'badge-works', rent:'badge-rent', other:'badge-other' };
+const CAT_LABEL = { groceries:'Groceries', supplier:'Supplier', works:'Works & fit-out', rent:'Rent',
+                     payroll:'Payroll', admin:'Admin & fees', other:'Materials / other' };
+const CAT_CLASS = { groceries:'badge-groceries', supplier:'badge-supplier', works:'badge-works', rent:'badge-rent',
+                     payroll:'badge-payroll', admin:'badge-admin', other:'badge-other' };
 
 let expenses = [];
-let currentMonth = null;   // 'YYYY-MM' or 'all'
+let currentMonth = null;    // 'YYYY-MM' or 'all'
+let currentAccount = 'all'; // account name or 'all'
 let currentFilter = 'all';
 
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
@@ -254,22 +279,34 @@ function showToast(msg){ const t=document.getElementById('toast'); t.textContent
 async function loadAll(){
   const r = await fetch('/api/expenses');
   expenses = (await r.json()).filter(e => e.active !== false);
+  buildAccountPills();
   buildMonthPills();
   render();
 }
 
 function monthKey(dateStr){ return (dateStr || '').slice(0,7); }
 
+function buildAccountPills(){
+  const accounts = [...new Set(expenses.map(e => e.account || 'Revolut Business'))].sort();
+  let html = `<button class="pill ${currentAccount==='all'?'active':''}" onclick="setAccount('all')">All accounts</button>`;
+  html += accounts.map(a => `<button class="pill ${a===currentAccount?'active':''}" onclick="setAccount('${a.replace(/'/g,"\\'")}')">${a}</button>`).join('');
+  document.getElementById('account-pills').innerHTML = html;
+}
+
 function buildMonthPills(){
-  const months = [...new Set(expenses.map(e => monthKey(e.date)))].filter(Boolean).sort().reverse();
+  const scoped = currentAccount === 'all' ? expenses : expenses.filter(e => (e.account||'Revolut Business') === currentAccount);
+  const months = [...new Set(scoped.map(e => monthKey(e.date)))].filter(Boolean).sort().reverse();
   const thisMonth = new Date().toISOString().slice(0,7);
-  if (currentMonth === null) currentMonth = months.includes(thisMonth) ? thisMonth : (months[0] || 'all');
+  if (currentMonth === null || !months.includes(currentMonth)) {
+    currentMonth = months.includes(thisMonth) ? thisMonth : (months[0] || 'all');
+  }
   const fmtMonth = m => new Date(m + '-01T12:00:00').toLocaleDateString('en-GB', {month:'long', year:'numeric'});
   let html = `<button class="pill ${currentMonth==='all'?'active':''}" onclick="setMonth('all')">All time</button>`;
   html += months.map(m => `<button class="pill ${m===currentMonth?'active':''}" onclick="setMonth('${m}')">${fmtMonth(m)}</button>`).join('');
   document.getElementById('month-pills').innerHTML = html;
 }
 
+function setAccount(a){ currentAccount = a; buildAccountPills(); buildMonthPills(); render(); }
 function setMonth(m){ currentMonth = m; buildMonthPills(); render(); }
 function setFilter(f){
   currentFilter = f;
@@ -278,7 +315,9 @@ function setFilter(f){
 }
 
 function currentRows(){
-  return expenses.filter(e => currentMonth === 'all' || monthKey(e.date) === currentMonth);
+  return expenses.filter(e =>
+    (currentMonth === 'all' || monthKey(e.date) === currentMonth) &&
+    (currentAccount === 'all' || (e.account || 'Revolut Business') === currentAccount));
 }
 
 function render(){
@@ -299,7 +338,7 @@ function render(){
   list = list.slice().sort((a,b) => (b.date||'').localeCompare(a.date||''));
 
   if (!list.length){
-    document.getElementById('tbody').innerHTML = `<tr><td colspan="7" class="empty">No expenses here.</td></tr>`;
+    document.getElementById('tbody').innerHTML = `<tr><td colspan="8" class="empty">No expenses here.</td></tr>`;
     return;
   }
   document.getElementById('tbody').innerHTML = list.map(e => {
@@ -307,6 +346,7 @@ function render(){
     return `<tr class="${e.has_invoice ? 'checked' : ''}">
       <td><input type="checkbox" ${e.has_invoice?'checked':''} onchange="toggleInvoice('${e.id}', this.checked)"></td>
       <td class="date">${dt}</td>
+      <td class="label-cell">${e.account || 'Revolut Business'}</td>
       <td class="supplier">${e.supplier}</td>
       <td class="label-cell">${e.label || ''}</td>
       <td><span class="badge ${CAT_CLASS[e.category]||'badge-other'}">${CAT_LABEL[e.category]||e.category}</span></td>
@@ -331,6 +371,7 @@ function openModal(){
   document.getElementById('f-amount').value = '';
   document.getElementById('f-supplier').value = '';
   document.getElementById('f-label').value = '';
+  document.getElementById('f-account').value = (currentAccount !== 'all' ? currentAccount : 'Revolut Business');
   document.getElementById('f-category').value = 'other';
   document.getElementById('f-invoice').checked = false;
   document.getElementById('modal-title').textContent = 'Add expense';
@@ -344,6 +385,7 @@ function editExpense(id){
   document.getElementById('f-amount').value = e.amount;
   document.getElementById('f-supplier').value = e.supplier || '';
   document.getElementById('f-label').value = e.label || '';
+  document.getElementById('f-account').value = e.account || 'Revolut Business';
   document.getElementById('f-category').value = e.category || 'other';
   document.getElementById('f-invoice').checked = !!e.has_invoice;
   document.getElementById('modal-title').textContent = 'Edit expense';
@@ -360,6 +402,7 @@ async function saveExpense(){
   const body = {
     date, supplier, amount,
     label:       document.getElementById('f-label').value.trim(),
+    account:     document.getElementById('f-account').value,
     category:    document.getElementById('f-category').value,
     has_invoice: document.getElementById('f-invoice').checked,
   };
@@ -394,13 +437,28 @@ function backToPaste(){
   document.getElementById('import-step-preview').style.display = 'none';
 }
 
+// Libellés qui trahissent un virement interne (entre comptes de la même
+// société) plutôt qu'une vraie dépense — jamais importés.
+const INTERNAL_MARKERS = ['quiet frequency', 'envoyé par euro', 'à euro'];
+
 const CATEGORY_KEYWORDS = {
-  rent:      ['loyer', 'rent', 'renda'],
+  rent:      ['loyer', 'rent', 'renda', 'rosa maria marques'],
+  payroll:   ['salaire', 'salary', 'recibos verde', 'andré alexandre valado marques', 'julie caduc'],
+  admin:     ['filomencor', 'contabilidade', 'seguranca social', 'seguros', 'insurance',
+              'spautores', 'frais revolut', 'revolut business', 'acção continua',
+              'mail boxes', 'imprimir', 'vendus', 'medecine travail'],
   works:     ['leroy merlin', 'brico', 'bricolage', 'obras', 'pintura', 'vidro', 'vidraceiro',
-              'azulejo', 'mobiliário', 'mobiliario', 'jardins', 'ikea'],
-  groceries: ['continente', 'pingo doce', 'mercadona', 'lidl', 'auchan', 'make bio', 'el corte'],
-  supplier:  ['el tambo', 'gitare', 'roasters', 'meia lua', 'padaria'],
+              'azulejo', 'mobiliário', 'mobiliario', 'jardins', 'ikea', 'worten', 'zara home',
+              'fluirtalento', 'vasco luz', 'banho select'],
+  groceries: ['continente', 'pingo doce', 'mercadona', 'lidl', 'auchan', 'make bio', 'el corte',
+              'makro', 'talho', 'drogaria', 'celeiro'],
+  supplier:  ['el tambo', 'gitare', 'roasters', 'meia lua', 'padaria', 'bebidas urbanas',
+              'mishmash', 'papeterie'],
 };
+function isInternalTransfer(text){
+  const low = (text || '').toLowerCase();
+  return INTERNAL_MARKERS.some(m => low.includes(m));
+}
 function guessCategory(desc){
   const low = (desc || '').toLowerCase();
   for (const [cat, words] of Object.entries(CATEGORY_KEYWORDS)) {
@@ -442,17 +500,19 @@ function normalizeDate(raw){
 // date sur chaque ligne ; le reste de la ligne devient le nom du fournisseur.
 // Marche que la source soit un CSV exporté ou du texte copié tel quel
 // depuis l'interface web de la banque.
-function parseStatementText(text, includePositive){
+function parseStatementText(text, includePositive, account){
   const AMOUNT_RE = /[+-]?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\b/g;
   const DATE_RE   = /\d{4}-\d{2}-\d{2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/;
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const rows = [], skipped = [];
+  let internalCount = 0;
   for (const line of lines) {
     const amounts = line.match(AMOUNT_RE);
     if (!amounts || !amounts.length) { skipped.push(line); continue; }
     const amtRaw = amounts[amounts.length - 1];
     const amt = normalizeAmount(amtRaw);
     if (!includePositive && amt > 0) continue;   // on ne garde que les sorties par défaut
+    if (isInternalTransfer(line)) { internalCount++; continue; }   // virement entre comptes
     const dateMatch = line.match(DATE_RE);
     const date = dateMatch ? normalizeDate(dateMatch[0]) : null;
     if (!date) { skipped.push(line); continue; }
@@ -460,19 +520,22 @@ function parseStatementText(text, includePositive){
     desc = desc.replace(/[;,\t|]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
     if (!desc) desc = '(unlabelled)';
     rows.push({ date, supplier: desc, amount: Math.abs(amt), category: guessCategory(desc),
-                has_invoice: false, include: true });
+                account, has_invoice: false, include: true });
   }
-  return { rows, skippedCount: skipped.length };
+  return { rows, skippedCount: skipped.length, internalCount };
 }
 
 function parseImport(){
   const text = document.getElementById('import-text').value;
   const includePositive = document.getElementById('import-incl-positive').checked;
-  const { rows, skippedCount } = parseStatementText(text, includePositive);
+  const account = document.getElementById('import-account').value;
+  const { rows, skippedCount, internalCount } = parseStatementText(text, includePositive, account);
   importRows = rows;
   if (!rows.length) { showToast('No transactions recognised in this text'); return; }
   document.getElementById('import-summary').textContent =
-    `${rows.length} transaction(s) recognised` + (skippedCount ? ` · ${skippedCount} line(s) skipped (no date/amount found)` : '');
+    `${rows.length} transaction(s) recognised on ${account}`
+    + (internalCount ? ` · ${internalCount} internal transfer(s) excluded` : '')
+    + (skippedCount ? ` · ${skippedCount} line(s) skipped (no date/amount found)` : '');
   renderImportPreview();
   document.getElementById('import-step-paste').style.display = 'none';
   document.getElementById('import-step-preview').style.display = '';
