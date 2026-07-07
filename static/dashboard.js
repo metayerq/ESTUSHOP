@@ -817,6 +817,105 @@ function switchProdTab(tab) {
   document.getElementById('tab-prod-7d').classList.toggle('active',     tab === '7d');
 }
 
+// ── Overview / Cashflow ───────────────────────────────────────────────────
+let cashflowData = null;   // chargé une seule fois, mis en cache côté client
+let chartCashflow = null;
+
+function switchDashView(view) {
+  document.getElementById('view-overview').style.display = view === 'overview' ? '' : 'none';
+  document.getElementById('view-cashflow').style.display = view === 'cashflow' ? '' : 'none';
+  document.getElementById('tab-view-overview').classList.toggle('active', view === 'overview');
+  document.getElementById('tab-view-cashflow').classList.toggle('active', view === 'cashflow');
+  if (view === 'cashflow' && !cashflowData) loadCashflow();
+}
+
+async function loadCashflow() {
+  document.getElementById('cf-updated').textContent = 'Loading…';
+  try {
+    const r = await fetch('/api/cashflow');
+    cashflowData = await r.json();
+    document.getElementById('cf-updated').textContent =
+      `${cashflowData.from_date} → ${cashflowData.to_date}`;
+    renderCashflow();
+  } catch (e) {
+    document.getElementById('cf-updated').textContent = 'Failed to load';
+  }
+}
+
+function renderCashflow() {
+  if (!cashflowData) return;
+  const excl = document.getElementById('cf-excl-capex').checked;
+  const months = cashflowData.months;
+  if (!months.length) {
+    document.getElementById('cashflow-body').innerHTML =
+      '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">No data yet.</td></tr>';
+    return;
+  }
+
+  const outKey = excl ? 'expenses_excl_capex' : 'expenses';
+  const netKey = excl ? 'net_excl_capex'      : 'net';
+  const cumKey = excl ? 'cum_net_excl_capex'  : 'cum_net';
+
+  const totalIn  = months.reduce((s, m) => s + m.revenue, 0);
+  const totalOut = months.reduce((s, m) => s + m[outKey], 0);
+  const net      = totalIn - totalOut;
+  document.getElementById('cf-total-in').textContent  = fmt(totalIn);
+  document.getElementById('cf-total-out').textContent = fmt(totalOut);
+  const netEl = document.getElementById('cf-net');
+  netEl.textContent = fmt(net);
+  netEl.style.color = net >= 0 ? 'var(--green)' : 'var(--red)';
+
+  const sorted = months.slice().sort((a, b) => a[netKey] - b[netKey]);
+  const worst = sorted[0], best = sorted[sorted.length - 1];
+  const fmtMonth = m => new Date(m + '-01T12:00:00').toLocaleDateString('en-GB', {month:'short', year:'numeric'});
+  document.getElementById('cf-best').innerHTML =
+    `<span style="color:var(--green)">${fmtMonth(best.month)} ${fmt(best[netKey])}</span> · ` +
+    `<span style="color:var(--red)">${fmtMonth(worst.month)} ${fmt(worst[netKey])}</span>`;
+
+  // Chart : barres CA / Dépenses + ligne cumul net
+  const ctx = document.getElementById('chart-cashflow').getContext('2d');
+  if (chartCashflow) chartCashflow.destroy();
+  chartCashflow = new Chart(ctx, {
+    data: {
+      labels: months.map(m => fmtMonth(m.month)),
+      datasets: [
+        { type: 'bar', label: 'Cash in',  data: months.map(m => m.revenue),
+          backgroundColor: 'rgba(68,131,97,.75)', borderRadius: 3, yAxisID: 'y' },
+        { type: 'bar', label: 'Cash out', data: months.map(m => m[outKey]),
+          backgroundColor: 'rgba(196,85,77,.7)', borderRadius: 3, yAxisID: 'y' },
+        { type: 'line', label: 'Cumulative net', data: months.map(m => m[cumKey]),
+          borderColor: BAR_ACTIVE, backgroundColor: 'transparent', borderWidth: 2,
+          pointRadius: 4, pointBackgroundColor: BAR_ACTIVE, yAxisID: 'y2' },
+      ]
+    },
+    options: {
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmt(ctx.raw)}` } }
+      },
+      scales: {
+        y:  { ticks:{callback:v=>v+' €',font:{size:11},color:'rgba(120,119,111,1)'}, grid:{color:'rgba(55,53,47,0.06)'}, border:{display:false} },
+        y2: { position:'right', ticks:{callback:v=>v+' €',font:{size:10},color:'#bbb'}, grid:{display:false}, border:{display:false} },
+        x:  { ticks:{font:{size:11},color:'rgba(120,119,111,1)'}, grid:{display:false}, border:{display:false} }
+      }
+    }
+  });
+
+  // Détail mensuel
+  document.getElementById('cashflow-body').innerHTML = months.map(m => {
+    const netVal = m[netKey];
+    const cumVal = m[cumKey];
+    return `<tr>
+      <td>${fmtMonth(m.month)}</td>
+      <td class="amount">${fmt(m.revenue)}</td>
+      <td class="amount">${fmt(m[outKey])}</td>
+      <td class="amount" style="color:${netVal >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:500;">${fmt(netVal)}</td>
+      <td class="amount" style="color:${cumVal >= 0 ? 'var(--green)' : 'var(--red)'};">${fmt(cumVal)}</td>
+    </tr>`;
+  }).join('');
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 loadData();
 setInterval(() => { if (currentPreset === 'today') loadData(); }, 5 * 60 * 1000);

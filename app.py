@@ -184,7 +184,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260705j"
+ASSET_VERSION = "20260705k"
 
 @app.context_processor
 def _inject_asset_version():
@@ -612,6 +612,55 @@ def api_summary_rebuild():
         count += 1
         cur += timedelta(1)
     return jsonify({"ok": True, "days_rebuilt": count})
+
+
+@app.route("/api/cashflow")
+def api_cashflow():
+    """Trésorerie réelle par mois : CA encaissé (Vendus) vs dépenses sorties
+    (Expenses, données bancaires réelles) — depuis l'ouverture. N'utilise
+    jamais les charges théoriques de la page Costs (évite le double compte)."""
+    OPEN_DATE = date(2026, 5, 27)
+    to_date   = date.today()
+
+    catalog = get_catalog() or {}
+    rows    = _ensure_summaries(OPEN_DATE, to_date, catalog)
+
+    rev_by_month = {}
+    for r in rows:
+        mk = r["day"][:7]
+        rev_by_month[mk] = rev_by_month.get(mk, 0.0) + float(r.get("ca_ttc") or 0)
+
+    exp_rows = _supa_get("expenses", {
+        "date": f"gte.{OPEN_DATE.isoformat()}",
+        "active": "eq.true",
+    })
+    exp_by_month      = {}
+    exp_by_month_excl = {}
+    for e in exp_rows if isinstance(exp_rows, list) else []:
+        mk  = (e.get("date") or "")[:7]
+        amt = float(e.get("amount") or 0)
+        exp_by_month[mk] = exp_by_month.get(mk, 0.0) + amt
+        if e.get("category") != "works":
+            exp_by_month_excl[mk] = exp_by_month_excl.get(mk, 0.0) + amt
+
+    months = sorted(set(rev_by_month) | set(exp_by_month))
+    cum = cum_excl = 0.0
+    out = []
+    for mk in months:
+        rev      = round(rev_by_month.get(mk, 0.0), 2)
+        exp      = round(exp_by_month.get(mk, 0.0), 2)
+        exp_excl = round(exp_by_month_excl.get(mk, 0.0), 2)
+        net      = round(rev - exp, 2)
+        net_excl = round(rev - exp_excl, 2)
+        cum      += net
+        cum_excl += net_excl
+        out.append({
+            "month": mk, "revenue": rev,
+            "expenses": exp, "expenses_excl_capex": exp_excl,
+            "net": net, "net_excl_capex": net_excl,
+            "cum_net": round(cum, 2), "cum_net_excl_capex": round(cum_excl, 2),
+        })
+    return jsonify({"months": out, "from_date": OPEN_DATE.isoformat(), "to_date": to_date.isoformat()})
 
 
 @app.route("/cogs")
