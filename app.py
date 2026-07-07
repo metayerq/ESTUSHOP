@@ -184,7 +184,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260705d"
+ASSET_VERSION = "20260705e"
 
 @app.context_processor
 def _inject_asset_version():
@@ -624,6 +624,11 @@ def charges_page():
     return render_template("charges.html")
 
 
+@app.route("/expenses")
+def expenses_page():
+    return render_template("expenses.html")
+
+
 def _is_admin():
     """Admin réel (ou dev local sans mot de passe)."""
     return not DASHBOARD_PASSWORD or _current_role() == "admin"
@@ -833,6 +838,49 @@ def api_employees_patch(emp_id):
 @app.route("/api/employees/<string:emp_id>", methods=["DELETE"])
 def api_employees_delete(emp_id):
     ok = _supa_delete("employees", "id", emp_id)
+    return jsonify({"ok": ok})
+
+
+# ── Expenses (dépenses réelles, avec justificatif Google Drive) ───────────────
+
+@app.route("/api/expenses", methods=["GET"])
+def api_expenses_get():
+    rows = _supa_get("expenses", {"order": "date.desc"})
+    return jsonify(rows if isinstance(rows, list) else [])
+
+@app.route("/api/expenses", methods=["POST"])
+def api_expenses_post():
+    data     = request.get_json() or {}
+    supplier = (data.get("supplier") or "").strip()
+    if not supplier:
+        return jsonify({"ok": False, "error": "supplier required"}), 400
+    if not data.get("date"):
+        return jsonify({"ok": False, "error": "date required"}), 400
+    row = {
+        "date":        data["date"],
+        "supplier":    supplier,
+        "label":       (data.get("label") or "").strip(),
+        "amount":      round(float(data.get("amount", 0)), 2),
+        "category":    data.get("category", "other"),
+        "has_invoice": bool(data.get("has_invoice", False)),
+        "notes":       (data.get("notes") or "").strip(),
+        "active":      data.get("active", True),
+    }
+    if data.get("id"):
+        row["id"] = data["id"]
+    ok, err = _supa_upsert("expenses", row)
+    return jsonify({"ok": ok, "error": err})
+
+@app.route("/api/expenses/<string:eid>", methods=["PATCH"])
+def api_expenses_patch(eid):
+    data = request.get_json() or {}
+    r = _req.patch(f"{SUPA_URL}/rest/v1/expenses", json=data,
+                   headers=_supa_headers(), params={"id": f"eq.{eid}"})
+    return jsonify({"ok": r.ok})
+
+@app.route("/api/expenses/<string:eid>", methods=["DELETE"])
+def api_expenses_delete(eid):
+    ok = _supa_delete("expenses", "id", eid)
     return jsonify({"ok": ok})
 
 

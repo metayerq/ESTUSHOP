@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estudantina · Expenses</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<style>
+.page-nav { display:flex; align-items:center; gap:12px; margin-bottom:32px; }
+.page-nav a { font-size:13px; color:var(--muted); text-decoration:none; }
+.page-nav a:hover { color:var(--text); }
+.page-nav .sep { color:var(--faint); }
+
+.summary-bar { display:flex; gap:0; background:var(--bg-card); border:1px solid var(--border);
+  border-radius:8px; overflow:hidden; margin-bottom:20px; }
+.sum-item { flex:1; padding:16px 20px; border-right:1px solid var(--border); }
+.sum-item:last-child { border-right:none; }
+.sum-label { font-size:10px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+.sum-val { font-size:20px; font-weight:600; letter-spacing:-.4px; }
+
+.progress-wrap { margin-bottom:20px; }
+.progress-track { height:6px; background:var(--bar-bg); border-radius:3px; overflow:hidden; }
+.progress-fill { height:6px; background:var(--green); border-radius:3px; transition:width .3s; }
+.progress-text { font-size:12px; color:var(--muted); margin-top:6px; }
+
+.month-pills { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
+.pill { font-family:inherit; font-size:12px; font-weight:500; padding:6px 14px;
+  border-radius:20px; border:1px solid var(--border); background:var(--bg-card);
+  color:var(--muted); cursor:pointer; white-space:nowrap; }
+.pill:hover { background:var(--bg-hover); }
+.pill.active { background:var(--text); color:#fff; border-color:var(--text); }
+
+.toolbar { display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; }
+.filters { display:flex; gap:6px; flex-wrap:wrap; }
+.btn-add { font-family:inherit; font-size:12px; font-weight:500; padding:7px 14px;
+  border-radius:6px; cursor:pointer; border:1px solid var(--border); background:var(--bg-card); color:var(--text); }
+.btn-add:hover { background:var(--bg-hover); }
+.btn-primary { font-family:inherit; font-size:12px; font-weight:600; padding:8px 16px;
+  border-radius:6px; cursor:pointer; border:none; background:var(--text); color:#fff; }
+.btn-ghost { font-family:inherit; font-size:12px; padding:6px 12px; border-radius:6px;
+  cursor:pointer; border:1px solid var(--border); background:transparent; color:var(--muted); }
+.btn-danger { font-family:inherit; font-size:12px; padding:5px 10px; border-radius:6px; cursor:pointer;
+  border:1px solid transparent; background:transparent; color:var(--red); }
+.btn-danger:hover { background:rgba(196,85,77,.07); }
+
+.table-wrap { border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:32px; }
+table { width:100%; border-collapse:collapse; }
+th { font-size:10px; font-weight:600; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--muted); padding:10px 14px; background:var(--bg-page);
+  border-bottom:1px solid var(--border); text-align:left; }
+th.right, td.right { text-align:right; }
+td { font-size:13px; padding:9px 14px; border-bottom:1px solid var(--border); color:var(--text); vertical-align:middle; }
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:var(--bg-hover); }
+tr.checked td { color:var(--faint); }
+tr.checked td.supplier, tr.checked td.label-cell { text-decoration:line-through; }
+td.amount { font-variant-numeric:tabular-nums; font-weight:500; white-space:nowrap; }
+td.date { color:var(--muted); white-space:nowrap; }
+td.label-cell { color:var(--muted); font-size:12px; }
+input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var(--text); }
+
+.badge { font-size:10px; font-weight:500; padding:2px 8px; border-radius:10px; display:inline-block; white-space:nowrap; }
+.badge-groceries { background:#e8f5e9; color:#2e7d32; }
+.badge-supplier  { background:#e3f2fd; color:#1565c0; }
+.badge-works     { background:#fff3e0; color:#e65100; }
+.badge-rent      { background:#fce4ec; color:#880e4f; }
+.badge-other     { background:#f5f5f5; color:#555; }
+
+.empty { text-align:center; color:var(--muted); padding:40px; font-size:13px; }
+
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none;
+  align-items:center; justify-content:center; z-index:100; }
+.modal-overlay.open { display:flex; }
+.modal { background:var(--bg-card); border-radius:12px; padding:28px; width:440px; max-width:95vw; }
+.modal-title { font-size:16px; font-weight:700; margin-bottom:18px; }
+.modal-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.modal-grid .full { grid-column:1/-1; }
+.field-label { font-size:11px; font-weight:500; color:var(--muted); margin-bottom:5px; display:block; }
+.field-input { font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border);
+  border-radius:6px; background:var(--bg-card); color:var(--text); width:100%; box-sizing:border-box; }
+.modal-foot { display:flex; gap:8px; margin-top:20px; }
+.check-row { display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; margin-top:2px; }
+
+.toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+  background:var(--text); color:#fff; padding:10px 18px; border-radius:8px; font-size:13px;
+  opacity:0; transition:all .25s; z-index:200; }
+.toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="page-nav">
+    <a href="/">← Dashboard</a>
+    <span class="sep">/</span>
+    <a href="/cogs">COGS</a>
+    <span class="sep">/</span>
+    <a href="/stock">Stock</a>
+    <span class="sep">/</span>
+    <a href="/charges">Costs</a>
+    <span class="sep">/</span>
+    <span style="color:var(--text);font-weight:500;">Expenses</span>
+  </div>
+
+  <div class="header">
+    <div>
+      <div class="header-title">Expenses &amp; receipts</div>
+      <div class="header-sub">Check off each line once you have the invoice/receipt saved in Google Drive</div>
+    </div>
+    <button class="btn-refresh" onclick="loadAll()" title="Refresh">↻</button>
+  </div>
+
+  <div class="summary-bar">
+    <div class="sum-item"><div class="sum-label">Total this view</div><div class="sum-val" id="s-total">—</div></div>
+    <div class="sum-item"><div class="sum-label">Justified</div><div class="sum-val" id="s-checked" style="color:var(--green);">—</div></div>
+    <div class="sum-item"><div class="sum-label">Missing receipt</div><div class="sum-val" id="s-missing" style="color:var(--red);">—</div></div>
+  </div>
+
+  <div class="progress-wrap">
+    <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+    <div class="progress-text" id="progress-text">0 / 0 lines checked</div>
+  </div>
+
+  <div class="month-pills" id="month-pills"></div>
+
+  <div class="toolbar">
+    <div class="filters" id="cat-filters">
+      <button class="pill active" data-filter="all" onclick="setFilter('all')">All</button>
+      <button class="pill" data-filter="missing" onclick="setFilter('missing')">Missing receipt</button>
+      <button class="pill" data-filter="groceries" onclick="setFilter('groceries')">Groceries</button>
+      <button class="pill" data-filter="supplier" onclick="setFilter('supplier')">Supplier</button>
+      <button class="pill" data-filter="works" onclick="setFilter('works')">Works &amp; fit-out</button>
+      <button class="pill" data-filter="rent" onclick="setFilter('rent')">Rent</button>
+      <button class="pill" data-filter="other" onclick="setFilter('other')">Materials / other</button>
+    </div>
+    <button class="btn-add" onclick="openModal()">+ Add expense</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:34px;"></th>
+          <th>Date</th>
+          <th>Supplier</th>
+          <th>Note</th>
+          <th>Category</th>
+          <th class="right">Amount</th>
+          <th style="width:80px;"></th>
+        </tr>
+      </thead>
+      <tbody id="tbody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+</div><!-- /page -->
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Add expense</div>
+    <input type="hidden" id="f-id">
+    <div class="modal-grid">
+      <div>
+        <label class="field-label">Date *</label>
+        <input class="field-input" id="f-date" type="date">
+      </div>
+      <div>
+        <label class="field-label">Amount (€) *</label>
+        <input class="field-input" id="f-amount" type="number" step="0.01" min="0" placeholder="0.00">
+      </div>
+      <div class="full">
+        <label class="field-label">Supplier *</label>
+        <input class="field-input" id="f-supplier" placeholder="e.g. Leroy Merlin Alfragide">
+      </div>
+      <div class="full">
+        <label class="field-label">Note</label>
+        <input class="field-input" id="f-label" placeholder="What was it for? (optional)">
+      </div>
+      <div class="full">
+        <label class="field-label">Category</label>
+        <select class="field-input" id="f-category">
+          <option value="groceries">Groceries</option>
+          <option value="supplier">Supplier</option>
+          <option value="works">Works &amp; fit-out</option>
+          <option value="rent">Rent</option>
+          <option value="other" selected>Materials / other</option>
+        </select>
+      </div>
+      <div class="full">
+        <label class="check-row"><input type="checkbox" id="f-invoice"> Receipt/invoice already in Google Drive</label>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-primary" style="flex:1;" onclick="saveExpense()">Save</button>
+      <button class="btn-ghost" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const fmt = v => new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR',minimumFractionDigits:2}).format(v);
+const CAT_LABEL = { groceries:'Groceries', supplier:'Supplier', works:'Works & fit-out', rent:'Rent', other:'Materials / other' };
+const CAT_CLASS = { groceries:'badge-groceries', supplier:'badge-supplier', works:'badge-works', rent:'badge-rent', other:'badge-other' };
+
+let expenses = [];
+let currentMonth = null;   // 'YYYY-MM' or 'all'
+let currentFilter = 'all';
+
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+
+async function loadAll(){
+  const r = await fetch('/api/expenses');
+  expenses = (await r.json()).filter(e => e.active !== false);
+  buildMonthPills();
+  render();
+}
+
+function monthKey(dateStr){ return (dateStr || '').slice(0,7); }
+
+function buildMonthPills(){
+  const months = [...new Set(expenses.map(e => monthKey(e.date)))].filter(Boolean).sort().reverse();
+  const thisMonth = new Date().toISOString().slice(0,7);
+  if (currentMonth === null) currentMonth = months.includes(thisMonth) ? thisMonth : (months[0] || 'all');
+  const fmtMonth = m => new Date(m + '-01T12:00:00').toLocaleDateString('en-GB', {month:'long', year:'numeric'});
+  let html = `<button class="pill ${currentMonth==='all'?'active':''}" onclick="setMonth('all')">All time</button>`;
+  html += months.map(m => `<button class="pill ${m===currentMonth?'active':''}" onclick="setMonth('${m}')">${fmtMonth(m)}</button>`).join('');
+  document.getElementById('month-pills').innerHTML = html;
+}
+
+function setMonth(m){ currentMonth = m; buildMonthPills(); render(); }
+function setFilter(f){
+  currentFilter = f;
+  document.querySelectorAll('#cat-filters .pill').forEach(b => b.classList.toggle('active', b.dataset.filter === f));
+  render();
+}
+
+function currentRows(){
+  return expenses.filter(e => currentMonth === 'all' || monthKey(e.date) === currentMonth);
+}
+
+function render(){
+  const rows = currentRows();
+  const total   = rows.reduce((s,e) => s + Number(e.amount), 0);
+  const checked = rows.filter(e => e.has_invoice);
+  const checkedTotal = checked.reduce((s,e) => s + Number(e.amount), 0);
+  document.getElementById('s-total').textContent   = fmt(total);
+  document.getElementById('s-checked').textContent = fmt(checkedTotal);
+  document.getElementById('s-missing').textContent = rows.length - checked.length;
+  const pct = rows.length ? Math.round(checked.length / rows.length * 100) : 0;
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-text').textContent = `${checked.length} / ${rows.length} lines checked (${pct}%)`;
+
+  let list = rows;
+  if (currentFilter === 'missing') list = list.filter(e => !e.has_invoice);
+  else if (currentFilter !== 'all') list = list.filter(e => e.category === currentFilter);
+  list = list.slice().sort((a,b) => (b.date||'').localeCompare(a.date||''));
+
+  if (!list.length){
+    document.getElementById('tbody').innerHTML = `<tr><td colspan="7" class="empty">No expenses here.</td></tr>`;
+    return;
+  }
+  document.getElementById('tbody').innerHTML = list.map(e => {
+    const dt = e.date ? new Date(e.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'2-digit', month:'2-digit'}) : '—';
+    return `<tr class="${e.has_invoice ? 'checked' : ''}">
+      <td><input type="checkbox" ${e.has_invoice?'checked':''} onchange="toggleInvoice('${e.id}', this.checked)"></td>
+      <td class="date">${dt}</td>
+      <td class="supplier">${e.supplier}</td>
+      <td class="label-cell">${e.label || ''}</td>
+      <td><span class="badge ${CAT_CLASS[e.category]||'badge-other'}">${CAT_LABEL[e.category]||e.category}</span></td>
+      <td class="amount right">${fmt(e.amount)}</td>
+      <td class="right">
+        <button class="btn-ghost" style="padding:3px 8px;" onclick="editExpense('${e.id}')">Edit</button>
+        <button class="btn-danger" onclick="delExpense('${e.id}','${(e.supplier||'').replace(/'/g,"\\'")}')">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function toggleInvoice(id, val){
+  const e = expenses.find(x => x.id === id); if (e) e.has_invoice = val;
+  render();
+  await fetch(`/api/expenses/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({has_invoice: val})});
+}
+
+function openModal(){
+  document.getElementById('f-id').value = '';
+  document.getElementById('f-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('f-amount').value = '';
+  document.getElementById('f-supplier').value = '';
+  document.getElementById('f-label').value = '';
+  document.getElementById('f-category').value = 'other';
+  document.getElementById('f-invoice').checked = false;
+  document.getElementById('modal-title').textContent = 'Add expense';
+  document.getElementById('modal').classList.add('open');
+  setTimeout(() => document.getElementById('f-supplier').focus(), 50);
+}
+function editExpense(id){
+  const e = expenses.find(x => x.id === id); if (!e) return;
+  document.getElementById('f-id').value = e.id;
+  document.getElementById('f-date').value = e.date || '';
+  document.getElementById('f-amount').value = e.amount;
+  document.getElementById('f-supplier').value = e.supplier || '';
+  document.getElementById('f-label').value = e.label || '';
+  document.getElementById('f-category').value = e.category || 'other';
+  document.getElementById('f-invoice').checked = !!e.has_invoice;
+  document.getElementById('modal-title').textContent = 'Edit expense';
+  document.getElementById('modal').classList.add('open');
+}
+function closeModal(){ document.getElementById('modal').classList.remove('open'); }
+
+async function saveExpense(){
+  const id       = document.getElementById('f-id').value;
+  const date     = document.getElementById('f-date').value;
+  const supplier = document.getElementById('f-supplier').value.trim();
+  const amount   = parseFloat(document.getElementById('f-amount').value);
+  if (!date || !supplier || isNaN(amount)) { showToast('Date, supplier and amount required'); return; }
+  const body = {
+    date, supplier, amount,
+    label:       document.getElementById('f-label').value.trim(),
+    category:    document.getElementById('f-category').value,
+    has_invoice: document.getElementById('f-invoice').checked,
+  };
+  if (id) body.id = id;
+  const r = await fetch('/api/expenses', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const d = await r.json();
+  if (d.ok){ closeModal(); showToast('Expense saved'); currentMonth = monthKey(date); loadAll(); }
+  else showToast('Error: ' + (d.error || 'unknown'));
+}
+
+async function delExpense(id, supplier){
+  if (!confirm(`Delete expense "${supplier}"?`)) return;
+  const r = await fetch(`/api/expenses/${id}`, {method:'DELETE'});
+  if ((await r.json()).ok){ expenses = expenses.filter(x => x.id !== id); buildMonthPills(); render(); showToast('Expense deleted'); }
+}
+
+loadAll();
+</script>
+</body>
+</html>
