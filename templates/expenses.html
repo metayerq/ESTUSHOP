@@ -297,7 +297,9 @@ function buildMonthPills(){
   const scoped = currentAccount === 'all' ? expenses : expenses.filter(e => (e.account||'Revolut Business') === currentAccount);
   const months = [...new Set(scoped.map(e => monthKey(e.date)))].filter(Boolean).sort().reverse();
   const thisMonth = new Date().toISOString().slice(0,7);
-  if (currentMonth === null || !months.includes(currentMonth)) {
+  if (currentMonth === null) {
+    currentMonth = months.includes(thisMonth) ? thisMonth : (months[0] || 'all');
+  } else if (currentMonth !== 'all' && !months.includes(currentMonth)) {
     currentMonth = months.includes(thisMonth) ? thisMonth : (months[0] || 'all');
   }
   const fmtMonth = m => new Date(m + '-01T12:00:00').toLocaleDateString('en-GB', {month:'long', year:'numeric'});
