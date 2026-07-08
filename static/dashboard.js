@@ -303,7 +303,7 @@ function render(d) {
   }
 
   // ── Mix produits + rentabilité par groupe ────────────────────────────────
-  const MIX_COLORS = {'Boissons':'rgba(55,53,47,1)','Food maison':'rgba(55,53,47,.55)','Viennoiseries':'rgba(55,53,47,.35)','Retail':'rgba(55,53,47,.18)'};
+  const MIX_COLORS = {'Drinks':'rgba(55,53,47,1)','Food':'rgba(55,53,47,.55)','Viennoiserie':'rgba(55,53,47,.35)','Retail':'rgba(55,53,47,.18)'};
   if (d.mix && d.mix.length) {
     document.getElementById('mix-bars').innerHTML = d.mix.map(m => {
       const margeStr = m.marge_pct != null

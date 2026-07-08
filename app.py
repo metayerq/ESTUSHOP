@@ -184,7 +184,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260708a"
+ASSET_VERSION = "20260708b"
 
 @app.context_processor
 def _inject_asset_version():
@@ -1153,12 +1153,12 @@ def _upsell_from_rows(rows):
 # les catégories sont réorganisées (ex. fusion de toute la nourriture en une
 # seule catégorie "FOOD"). Ordre = du plus spécifique au plus générique.
 _MIX_KEYWORDS = [
-    ("Retail",        ("retail", "livre", "book", "papeterie", "paper", "stationery")),
-    ("Viennoiseries",  ("viennoiserie", "pastry bought", "boulangerie")),
-    ("Food maison",   ("food", "pâtisserie", "patisserie", "brunch", "sandwich",
-                        "granola", "extra", "snack")),
-    ("Boissons",      ("boisson", "drink", "coffee", "café", "espresso", "tea",
-                        "thé", "matcha", "cold", "iced", "filter", "filtre")),
+    ("Retail",       ("retail", "livre", "book", "papeterie", "paper", "stationery")),
+    ("Viennoiserie", ("viennoiserie", "pastry bought", "boulangerie")),
+    ("Food",         ("food", "pâtisserie", "patisserie", "brunch", "sandwich",
+                       "granola", "extra", "snack")),
+    ("Drinks",       ("boisson", "drink", "coffee", "café", "espresso", "tea",
+                       "thé", "matcha", "cold", "iced", "filter", "filtre", "non-coffee")),
 ]
 
 def _group_for_category(cat_name):
@@ -1170,22 +1170,22 @@ def _group_for_category(cat_name):
 
 
 def _mix_from_merged(merged, catalog):
-    """Mix CA + rentabilité par groupe (Boissons / Food maison / Viennoiseries / Retail).
-    Viennoiseries (achetées) séparées du Food maison — marges très différentes.
+    """Mix CA + rentabilité par groupe (Drinks / Food / Viennoiserie / Retail).
+    Viennoiserie (achetée) séparée du Food — marges très différentes.
     Retail = Livres, Papeterie, café en sac et tout produit non catégorisé.
     Groupe résolu par NOM de catégorie Vendus (voir _group_for_category) —
     robuste aux changements de catégories, contrairement à un mapping par id.
     Marge calculée sur les produits dont le coût est connu (couverture affichée)."""
-    # Viennoiseries achetées identifiées par NOM DE PRODUIT (prioritaire sur la
-    # catégorie — ex. rangées dans "FOOD" à côté des cookies/clafoutis maison).
+    # Viennoiserie achetée identifiée par NOM DE PRODUIT (prioritaire sur la
+    # catégorie — ex. rangée dans "Food" à côté des cookies/clafoutis maison).
     VIENNOISERIE_NAMES = ("croissant", "pain au chocolat", "pain au choco")
     groups = {k: {"rev_ht": 0.0, "rev_ttc": 0.0, "cogs": 0.0, "covered": 0.0}
-              for k in ("Boissons", "Food maison", "Viennoiseries", "Retail")}
+              for k in ("Drinks", "Food", "Viennoiserie", "Retail")}
     for name, s in merged.items():
         cat_name = catalog.get(name, {}).get("category_name")
         low  = name.lower()
         if any(k in low for k in VIENNOISERIE_NAMES):
-            g = groups["Viennoiseries"]           # override par nom de produit, prioritaire
+            g = groups["Viennoiserie"]            # override par nom de produit, prioritaire
         else:
             g = groups[_group_for_category(cat_name)]
         g["rev_ht"]  += s["rev_ht"]
