@@ -7,12 +7,37 @@ let activeProdTab = 'period'; // 'period' | '7d'
 
 // ── Preset actif ──────────────────────────────────────────────────────────────
 let currentPreset = 'today';
+let customStart = null, customEnd = null;
 
 function setPreset(p) {
   currentPreset = p;
+  document.getElementById('custom-range-bar').style.display = 'none';
   document.querySelectorAll('.pill').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.preset === p);
   });
+  loadData();
+}
+
+function openCustomRange() {
+  const bar = document.getElementById('custom-range-bar');
+  bar.style.display = bar.style.display === 'none' ? 'flex' : 'none';
+  document.querySelectorAll('.pill').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.preset === 'custom');
+  });
+  if (!document.getElementById('custom-start').value) {
+    const today = new Date().toISOString().slice(0, 10);
+    document.getElementById('custom-start').value = today;
+    document.getElementById('custom-end').value = today;
+  }
+}
+
+function applyCustomRange() {
+  const start = document.getElementById('custom-start').value;
+  const end = document.getElementById('custom-end').value;
+  if (!start || !end) return;
+  customStart = start;
+  customEnd = end;
+  currentPreset = 'custom';
   loadData();
 }
 
@@ -45,7 +70,8 @@ function fmtDate(iso) {
 // rafraîchit en arrière-plan. force=true (bouton ↻) bypasse les caches serveur.
 async function loadData(force = false) {
   const preset = currentPreset;
-  const cacheKey = 'estu_data_' + preset;
+  const isCustom = preset === 'custom' && customStart && customEnd;
+  const cacheKey = 'estu_data_' + preset + (isCustom ? '_' + customStart + '_' + customEnd : '');
   if (!force) {
     try {
       const cached = localStorage.getItem(cacheKey);
@@ -53,7 +79,10 @@ async function loadData(force = false) {
     } catch(e) {}
   }
   try {
-    const r = await fetch('/api/data?preset=' + preset + (force ? '&fresh=1' : ''));
+    const url = isCustom
+      ? `/api/data?preset=custom&start_date=${customStart}&end_date=${customEnd}${force ? '&fresh=1' : ''}`
+      : '/api/data?preset=' + preset + (force ? '&fresh=1' : '');
+    const r = await fetch(url);
     if (!r.ok) throw new Error(await r.text());
     const d = await r.json();
     if (d.error) throw new Error(d.error);

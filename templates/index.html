@@ -154,6 +154,14 @@
     <button class="pill"        data-preset="lastweek"  onclick="setPreset('lastweek')">Last week</button>
     <button class="pill"        data-preset="month"     onclick="setPreset('month')">This month</button>
     <button class="pill"        data-preset="all"       onclick="setPreset('all')">Since opening</button>
+    <button class="pill"        data-preset="custom"    onclick="openCustomRange()">Custom…</button>
+  </div>
+
+  <div id="custom-range-bar" style="display:none; align-items:center; gap:8px; margin:-8px 0 20px;">
+    <input type="date" id="custom-start" style="padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px;">
+    <span style="color:var(--muted); font-size:13px;">to</span>
+    <input type="date" id="custom-end" style="padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px;">
+    <button class="pill" onclick="applyCustomRange()" style="background:var(--accent,#37352f); color:#fff;">Apply</button>
   </div>
 
   <!-- KPIs — label dynamique selon la période -->

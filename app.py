@@ -184,7 +184,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260705k"
+ASSET_VERSION = "20260708a"
 
 @app.context_processor
 def _inject_asset_version():
@@ -308,11 +308,26 @@ def index():
 @app.route("/api/data")
 def api_data():
     preset = request.args.get("preset", "today")
-    if preset not in PRESET_RANGES:
-        preset = "today"
+    start_arg = request.args.get("start_date", "")
+    end_arg   = request.args.get("end_date", "")
 
-    today_real            = date.today()
-    from_date, to_date    = PRESET_RANGES[preset](today_real)
+    today_real = date.today()
+
+    if preset == "custom" and start_arg and end_arg:
+        try:
+            from_date = date.fromisoformat(start_arg)
+            to_date   = date.fromisoformat(end_arg)
+        except ValueError:
+            preset = "today"
+        if from_date > to_date:
+            from_date, to_date = to_date, from_date
+        from_date = min(from_date, today_real)
+        to_date   = min(to_date, today_real)
+    else:
+        if preset not in PRESET_RANGES:
+            preset = "today"
+        from_date, to_date = PRESET_RANGES[preset](today_real)
+
     is_single             = (from_date == to_date)
     n_days                = (to_date - from_date).days + 1
 
@@ -468,7 +483,8 @@ def api_data():
     result = {
         # Méta
         "preset":        preset,
-        "period_label":  PRESET_LABELS.get(preset, preset),
+        "period_label":  (f"{from_date.strftime('%d %b')} – {to_date.strftime('%d %b')}"
+                          if preset == "custom" else PRESET_LABELS.get(preset, preset)),
         "from_date":     from_date.isoformat(),
         "to_date":       to_date.isoformat(),
         "n_days":        n_days,
