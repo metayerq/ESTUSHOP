@@ -289,7 +289,7 @@ def _fetch_categories():
         all_cats = []
         page = 1
         while True:
-            batch = vendus("/categories/", {"page": page, "per_page": 200})
+            batch = vendus("/products/categories/", {"page": page, "per_page": 200})
             if not isinstance(batch, list):
                 batch = batch.get("categories", batch.get("data", batch.get("items", [])))
             if not batch:
