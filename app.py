@@ -906,6 +906,46 @@ def api_employees_delete(emp_id):
     return jsonify({"ok": ok})
 
 
+# ── Jours fériés + congés du personnel ────────────────────────────────────────
+# Une seule table : employee_id NULL = jour férié (toute l'entreprise),
+# employee_id rempli = congé d'un staff précis. type garde l'intention lisible.
+
+@app.route("/holidays")
+def holidays_page():
+    return render_template("holidays.html")
+
+@app.route("/api/time_off", methods=["GET"])
+def api_time_off_get():
+    rows = _supa_get("time_off", {"order": "date_from.asc"})
+    return jsonify(rows)
+
+@app.route("/api/time_off", methods=["POST"])
+def api_time_off_post():
+    data = request.get_json()
+    date_from = data.get("date_from", "")
+    date_to   = data.get("date_to") or date_from
+    if not date_from:
+        return jsonify({"ok": False, "error": "date_from required"}), 400
+    employee_id = data.get("employee_id") or None
+    row = {
+        "employee_id": employee_id,
+        "date_from":   date_from,
+        "date_to":     date_to,
+        "label":       (data.get("label") or "").strip(),
+        "type":        "leave" if employee_id else "holiday",
+        "active":      data.get("active", True),
+    }
+    if data.get("id"):
+        row["id"] = data["id"]
+    ok, err = _supa_upsert("time_off", row)
+    return jsonify({"ok": ok, "error": err})
+
+@app.route("/api/time_off/<string:row_id>", methods=["DELETE"])
+def api_time_off_delete(row_id):
+    ok = _supa_delete("time_off", "id", row_id)
+    return jsonify({"ok": ok})
+
+
 # ── Expenses (dépenses réelles, avec justificatif Google Drive) ───────────────
 
 @app.route("/api/expenses", methods=["GET"])
