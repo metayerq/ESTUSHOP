@@ -164,7 +164,7 @@ td.date { color:var(--muted); white-space:nowrap; }
 <div class="toast" id="toast"></div>
 
 <script>
-const fmtDate = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+const fmtDate = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
 
 let timeOff = [];
 let employees = [];
