@@ -273,6 +273,8 @@ def payment_breakdown(docs):
     }
 
 
+LAST_CATEGORIES_ERROR = None  # diagnostic — dernière erreur/anomalie de _fetch_categories
+
 def get_categories():
     """Retourne les catégories réelles du compte Vendus ({id: title}).
     Micro-cache 3 min — source de vérité, remplace tout mapping codé en dur
@@ -281,6 +283,8 @@ def get_categories():
 
 
 def _fetch_categories():
+    global LAST_CATEGORIES_ERROR
+    LAST_CATEGORIES_ERROR = None
     try:
         all_cats = []
         page = 1
@@ -302,10 +306,12 @@ def _fetch_categories():
             name = c.get("title") or c.get("name") or c.get("description") or str(cid)
             result[str(cid)] = name
         if not result:
-            print(f"[vendus] _fetch_categories: 0 catégorie résolue, raw sample={all_cats[:2]!r}")
+            LAST_CATEGORIES_ERROR = f"0 catégorie résolue, raw sample={all_cats[:3]!r}"
+            print(f"[vendus] _fetch_categories: {LAST_CATEGORIES_ERROR}")
         return result
     except Exception as e:
-        print(f"[vendus] _fetch_categories a échoué: {type(e).__name__}: {e}")
+        LAST_CATEGORIES_ERROR = f"{type(e).__name__}: {e}"
+        print(f"[vendus] _fetch_categories a échoué: {LAST_CATEGORIES_ERROR}")
         return {}
 
 

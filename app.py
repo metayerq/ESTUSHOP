@@ -1328,10 +1328,12 @@ def api_debug_categories():
     besoin de la clé API en dehors de l'app."""
     if not _is_admin():
         return jsonify({"error": "admin only"}), 403
+    import vendus as _v
     cats = get_categories()
     rows = [{"id": cid, "name": name, "mix_group": _group_for_category(name)}
             for cid, name in sorted(cats.items(), key=lambda x: x[1])]
-    return jsonify({"count": len(rows), "categories": rows})
+    return jsonify({"count": len(rows), "categories": rows,
+                     "fetch_error": _v.LAST_CATEGORIES_ERROR})
 
 
 @app.route("/api/cogs")
