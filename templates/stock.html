@@ -144,7 +144,10 @@
       <div class="header-title">Stock &amp; Supplies</div>
       <div class="header-sub">Track what's running low — order ahead, not last minute</div>
     </div>
-    <button class="btn-refresh" onclick="loadStock()" title="Refresh">↻</button>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button class="btn-refresh" onclick="loadStock()" title="Refresh">↻</button>
+      <a href="/logout" title="Log out" style="font-size:12px;color:var(--faint);text-decoration:none;padding:5px 8px;">⎋</a>
+    </div>
   </div>
 
   <div class="summary-bar">
