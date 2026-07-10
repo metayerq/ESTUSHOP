@@ -230,6 +230,57 @@
   .calc .out .mono { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; opacity: .7; margin-bottom: 14px; }
   .calc-foot { font-size: 12px; color: var(--faint); margin-top: 14px; }
 
+  /* ── Pipeline (under the hood) ── */
+  .pipe { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--card); border: 1px solid var(--frame-border); border-radius: 10px; overflow: hidden; }
+  @media (max-width: 900px) { .pipe { grid-template-columns: 1fr; } }
+  .pipe .node { padding: 22px 22px 24px; border-right: 1px solid var(--frame-border); }
+  .pipe .node:last-child { border-right: none; }
+  @media (max-width: 900px) { .pipe .node { border-right: none; border-bottom: 1px solid var(--frame-border); } .pipe .node:last-child { border-bottom: none; } }
+  .pipe .nn {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10px; letter-spacing: .12em; color: var(--spec); margin-bottom: 12px;
+    display: flex; align-items: center;
+  }
+  .pipe .nn::after { content: "→"; margin-left: auto; color: var(--faint); font-size: 12px; }
+  .pipe .node:last-child .nn::after { content: ""; }
+  .pipe h3 { font-size: 14.5px; margin: 0 0 6px; letter-spacing: -.01em; }
+  .pipe p { font-size: 12.5px; color: var(--muted); margin: 0; }
+  .pipe .spec-li { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 10.5px; color: var(--faint); margin-top: 12px; line-height: 1.9; }
+
+  /* ── Deep analytics grid ── */
+  .deep-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 800px) { .deep-grid { grid-template-columns: 1fr; } }
+  .deep { background: var(--card); border: 1px solid var(--frame-border); border-radius: 10px; padding: 22px 24px 24px; }
+  .deep .dk { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--spec); margin-bottom: 8px; }
+  .deep h3 { font-size: 16.5px; margin: 0 0 6px; letter-spacing: -.012em; }
+  .deep p { font-size: 13px; color: var(--muted); margin: 0 0 16px; }
+  .deep .cap { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 10.5px; color: var(--spec); margin-top: 12px; }
+  .heat { display: grid; grid-template-columns: auto repeat(12, 1fr); gap: 3px; align-items: center; }
+  .heat .hl { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 9px; color: var(--faint); padding-right: 6px; }
+  .heat i { display: block; aspect-ratio: 1.5; border-radius: 2px; background: var(--spec); min-height: 10px; }
+  .mv { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 7.5px 0; border-bottom: 1px solid var(--frame-border); font-variant-numeric: tabular-nums; }
+  .mv:last-child { border-bottom: none; }
+  .mv .up { color: var(--good); font-weight: 650; }
+  .mv .dn { color: var(--bad); font-weight: 650; }
+  .stat2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat2 .s { background: var(--spec-soft); border-radius: 8px; padding: 13px 15px; }
+  .stat2 .s .v { font-size: 20px; font-weight: 720; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .stat2 .s .l { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+  .cf-bars { display: flex; align-items: flex-end; gap: 8px; height: 70px; }
+  .cf-bars .grp { flex: 1; display: flex; gap: 2px; align-items: flex-end; height: 100%; }
+  .cf-bars .in { background: var(--good); width: 50%; border-radius: 2px 2px 0 0; opacity: .85; }
+  .cf-bars .out { background: var(--bad); width: 50%; border-radius: 2px 2px 0 0; opacity: .5; }
+  .cf-lbl { display: flex; gap: 8px; margin-top: 6px; }
+  .cf-lbl span { flex: 1; text-align: center; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 9px; color: var(--faint); }
+
+  /* ── Calculator presets ── */
+  .presets { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
+  .preset {
+    font-family: inherit; font-size: 12.5px; padding: 7px 15px; border-radius: 18px; cursor: pointer;
+    border: 1px solid var(--frame-border); background: var(--canvas); color: var(--muted);
+  }
+  .preset.on { background: var(--ink); color: var(--canvas); border-color: var(--ink); font-weight: 600; }
+
   /* ── Steps ── */
   .steps3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
   @media (max-width: 800px) { .steps3 { grid-template-columns: 1fr; } }
@@ -303,7 +354,8 @@
     <div class="links">
       <a href="#gap">What your POS can't show</a>
       <a href="#product">Product</a>
-      <a href="#how">How it works</a>
+      <a href="#deep">Analytics</a>
+      <a href="#engine">Under the hood</a>
       <a href="#pricing">Pricing</a>
     </div>
     <a class="btn" href="#pricing">Start free →</a>
@@ -344,8 +396,9 @@
           <div class="m-panel m-rows">
             <div class="k">Top products · margin</div>
             <div class="row"><span>Espresso</span><span><span class="badge g">82%</span></span></div>
-            <div class="row"><span>Croissant</span><span><span class="badge a">54%</span></span></div>
+            <div class="row"><span>Avocado toast</span><span><span class="badge a">61%</span></span></div>
             <div class="row"><span>Iced latte</span><span><span class="badge g">76%</span></span></div>
+            <div class="row"><span>Croissant</span><span><span class="badge a">54%</span></span></div>
           </div>
         </div>
       </div>
@@ -369,7 +422,10 @@
         <tbody>
           <tr><td>Revenue &amp; transactions by day</td><td class="c"><span class="yes">✓</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
           <tr><td>Top products by units sold</td><td class="c"><span class="yes">✓</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
-          <tr><td>Gross margin per product <div class="sub">recipe-level costing, down to the grams of coffee</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
+          <tr><td>Gross margin per product <div class="sub">recipe-level costing, down to the grams of flour or coffee</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
+          <tr><td>VAT-aware net revenue <div class="sub">6 / 13 / 23% mapped per product — margins computed on net, not gross</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
+          <tr><td>Day × hour revenue heat map <div class="sub">staff your Saturday rush with data, not gut feeling</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
+          <tr><td>Week-over-week product movers <div class="sub">what's trending up or fading, before it shows on the P&amp;L</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
           <tr><td>Daily break-even tracking <div class="sub">"am I profitable today?" answered by 1pm</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
           <tr><td><span class="j" tabindex="0">Median<span class="tip"><b>Median vs average:</b> one €80 corporate order inflates your average ticket. The median ignores outliers and tells you what a typical customer really spends.</span></span> ticket, not just average</td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
           <tr><td>Rush-hour concentration <div class="sub">what % of revenue happens in your top 2 hours</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
@@ -403,19 +459,26 @@
         <div class="stage">
           <div style="font-weight:700; font-size:14px; margin-bottom:10px;">Products &amp; margins</div>
           <div class="m-panel m-rows">
-            <div class="row"><span style="font-weight:600;">Espresso</span><span class="num">€1.30 · cost €0.24</span><span><span class="badge g">82%</span></span></div>
-            <div class="row"><span style="font-weight:600;">Iced latte</span><span class="num">€3.50 · cost €0.84</span><span><span class="badge g">76%</span></span></div>
-            <div class="row"><span style="font-weight:600;">Croissant</span><span class="num">€1.80 · cost €0.83</span><span><span class="badge a">54%</span></span></div>
-            <div class="row"><span style="font-weight:600;">Avocado toast</span><span class="num">€7.50 · cost €2.96</span><span><span class="badge a">61%</span></span></div>
-            <div class="row"><span style="font-weight:600;">Fresh orange juice</span><span class="num">€4.00 · cost €1.93</span><span><span class="badge r">52%</span></span></div>
+            <div class="row"><span style="font-weight:600;">Espresso</span><span class="num">€1.30 · cost €0.21</span><span><span class="badge g">82%</span></span></div>
+            <div class="row"><span style="font-weight:600;">Iced latte</span><span class="num">€3.50 · cost €0.74</span><span><span class="badge g">76%</span></span></div>
+            <div class="row"><span style="font-weight:600;">Avocado toast</span><span class="num">€7.50 · cost €2.59</span><span><span class="badge a">61%</span></span></div>
+            <div class="row"><span style="font-weight:600;">Croissant</span><span class="num">€1.80 · cost €0.73</span><span><span class="badge a">54%</span></span></div>
+            <div class="row"><span style="font-weight:600;">Fresh orange juice</span><span class="num">€4.00 · cost €1.55</span><span><span class="badge r">52%</span></span></div>
           </div>
-          <div style="font-size:10.5px; color:var(--m-muted); margin-top:10px;">Recipes cascade: your granola bowl inherits the cost of your homemade granola, per gram.</div>
+          <div class="m-panel m-rows" style="margin-top:10px;">
+            <div class="k">Recipe — Granola bowl · €6.50</div>
+            <div class="row"><span>Greek yogurt · 150 g</span><span class="num">€0.45</span></div>
+            <div class="row"><span>House granola · 80 g <span style="color:var(--m-faint);">(sub-recipe · €7.75/kg)</span></span><span class="num">€0.62</span></div>
+            <div class="row"><span>Seasonal fruit · 90 g</span><span class="num">€0.58</span></div>
+            <div class="row"><span>Honey · 15 g</span><span class="num">€0.12</span></div>
+            <div class="row"><span style="font-weight:600;">COGS €1.77 → margin</span><span><span class="badge g">69%</span></span></div>
+          </div>
         </div>
       </div>
       <div class="tabnote">
-        <h3>Recipe-level costing</h3>
-        <p>Build a recipe once — 18g of coffee, 200ml of milk — and Mesa prices it from your supplier costs. Change your milk supplier? Every latte margin updates instantly.</p>
-        <div class="kfacts">→ margin % and € per product<br>→ sub-recipes &amp; preparations<br>→ unit conversions (kg → g, L → ml)</div>
+        <h3>Recipe-level costing — drinks and food alike</h3>
+        <p>Build a recipe once — 150g of yogurt, 80g of your house granola, 18g of coffee — and Mesa prices it from your supplier costs. Sub-recipes cascade: your granola bowl inherits the per-gram cost of the granola you bake in-house. Flour price goes up? Every affected margin updates instantly.</p>
+        <div class="kfacts">→ margin % and € per product<br>→ sub-recipes &amp; preparations (batch → per-gram)<br>→ unit conversions (kg → g, L → ml)<br>→ margins on net price, per-product VAT</div>
       </div>
     </div>
 
@@ -481,37 +544,136 @@
   </div>
 </section>
 
+<!-- ═══════ DEEP ANALYTICS ═══════ -->
+<section class="tint" id="deep">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div class="eyebrow">Deeper cuts</div>
+      <h2>The analytics layer keeps going where dashboards usually stop</h2>
+      <p>Every metric below is computed automatically from your sales stream. No exports, no pivot tables, no Sunday-night spreadsheet.</p>
+    </div>
+    <div class="deep-grid">
+      <div class="deep rv">
+        <div class="dk">Seasonality</div>
+        <h3>Your week as a heat map</h3>
+        <p>Every hour of every weekday, ranked by revenue. Staffing, prep and opening hours — decided with data.</p>
+        <div class="heat" id="heat-grid"></div>
+        <div class="cap">→ Sat 11:00–12:00 alone = 9.4% of weekly revenue</div>
+      </div>
+      <div class="deep rv">
+        <div class="dk">Trends · week-over-week</div>
+        <h3>What's rising, what's fading</h3>
+        <p>Per-product deltas vs the previous week — spot a movement while it's still a signal, not a problem.</p>
+        <div class="mv"><span>Iced matcha</span><span class="up">+24%</span></div>
+        <div class="mv"><span>Pastel de nata</span><span class="up">+11%</span></div>
+        <div class="mv"><span>Avocado toast</span><span class="up">+6%</span></div>
+        <div class="mv"><span>Croissant</span><span class="dn">−9%</span></div>
+        <div class="mv"><span>Filter coffee</span><span class="dn">−12%</span></div>
+      </div>
+      <div class="deep rv">
+        <div class="dk">Ticket intelligence</div>
+        <h3>Averages lie. Distributions don't.</h3>
+        <p>One €80 catering order flatters your average all day. Mesa shows the shape of your revenue, not just its mean.</p>
+        <div class="stat2">
+          <div class="s"><div class="v">€7.74</div><div class="l">average ticket</div></div>
+          <div class="s"><div class="v">€5.20</div><div class="l">median — the typical customer</div></div>
+          <div class="s"><div class="v">€9.10</div><div class="l">75th percentile</div></div>
+          <div class="s"><div class="v">42%</div><div class="l">of revenue in your top 2 hours</div></div>
+        </div>
+      </div>
+      <div class="deep rv">
+        <div class="dk">Cash</div>
+        <h3>Money in, money out, reconciled</h3>
+        <p>Paste a bank statement — Mesa parses it, filters internal transfers, auto-categorises expenses and lines them up against revenue.</p>
+        <div class="cf-bars">
+          <div class="grp"><i class="in" style="height:52%"></i><i class="out" style="height:78%"></i></div>
+          <div class="grp"><i class="in" style="height:60%"></i><i class="out" style="height:64%"></i></div>
+          <div class="grp"><i class="in" style="height:74%"></i><i class="out" style="height:58%"></i></div>
+          <div class="grp"><i class="in" style="height:82%"></i><i class="out" style="height:60%"></i></div>
+          <div class="grp"><i class="in" style="height:90%"></i><i class="out" style="height:56%"></i></div>
+          <div class="grp"><i class="in" style="height:100%"></i><i class="out" style="height:62%"></i></div>
+        </div>
+        <div class="cf-lbl"><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span></div>
+        <div class="cap">→ June: +€2,140 net · 96% of receipts reconciled</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ UNDER THE HOOD ═══════ -->
+<section id="engine">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div class="eyebrow">Under the hood</div>
+      <h2>Boring, reliable plumbing — so the numbers are never wrong</h2>
+      <p>You'll never see this layer. It's why you can trust the one you do see.</p>
+    </div>
+    <div class="pipe rv">
+      <div class="node">
+        <div class="nn">01 · INGEST</div>
+        <h3>Vendus API</h3>
+        <p>Read-only key. 90 days of history backfilled on day one, then live sales refresh every ≤ 45 seconds.</p>
+        <div class="spec-li">→ official Vendus REST API<br>→ AES-256 key storage<br>→ nightly reconciliation</div>
+      </div>
+      <div class="node">
+        <div class="nn">02 · NORMALIZE</div>
+        <h3>Catalog &amp; taxes</h3>
+        <p>Products, categories and per-item VAT codes mapped automatically. Credit notes and refunds negated, not ignored.</p>
+        <div class="spec-li">→ per-product VAT (6/13/23%)<br>→ refund-aware revenue<br>→ auto-classified categories</div>
+      </div>
+      <div class="node">
+        <div class="nn">03 · COST</div>
+        <h3>COGS engine</h3>
+        <p>A recipe graph with sub-recipes and unit conversions. One supplier price change recomputes every affected margin.</p>
+        <div class="spec-li">→ batch → per-gram costing<br>→ kg→g, L→ml conversions<br>→ cascading sub-recipes</div>
+      </div>
+      <div class="node">
+        <div class="nn">04 · ANALYZE</div>
+        <h3>KPI layer</h3>
+        <p>Median and percentile tickets, week-over-week deltas, mix margins, and a break-even solver fed by your fixed costs.</p>
+        <div class="spec-li">→ median / P75 tickets<br>→ WoW movers &amp; rush index<br>→ daily break-even solver</div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══════ CALCULATOR ═══════ -->
 <section class="tint" id="calc">
   <div class="wrap">
     <div class="sec-head rv">
       <div class="eyebrow">Try the math</div>
-      <h2>What does one espresso really earn you?</h2>
-      <p>The kind of question Mesa answers for your entire menu, live. Drag the sliders — VAT handled, like it should be.</p>
+      <h2>What does one item on your menu really earn you?</h2>
+      <p>The question Mesa answers for your entire menu, live — VAT handled per product, the way it should be. Pick an item, drag the sliders.</p>
     </div>
     <div class="calc rv">
       <div class="in">
+        <div class="presets">
+          <button class="preset on" data-p="1.30" data-c="0.21" data-v="120" data-vat="13" data-name="espresso">☕ Espresso</button>
+          <button class="preset" data-p="7.50" data-c="2.59" data-v="25" data-vat="13" data-name="avocado toast">🥑 Avocado toast</button>
+          <button class="preset" data-p="6.50" data-c="1.77" data-v="18" data-vat="13" data-name="granola bowl">🥣 Granola bowl</button>
+          <button class="preset" data-p="4.00" data-c="1.55" data-v="30" data-vat="23" data-name="fresh juice">🍊 Fresh juice</button>
+        </div>
         <label>
-          <span class="lab"><span>Selling price (incl. 13% VAT)</span><b>€<span id="c-price-v">1.30</span></b></span>
-          <input type="range" id="c-price" min="0.90" max="2.50" step="0.05" value="1.30">
+          <span class="lab"><span>Selling price (incl. <span id="c-vat-v">13</span>% VAT)</span><b>€<span id="c-price-v">1.30</span></b></span>
+          <input type="range" id="c-price" min="0.90" max="12" step="0.05" value="1.30">
         </label>
         <label>
-          <span class="lab"><span>Ingredient cost — coffee, cup, milk splash</span><b>€<span id="c-cost-v">0.24</span></b></span>
-          <input type="range" id="c-cost" min="0.10" max="0.60" step="0.01" value="0.24">
+          <span class="lab"><span>Ingredient cost — everything on the plate or in the cup</span><b>€<span id="c-cost-v">0.21</span></b></span>
+          <input type="range" id="c-cost" min="0.10" max="5" step="0.01" value="0.21">
         </label>
         <label>
-          <span class="lab"><span>Espressos per day</span><b><span id="c-vol-v">120</span></b></span>
-          <input type="range" id="c-vol" min="20" max="400" step="10" value="120">
+          <span class="lab"><span>Units per day</span><b><span id="c-vol-v">120</span></b></span>
+          <input type="range" id="c-vol" min="10" max="400" step="5" value="120">
         </label>
-        <div class="calc-foot">Net price = price ÷ 1.13 (Portuguese coffee VAT). Margin = net − cost. This is exactly how Mesa computes every product, every day.</div>
+        <div class="calc-foot">Net price = price ÷ (1 + VAT). Margin = net − cost. Mesa reads each product's exact VAT code straight from Vendus — 13% on meals &amp; coffee, 23% on juices &amp; retail, 6% on essentials.</div>
       </div>
       <div class="out">
         <div class="mono">Gross margin · this product</div>
-        <div class="big"><span id="c-pct">79.1</span>%</div>
-        <div class="sub">€<span id="c-unit">0.91</span> per espresso</div>
+        <div class="big"><span id="c-pct">81.7</span>%</div>
+        <div class="sub">€<span id="c-unit">0.94</span> per <span id="c-name">espresso</span></div>
         <div style="margin-top:22px;">
-          <div class="row"><span>Per day</span><span>€<span id="c-day">109.20</span></span></div>
-          <div class="row"><span>Per month (26 open days)</span><span>€<span id="c-month">2,839</span></span></div>
+          <div class="row"><span>Per day</span><span>€<span id="c-day">112.80</span></span></div>
+          <div class="row"><span>Per month (26 open days)</span><span>€<span id="c-month">2,933</span></span></div>
         </div>
       </div>
     </div>
@@ -666,14 +828,16 @@
   var ck = document.getElementById('clock');
   if (ck) ck.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 
-  // Calculator
+  // Calculator (VAT-aware, per-product presets)
+  var vat = 0.13;
   function calc() {
     var price = parseFloat(document.getElementById('c-price').value);
     var cost = parseFloat(document.getElementById('c-cost').value);
     var vol = parseInt(document.getElementById('c-vol').value, 10);
-    var net = price / 1.13;
+    var net = price / (1 + vat);
     var unit = net - cost;
     var pct = net > 0 ? (unit / net) * 100 : 0;
+    document.getElementById('c-vat-v').textContent = Math.round(vat * 100);
     document.getElementById('c-price-v').textContent = price.toFixed(2);
     document.getElementById('c-cost-v').textContent = cost.toFixed(2);
     document.getElementById('c-vol-v').textContent = vol;
@@ -685,6 +849,34 @@
   ['c-price', 'c-cost', 'c-vol'].forEach(function (id) {
     document.getElementById(id).addEventListener('input', calc);
   });
+  document.querySelectorAll('.preset').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.preset').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on');
+      vat = parseFloat(b.dataset.vat) / 100;
+      document.getElementById('c-price').value = b.dataset.p;
+      document.getElementById('c-cost').value = b.dataset.c;
+      document.getElementById('c-vol').value = b.dataset.v;
+      document.getElementById('c-name').textContent = b.dataset.name;
+      calc();
+    });
+  });
   calc();
+
+  // Day × hour heat map (deep analytics)
+  var heat = document.getElementById('heat-grid');
+  if (heat) {
+    var days = [['Mon', .55], ['Tue', .05], ['Wed', .05], ['Thu', .6], ['Fri', .75], ['Sat', 1], ['Sun', .85]];
+    var hours = [.15, .3, .5, .9, 1, .7, .45, .5, .55, .42, .25, .12];
+    var html = '';
+    days.forEach(function (d) {
+      html += '<span class="hl">' + d[0] + '</span>';
+      hours.forEach(function (h) {
+        var o = Math.max(0.05, d[1] * h);
+        html += '<i style="opacity:' + o.toFixed(2) + '"></i>';
+      });
+    });
+    heat.innerHTML = html;
+  }
 })();
 </script>
