@@ -1,0 +1,690 @@
+<title>Mesa — Profitability analytics for Vendus restaurants</title>
+<style>
+  :root {
+    --canvas: #EDEAE3;
+    --canvas-deep: #E4E0D6;
+    --ink: #26241E;
+    --muted: #6E6A5E;
+    --faint: #A29D8F;
+    --spec: #2554C7;
+    --spec-ink: #1D43A0;
+    --spec-soft: rgba(37, 84, 199, .09);
+    --frame-border: #D6D2C6;
+    --card: #FFFFFF;
+    --good: #2e7d32;
+    --good-bg: #e8f5e9;
+    --bad: #b3564b;
+
+    /* Product mockup tokens (the app is light — fixed) */
+    --m-bg: #faf9f5; --m-card: #ffffff; --m-text: #37352f; --m-muted: #78776f;
+    --m-faint: #a8a49a; --m-border: #e8e6e0; --m-green: #2e7d32; --m-green-bg: #e8f5e9;
+    --m-amber: #b07d00; --m-red: #c4554d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --canvas: #211F1B; --canvas-deep: #1A1815;
+      --ink: #E9E6DE; --muted: #A39E90; --faint: #6E6A5E;
+      --spec: #8FA9EE; --spec-ink: #A9BEF3; --spec-soft: rgba(143,169,238,.13);
+      --frame-border: #3A372F; --card: #2A2823;
+      --good: #7CBF80; --good-bg: rgba(124,191,128,.12);
+    }
+  }
+  :root[data-theme="dark"] {
+    --canvas: #211F1B; --canvas-deep: #1A1815;
+    --ink: #E9E6DE; --muted: #A39E90; --faint: #6E6A5E;
+    --spec: #8FA9EE; --spec-ink: #A9BEF3; --spec-soft: rgba(143,169,238,.13);
+    --frame-border: #3A372F; --card: #2A2823;
+    --good: #7CBF80; --good-bg: rgba(124,191,128,.12);
+  }
+  :root[data-theme="light"] {
+    --canvas: #EDEAE3; --canvas-deep: #E4E0D6;
+    --ink: #26241E; --muted: #6E6A5E; --faint: #A29D8F;
+    --spec: #2554C7; --spec-ink: #1D43A0; --spec-soft: rgba(37,84,199,.09);
+    --frame-border: #D6D2C6; --card: #FFFFFF;
+    --good: #2e7d32; --good-bg: #e8f5e9;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0; background: var(--canvas); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.55;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  a { color: inherit; }
+
+  /* reveal on scroll */
+  .rv { opacity: 0; transform: translateY(14px); transition: opacity .5s ease, transform .5s ease; }
+  .rv.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; transition: none; } }
+
+  /* ── Nav ── */
+  nav.top {
+    position: sticky; top: 0; z-index: 90; background: var(--canvas);
+    border-bottom: 1px solid var(--frame-border);
+  }
+  nav.top .row { display: flex; align-items: center; gap: 26px; padding: 14px 0; }
+  .logo { font-weight: 750; font-size: 18px; letter-spacing: -.02em; text-decoration: none; }
+  .logo::before { content: "◳ "; color: var(--spec); }
+  nav.top .links { display: flex; gap: 20px; margin-left: auto; }
+  nav.top .links a { font-size: 13px; color: var(--muted); text-decoration: none; }
+  nav.top .links a:hover { color: var(--ink); }
+  .btn {
+    display: inline-block; background: var(--ink); color: var(--canvas); border-radius: 7px;
+    font-size: 13.5px; font-weight: 600; padding: 10px 20px; text-decoration: none;
+    border: 1px solid var(--ink); cursor: pointer;
+  }
+  .btn:hover { opacity: .88; }
+  .btn.blue { background: var(--spec); border-color: var(--spec); color: #fff; }
+  .btn.ghost { background: transparent; color: var(--ink); }
+  nav.top .btn { padding: 8px 16px; font-size: 12.5px; }
+  @media (max-width: 700px) { nav.top .links { display: none; } }
+
+  /* ── Hero ── */
+  .hero { padding: 84px 0 60px; display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
+  @media (max-width: 900px) { .hero { grid-template-columns: 1fr; padding-top: 56px; } }
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--spec);
+    display: flex; align-items: center; gap: 10px; margin-bottom: 18px;
+  }
+  .eyebrow::before { content: ""; width: 26px; height: 2px; background: var(--spec); }
+  h1 {
+    font-size: clamp(34px, 5vw, 52px); font-weight: 760; letter-spacing: -.032em;
+    line-height: 1.04; margin: 0 0 20px; text-wrap: balance;
+  }
+  h1 em { font-style: normal; color: var(--spec); }
+  .hero p.lead { font-size: 16.5px; color: var(--muted); max-width: 52ch; margin: 0 0 28px; }
+  .hero .ctas { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .hero .fine { font-size: 12px; color: var(--faint); margin-top: 14px; }
+  .hero .fine .mono { color: var(--spec); }
+
+  /* ── Product frame (shared with mockups) ── */
+  .frame {
+    background: var(--m-bg); border: 1px solid var(--frame-border); border-radius: 10px;
+    box-shadow: 0 18px 50px rgba(30,26,16,.13), 0 2px 6px rgba(30,26,16,.06);
+    overflow: hidden; color: var(--m-text);
+  }
+  .chrome { display: flex; align-items: center; gap: 8px; padding: 9px 14px; background: #f1efe9; border-bottom: 1px solid var(--m-border); }
+  .chrome .dots { display: flex; gap: 5px; }
+  .chrome .dots i { width: 9px; height: 9px; border-radius: 50%; background: #d9d5ca; }
+  .chrome .url {
+    flex: 1; max-width: 260px; margin: 0 auto; background: #fff; border: 1px solid var(--m-border);
+    border-radius: 5px; font-size: 10px; color: var(--m-muted); padding: 3px 10px; text-align: center;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  .stage { padding: 22px 22px 24px; position: relative; }
+
+  .live {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 9.5px; letter-spacing: .1em; color: var(--m-green);
+    background: var(--m-green-bg); border-radius: 10px; padding: 3px 9px;
+  }
+  .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--m-green); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+  @media (prefers-reduced-motion: reduce) { .live i { animation: none; } }
+
+  .m-kpis { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--m-border); border-radius: 8px; overflow: hidden; background: #fff; margin-bottom: 12px; }
+  .m-kpi { padding: 12px 14px; border-right: 1px solid var(--m-border); }
+  .m-kpi:last-child { border-right: none; }
+  .m-kpi .k { font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--m-muted); margin-bottom: 3px; }
+  .m-kpi .v { font-size: 18px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .m-kpi .d { font-size: 10px; color: var(--m-green); }
+  .m-panel { background: #fff; border: 1px solid var(--m-border); border-radius: 8px; padding: 12px 14px; }
+  .m-panel .k { font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--m-muted); margin-bottom: 8px; }
+  .m-bars { display: flex; align-items: flex-end; gap: 3px; height: 54px; }
+  .m-bars i { flex: 1; background: rgba(55,53,47,.13); border-radius: 2px 2px 0 0; transition: height .7s cubic-bezier(.2,.7,.3,1); }
+  .m-bars i.hot { background: rgba(55,53,47,.85); }
+  .m-grid2 { display: grid; grid-template-columns: 1.35fr 1fr; gap: 12px; }
+  .m-rows { font-size: 11.5px; }
+  .m-rows .row { display: flex; justify-content: space-between; gap: 8px; padding: 4.5px 0; border-bottom: 1px solid var(--m-border); }
+  .m-rows .row:last-child { border-bottom: none; }
+  .m-rows .num { font-variant-numeric: tabular-nums; color: var(--m-muted); white-space: nowrap; }
+  .badge { font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 9px; }
+  .badge.g { background: var(--m-green-bg); color: var(--m-green); }
+  .badge.a { background: #fdf3dd; color: var(--m-amber); }
+  .badge.r { background: #fdeceb; color: var(--m-red); }
+
+  /* ── Sections ── */
+  section { padding: 88px 0; }
+  section.tint { background: var(--canvas-deep); border-top: 1px solid var(--frame-border); border-bottom: 1px solid var(--frame-border); }
+  .sec-head { max-width: 66ch; margin-bottom: 40px; }
+  .sec-head h2 { font-size: clamp(24px, 3.2vw, 34px); font-weight: 730; letter-spacing: -.025em; line-height: 1.12; margin: 0 0 12px; text-wrap: balance; }
+  .sec-head p { font-size: 15.5px; color: var(--muted); margin: 0; }
+
+  /* jargon tooltips */
+  .j {
+    border-bottom: 1.5px dotted var(--spec); cursor: help; position: relative; font-weight: 600; color: var(--ink);
+  }
+  .j .tip {
+    position: absolute; left: 50%; bottom: calc(100% + 9px); transform: translateX(-50%);
+    width: 240px; background: var(--ink); color: var(--canvas); font-size: 11.5px; font-weight: 400;
+    line-height: 1.45; padding: 9px 12px; border-radius: 7px; opacity: 0; pointer-events: none;
+    transition: opacity .15s; z-index: 60; text-align: left;
+  }
+  .j .tip::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--ink); }
+  .j:hover .tip, .j:focus .tip { opacity: 1; }
+  .j .tip b { color: var(--spec-ink); }
+  :root[data-theme="dark"] .j .tip b, [data-theme="dark"] .j .tip b { color: var(--spec); }
+
+  /* ── Comparison table ── */
+  .cmp-wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--frame-border); border-radius: 10px; }
+  table.cmp { width: 100%; border-collapse: collapse; min-width: 640px; }
+  table.cmp th {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10px; letter-spacing: .11em; text-transform: uppercase; color: var(--faint);
+    text-align: left; padding: 14px 20px; border-bottom: 1px solid var(--frame-border);
+  }
+  table.cmp th.c, table.cmp td.c { text-align: center; width: 150px; }
+  table.cmp td { font-size: 13.5px; padding: 12px 20px; border-bottom: 1px solid var(--frame-border); }
+  table.cmp tr:last-child td { border-bottom: none; }
+  table.cmp td .sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+  .yes, .no {
+    display: inline-flex; width: 22px; height: 22px; border-radius: 50%;
+    align-items: center; justify-content: center; font-size: 12px; font-weight: 700;
+  }
+  .yes { background: var(--good-bg); color: var(--good); }
+  .no { background: transparent; color: var(--faint); border: 1px solid var(--frame-border); }
+  table.cmp td.mesa-col { background: var(--spec-soft); }
+  table.cmp th.mesa-col { background: var(--spec-soft); color: var(--spec); }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tab {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; padding: 8px 16px; border-radius: 20px; cursor: pointer;
+    border: 1px solid var(--frame-border); background: var(--card); color: var(--muted);
+  }
+  .tab.on { background: var(--spec); border-color: var(--spec); color: #fff; font-weight: 600; }
+  .tabpane { display: none; }
+  .tabpane.on { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 30px; align-items: center; }
+  @media (max-width: 900px) { .tabpane.on { grid-template-columns: 1fr; } }
+  .tabnote h3 { font-size: 19px; letter-spacing: -.015em; margin: 0 0 8px; }
+  .tabnote p { font-size: 14px; color: var(--muted); margin: 0 0 12px; }
+  .tabnote .kfacts { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11px; color: var(--spec); line-height: 2; }
+
+  /* ── Calculator ── */
+  .calc {
+    background: var(--card); border: 1px solid var(--frame-border); border-radius: 12px;
+    display: grid; grid-template-columns: 1fr 1fr; overflow: hidden;
+  }
+  @media (max-width: 800px) { .calc { grid-template-columns: 1fr; } }
+  .calc .in { padding: 30px 32px; }
+  .calc .out {
+    padding: 30px 32px; background: var(--spec); color: #fff;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  :root[data-theme="dark"] .calc .out { background: #2A4894; }
+  .calc label { display: block; margin-bottom: 22px; }
+  .calc .lab { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; }
+  .calc .lab b { font-variant-numeric: tabular-nums; color: var(--spec); }
+  .calc input[type=range] { width: 100%; accent-color: var(--spec); }
+  .calc .out .big { font-size: clamp(34px, 4.4vw, 46px); font-weight: 750; letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1.05; }
+  .calc .out .sub { font-size: 13px; opacity: .82; margin-top: 6px; }
+  .calc .out .row { display: flex; justify-content: space-between; font-size: 13px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.22); font-variant-numeric: tabular-nums; }
+  .calc .out .row:last-of-type { border-bottom: none; }
+  .calc .out .mono { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; opacity: .7; margin-bottom: 14px; }
+  .calc-foot { font-size: 12px; color: var(--faint); margin-top: 14px; }
+
+  /* ── Steps ── */
+  .steps3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  @media (max-width: 800px) { .steps3 { grid-template-columns: 1fr; } }
+  .step {
+    background: var(--card); border: 1px solid var(--frame-border); border-radius: 10px; padding: 24px 24px 26px;
+  }
+  .step .n {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--spec); letter-spacing: .12em; margin-bottom: 14px;
+  }
+  .step h3 { font-size: 16px; margin: 0 0 7px; letter-spacing: -.01em; }
+  .step p { font-size: 13.5px; color: var(--muted); margin: 0; }
+  .step .t { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 10.5px; color: var(--faint); margin-top: 14px; }
+
+  /* ── Security strip ── */
+  .sec-strip {
+    display: flex; gap: 10px 34px; flex-wrap: wrap; justify-content: center;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    padding: 26px 0; border-top: 1px solid var(--frame-border); border-bottom: 1px solid var(--frame-border);
+  }
+  .sec-strip span::before { content: "▪ "; color: var(--spec); }
+
+  /* ── Pricing ── */
+  .price-card {
+    max-width: 470px; margin: 0 auto; background: var(--card); border: 1px solid var(--frame-border);
+    border-radius: 14px; padding: 38px 40px; text-align: center; position: relative;
+  }
+  .price-card .tag {
+    position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10px; letter-spacing: .12em; background: var(--spec); color: #fff;
+    border-radius: 12px; padding: 4px 14px;
+  }
+  .price-card .amount { font-size: 52px; font-weight: 760; letter-spacing: -.035em; margin: 12px 0 2px; font-variant-numeric: tabular-nums; }
+  .price-card .amount small { font-size: 16px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+  .price-card .per { font-size: 13px; color: var(--muted); margin-bottom: 22px; }
+  .price-card ul { list-style: none; padding: 0; margin: 0 0 26px; text-align: left; }
+  .price-card li { font-size: 13.5px; padding: 7px 0; border-bottom: 1px solid var(--frame-border); display: flex; gap: 10px; }
+  .price-card li:last-child { border-bottom: none; }
+  .price-card li::before { content: "✓"; color: var(--good); font-weight: 700; }
+
+  /* ── FAQ ── */
+  .faq { max-width: 720px; }
+  .faq details { border-bottom: 1px solid var(--frame-border); }
+  .faq summary {
+    font-size: 15px; font-weight: 600; padding: 18px 30px 18px 0; cursor: pointer; list-style: none;
+    position: relative; letter-spacing: -.01em;
+  }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: "+"; position: absolute; right: 4px; top: 15px; font-size: 19px; color: var(--spec); font-weight: 400; }
+  .faq details[open] summary::after { content: "–"; }
+  .faq .a { font-size: 14px; color: var(--muted); padding: 0 0 20px; max-width: 62ch; }
+
+  /* ── Final CTA ── */
+  .final { text-align: center; padding: 100px 0 110px; }
+  .final h2 { font-size: clamp(28px, 4vw, 42px); font-weight: 750; letter-spacing: -.03em; margin: 0 0 14px; text-wrap: balance; }
+  .final p { color: var(--muted); font-size: 15.5px; margin: 0 0 30px; }
+
+  footer {
+    border-top: 1px solid var(--frame-border); padding: 30px 0 46px;
+    display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--faint);
+  }
+</style>
+
+<nav class="top">
+  <div class="wrap row">
+    <a class="logo" href="#">mesa</a>
+    <div class="links">
+      <a href="#gap">What your POS can't show</a>
+      <a href="#product">Product</a>
+      <a href="#how">How it works</a>
+      <a href="#pricing">Pricing</a>
+    </div>
+    <a class="btn" href="#pricing">Start free →</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <div class="hero">
+    <div>
+      <div class="eyebrow">Built for Vendus POS · Made in Lisbon</div>
+      <h1>Your POS knows what you sold. Mesa knows what you <em>earned</em>.</h1>
+      <p class="lead">Mesa plugs into your Vendus account — read-only, in 3 minutes — and turns raw sales into the numbers that actually run a café: real margins per product, your daily break-even, and where every euro goes.</p>
+      <div class="ctas">
+        <a class="btn blue" href="#pricing">Start free — 14 days</a>
+        <a class="btn ghost" href="#gap">See what you're missing ↓</a>
+      </div>
+      <div class="fine">No card required · <span class="mono">READ-ONLY API</span> · Cancel anytime</div>
+    </div>
+    <div class="frame rv">
+      <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">app.mesa.pt/dashboard</div></div>
+      <div class="stage">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div style="font-weight:700; font-size:14px;">Café Alcântara <span style="font-weight:400; color:var(--m-muted); font-size:11px;">— today, <span id="clock">14:32</span></span></div>
+          <span class="live"><i></i>LIVE</span>
+        </div>
+        <div class="m-kpis">
+          <div class="m-kpi"><div class="k">Revenue (incl. VAT)</div><div class="v">€<span id="tick-rev">487.50</span></div><div class="d">+12% vs last Thu</div></div>
+          <div class="m-kpi"><div class="k">Gross margin</div><div class="v"><span id="tick-mrg">74.2</span>%</div><div class="d">€<span id="tick-mrgeur">318.40</span></div></div>
+          <div class="m-kpi"><div class="k">Break-even</div><div class="v" style="color:var(--m-green);">Reached</div><div class="d">at 12:47</div></div>
+        </div>
+        <div class="m-grid2">
+          <div class="m-panel">
+            <div class="k">Revenue by hour</div>
+            <div class="m-bars" id="hero-bars">
+              <i style="height:16%"></i><i style="height:32%"></i><i style="height:54%"></i><i class="hot" style="height:86%"></i><i class="hot" style="height:100%"></i><i style="height:62%"></i><i style="height:44%"></i><i style="height:52%"></i><i style="height:58%"></i><i style="height:34%"></i>
+            </div>
+          </div>
+          <div class="m-panel m-rows">
+            <div class="k">Top products · margin</div>
+            <div class="row"><span>Espresso</span><span><span class="badge g">82%</span></span></div>
+            <div class="row"><span>Croissant</span><span><span class="badge a">54%</span></span></div>
+            <div class="row"><span>Iced latte</span><span><span class="badge g">76%</span></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ THE GAP ═══════ -->
+<section class="tint" id="gap">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div class="eyebrow">The gap</div>
+      <h2>Your POS stops at revenue. That's exactly where profit starts.</h2>
+      <p>POS and invoicing software tell you what left the counter. They can't tell you your <span class="j" tabindex="0">COGS<span class="tip"><b>Cost of Goods Sold</b> — what the ingredients in each product actually cost you. An espresso that sells for €1.30 might cost €0.24 to make. Or €0.55. That difference is your business.</span></span>, your <span class="j" tabindex="0">break-even<span class="tip"><b>Break-even point</b> — the revenue where your day stops costing you money: rent + payroll + fixed costs, divided by your real margin. Mesa computes it daily and shows you the moment you cross it.</span></span>, or which third of your menu quietly loses money.</p>
+    </div>
+    <div class="cmp-wrap rv">
+      <table class="cmp">
+        <thead>
+          <tr><th>Metric</th><th class="c">Your POS</th><th class="c mesa-col">Mesa</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Revenue &amp; transactions by day</td><td class="c"><span class="yes">✓</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
+          <tr><td>Top products by units sold</td><td class="c"><span class="yes">✓</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
+          <tr><td>Gross margin per product <div class="sub">recipe-level costing, down to the grams of coffee</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
+          <tr><td>Daily break-even tracking <div class="sub">"am I profitable today?" answered by 1pm</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
+          <tr><td><span class="j" tabindex="0">Median<span class="tip"><b>Median vs average:</b> one €80 corporate order inflates your average ticket. The median ignores outliers and tells you what a typical customer really spends.</span></span> ticket, not just average</td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
+          <tr><td>Rush-hour concentration <div class="sub">what % of revenue happens in your top 2 hours</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
+          <tr><td>Product mix profitability <div class="sub">drinks vs food vs retail — margin per bucket, not just sales</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
+          <tr><td>Payroll &amp; fixed costs vs revenue <div class="sub">estimated daily <span class="j" tabindex="0">EBITDA<span class="tip"><b>EBITDA</b> — your operating profit before interest, tax and depreciation. In plain terms: what the café actually makes, day by day.</span></span></div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
+          <tr><td>Bank statement import &amp; expense tracking <div class="sub">every receipt reconciled, categorised, exportable</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ PRODUCT TABS ═══════ -->
+<section id="product">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div class="eyebrow">The product</div>
+      <h2>Three views your accountant will wish they'd built</h2>
+      <p>Every screen updates live from your Vendus sales. Nothing to type, nothing to sync, no spreadsheet to keep alive.</p>
+    </div>
+
+    <div class="tabs rv">
+      <button class="tab on" data-pane="p1">01 · Margins</button>
+      <button class="tab" data-pane="p2">02 · Break-even</button>
+      <button class="tab" data-pane="p3">03 · Product mix</button>
+    </div>
+
+    <div class="tabpane on" id="p1">
+      <div class="frame">
+        <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">app.mesa.pt/cogs</div></div>
+        <div class="stage">
+          <div style="font-weight:700; font-size:14px; margin-bottom:10px;">Products &amp; margins</div>
+          <div class="m-panel m-rows">
+            <div class="row"><span style="font-weight:600;">Espresso</span><span class="num">€1.30 · cost €0.24</span><span><span class="badge g">82%</span></span></div>
+            <div class="row"><span style="font-weight:600;">Iced latte</span><span class="num">€3.50 · cost €0.84</span><span><span class="badge g">76%</span></span></div>
+            <div class="row"><span style="font-weight:600;">Croissant</span><span class="num">€1.80 · cost €0.83</span><span><span class="badge a">54%</span></span></div>
+            <div class="row"><span style="font-weight:600;">Avocado toast</span><span class="num">€7.50 · cost €2.96</span><span><span class="badge a">61%</span></span></div>
+            <div class="row"><span style="font-weight:600;">Fresh orange juice</span><span class="num">€4.00 · cost €1.93</span><span><span class="badge r">52%</span></span></div>
+          </div>
+          <div style="font-size:10.5px; color:var(--m-muted); margin-top:10px;">Recipes cascade: your granola bowl inherits the cost of your homemade granola, per gram.</div>
+        </div>
+      </div>
+      <div class="tabnote">
+        <h3>Recipe-level costing</h3>
+        <p>Build a recipe once — 18g of coffee, 200ml of milk — and Mesa prices it from your supplier costs. Change your milk supplier? Every latte margin updates instantly.</p>
+        <div class="kfacts">→ margin % and € per product<br>→ sub-recipes &amp; preparations<br>→ unit conversions (kg → g, L → ml)</div>
+      </div>
+    </div>
+
+    <div class="tabpane" id="p2">
+      <div class="frame">
+        <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">app.mesa.pt/dashboard</div></div>
+        <div class="stage">
+          <div style="font-weight:700; font-size:14px; margin-bottom:10px;">Today's economics</div>
+          <div class="m-kpis" style="grid-template-columns:repeat(2,1fr);">
+            <div class="m-kpi"><div class="k">Break-even revenue</div><div class="v">€412.00</div><div class="d" style="color:var(--m-muted);">rent + payroll + fixed ÷ margin</div></div>
+            <div class="m-kpi"><div class="k">Status at 14:32</div><div class="v" style="color:var(--m-green);">+€75.50</div><div class="d">crossed at 12:47</div></div>
+          </div>
+          <div class="m-panel">
+            <div class="k">Revenue vs break-even</div>
+            <div style="position:relative; height:56px;">
+              <div style="position:absolute; inset:auto 0 0 0; height:100%; display:flex; align-items:flex-end; gap:3px;">
+                <i style="flex:1;height:20%;background:rgba(55,53,47,.13);border-radius:2px 2px 0 0;"></i><i style="flex:1;height:38%;background:rgba(55,53,47,.13);border-radius:2px 2px 0 0;"></i><i style="flex:1;height:58%;background:rgba(55,53,47,.13);border-radius:2px 2px 0 0;"></i><i style="flex:1;height:76%;background:rgba(55,53,47,.85);border-radius:2px 2px 0 0;"></i><i style="flex:1;height:92%;background:rgba(55,53,47,.85);border-radius:2px 2px 0 0;"></i><i style="flex:1;height:100%;background:rgba(55,53,47,.85);border-radius:2px 2px 0 0;"></i>
+              </div>
+              <div style="position:absolute; left:0; right:0; top:32%; border-top:2px dashed var(--m-red);"></div>
+              <div style="position:absolute; right:0; top:14%; font-size:9px; color:var(--m-red); font-weight:600;">break-even</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tabnote">
+        <h3>"Am I profitable today?" — answered by lunch</h3>
+        <p>Mesa divides your fixed costs by your real margin and draws the line. You watch your day cross it — or see early that it won't, while there's still time to react.</p>
+        <div class="kfacts">→ daily &amp; monthly break-even<br>→ estimated EBITDA<br>→ payroll incl. TSU &amp; meal cards</div>
+      </div>
+    </div>
+
+    <div class="tabpane" id="p3">
+      <div class="frame">
+        <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">app.mesa.pt/dashboard</div></div>
+        <div class="stage">
+          <div style="font-weight:700; font-size:14px; margin-bottom:10px;">Product mix · this month</div>
+          <div class="m-panel m-rows">
+            <div style="margin-bottom:10px;">
+              <div class="row" style="border:none; padding-bottom:2px;"><span style="font-weight:600;">Drinks</span><span class="num">58% · margin 79%</span></div>
+              <div style="height:4px; background:var(--m-border); border-radius:2px;"><div style="width:58%; height:4px; background:rgba(55,53,47,.95); border-radius:2px;"></div></div>
+            </div>
+            <div style="margin-bottom:10px;">
+              <div class="row" style="border:none; padding-bottom:2px;"><span style="font-weight:600;">Food</span><span class="num">27% · margin 62%</span></div>
+              <div style="height:4px; background:var(--m-border); border-radius:2px;"><div style="width:27%; height:4px; background:rgba(55,53,47,.55); border-radius:2px;"></div></div>
+            </div>
+            <div style="margin-bottom:10px;">
+              <div class="row" style="border:none; padding-bottom:2px;"><span style="font-weight:600;">Viennoiserie</span><span class="num">9% · margin 51%</span></div>
+              <div style="height:4px; background:var(--m-border); border-radius:2px;"><div style="width:9%; height:4px; background:rgba(55,53,47,.35); border-radius:2px;"></div></div>
+            </div>
+            <div>
+              <div class="row" style="border:none; padding-bottom:2px;"><span style="font-weight:600;">Retail</span><span class="num">6% · margin 44%</span></div>
+              <div style="height:4px; background:var(--m-border); border-radius:2px;"><div style="width:6%; height:4px; background:rgba(55,53,47,.18); border-radius:2px;"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tabnote">
+        <h3>Know which third of the menu carries the rest</h3>
+        <p>Sales volume lies. A bucket can be 27% of revenue and 15% of profit. Mesa shows margin per category — automatically classified from your Vendus catalog.</p>
+        <div class="kfacts">→ auto-classified categories<br>→ margin per bucket, not just sales<br>→ spot the products to kill or push</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ CALCULATOR ═══════ -->
+<section class="tint" id="calc">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div class="eyebrow">Try the math</div>
+      <h2>What does one espresso really earn you?</h2>
+      <p>The kind of question Mesa answers for your entire menu, live. Drag the sliders — VAT handled, like it should be.</p>
+    </div>
+    <div class="calc rv">
+      <div class="in">
+        <label>
+          <span class="lab"><span>Selling price (incl. 13% VAT)</span><b>€<span id="c-price-v">1.30</span></b></span>
+          <input type="range" id="c-price" min="0.90" max="2.50" step="0.05" value="1.30">
+        </label>
+        <label>
+          <span class="lab"><span>Ingredient cost — coffee, cup, milk splash</span><b>€<span id="c-cost-v">0.24</span></b></span>
+          <input type="range" id="c-cost" min="0.10" max="0.60" step="0.01" value="0.24">
+        </label>
+        <label>
+          <span class="lab"><span>Espressos per day</span><b><span id="c-vol-v">120</span></b></span>
+          <input type="range" id="c-vol" min="20" max="400" step="10" value="120">
+        </label>
+        <div class="calc-foot">Net price = price ÷ 1.13 (Portuguese coffee VAT). Margin = net − cost. This is exactly how Mesa computes every product, every day.</div>
+      </div>
+      <div class="out">
+        <div class="mono">Gross margin · this product</div>
+        <div class="big"><span id="c-pct">79.1</span>%</div>
+        <div class="sub">€<span id="c-unit">0.91</span> per espresso</div>
+        <div style="margin-top:22px;">
+          <div class="row"><span>Per day</span><span>€<span id="c-day">109.20</span></span></div>
+          <div class="row"><span>Per month (26 open days)</span><span>€<span id="c-month">2,839</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ HOW IT WORKS ═══════ -->
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div class="eyebrow">How it works</div>
+      <h2>From API key to real margins, in one coffee break</h2>
+      <p>No installation, no new hardware, no change to how you use Vendus.</p>
+    </div>
+    <div class="steps3">
+      <div class="step rv">
+        <div class="n">STEP 01 — 3 MIN</div>
+        <h3>Connect your Vendus account</h3>
+        <p>Paste your API key — we guide you to it, screenshot by screenshot. The key is <span class="j" tabindex="0">read-only<span class="tip"><b>Read-only access:</b> Mesa can see your sales but can never create, modify or delete anything in your Vendus account. Your POS stays untouched.</span></span> and encrypted (<span class="mono" style="font-size:11px;">AES-256</span>).</p>
+        <div class="t">→ or forward the guide to your accountant</div>
+      </div>
+      <div class="step rv">
+        <div class="n">STEP 02 — AUTOMATIC</div>
+        <h3>Mesa imports everything</h3>
+        <p>90 days of history: every ticket, every product, every category — classified automatically. Your dashboard is live before you finish your espresso.</p>
+        <div class="t">→ 12,384 sales imported · last sale 12 min ago</div>
+      </div>
+      <div class="step rv">
+        <div class="n">STEP 03 — 5 MIN</div>
+        <h3>Cost your top 10 sellers</h3>
+        <p>Your 10 best-sellers are ~70% of revenue. Add their ingredient costs once — margins, break-even and mix profitability light up. Refine the rest whenever.</p>
+        <div class="t">→ unlocks: margins · break-even · EBITDA</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+  <div class="sec-strip rv">
+    <span>Read-only API</span>
+    <span>AES-256 encrypted keys</span>
+    <span>GDPR compliant</span>
+    <span>EU-hosted data</span>
+    <span>Export everything, anytime</span>
+  </div>
+</div>
+
+<!-- ═══════ PRICING ═══════ -->
+<section id="pricing">
+  <div class="wrap">
+    <div class="sec-head rv" style="text-align:center; margin-left:auto; margin-right:auto;">
+      <div class="eyebrow" style="justify-content:center;">Pricing</div>
+      <h2>One plan. Everything in it.</h2>
+      <p>Less than the margin on two espressos a day.</p>
+    </div>
+    <div class="price-card rv">
+      <div class="tag">14-DAY FREE TRIAL · NO CARD</div>
+      <div class="amount">€29<small>/month</small></div>
+      <div class="per">per location · cancel anytime</div>
+      <ul>
+        <li>Live dashboard — revenue, margins, break-even</li>
+        <li>Recipe-level COGS engine, unlimited products</li>
+        <li>Product mix &amp; rush-hour analytics</li>
+        <li>Fixed costs, payroll (TSU, meal cards) &amp; expenses</li>
+        <li>Bank statement import &amp; receipt tracking</li>
+        <li>Team access — owner, staff &amp; investor roles</li>
+        <li>Works on your phone (add to home screen)</li>
+      </ul>
+      <a class="btn blue" style="width:100%; text-align:center; padding:13px;" href="#">Start your free trial →</a>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ FAQ ═══════ -->
+<section class="tint">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div class="eyebrow">Questions</div>
+      <h2>Asked by café owners, answered plainly</h2>
+    </div>
+    <div class="faq rv">
+      <details>
+        <summary>Do I need to change anything about my POS?</summary>
+        <div class="a">No. Mesa reads from Vendus through its official API. You keep ringing up sales exactly as you do today — Mesa works silently alongside.</div>
+      </details>
+      <details>
+        <summary>Can Mesa break or modify anything in my Vendus account?</summary>
+        <div class="a">Impossible by design. The connection is read-only: Mesa can look at your sales and catalog, but cannot create, edit or delete anything. Your key is encrypted and never visible to our team.</div>
+      </details>
+      <details>
+        <summary>I'm not technical. How hard is the setup, honestly?</summary>
+        <div class="a">Three minutes: paste one key (we show you exactly where it is in Vendus, with screenshots) and your dashboard fills itself with your real data. If Vendus is handled by your accountant, one click sends them the guide instead.</div>
+      </details>
+      <details>
+        <summary>Where do the ingredient costs come from?</summary>
+        <div class="a">You enter them once — starting with just your top 10 sellers (about 5 minutes). Mesa's recipe engine does the rest: unit conversions, sub-recipes, and automatic margin updates whenever a supplier price changes.</div>
+      </details>
+      <details>
+        <summary>Who can see my numbers?</summary>
+        <div class="a">You decide. Three roles: owner (everything), staff (recipes and stock only — no financials), investor (read-only). Your data is EU-hosted, GDPR-compliant, and exportable anytime.</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ FINAL CTA ═══════ -->
+<div class="wrap">
+  <div class="final rv">
+    <div class="eyebrow" style="justify-content:center;">Ready when you are</div>
+    <h2>See your real numbers before tomorrow's lunch service.</h2>
+    <p>Connect Vendus in 3 minutes. Your data does the convincing.</p>
+    <a class="btn blue" style="padding:14px 32px; font-size:15px;" href="#pricing">Start free — 14 days →</a>
+  </div>
+  <footer>
+    <span>◳ mesa — built behind the counter of a specialty coffee shop in Alcântara, Lisbon</span>
+    <span>hello@mesa.pt · © 2026</span>
+  </footer>
+</div>
+
+<script>
+(function () {
+  // Reveal on scroll
+  var io = new IntersectionObserver(function (es) {
+    es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.rv').forEach(function (el) { io.observe(el); });
+
+  // Tabs
+  document.querySelectorAll('.tab').forEach(function (t) {
+    t.addEventListener('click', function () {
+      document.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('on'); });
+      document.querySelectorAll('.tabpane').forEach(function (x) { x.classList.remove('on'); });
+      t.classList.add('on');
+      document.getElementById(t.dataset.pane).classList.add('on');
+    });
+  });
+
+  // Hero live ticker (subtle)
+  var rev = 487.50, mrgPct = 74.2;
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!reduced) {
+    setInterval(function () {
+      rev += (Math.random() * 3.4 + 0.8);
+      var el = document.getElementById('tick-rev');
+      if (el) el.textContent = rev.toFixed(2);
+      var m = document.getElementById('tick-mrgeur');
+      if (m) m.textContent = (rev * mrgPct / 100).toFixed(2);
+    }, 3400);
+  }
+  // clock
+  var d = new Date();
+  var ck = document.getElementById('clock');
+  if (ck) ck.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+
+  // Calculator
+  function calc() {
+    var price = parseFloat(document.getElementById('c-price').value);
+    var cost = parseFloat(document.getElementById('c-cost').value);
+    var vol = parseInt(document.getElementById('c-vol').value, 10);
+    var net = price / 1.13;
+    var unit = net - cost;
+    var pct = net > 0 ? (unit / net) * 100 : 0;
+    document.getElementById('c-price-v').textContent = price.toFixed(2);
+    document.getElementById('c-cost-v').textContent = cost.toFixed(2);
+    document.getElementById('c-vol-v').textContent = vol;
+    document.getElementById('c-pct').textContent = pct.toFixed(1);
+    document.getElementById('c-unit').textContent = unit.toFixed(2);
+    document.getElementById('c-day').textContent = (unit * vol).toFixed(2);
+    document.getElementById('c-month').textContent = Math.round(unit * vol * 26).toLocaleString('en-IE');
+  }
+  ['c-price', 'c-cost', 'c-vol'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', calc);
+  });
+  calc();
+})();
+</script>
