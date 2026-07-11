@@ -1,0 +1,504 @@
+<title>Mesa — Onboarding funnel prototype</title>
+<style>
+  :root {
+    --canvas: #EDEAE3; --ink: #26241E; --muted: #6E6A5E; --faint: #A29D8F;
+    --spec: #2554C7; --spec-soft: rgba(37,84,199,.09); --frame-border: #D6D2C6;
+    /* app tokens (light product) */
+    --bg: #faf9f5; --card: #ffffff; --text: #37352f; --tmuted: #78776f;
+    --tfaint: #a8a49a; --border: #e8e6e0; --green: #2e7d32; --green-bg: #e8f5e9;
+    --amber: #b07d00; --amber-bg: #fdf3dd; --red: #c4554d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--canvas); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.5; min-height: 100vh;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+
+  /* prototype ribbon */
+  .proto {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+    background: var(--ink); color: var(--canvas); text-align: center;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10px; letter-spacing: .12em; padding: 6px; text-transform: uppercase;
+  }
+  .proto b { color: #8FA9EE; }
+
+  .scr { display: none; min-height: 100vh; padding: 60px 20px 40px; }
+  .scr.on { display: flex; flex-direction: column; align-items: center; }
+
+  /* ── Funnel card ── */
+  .fcard {
+    background: var(--bg); border: 1px solid var(--frame-border); border-radius: 14px;
+    box-shadow: 0 18px 50px rgba(30,26,16,.12); width: 100%; max-width: 480px;
+    padding: 36px 40px 38px; margin-top: 4vh;
+  }
+  @media (max-width: 540px) { .fcard { padding: 28px 24px; } }
+  .flogo { font-weight: 750; font-size: 16px; letter-spacing: -.02em; margin-bottom: 26px; }
+  .flogo::before { content: "◳ "; color: var(--spec); }
+  .fstep {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10px; letter-spacing: .14em; color: var(--spec); text-transform: uppercase;
+    display: flex; justify-content: space-between; margin-bottom: 10px;
+  }
+  .fstep .t { color: var(--tfaint); }
+  .fbar { height: 3px; background: var(--border); border-radius: 2px; margin-bottom: 26px; overflow: hidden; }
+  .fbar i { display: block; height: 3px; background: var(--spec); border-radius: 2px; transition: width .35s ease; }
+  h2.ft { font-size: 21px; font-weight: 700; letter-spacing: -.02em; margin: 0 0 6px; }
+  p.fs { font-size: 13px; color: var(--tmuted); margin: 0 0 22px; }
+
+  .fl { display: block; margin-bottom: 15px; }
+  .fl .lab { font-size: 11px; font-weight: 500; color: var(--tmuted); margin-bottom: 5px; display: flex; justify-content: space-between; }
+  .fl .lab em { font-style: normal; color: var(--tfaint); font-weight: 400; }
+  .fi {
+    font-family: inherit; font-size: 14px; padding: 10px 12px; border: 1px solid var(--border);
+    border-radius: 7px; background: #fff; color: var(--text); width: 100%;
+  }
+  .fi:focus { outline: none; border-color: var(--spec); box-shadow: 0 0 0 3px var(--spec-soft); }
+  select.fi { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--tmuted) 50%), linear-gradient(135deg, var(--tmuted) 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .chips { display: flex; gap: 7px; flex-wrap: wrap; }
+  .chip {
+    font-family: inherit; font-size: 12.5px; padding: 8px 15px; border-radius: 18px; cursor: pointer;
+    border: 1px solid var(--border); background: #fff; color: var(--tmuted);
+  }
+  .chip:hover { border-color: var(--tmuted); }
+  .chip.on { background: var(--text); color: #fff; border-color: var(--text); font-weight: 600; }
+
+  .fbtn {
+    font-family: inherit; width: 100%; background: var(--text); color: #fff; border: none;
+    border-radius: 8px; font-size: 14px; font-weight: 600; padding: 12px; cursor: pointer; margin-top: 8px;
+  }
+  .fbtn:hover { opacity: .9; }
+  .fbtn.blue { background: var(--spec); }
+  .fghost {
+    display: block; text-align: center; font-size: 12.5px; color: var(--tmuted);
+    margin-top: 14px; cursor: pointer; text-decoration: underline; background: none; border: none; font-family: inherit; width: 100%;
+  }
+  .fback { font-size: 12px; color: var(--tfaint); cursor: pointer; background: none; border: none; font-family: inherit; padding: 0; margin-bottom: 4px; }
+  .ferr { font-size: 12px; color: var(--red); margin-top: -8px; margin-bottom: 12px; display: none; }
+
+  .trust { display: flex; gap: 7px; font-size: 11px; color: var(--tmuted); margin-top: 14px; align-items: baseline; }
+  .trust::before { content: "🔒"; }
+  .guide { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 13px 16px; margin-bottom: 16px; }
+  .guide .g { display: flex; gap: 9px; font-size: 12px; padding: 4px 0; align-items: baseline; }
+  .guide .g b { flex-shrink: 0; width: 16px; height: 16px; border-radius: 50%; background: var(--bg); border: 1px solid var(--border); font-size: 9px; display: inline-flex; align-items: center; justify-content: center; color: var(--tmuted); transform: translateY(2px); }
+
+  .fine { font-size: 11px; color: var(--tfaint); margin-top: 16px; text-align: center; }
+
+  /* ── Dashboard ── */
+  .dash { width: 100%; max-width: 960px; margin-top: 1vh; }
+  .dtop {
+    display: flex; align-items: center; gap: 14px; background: var(--bg); border: 1px solid var(--frame-border);
+    border-radius: 12px 12px 0 0; padding: 13px 20px; border-bottom: none;
+  }
+  .dtop .flogo { margin: 0; font-size: 15px; }
+  .plan { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 9.5px; letter-spacing: .1em; padding: 3px 10px; border-radius: 10px; background: var(--border); color: var(--tmuted); }
+  .dtop .up { margin-left: auto; }
+  .btn-up {
+    font-family: inherit; background: var(--spec); color: #fff; border: none; border-radius: 7px;
+    font-size: 12.5px; font-weight: 600; padding: 8px 16px; cursor: pointer;
+  }
+  .dbody { background: var(--bg); border: 1px solid var(--frame-border); border-radius: 0 0 12px 12px; padding: 22px 24px 26px; box-shadow: 0 18px 50px rgba(30,26,16,.12); }
+
+  .banner {
+    display: flex; gap: 12px; align-items: center; background: var(--spec-soft);
+    border: 1px solid rgba(37,84,199,.25); border-radius: 9px; padding: 12px 16px; margin-bottom: 18px; font-size: 13px;
+  }
+  .banner b { color: var(--spec); }
+  .banner .btn-mini { margin-left: auto; font-family: inherit; background: var(--spec); color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; padding: 7px 14px; cursor: pointer; white-space: nowrap; }
+  .banner.ok { background: var(--green-bg); border-color: rgba(46,125,50,.3); }
+  .banner.ok b { color: var(--green); }
+
+  .dhead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; }
+  .dhead .nm { font-weight: 700; font-size: 17px; }
+  .dhead .sb { font-size: 11.5px; color: var(--tmuted); }
+  .live { display: inline-flex; align-items: center; gap: 6px; font-family: ui-monospace, monospace; font-size: 9.5px; letter-spacing: .1em; color: var(--green); background: var(--green-bg); border-radius: 10px; padding: 3px 9px; }
+  .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+  .kgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+  .lgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+  @media (max-width: 760px) { .kgrid, .lgrid { grid-template-columns: 1fr; } .row2 { grid-template-columns: 1fr; } }
+  .kcard { background: #fff; border: 1px solid var(--border); border-radius: 9px; padding: 14px 16px; position: relative; }
+  .kcard .k { font-size: 9.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--tmuted); margin-bottom: 4px; }
+  .kcard .v { font-size: 22px; font-weight: 680; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .kcard .d { font-size: 10.5px; color: var(--green); }
+
+  .kcard.lock { cursor: pointer; }
+  .kcard.lock .v, .kcard.lock .d, .kcard.lock .blurme { filter: blur(7px); user-select: none; }
+  .kcard.lock:hover { border-color: var(--spec); }
+  .prochip {
+    position: absolute; top: 10px; right: 10px; z-index: 2;
+    font-family: ui-monospace, monospace; font-size: 9px; letter-spacing: .1em; font-weight: 700;
+    background: var(--spec); color: #fff; border-radius: 9px; padding: 3px 9px; display: inline-flex; gap: 5px; align-items: center;
+  }
+  .kcard.lock .hint { position: absolute; left: 16px; bottom: 10px; font-size: 10.5px; color: var(--spec); font-weight: 600; opacity: 0; transition: opacity .15s; }
+  .kcard.lock:hover .hint { opacity: 1; }
+
+  .panel { background: #fff; border: 1px solid var(--border); border-radius: 9px; padding: 14px 16px; position: relative; }
+  .panel .k { font-size: 9.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--tmuted); margin-bottom: 10px; }
+  .bars { display: flex; align-items: flex-end; gap: 4px; height: 70px; }
+  .bars i { flex: 1; background: rgba(55,53,47,.14); border-radius: 2px 2px 0 0; }
+  .bars i.hot { background: rgba(55,53,47,.85); }
+  .grid2 { display: grid; grid-template-columns: 1.35fr 1fr; gap: 12px; margin-bottom: 12px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  .rows { font-size: 12.5px; }
+  .rows .r { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .rows .r:last-child { border-bottom: none; }
+  .rows .n { font-variant-numeric: tabular-nums; color: var(--tmuted); }
+  .lockcell { filter: blur(6px); user-select: none; }
+
+  /* upgrade modal */
+  .overlay { position: fixed; inset: 0; background: rgba(30,26,16,.4); display: none; align-items: center; justify-content: center; z-index: 300; padding: 20px; }
+  .overlay.on { display: flex; }
+  .umodal { background: var(--bg); border-radius: 14px; padding: 32px 34px; width: 430px; max-width: 100%; box-shadow: 0 24px 70px rgba(0,0,0,.25); }
+  .umodal .pk { font-family: ui-monospace, monospace; font-size: 10px; letter-spacing: .13em; color: var(--spec); text-transform: uppercase; margin-bottom: 10px; }
+  .umodal h3 { font-size: 20px; margin: 0 0 6px; letter-spacing: -.02em; }
+  .umodal .why { font-size: 13px; color: var(--tmuted); margin: 0 0 16px; }
+  .umodal .why b { color: var(--spec); }
+  .umodal ul { list-style: none; padding: 0; margin: 0 0 20px; }
+  .umodal li { font-size: 13px; padding: 7px 0; border-bottom: 1px solid var(--border); display: flex; gap: 9px; }
+  .umodal li:last-child { border-bottom: none; }
+  .umodal li::before { content: "✓"; color: var(--green); font-weight: 700; }
+  .umodal .pr { font-size: 13px; color: var(--tmuted); text-align: center; margin-top: 10px; }
+  .umodal .pr b { font-size: 16px; color: var(--text); }
+</style>
+
+<div class="proto">Interactive prototype · <b>click through the funnel</b> · no data is sent anywhere</div>
+
+<!-- ═══ STEP 1 · ACCOUNT ═══ -->
+<div class="scr on" id="s1">
+  <div class="fcard">
+    <div class="flogo">mesa</div>
+    <div class="fstep"><span>Step 1 / 4 · Account</span><span class="t">~60 s total</span></div>
+    <div class="fbar"><i style="width:25%"></i></div>
+    <h2 class="ft">Create your account</h2>
+    <p class="fs">Free for 14 days. No card, no password — we'll email you a sign-in link.</p>
+    <div class="row2">
+      <label class="fl"><span class="lab">First name</span><input class="fi" id="f-first" placeholder="Maria" autocomplete="given-name"></label>
+      <label class="fl"><span class="lab">Last name</span><input class="fi" id="f-last" placeholder="Santos" autocomplete="family-name"></label>
+    </div>
+    <label class="fl"><span class="lab">Work email</span><input class="fi" id="f-email" type="email" placeholder="maria@yourcafe.pt" autocomplete="email"></label>
+    <div class="ferr" id="e1">Please fill in your name and a valid email.</div>
+    <button class="fbtn" onclick="go(1)">Continue →</button>
+    <div class="fine">By continuing you accept our Terms &amp; Privacy Policy.</div>
+  </div>
+</div>
+
+<!-- ═══ STEP 2 · BUSINESS ═══ -->
+<div class="scr" id="s2">
+  <div class="fcard">
+    <div class="flogo">mesa</div>
+    <div class="fstep"><span>Step 2 / 4 · Your business</span><span class="t">~30 s left</span></div>
+    <div class="fbar"><i style="width:50%"></i></div>
+    <button class="fback" onclick="back(1)">← Back</button>
+    <h2 class="ft" id="t2">Nice to meet you 👋</h2>
+    <p class="fs">This shapes your dashboard — defaults, categories, benchmarks.</p>
+    <label class="fl"><span class="lab">Business name</span><input class="fi" id="f-company" placeholder="Café Alcântara"></label>
+    <div class="fl"><span class="lab">Type</span>
+      <div class="chips" data-k="type">
+        <button class="chip on" data-v="Café / Coffee shop">Café / Coffee shop</button>
+        <button class="chip" data-v="Restaurant">Restaurant</button>
+        <button class="chip" data-v="Bar">Bar</button>
+        <button class="chip" data-v="Bakery">Bakery</button>
+      </div>
+    </div>
+    <div class="fl"><span class="lab">Team size</span>
+      <div class="chips" data-k="employees">
+        <button class="chip" data-v="Just me">Just me</button>
+        <button class="chip on" data-v="2–5">2–5</button>
+        <button class="chip" data-v="6–15">6–15</button>
+        <button class="chip" data-v="16+">16+</button>
+      </div>
+    </div>
+    <div class="fl"><span class="lab">Annual revenue <em>optional</em></span>
+      <div class="chips" data-k="revenue">
+        <button class="chip" data-v="<100k">&lt; €100k</button>
+        <button class="chip" data-v="100-300k">€100–300k</button>
+        <button class="chip" data-v="300k-1M">€300k–1M</button>
+        <button class="chip" data-v=">1M">&gt; €1M</button>
+      </div>
+    </div>
+    <label class="fl"><span class="lab">NIF <em>optional — for invoices, you can add it later</em></span><input class="fi" id="f-nif" placeholder="5XXXXXXXX" inputmode="numeric"></label>
+    <div class="ferr" id="e2">Please enter your business name.</div>
+    <button class="fbtn" onclick="go(2)">Continue →</button>
+  </div>
+</div>
+
+<!-- ═══ STEP 3 · CONTEXT ═══ -->
+<div class="scr" id="s3">
+  <div class="fcard">
+    <div class="flogo">mesa</div>
+    <div class="fstep"><span>Step 3 / 4 · About you</span><span class="t">~15 s left</span></div>
+    <div class="fbar"><i style="width:75%"></i></div>
+    <button class="fback" onclick="back(2)">← Back</button>
+    <h2 class="ft">Two quick questions</h2>
+    <p class="fs">So we can point you at the right things first.</p>
+    <label class="fl"><span class="lab">Your role</span>
+      <select class="fi" id="f-role">
+        <option>Owner</option>
+        <option>Manager</option>
+        <option>Head barista / chef</option>
+        <option>Accountant</option>
+        <option>Other</option>
+      </select>
+    </label>
+    <label class="fl"><span class="lab">What matters most to you right now?</span>
+      <select class="fi" id="f-goal">
+        <option value="margins">Knowing my real margins per product</option>
+        <option value="breakeven">Knowing my daily break-even</option>
+        <option value="expenses">Tracking expenses &amp; receipts in one place</option>
+        <option value="spreadsheets">Replacing my spreadsheets</option>
+        <option value="exploring">Just exploring</option>
+      </select>
+    </label>
+    <label class="fl"><span class="lab">How did you hear about us? <em>optional</em></span>
+      <select class="fi" id="f-heard">
+        <option value="">Select…</option>
+        <option>Word of mouth — another owner</option>
+        <option>Instagram / social media</option>
+        <option>Google search</option>
+        <option>Vendus community / forum</option>
+        <option>My accountant</option>
+        <option>Other</option>
+      </select>
+    </label>
+    <button class="fbtn" onclick="go(3)">Continue →</button>
+  </div>
+</div>
+
+<!-- ═══ STEP 4 · CONNECT ═══ -->
+<div class="scr" id="s4">
+  <div class="fcard">
+    <div class="flogo">mesa</div>
+    <div class="fstep"><span>Step 4 / 4 · Connect Vendus</span><span class="t">last step</span></div>
+    <div class="fbar"><i style="width:95%"></i></div>
+    <button class="fback" onclick="back(3)">← Back</button>
+    <h2 class="ft">Connect your Vendus account</h2>
+    <p class="fs">Your sales import automatically — read-only, encrypted. This is where the magic starts.</p>
+    <div class="guide">
+      <div class="g"><b>1</b><span>Open <b>Vendus</b> → <b>Configurações</b></span></div>
+      <div class="g"><b>2</b><span>Section <b>Integrações → API</b></span></div>
+      <div class="g"><b>3</b><span>Copy the key, paste it below</span></div>
+    </div>
+    <label class="fl"><span class="lab">Vendus API key</span><input class="fi mono" id="f-key" style="font-size:12px;" placeholder="f47ac10b-58cc-4372-a567-…"></label>
+    <button class="fbtn blue" onclick="connect()">Connect &amp; see my numbers →</button>
+    <button class="fghost" onclick="skip()">Skip for now — explore with demo data</button>
+    <div class="trust">Read-only. Mesa can never modify anything in Vendus. Key encrypted at rest (AES-256).</div>
+  </div>
+</div>
+
+<!-- ═══ DASHBOARD ═══ -->
+<div class="scr" id="s5">
+  <div class="dash">
+    <div class="dtop">
+      <div class="flogo">mesa</div>
+      <span class="plan">FREE PLAN</span>
+      <div class="up"><button class="btn-up" onclick="openUp('generic')">✦ Upgrade to Pro</button></div>
+    </div>
+    <div class="dbody">
+
+      <div class="banner" id="demo-banner">
+        <span>📊 <b>You're viewing demo data.</b> Connect Vendus (3 min) to see your own numbers here.</span>
+        <button class="btn-mini" onclick="show(4)">Connect Vendus</button>
+      </div>
+      <div class="banner ok" id="live-banner" style="display:none;">
+        <span>✓ <b>Vendus connected.</b> 12,384 sales imported · 247 products · last sale 12 min ago.</span>
+      </div>
+
+      <div class="dhead">
+        <div>
+          <div class="nm" id="d-company">Café Alcântara</div>
+          <div class="sb">Today · <span id="d-date"></span></div>
+        </div>
+        <span class="live" id="d-live" style="display:none;"><i></i>LIVE</span>
+      </div>
+
+      <!-- FREE KPIs -->
+      <div class="kgrid">
+        <div class="kcard"><div class="k">Revenue (incl. VAT)</div><div class="v">€487.50</div><div class="d">+12% vs last Thu</div></div>
+        <div class="kcard"><div class="k">Transactions</div><div class="v">63</div><div class="d">+8%</div></div>
+        <div class="kcard"><div class="k">Average ticket</div><div class="v">€7.74</div><div class="d">+4%</div></div>
+      </div>
+
+      <!-- LOCKED KPIs -->
+      <div class="lgrid">
+        <div class="kcard lock" onclick="openUp('margins')">
+          <span class="prochip">🔒 PRO</span>
+          <div class="k">Gross margin</div><div class="v">74.2%</div><div class="d">€318.40 today</div>
+          <span class="hint">Unlock with Pro →</span>
+        </div>
+        <div class="kcard lock" onclick="openUp('breakeven')">
+          <span class="prochip">🔒 PRO</span>
+          <div class="k">Daily break-even</div><div class="v">Reached</div><div class="d">at 12:47 · +€75.50</div>
+          <span class="hint">Unlock with Pro →</span>
+        </div>
+        <div class="kcard lock" onclick="openUp('margins')">
+          <span class="prochip">🔒 PRO</span>
+          <div class="k">Est. EBITDA (month)</div><div class="v">€2,184</div><div class="d">margin 18.3%</div>
+          <span class="hint">Unlock with Pro →</span>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="panel">
+          <div class="k">Revenue by hour — free</div>
+          <div class="bars">
+            <i style="height:16%"></i><i style="height:32%"></i><i style="height:54%"></i><i class="hot" style="height:86%"></i><i class="hot" style="height:100%"></i><i style="height:62%"></i><i style="height:44%"></i><i style="height:52%"></i><i style="height:58%"></i><i style="height:34%"></i>
+          </div>
+        </div>
+        <div class="panel rows">
+          <div class="k">Top products — margin is Pro</div>
+          <div class="r"><span>Espresso · 84 sold</span><span class="n lockcell">82%</span></div>
+          <div class="r"><span>Avocado toast · 11 sold</span><span class="n lockcell">61%</span></div>
+          <div class="r"><span>Iced latte · 14 sold</span><span class="n lockcell">76%</span></div>
+          <div class="r"><span>Croissant · 29 sold</span><span class="n lockcell">54%</span></div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="panel lock kcard" style="padding:14px 16px;" onclick="openUp('mix')">
+          <span class="prochip">🔒 PRO</span>
+          <div class="k">Product mix · margin per bucket</div>
+          <div class="blurme">
+            <div class="rows">
+              <div class="r"><span>Drinks</span><span class="n">58% · margin 79%</span></div>
+              <div class="r"><span>Food</span><span class="n">27% · margin 62%</span></div>
+              <div class="r"><span>Viennoiserie</span><span class="n">9% · margin 51%</span></div>
+            </div>
+          </div>
+          <span class="hint">Unlock with Pro →</span>
+        </div>
+        <div class="panel lock kcard" style="padding:14px 16px;" onclick="openUp('generic')">
+          <span class="prochip">🔒 PRO</span>
+          <div class="k">Week heat map &amp; movers</div>
+          <div class="blurme">
+            <div class="rows">
+              <div class="r"><span>Iced matcha</span><span class="n" style="color:var(--green);">+24%</span></div>
+              <div class="r"><span>Sat 11:00–12:00</span><span class="n">9.4% of week</span></div>
+              <div class="r"><span>Filter coffee</span><span class="n" style="color:var(--red);">−12%</span></div>
+            </div>
+          </div>
+          <span class="hint">Unlock with Pro →</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══ UPGRADE MODAL ═══ -->
+<div class="overlay" id="up-overlay" onclick="if(event.target===this)this.classList.remove('on')">
+  <div class="umodal">
+    <div class="pk">✦ Mesa Pro</div>
+    <h3>Unlock your profitability layer</h3>
+    <p class="why" id="up-why">Sales analytics are free, forever. Profit analytics are Pro.</p>
+    <ul>
+      <li>Gross margin per product — recipe-level COGS engine</li>
+      <li>Daily break-even &amp; estimated EBITDA</li>
+      <li>Product mix profitability, heat map &amp; weekly movers</li>
+      <li>Expenses, payroll &amp; bank statement reconciliation</li>
+    </ul>
+    <button class="fbtn blue" onclick="document.getElementById('up-overlay').classList.remove('on')">Start Pro trial — 14 days free</button>
+    <div class="pr"><b>€29</b>/month after · cancel anytime</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var state = { type: 'Café / Coffee shop', employees: '2–5', revenue: '', connected: false };
+
+  // chips
+  document.querySelectorAll('.chips').forEach(function (g) {
+    g.querySelectorAll('.chip').forEach(function (c) {
+      c.addEventListener('click', function () {
+        g.querySelectorAll('.chip').forEach(function (x) { x.classList.remove('on'); });
+        c.classList.add('on');
+        state[g.dataset.k] = c.dataset.v;
+      });
+    });
+  });
+
+  window.show = function (n) {
+    document.querySelectorAll('.scr').forEach(function (s) { s.classList.remove('on'); });
+    document.getElementById('s' + n).classList.add('on');
+    window.scrollTo(0, 0);
+  };
+  window.back = function (n) { show(n); };
+
+  window.go = function (from) {
+    if (from === 1) {
+      var f = document.getElementById('f-first').value.trim();
+      var e = document.getElementById('f-email').value.trim();
+      if (!f || e.indexOf('@') < 1) { document.getElementById('e1').style.display = 'block'; return; }
+      document.getElementById('e1').style.display = 'none';
+      state.first = f;
+      document.getElementById('t2').textContent = 'Nice to meet you, ' + f + ' 👋';
+      show(2);
+    } else if (from === 2) {
+      var c = document.getElementById('f-company').value.trim();
+      if (!c) { document.getElementById('e2').style.display = 'block'; return; }
+      document.getElementById('e2').style.display = 'none';
+      state.company = c;
+      show(3);
+    } else if (from === 3) {
+      state.goal = document.getElementById('f-goal').value;
+      show(4);
+    }
+  };
+
+  function landDash() {
+    document.getElementById('d-company').textContent = state.company || 'Café Alcântara';
+    var d = new Date();
+    document.getElementById('d-date').textContent = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+    show(5);
+  }
+
+  window.connect = function () {
+    var k = document.getElementById('f-key').value.trim();
+    if (!k) { document.getElementById('f-key').focus(); return; }
+    state.connected = true;
+    document.getElementById('demo-banner').style.display = 'none';
+    document.getElementById('live-banner').style.display = 'flex';
+    document.getElementById('d-live').style.display = 'inline-flex';
+    landDash();
+  };
+  window.skip = function () {
+    state.connected = false;
+    document.getElementById('demo-banner').style.display = 'flex';
+    document.getElementById('live-banner').style.display = 'none';
+    document.getElementById('d-live').style.display = 'none';
+    landDash();
+  };
+
+  // upgrade modal, personalised by declared goal
+  var WHY = {
+    margins:    'You told us margins matter most to you — that is exactly what Pro unlocks.',
+    breakeven:  'You told us you want your daily break-even — that is a Pro metric, computed from your real fixed costs.',
+    expenses:   'You told us you want expenses in one place — Pro reconciles bank statements against your revenue.',
+    spreadsheets: 'You told us you want to kill the spreadsheets — Pro replaces the margin and break-even tabs entirely.',
+    exploring:  'Sales analytics are free, forever. The profitability layer — margins, break-even, mix — is Pro.',
+    generic:    'Sales analytics are free, forever. Profit analytics are Pro.'
+  };
+  window.openUp = function (ctx) {
+    var key = (ctx === 'margins' || ctx === 'breakeven' || ctx === 'mix') ? ctx : (state.goal || 'generic');
+    if (ctx === 'mix') key = state.goal === 'margins' ? 'margins' : (state.goal || 'generic');
+    document.getElementById('up-why').textContent = WHY[key] || WHY.generic;
+    document.getElementById('up-overlay').classList.add('on');
+  };
+
+  // Enter advances
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter') return;
+    var cur = document.querySelector('.scr.on');
+    if (!cur) return;
+    if (cur.id === 's1') go(1);
+    else if (cur.id === 's2') go(2);
+    else if (cur.id === 's3') go(3);
+    else if (cur.id === 's4') connect();
+  });
+})();
+</script>
