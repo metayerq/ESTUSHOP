@@ -184,7 +184,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260708b"
+ASSET_VERSION = "20260712a"
 
 @app.context_processor
 def _inject_asset_version():
@@ -269,11 +269,12 @@ def login():
 <title>Estudantina — Sign in</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-body {{ font-family:'Inter',sans-serif; background:#faf9f5; display:flex; align-items:center;
-       justify-content:center; height:100vh; margin:0; color:#37352f; }}
-.box {{ background:#fff; border:1px solid #e8e6e0; border-radius:12px; padding:40px;
-        width:320px; box-shadow:0 4px 24px rgba(0,0,0,.06); }}
+body {{ font-family:'Inter',sans-serif; background:#EDEAE3; display:flex; align-items:center;
+       justify-content:center; height:100vh; margin:0; color:#26241E; }}
+.box {{ background:#fff; border:1px solid #DBD7CB; border-radius:12px; padding:40px;
+        width:320px; box-shadow:0 14px 40px rgba(30,26,16,.10); }}
 h1 {{ font-size:18px; margin:0 0 4px; }}
+h1::before {{ content:"◳ "; color:#2554C7; }}
 p {{ font-size:13px; color:#78776f; margin:0 0 24px; }}
 input {{ width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #e8e6e0;
          border-radius:6px; font-family:inherit; font-size:14px; margin-bottom:12px; }}

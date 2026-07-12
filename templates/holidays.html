@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Estudantina">
-<meta name="theme-color" content="#f7f6f3">
+<meta name="theme-color" content="#EDEAE3">
 <title>Estudantina · Holidays</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -163,8 +163,9 @@ td.date { color:var(--muted); white-space:nowrap; }
 
 <div class="toast" id="toast"></div>
 
+<script src="/static/ui.js?v={{ v }}"></script>
 <script>
-const fmtDate = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+const fmtDate = iso => new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'short', year:'numeric' });
 
 let timeOff = [];
 let employees = [];
@@ -172,10 +173,17 @@ let employees = [];
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
 
 async function loadAll(){
-  const [tR, eR] = await Promise.all([fetch('/api/time_off'), fetch('/api/employees')]);
-  timeOff = (await tR.json()).filter(r => r.active !== false);
-  employees = (await eR.json()).filter(e => e.active !== false);
-  render();
+  if (window.uiLoadStart) uiLoadStart();
+  try {
+    const [tR, eR] = await Promise.all([fetch('/api/time_off'), fetch('/api/employees')]);
+    timeOff = (await tR.json()).filter(r => r.active !== false);
+    employees = (await eR.json()).filter(e => e.active !== false);
+    render();
+  } catch(e) {
+    showToast('Failed to load — check your connection');
+  } finally {
+    if (window.uiLoadEnd) uiLoadEnd();
+  }
 }
 
 function render(){

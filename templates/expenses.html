@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Estudantina">
-<meta name="theme-color" content="#f7f6f3">
+<meta name="theme-color" content="#EDEAE3">
 <title>Estudantina · Expenses</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -37,7 +37,7 @@
   border-radius:20px; border:1px solid var(--border); background:var(--bg-card);
   color:var(--muted); cursor:pointer; white-space:nowrap; }
 .pill:hover { background:var(--bg-hover); }
-.pill.active { background:var(--text); color:#fff; border-color:var(--text); }
+.pill.active { background:var(--spec); color:#fff; border-color:var(--spec); }
 
 .toolbar { display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; }
 .filters { display:flex; gap:6px; flex-wrap:wrap; }
@@ -291,6 +291,7 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
 
 <div class="toast" id="toast"></div>
 
+<script src="/static/ui.js?v={{ v }}"></script>
 <script>
 const fmt = v => new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR',minimumFractionDigits:2}).format(v);
 const CAT_LABEL = { groceries:'Groceries', supplier:'Supplier', works:'Works & fit-out', rent:'Rent',
@@ -306,11 +307,18 @@ let currentFilter = 'all';
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
 
 async function loadAll(){
-  const r = await fetch('/api/expenses');
-  expenses = (await r.json()).filter(e => e.active !== false);
-  buildAccountPills();
-  buildMonthPills();
-  render();
+  if (window.uiLoadStart) uiLoadStart();
+  try {
+    const r = await fetch('/api/expenses');
+    expenses = (await r.json()).filter(e => e.active !== false);
+    buildAccountPills();
+    buildMonthPills();
+    render();
+  } catch(e) {
+    showToast('Failed to load — check your connection');
+  } finally {
+    if (window.uiLoadEnd) uiLoadEnd();
+  }
 }
 
 function monthKey(dateStr){ return (dateStr || '').slice(0,7); }

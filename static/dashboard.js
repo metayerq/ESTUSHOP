@@ -78,6 +78,7 @@ async function loadData(force = false) {
       if (cached) render(JSON.parse(cached));
     } catch(e) {}
   }
+  if (window.uiLoadStart) uiLoadStart();
   try {
     const url = isCustom
       ? `/api/data?preset=custom&start_date=${customStart}&end_date=${customEnd}${force ? '&fresh=1' : ''}`
@@ -93,6 +94,8 @@ async function loadData(force = false) {
   } catch(e) {
     document.getElementById('error-msg').textContent = e.message;
     document.getElementById('error-banner').style.display = 'block';
+  } finally {
+    if (window.uiLoadEnd) uiLoadEnd();
   }
 }
 
@@ -860,6 +863,7 @@ function switchDashView(view) {
 
 async function loadCashflow() {
   document.getElementById('cf-updated').textContent = 'Loading…';
+  if (window.uiLoadStart) uiLoadStart();
   try {
     const r = await fetch('/api/cashflow');
     cashflowData = await r.json();
@@ -868,6 +872,8 @@ async function loadCashflow() {
     renderCashflow();
   } catch (e) {
     document.getElementById('cf-updated').textContent = 'Failed to load';
+  } finally {
+    if (window.uiLoadEnd) uiLoadEnd();
   }
 }
 

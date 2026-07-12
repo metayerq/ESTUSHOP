@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Estudantina">
-<meta name="theme-color" content="#f7f6f3">
+<meta name="theme-color" content="#EDEAE3">
 <title>Estudantina · COGS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -39,7 +39,7 @@
 .view-tab:hover { background:var(--bg-hover); color:var(--text); }
 .view-tab.active {
   background:var(--bg-card); color:var(--text);
-  font-weight:600; box-shadow:inset 0 -2px 0 var(--text);
+  font-weight:600; box-shadow:inset 0 -2px 0 var(--spec);
 }
 .view-tab .tab-badge {
   display:inline-block; margin-left:6px;
@@ -840,6 +840,7 @@
 
 <div id="toast"></div>
 
+<script src="/static/ui.js?v={{ v }}"></script>
 <script>
 // ══════════════════════════════════════════════════════════
 // STATE
@@ -889,21 +890,29 @@ async function loadCogs(soft = false) {
     document.getElementById('content').innerHTML = '<div class="loading">Chargement…</div>';
   }
   setLoading(true);
-  const [cogsRes, ingrRes] = await Promise.all([
-    fetch('/api/cogs'), fetch('/api/ingredients')
-  ]);
-  const d   = await cogsRes.json();
-  ingrLib   = await ingrRes.json();
-  allProducts   = d.products;
-  categoryOrder = d.category_order;
-  categoryNames = d.category_names;
-  prepLib       = d.preparations || {};
-  buildCatFilter();
-  applyFilters();
-  renderIngrLib();
-  renderPrepList();
-  updateTabBadges();
-  setLoading(false);
+  if (window.uiLoadStart) uiLoadStart();
+  try {
+    const [cogsRes, ingrRes] = await Promise.all([
+      fetch('/api/cogs'), fetch('/api/ingredients')
+    ]);
+    const d   = await cogsRes.json();
+    ingrLib   = await ingrRes.json();
+    allProducts   = d.products;
+    categoryOrder = d.category_order;
+    categoryNames = d.category_names;
+    prepLib       = d.preparations || {};
+    buildCatFilter();
+    applyFilters();
+    renderIngrLib();
+    renderPrepList();
+    updateTabBadges();
+  } catch(e) {
+    document.getElementById('content').innerHTML =
+      '<div class="loading">Load failed — <a href="javascript:loadCogs()" style="color:var(--spec)">retry</a></div>';
+  } finally {
+    setLoading(false);
+    if (window.uiLoadEnd) uiLoadEnd();
+  }
 }
 
 // ══════════════════════════════════════════════════════════
