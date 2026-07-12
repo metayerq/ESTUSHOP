@@ -90,19 +90,24 @@ def _negate_refund(d):
     return d
 
 
-def get_documents(since: str, until: str):
+def get_documents(since: str, until: str, detailed: bool = False):
     """Récupère ventes + avoirs (NC) de la période (pagination complète).
-    Les NC sont retournées avec montants négatifs → CA net automatique."""
+    Les NC sont retournées avec montants négatifs → CA net automatique.
+    detailed=True → view=detailed : la liste inclut alors les payments
+    (non documenté officiellement mais vérifié) — utilisé par la réconciliation."""
     PER_PAGE = 200
     all_raw  = []
     page     = 1
     while True:
-        batch = vendus("/documents/", {
+        params = {
             "since":    since,
             "until":    until,
             "per_page": PER_PAGE,
             "page":     page,
-        })
+        }
+        if detailed:
+            params["view"] = "detailed"
+        batch = vendus("/documents/", params)
         if isinstance(batch, list):
             raw = batch
         else:

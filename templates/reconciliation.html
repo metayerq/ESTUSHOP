@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/static/icons/favicon-32.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Estudantina">
+<meta name="theme-color" content="#EDEAE3">
+<title>Estudantina · Reconciliation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<style>
+/* ── App nav (barre d'onglets partagée) ── */
+.app-nav { display:flex; gap:4px; margin-bottom:28px; border-bottom:1px solid var(--border); }
+.app-nav-item {
+  display:flex; align-items:center; gap:8px; padding:11px 18px;
+  font-size:13px; font-weight:500; color:var(--muted); text-decoration:none;
+  border-radius:8px 8px 0 0; border:1px solid transparent; border-bottom:none;
+  margin-bottom:-1px; white-space:nowrap;
+}
+.app-nav-item svg { width:16px; height:16px; flex-shrink:0; }
+.app-nav-item:hover { color:var(--text); background:var(--bg-hover); }
+.app-nav-item.active { color:var(--text); background:var(--bg-card); border-color:var(--border); font-weight:600; }
+@media (max-width:760px) {
+  .app-nav { overflow-x:auto; } .app-nav-item span { display:none; } .app-nav-item { padding:11px 13px; }
+  .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .table-wrap table { min-width:640px; }
+  .summary-bar { flex-wrap:wrap; }
+  .summary-bar .sum-item { flex:1 1 33%; border-bottom:1px solid var(--border); }
+}
+
+.summary-bar { display:flex; gap:0; background:var(--bg-card); border:1px solid var(--border);
+  border-radius:8px; overflow:hidden; margin-bottom:24px; }
+.sum-item { flex:1; padding:14px 18px; border-right:1px solid var(--border); }
+.sum-item:last-child { border-right:none; }
+.sum-label { font-family:var(--mono); font-size:9px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+.sum-val { font-size:18px; font-weight:600; letter-spacing:-.4px; font-variant-numeric:tabular-nums; }
+.sum-sub { font-size:10.5px; color:var(--faint); margin-top:2px; }
+
+.controls { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:18px; }
+.field-label { font-size:11px; font-weight:500; color:var(--muted); margin-bottom:5px; display:block; }
+.field-input { font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border);
+  border-radius:6px; background:var(--bg-card); color:var(--text); box-sizing:border-box; }
+.btn-add { font-family:inherit; font-size:12px; font-weight:500; padding:8px 14px;
+  border-radius:6px; cursor:pointer; border:1px solid var(--border); background:var(--bg-card); color:var(--text); }
+.btn-add:hover { background:var(--bg-hover); }
+.btn-primary { font-family:inherit; font-size:12px; font-weight:600; padding:9px 18px;
+  border-radius:6px; cursor:pointer; border:none; background:var(--spec); color:#fff; }
+.btn-primary:disabled { opacity:.4; cursor:default; }
+
+.paste-card { background:var(--bg-card); border:1px solid var(--border); border-radius:8px;
+  padding:16px 18px; margin-bottom:20px; }
+.paste-card textarea { width:100%; font-family:var(--mono); font-size:11.5px; resize:vertical;
+  border:1px solid var(--border); border-radius:6px; padding:10px; background:var(--bg-page); color:var(--text); box-sizing:border-box; }
+.parse-info { font-family:var(--mono); font-size:11px; color:var(--spec); margin-top:8px; }
+.parse-info.err { color:var(--red); }
+
+.paytypes { display:flex; gap:6px 14px; flex-wrap:wrap; margin:10px 0 20px; font-size:12.5px; color:var(--muted); align-items:center; }
+.paytypes label { display:flex; gap:5px; align-items:center; cursor:pointer; }
+.paytypes input { accent-color:var(--spec); }
+
+.table-wrap { border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:16px; background:var(--bg-card); }
+td.num { font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+th.right { text-align:right; }
+td.date { color:var(--muted); white-space:nowrap; }
+.st { font-size:10px; font-weight:600; padding:2px 8px; border-radius:9px; white-space:nowrap; }
+.st-ok  { background:#e8f5e9; color:#2e7d32; }
+.st-mid { background:#fdf3dd; color:#b07d00; }
+.st-bad { background:#fdeceb; color:var(--red); }
+.delta-pos { color:var(--green); }
+.delta-neg { color:var(--red); }
+.empty { text-align:center; color:var(--muted); padding:36px; font-size:13px; }
+
+.hint { font-size:12px; color:var(--muted); margin-bottom:20px; max-width:70ch; }
+.hint b { color:var(--text); }
+
+.toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+  background:var(--text); color:#fff; padding:10px 18px; border-radius:8px; font-size:13px;
+  opacity:0; transition:all .25s; z-index:200; }
+.toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="app-nav">
+    <a href="/" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg><span>Dashboard</span></a>
+    <a href="/cogs" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"/></svg><span>COGS</span></a>
+    <a href="/stock" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5-9 4.5-9-4.5Z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg><span>Stock</span></a>
+    <a href="/charges" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1" fill="currentColor" stroke="none"/></svg><span>Costs</span></a>
+    <a href="/expenses" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 9h20L12 3Z"/><path d="M4 9v10M9 9v10M15 9v10M20 9v10"/><path d="M2.5 21.5h19"/></svg><span>Expenses</span></a>
+    <a href="/holidays" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span>Holidays</span></a>
+    <a href="/reconciliation" class="app-nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h13M14 4l3 3-3 3"/><path d="M20 17H7M10 14l-3 3 3 3"/></svg><span>Reconciliation</span></a>
+  </div>
+
+  <div class="header">
+    <div>
+      <div class="header-title">Reconciliation</div>
+      <div class="header-sub">Revolut terminal vs Vendus certified invoices — monthly close</div>
+    </div>
+  </div>
+
+  <p class="hint">Le terminal Revolut encaisse <b>brut + pourboires − frais</b> ; Vendus facture le montant certifié <b>sans pourboires</b>.
+  L'écart attendu par jour est donc ≈ 0 une fois les tips retirés. Δ = Revolut (hors tips) − Vendus facturé.</p>
+
+  <div class="controls">
+    <div>
+      <label class="field-label">Month</label>
+      <input type="month" class="field-input" id="f-month">
+    </div>
+    <button class="btn-add" id="btn-export" onclick="exportCsv()" disabled>⇩ Export CSV (comptable)</button>
+  </div>
+
+  <div class="paste-card">
+    <label class="field-label">Relevé Revolut du mois (export CSV du portail marchand — colle tout, en-têtes compris)</label>
+    <textarea id="paste" rows="7" placeholder="Date,Type,State,Amount,Fee,Tip,...&#10;2026-07-01 09:12:44,Payment,Completed,2.20,0.03,0.20,..."></textarea>
+    <div style="display:flex; gap:10px; align-items:center; margin-top:10px;">
+      <button class="btn-primary" onclick="parseRevolut()">Parse statement</button>
+      <span class="parse-info" id="parse-info"></span>
+    </div>
+  </div>
+
+  <div class="paytypes" id="paytypes" style="display:none;">
+    <span style="font-weight:600; color:var(--text);">Vendus payment types counted as terminal:</span>
+  </div>
+
+  <div class="summary-bar" id="summary" style="display:none;">
+    <div class="sum-item"><div class="sum-label">Collected (gross)</div><div class="sum-val" id="s-gross">—</div><div class="sum-sub" id="s-tx"></div></div>
+    <div class="sum-item"><div class="sum-label">Tips</div><div class="sum-val" id="s-tips" style="color:var(--green);">—</div></div>
+    <div class="sum-item"><div class="sum-label">Revolut fees</div><div class="sum-val" id="s-fees" style="color:var(--red);">—</div></div>
+    <div class="sum-item"><div class="sum-label">Net received</div><div class="sum-val" id="s-net">—</div></div>
+    <div class="sum-item"><div class="sum-label">Invoiced (Vendus)</div><div class="sum-val" id="s-vendus">—</div></div>
+    <div class="sum-item"><div class="sum-label">Écart (excl. tips)</div><div class="sum-val" id="s-delta">—</div><div class="sum-sub">should be ≈ 0</div></div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Date</th>
+        <th class="right">Revolut gross</th>
+        <th class="right">Tips</th>
+        <th class="right">Fees</th>
+        <th class="right">Net received</th>
+        <th class="right">Vendus invoiced</th>
+        <th class="right">Δ (excl. tips)</th>
+        <th style="width:70px;"></th>
+      </tr></thead>
+      <tbody id="tbody"><tr><td colspan="8" class="empty">Choose a month, paste the Revolut statement, hit Parse.</td></tr></tbody>
+    </table>
+  </div>
+
+</div><!-- /page -->
+
+<div class="toast" id="toast"></div>
+
+<script src="/static/ui.js?v={{ v }}"></script>
+<script>
+const fmt = v => new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR',minimumFractionDigits:2}).format(v);
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400); }
+
+let vendusDays = {};        // date → {total, payments:{title:amount}}
+let payTitles = [];         // tous les moyens de paiement Vendus vus dans le mois
+let selectedTypes = new Set();
+let revolutDays = {};       // date → {gross, tips, fees, net, tx}
+let currentMonth = '';
+
+// ── Mois par défaut : mois précédent (usage = clôture mensuelle) ─────────────
+(function initMonth(){
+  const d = new Date(); d.setDate(1); d.setMonth(d.getMonth()-1);
+  const m = d.toISOString().slice(0,7);
+  document.getElementById('f-month').value = m;
+  document.getElementById('f-month').addEventListener('change', onMonthChange);
+  onMonthChange();
+})();
+
+function onMonthChange(){
+  currentMonth = document.getElementById('f-month').value;
+  if (!currentMonth) return;
+  // restaure un relevé déjà collé pour ce mois (localStorage)
+  try {
+    const saved = localStorage.getItem('recon_' + currentMonth);
+    revolutDays = saved ? JSON.parse(saved) : {};
+  } catch(e) { revolutDays = {}; }
+  loadVendus();
+}
+
+async function loadVendus(){
+  if (window.uiLoadStart) uiLoadStart();
+  try {
+    const r = await fetch('/api/reconciliation?month=' + currentMonth);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    vendusDays = {};
+    (d.days || []).forEach(x => vendusDays[x.date] = x);
+    payTitles = d.payment_titles || [];
+    buildPayTypes();
+    render();
+  } catch(e) {
+    showToast('Vendus load failed — ' + e.message);
+  } finally {
+    if (window.uiLoadEnd) uiLoadEnd();
+  }
+}
+
+// ── Moyens de paiement comptés côté "terminal" ───────────────────────────────
+function buildPayTypes(){
+  const box = document.getElementById('paytypes');
+  const saved = localStorage.getItem('recon_types');
+  if (saved) selectedTypes = new Set(JSON.parse(saved));
+  else if (!selectedTypes.size) {
+    // défaut : tout sauf l'espèce (le terminal encaisse tout le reste)
+    payTitles.forEach(t => { if (!/dinheiro|cash|numer[áa]rio|esp[èe]ce/i.test(t)) selectedTypes.add(t); });
+  }
+  box.style.display = payTitles.length ? 'flex' : 'none';
+  box.querySelectorAll('label').forEach(l => l.remove());
+  payTitles.forEach(t => {
+    const l = document.createElement('label');
+    l.innerHTML = `<input type="checkbox" ${selectedTypes.has(t)?'checked':''}> ${t}`;
+    l.querySelector('input').addEventListener('change', ev => {
+      ev.target.checked ? selectedTypes.add(t) : selectedTypes.delete(t);
+      localStorage.setItem('recon_types', JSON.stringify([...selectedTypes]));
+      render();
+    });
+    box.appendChild(l);
+  });
+}
+
+// ── Parseur relevé Revolut (souple : CSV , ; ou tab, colonnes détectées) ─────
+function parseRevolut(){
+  const raw = document.getElementById('paste').value;
+  const info = document.getElementById('parse-info');
+  info.classList.remove('err');
+  const lines = raw.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2){ info.textContent = 'Nothing to parse.'; info.classList.add('err'); return; }
+
+  const delim = [';','\t',','].find(d => lines[0].split(d).length > 2) || ',';
+  const norm = s => s.trim().toLowerCase().replace(/^"|"$/g,'');
+
+  // ligne d'en-tête = première ligne contenant "date" + une colonne de montant
+  let hIdx = -1, cols = [];
+  for (let i = 0; i < Math.min(lines.length, 5); i++){
+    const c = lines[i].split(delim).map(norm);
+    if (c.some(x => x.includes('date')) && c.some(x => /amount|gross|total/.test(x))) { hIdx = i; cols = c; break; }
+  }
+  if (hIdx < 0){ info.textContent = 'Header row not found (need Date + Amount columns).'; info.classList.add('err'); return; }
+
+  const find = (re, exclude) => cols.findIndex(c => re.test(c) && !(exclude && exclude.test(c)));
+  const iDate = find(/date/);
+  const iAmt  = find(/amount|gross|total/, /tip|fee|tax|net/);
+  const iFee  = find(/fee/);
+  const iTip  = find(/tip|gratuity/);
+  const iNet  = find(/net|settled/, /amount/);
+  const iState= find(/state|status/);
+  if (iAmt < 0){ info.textContent = 'Amount column not found.'; info.classList.add('err'); return; }
+
+  const num = s => {
+    if (s == null) return 0;
+    s = String(s).replace(/^"|"$/g,'').replace(/[€\s]/g,'');
+    if (/^-?\d{1,3}(\.\d{3})*,\d+$/.test(s)) s = s.replace(/\./g,'').replace(',', '.');
+    else if (/^-?\d+,\d+$/.test(s)) s = s.replace(',', '.');
+    const v = parseFloat(s);
+    return isNaN(v) ? 0 : v;
+  };
+  const parseDay = s => {
+    s = String(s).replace(/^"|"$/g,'').trim();
+    let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);            // ISO
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    m = s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/);    // DD/MM/YYYY
+    if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+    const d = new Date(s);
+    return isNaN(d) ? null : d.toISOString().slice(0,10);
+  };
+
+  const days = {}; let tx = 0, skipped = 0, outOfMonth = 0;
+  for (let i = hIdx + 1; i < lines.length; i++){
+    // split naïf suffisant pour les exports Revolut (pas de virgules dans les nombres quotés)
+    const c = lines[i].split(delim);
+    if (c.length < cols.length - 2) { skipped++; continue; }
+    if (iState >= 0 && !/completed|paid|succeeded/i.test(c[iState] || 'completed')) { skipped++; continue; }
+    const day = iDate >= 0 ? parseDay(c[iDate]) : null;
+    if (!day){ skipped++; continue; }
+    if (currentMonth && !day.startsWith(currentMonth)) { outOfMonth++; continue; }
+    const gross = num(c[iAmt]);
+    if (!gross) { skipped++; continue; }
+    const fee = iFee >= 0 ? Math.abs(num(c[iFee])) : 0;
+    const tip = iTip >= 0 ? num(c[iTip]) : 0;
+    const net = iNet >= 0 && num(c[iNet]) ? num(c[iNet]) : gross - fee;
+    const rec = days[day] = days[day] || { gross:0, tips:0, fees:0, net:0, tx:0 };
+    rec.gross += gross; rec.tips += tip; rec.fees += fee; rec.net += net; rec.tx++;
+    tx++;
+  }
+
+  if (!tx){ info.textContent = 'No valid transactions found' + (outOfMonth ? ` (${outOfMonth} outside ${currentMonth})` : '') + '.'; info.classList.add('err'); return; }
+  revolutDays = days;
+  try { localStorage.setItem('recon_' + currentMonth, JSON.stringify(days)); } catch(e) {}
+  info.textContent = `✓ ${tx} transactions · ${Object.keys(days).length} days` +
+    (iTip < 0 ? ' · no tip column detected' : '') +
+    (outOfMonth ? ` · ${outOfMonth} ignored (other month)` : '') +
+    (skipped ? ` · ${skipped} lines skipped` : '');
+  render();
+}
+
+// ── Comparaison + rendu ──────────────────────────────────────────────────────
+function vendusFor(day){
+  const v = vendusDays[day];
+  if (!v) return 0;
+  let s = 0;
+  for (const [t, a] of Object.entries(v.payments || {})) if (selectedTypes.has(t)) s += a;
+  return s;
+}
+
+function render(){
+  const allDays = [...new Set([...Object.keys(revolutDays), ...Object.keys(vendusDays)])].sort();
+  const tbody = document.getElementById('tbody');
+  const hasRevolut = Object.keys(revolutDays).length > 0;
+  document.getElementById('btn-export').disabled = !hasRevolut;
+  if (!allDays.length){
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">Choose a month, paste the Revolut statement, hit Parse.</td></tr>';
+    document.getElementById('summary').style.display = 'none';
+    return;
+  }
+
+  let T = { gross:0, tips:0, fees:0, net:0, vendus:0, tx:0 };
+  const rows = allDays.map(day => {
+    const r = revolutDays[day] || { gross:0, tips:0, fees:0, net:0, tx:0 };
+    const vd = vendusFor(day);
+    const delta = (r.gross - r.tips) - vd;
+    T.gross += r.gross; T.tips += r.tips; T.fees += r.fees; T.net += r.net; T.vendus += vd; T.tx += r.tx;
+    const ad = Math.abs(delta);
+    const st = !hasRevolut ? '' :
+      ad < 0.05 ? '<span class="st st-ok">✓ match</span>' :
+      ad < 5    ? '<span class="st st-mid">check</span>' :
+                  '<span class="st st-bad">mismatch</span>';
+    const dcls = ad < 0.05 ? '' : (delta > 0 ? 'delta-pos' : 'delta-neg');
+    const dow = new Date(day + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short' });
+    return `<tr>
+      <td class="date">${dow} ${day.slice(8)}/${day.slice(5,7)}</td>
+      <td class="num">${r.tx ? fmt(r.gross) : '<span style="color:var(--faint)">—</span>'}</td>
+      <td class="num" style="color:var(--green);">${r.tips ? fmt(r.tips) : ''}</td>
+      <td class="num" style="color:var(--red);">${r.fees ? '−' + fmt(r.fees) : ''}</td>
+      <td class="num">${r.tx ? fmt(r.net) : ''}</td>
+      <td class="num">${vd ? fmt(vd) : '<span style="color:var(--faint)">—</span>'}</td>
+      <td class="num ${dcls}">${r.tx || vd ? fmt(delta) : ''}</td>
+      <td>${st}</td>
+    </tr>`;
+  });
+  tbody.innerHTML = rows.join('');
+
+  document.getElementById('summary').style.display = 'flex';
+  document.getElementById('s-gross').textContent  = fmt(T.gross);
+  document.getElementById('s-tx').textContent     = T.tx + ' transactions';
+  document.getElementById('s-tips').textContent   = fmt(T.tips);
+  document.getElementById('s-fees').textContent   = '−' + fmt(T.fees);
+  document.getElementById('s-net').textContent    = fmt(T.net);
+  document.getElementById('s-vendus').textContent = fmt(T.vendus);
+  const dEl = document.getElementById('s-delta');
+  const dTot = (T.gross - T.tips) - T.vendus;
+  dEl.textContent = fmt(dTot);
+  dEl.style.color = Math.abs(dTot) < 1 ? 'var(--green)' : 'var(--red)';
+}
+
+// ── Export CSV comptable (; + BOM → Excel PT ouvre proprement) ───────────────
+function exportCsv(){
+  const allDays = [...new Set([...Object.keys(revolutDays), ...Object.keys(vendusDays)])].sort();
+  const n = v => v.toFixed(2).replace('.', ',');
+  let T = { gross:0, tips:0, fees:0, net:0, vendus:0 };
+  const lines = ['Data;Cobrado Revolut (bruto);Gorjetas;Taxas Revolut;Liquido recebido;Faturado Vendus;Diferenca (s/ gorjetas)'];
+  allDays.forEach(day => {
+    const r = revolutDays[day] || { gross:0, tips:0, fees:0, net:0 };
+    const vd = vendusFor(day);
+    const delta = (r.gross - r.tips) - vd;
+    T.gross += r.gross; T.tips += r.tips; T.fees += r.fees; T.net += r.net; T.vendus += vd;
+    lines.push([day, n(r.gross), n(r.tips), n(r.fees), n(r.net), n(vd), n(delta)].join(';'));
+  });
+  lines.push(['TOTAL', n(T.gross), n(T.tips), n(T.fees), n(T.net), n(T.vendus), n((T.gross - T.tips) - T.vendus)].join(';'));
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `reconciliacao_${currentMonth}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('CSV exported');
+}
+</script>
+</body>
+</html>

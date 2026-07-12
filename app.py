@@ -184,7 +184,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260712a"
+ASSET_VERSION = "20260712b"
 
 @app.context_processor
 def _inject_asset_version():
@@ -945,6 +945,49 @@ def api_time_off_post():
 def api_time_off_delete(row_id):
     ok = _supa_delete("time_off", "id", row_id)
     return jsonify({"ok": ok})
+
+
+# ── Réconciliation Revolut ↔ Vendus ──────────────────────────────────────────
+# Le terminal Revolut encaisse brut + tips − fees ; Vendus facture le montant
+# certifié AT sans tips. Cet endpoint fournit le côté Vendus par jour (total +
+# répartition par moyen de paiement) ; le relevé Revolut est parsé côté client.
+
+@app.route("/reconciliation")
+def reconciliation_page():
+    return render_template("reconciliation.html")
+
+@app.route("/api/reconciliation")
+def api_reconciliation():
+    month = request.args.get("month", "")
+    try:
+        y, m = month.split("-")
+        y, m = int(y), int(m)
+        from_d = date(y, m, 1)
+    except Exception:
+        return jsonify({"error": "month must be YYYY-MM"}), 400
+    last = (date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)) - timedelta(1)
+    to_d = min(last, date.today())
+    if from_d > date.today():
+        return jsonify({"month": month, "days": [], "payment_titles": []})
+
+    docs = get_documents(from_d.isoformat(), to_d.isoformat(), detailed=True)
+    days, titles = {}, set()
+    for d in docs:
+        day = (d.get("date") or d.get("local_time", ""))[:10]
+        if not day:
+            continue
+        rec = days.setdefault(day, {"total": 0.0, "payments": {}})
+        rec["total"] += float(d.get("amount_gross") or 0)
+        for p in d.get("payments", []):
+            t = p.get("title") or "Autre"
+            titles.add(t)
+            rec["payments"][t] = rec["payments"].get(t, 0.0) + float(p.get("amount") or 0)
+
+    out = [{"date": k,
+            "total": round(v["total"], 2),
+            "payments": {t: round(a, 2) for t, a in v["payments"].items()}}
+           for k, v in sorted(days.items())]
+    return jsonify({"month": month, "days": out, "payment_titles": sorted(titles)})
 
 
 # ── Expenses (dépenses réelles, avec justificatif Google Drive) ───────────────
