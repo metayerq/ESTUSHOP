@@ -72,6 +72,11 @@ td.date { color:var(--muted); white-space:nowrap; }
 .st-ok  { background:#e8f5e9; color:#2e7d32; }
 .st-mid { background:#fdf3dd; color:#b07d00; }
 .st-bad { background:#fdeceb; color:var(--red); }
+.st-inc { background:var(--bg-hover); color:var(--faint); }
+.row-inc td { color:var(--faint); background:var(--bg-page); }
+.inc-note { font-size:12px; color:var(--muted); margin-bottom:16px; padding:9px 14px;
+  background:var(--bg-hover); border-radius:6px; border-left:3px solid var(--faint); }
+.inc-note b { color:var(--text); }
 .delta-pos { color:var(--green); }
 .delta-neg { color:var(--red); }
 .empty { text-align:center; color:var(--muted); padding:36px; font-size:13px; }
@@ -138,6 +143,10 @@ td.date { color:var(--muted); white-space:nowrap; }
     <div class="sum-item"><div class="sum-label">Écart (excl. tips)</div><div class="sum-val" id="s-delta">—</div><div class="sum-sub">should be ≈ 0</div></div>
   </div>
 
+  <div class="inc-note" id="inc-note" style="display:none;">
+    <b>Dernier jour incomplet :</b> les ventes du jour où le relevé a été généré settlent le lendemain et n'y figurent pas encore. Cette ligne est grisée et exclue des totaux — refais un export Revolut le lendemain pour la clôturer.
+  </div>
+
   <div class="table-wrap">
     <table>
       <thead><tr>
@@ -167,6 +176,7 @@ let vendusDays = {};        // date → {total, payments:{title:amount}}
 let payTitles = [];         // tous les moyens de paiement Vendus vus dans le mois
 let selectedTypes = new Set();
 let revolutDays = {};       // date → {gross, tips, fees, net, tx}
+let revolutCutoff = '';     // jour de génération du relevé → dernier jour incomplet
 let currentMonth = '';
 
 // ── Mois par défaut : mois précédent (usage = clôture mensuelle) ─────────────
@@ -185,7 +195,8 @@ function onMonthChange(){
   try {
     const saved = localStorage.getItem('recon_' + currentMonth);
     revolutDays = saved ? JSON.parse(saved) : {};
-  } catch(e) { revolutDays = {}; }
+    revolutCutoff = localStorage.getItem('recon_cut_' + currentMonth) || '';
+  } catch(e) { revolutDays = {}; revolutCutoff = ''; }
   loadVendus();
 }
 
@@ -250,11 +261,18 @@ function parseRevolut(){
   if (hIdx < 0){ info.textContent = 'Header row not found (need Date + Amount columns).'; info.classList.add('err'); return; }
 
   const find = (re, exclude) => cols.findIndex(c => re.test(c) && !(exclude && exclude.test(c)));
-  const iDate = find(/date/);
-  const iAmt  = find(/amount|gross|total/, /tip|fee|tax|net/);
-  const iFee  = find(/fee/);
-  const iTip  = find(/tip|gratuity/);
-  const iNet  = find(/net|settled/, /amount/);
+  // Grouper par la VRAIE date de vente (capture), pas le settlement J+1 — pour
+  // s'aligner sur la date de facture Vendus. Fallback : première colonne "date".
+  const iCap  = find(/capture/);
+  const iDate = iCap >= 0 ? iCap : find(/date/);
+  // Date de settlement (completed/started) → sert à repérer le jour incomplet.
+  const iDone = find(/complet/) >= 0 ? find(/complet/) : find(/start|date.*started/);
+  const iAmt  = find(/original amount/) >= 0 ? find(/original amount/) : find(/amount|gross|total/, /tip|fee|tax|net|refund/);
+  // Frais : "Processing fee" (montant), pas "Fee currency"/"FX fee"/"...type".
+  const iFee  = find(/processing fee/, /type|currency/) >= 0 ? find(/processing fee/, /type|currency/) : find(/fee/, /currency|type|fx/);
+  // Pourboire : "Tip amount" (rempli), pas "Order total tip amount" (souvent vide).
+  const iTip  = find(/^tip amount/) >= 0 ? find(/^tip amount/) : find(/tip|gratuity/);
+  const iNet  = find(/settlement amount/) >= 0 ? find(/settlement amount/) : find(/net|settled/, /amount|currency/);
   const iState= find(/state|status/);
   if (iAmt < 0){ info.textContent = 'Amount column not found.'; info.classList.add('err'); return; }
 
@@ -276,12 +294,13 @@ function parseRevolut(){
     return isNaN(d) ? null : d.toISOString().slice(0,10);
   };
 
-  const days = {}; let tx = 0, skipped = 0, outOfMonth = 0;
+  const days = {}; let tx = 0, skipped = 0, outOfMonth = 0, maxDone = '';
   for (let i = hIdx + 1; i < lines.length; i++){
     // split naïf suffisant pour les exports Revolut (pas de virgules dans les nombres quotés)
     const c = lines[i].split(delim);
     if (c.length < cols.length - 2) { skipped++; continue; }
     if (iState >= 0 && !/completed|paid|succeeded/i.test(c[iState] || 'completed')) { skipped++; continue; }
+    if (iDone >= 0){ const dd = parseDay(c[iDone]); if (dd && dd > maxDone) maxDone = dd; }
     const day = iDate >= 0 ? parseDay(c[iDate]) : null;
     if (!day){ skipped++; continue; }
     if (currentMonth && !day.startsWith(currentMonth)) { outOfMonth++; continue; }
@@ -297,9 +316,16 @@ function parseRevolut(){
 
   if (!tx){ info.textContent = 'No valid transactions found' + (outOfMonth ? ` (${outOfMonth} outside ${currentMonth})` : '') + '.'; info.classList.add('err'); return; }
   revolutDays = days;
-  try { localStorage.setItem('recon_' + currentMonth, JSON.stringify(days)); } catch(e) {}
+  // Jour incomplet = jour de génération du relevé (max date de settlement) : les
+  // ventes de ce jour settlent le lendemain et n'y figurent pas encore.
+  revolutCutoff = maxDone || '';
+  try {
+    localStorage.setItem('recon_' + currentMonth, JSON.stringify(days));
+    localStorage.setItem('recon_cut_' + currentMonth, revolutCutoff);
+  } catch(e) {}
   info.textContent = `✓ ${tx} transactions · ${Object.keys(days).length} days` +
     (iTip < 0 ? ' · no tip column detected' : '') +
+    (revolutCutoff ? ` · statement cutoff ${revolutCutoff} (last day incomplete)` : '') +
     (outOfMonth ? ` · ${outOfMonth} ignored (other month)` : '') +
     (skipped ? ` · ${skipped} lines skipped` : '');
   render();
@@ -326,30 +352,39 @@ function render(){
   }
 
   let T = { gross:0, tips:0, fees:0, net:0, vendus:0, tx:0 };
+  let hasIncomplete = false;
   const rows = allDays.map(day => {
     const r = revolutDays[day] || { gross:0, tips:0, fees:0, net:0, tx:0 };
     const vd = vendusFor(day);
     const delta = (r.gross - r.tips) - vd;
-    T.gross += r.gross; T.tips += r.tips; T.fees += r.fees; T.net += r.net; T.vendus += vd; T.tx += r.tx;
+    // Jour incomplet : >= date de génération du relevé (settlement en cours) →
+    // exclu des totaux et grisé, le Δ n'a pas de sens.
+    const incomplete = hasRevolut && revolutCutoff && day >= revolutCutoff;
+    if (incomplete) hasIncomplete = true;
+    if (!incomplete) {
+      T.gross += r.gross; T.tips += r.tips; T.fees += r.fees; T.net += r.net; T.vendus += vd; T.tx += r.tx;
+    }
     const ad = Math.abs(delta);
-    const st = !hasRevolut ? '' :
+    const st = incomplete ? '<span class="st st-inc">settlement en cours</span>' :
+      !hasRevolut ? '' :
       ad < 0.05 ? '<span class="st st-ok">✓ match</span>' :
       ad < 5    ? '<span class="st st-mid">check</span>' :
                   '<span class="st st-bad">mismatch</span>';
     const dcls = ad < 0.05 ? '' : (delta > 0 ? 'delta-pos' : 'delta-neg');
     const dow = new Date(day + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short' });
-    return `<tr>
+    return `<tr${incomplete ? ' class="row-inc"' : ''}>
       <td class="date">${dow} ${day.slice(8)}/${day.slice(5,7)}</td>
       <td class="num">${r.tx ? fmt(r.gross) : '<span style="color:var(--faint)">—</span>'}</td>
       <td class="num" style="color:var(--green);">${r.tips ? fmt(r.tips) : ''}</td>
       <td class="num" style="color:var(--red);">${r.fees ? '−' + fmt(r.fees) : ''}</td>
       <td class="num">${r.tx ? fmt(r.net) : ''}</td>
       <td class="num">${vd ? fmt(vd) : '<span style="color:var(--faint)">—</span>'}</td>
-      <td class="num ${dcls}">${r.tx || vd ? fmt(delta) : ''}</td>
+      <td class="num ${incomplete ? '' : dcls}">${incomplete ? '<span style="color:var(--faint)">—</span>' : (r.tx || vd ? fmt(delta) : '')}</td>
       <td>${st}</td>
     </tr>`;
   });
   tbody.innerHTML = rows.join('');
+  document.getElementById('inc-note').style.display = hasIncomplete ? 'block' : 'none';
 
   document.getElementById('summary').style.display = 'flex';
   document.getElementById('s-gross').textContent  = fmt(T.gross);
@@ -369,15 +404,17 @@ function exportCsv(){
   const allDays = [...new Set([...Object.keys(revolutDays), ...Object.keys(vendusDays)])].sort();
   const n = v => v.toFixed(2).replace('.', ',');
   let T = { gross:0, tips:0, fees:0, net:0, vendus:0 };
-  const lines = ['Data;Cobrado Revolut (bruto);Gorjetas;Taxas Revolut;Liquido recebido;Faturado Vendus;Diferenca (s/ gorjetas)'];
+  const lines = ['Data;Cobrado Revolut (bruto);Gorjetas;Taxas Revolut;Liquido recebido;Faturado Vendus;Diferenca (s/ gorjetas);Nota'];
   allDays.forEach(day => {
     const r = revolutDays[day] || { gross:0, tips:0, fees:0, net:0 };
     const vd = vendusFor(day);
     const delta = (r.gross - r.tips) - vd;
-    T.gross += r.gross; T.tips += r.tips; T.fees += r.fees; T.net += r.net; T.vendus += vd;
-    lines.push([day, n(r.gross), n(r.tips), n(r.fees), n(r.net), n(vd), n(delta)].join(';'));
+    const incomplete = revolutCutoff && day >= revolutCutoff;
+    if (!incomplete) { T.gross += r.gross; T.tips += r.tips; T.fees += r.fees; T.net += r.net; T.vendus += vd; }
+    lines.push([day, n(r.gross), n(r.tips), n(r.fees), n(r.net), n(vd), n(delta),
+                incomplete ? 'settlement em curso — excluido' : ''].join(';'));
   });
-  lines.push(['TOTAL', n(T.gross), n(T.tips), n(T.fees), n(T.net), n(T.vendus), n((T.gross - T.tips) - T.vendus)].join(';'));
+  lines.push(['TOTAL', n(T.gross), n(T.tips), n(T.fees), n(T.net), n(T.vendus), n((T.gross - T.tips) - T.vendus), 'jours complets'].join(';'));
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
