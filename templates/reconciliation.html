@@ -242,20 +242,55 @@ function buildPayTypes(){
 }
 
 // ── Parseur relevé Revolut (souple : CSV , ; ou tab, colonnes détectées) ─────
+// Découpe respectant les guillemets : les exports Revolut contiennent des
+// champs quotés avec virgules ("QUIET FREQUENCY, UNIPESSOAL, LDA", JSON des
+// items…) — un split naïf décale toutes les colonnes.
+function splitRecords(raw){
+  const recs = []; let cur = ''; let inQ = false;
+  for (let i = 0; i < raw.length; i++){
+    const ch = raw[i];
+    if (ch === '"'){ inQ = !inQ; cur += ch; }
+    else if ((ch === '\n' || ch === '\r') && !inQ){
+      if (cur.trim()) recs.push(cur);
+      cur = '';
+      if (ch === '\r' && raw[i+1] === '\n') i++;
+    } else cur += ch;
+  }
+  if (cur.trim()) recs.push(cur);
+  return recs;
+}
+function splitCsvLine(line, delim){
+  const out = []; let cur = ''; let inQ = false;
+  for (let i = 0; i < line.length; i++){
+    const ch = line[i];
+    if (inQ){
+      if (ch === '"'){
+        if (line[i+1] === '"'){ cur += '"'; i++; } else inQ = false;
+      } else cur += ch;
+    } else {
+      if (ch === '"') inQ = true;
+      else if (ch === delim){ out.push(cur); cur = ''; }
+      else cur += ch;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
 function parseRevolut(){
   const raw = document.getElementById('paste').value;
   const info = document.getElementById('parse-info');
   info.classList.remove('err');
-  const lines = raw.split(/\r?\n/).filter(l => l.trim());
+  const lines = splitRecords(raw);
   if (lines.length < 2){ info.textContent = 'Nothing to parse.'; info.classList.add('err'); return; }
 
-  const delim = [';','\t',','].find(d => lines[0].split(d).length > 2) || ',';
+  const delim = [';','\t',','].find(d => splitCsvLine(lines[0], d).length > 2) || ',';
   const norm = s => s.trim().toLowerCase().replace(/^"|"$/g,'');
 
   // ligne d'en-tête = première ligne contenant "date" + une colonne de montant
   let hIdx = -1, cols = [];
   for (let i = 0; i < Math.min(lines.length, 5); i++){
-    const c = lines[i].split(delim).map(norm);
+    const c = splitCsvLine(lines[i], delim).map(norm);
     if (c.some(x => x.includes('date')) && c.some(x => /amount|gross|total/.test(x))) { hIdx = i; cols = c; break; }
   }
   if (hIdx < 0){ info.textContent = 'Header row not found (need Date + Amount columns).'; info.classList.add('err'); return; }
@@ -296,8 +331,7 @@ function parseRevolut(){
 
   const days = {}; let tx = 0, skipped = 0, outOfMonth = 0, maxDone = '';
   for (let i = hIdx + 1; i < lines.length; i++){
-    // split naïf suffisant pour les exports Revolut (pas de virgules dans les nombres quotés)
-    const c = lines[i].split(delim);
+    const c = splitCsvLine(lines[i], delim);
     if (c.length < cols.length - 2) { skipped++; continue; }
     if (iState >= 0 && !/completed|paid|succeeded/i.test(c[iState] || 'completed')) { skipped++; continue; }
     if (iDone >= 0){ const dd = parseDay(c[iDone]); if (dd && dd > maxDone) maxDone = dd; }
