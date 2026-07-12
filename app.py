@@ -184,7 +184,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260712c"
+ASSET_VERSION = "20260712d"
 
 @app.context_processor
 def _inject_asset_version():
@@ -988,6 +988,26 @@ def api_reconciliation():
             "payments": {t: round(a, 2) for t, a in v["payments"].items()}}
            for k, v in sorted(days.items())]
     return jsonify({"month": month, "days": out, "payment_titles": sorted(titles)})
+
+@app.route("/api/cash")
+def api_cash():
+    """Espèces (Dinheiro) facturées dans Vendus, par jour depuis l'ouverture.
+    = cash théorique en caisse, avant sorties/dépôts (que Vendus ne voit pas)."""
+    OPEN_DATE = date(2026, 5, 27)
+    docs = get_documents(OPEN_DATE.isoformat(), date.today().isoformat(), detailed=True)
+    days = {}
+    for d in docs:
+        day = (d.get("date") or d.get("local_time", ""))[:10]
+        if not day:
+            continue
+        for p in d.get("payments", []):
+            title = (p.get("title") or "").lower()
+            if "dinheiro" in title or "cash" in title:
+                days[day] = days.get(day, 0.0) + float(p.get("amount") or 0)
+    out = [{"date": k, "cash": round(v, 2)} for k, v in sorted(days.items()) if abs(v) >= 0.005]
+    return jsonify({"since": OPEN_DATE.isoformat(),
+                    "days": out,
+                    "total": round(sum(d["cash"] for d in out), 2)})
 
 
 # ── Expenses (dépenses réelles, avec justificatif Google Drive) ───────────────

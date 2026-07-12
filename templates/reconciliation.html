@@ -163,6 +163,28 @@ td.date { color:var(--muted); white-space:nowrap; }
     </table>
   </div>
 
+  <!-- ── Caisse espèces ── -->
+  <div class="header" style="margin-top:44px; margin-bottom:16px;">
+    <div>
+      <div style="font-size:18px; font-weight:700;">💶 Cash drawer</div>
+      <div class="header-sub">Espèces facturées dans Vendus depuis l'ouverture — ce que la caisse devrait contenir, avant tes sorties/dépôts</div>
+    </div>
+  </div>
+  <div class="summary-bar" style="max-width:520px;">
+    <div class="sum-item">
+      <div class="sum-label">Expected cash in drawer</div>
+      <div class="sum-val" id="cash-total" style="font-size:24px;">—</div>
+      <div class="sum-sub" id="cash-since"></div>
+    </div>
+  </div>
+  <div class="hint">⚠️ Vendus ne voit que ce qui est encaissé : soustrais toi-même les espèces sorties (achats, pourboires payés, dépôts en banque). Les jours de saisie groupée (juin) portent le cash de plusieurs journées réelles.</div>
+  <div class="table-wrap" style="max-width:520px;">
+    <table>
+      <thead><tr><th>Date</th><th class="right">Cash (Dinheiro)</th><th class="right">Cumul</th></tr></thead>
+      <tbody id="cash-tbody"><tr><td colspan="3" class="empty">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
 </div><!-- /page -->
 
 <div class="toast" id="toast"></div>
@@ -457,6 +479,39 @@ function exportCsv(){
   URL.revokeObjectURL(a.href);
   showToast('CSV exported');
 }
+
+// ── Caisse espèces (indépendant du mois sélectionné : depuis l'ouverture) ────
+async function loadCash(){
+  if (window.uiLoadStart) uiLoadStart();
+  try {
+    const r = await fetch('/api/cash');
+    const d = await r.json();
+    document.getElementById('cash-total').textContent = fmt(d.total || 0);
+    document.getElementById('cash-since').textContent =
+      'since opening · ' + new Date(d.since + 'T12:00:00').toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+    const tbody = document.getElementById('cash-tbody');
+    if (!(d.days || []).length){
+      tbody.innerHTML = '<tr><td colspan="3" class="empty">No cash sales recorded yet</td></tr>';
+      return;
+    }
+    let cum = 0;
+    tbody.innerHTML = d.days.map(x => {
+      cum += x.cash;
+      const dow = new Date(x.date + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short' });
+      return `<tr>
+        <td class="date">${dow} ${x.date.slice(8)}/${x.date.slice(5,7)}</td>
+        <td class="num">${fmt(x.cash)}</td>
+        <td class="num" style="color:var(--muted);">${fmt(cum)}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    document.getElementById('cash-tbody').innerHTML =
+      '<tr><td colspan="3" class="empty">Load failed — <a href="javascript:loadCash()" style="color:var(--spec)">retry</a></td></tr>';
+  } finally {
+    if (window.uiLoadEnd) uiLoadEnd();
+  }
+}
+loadCash();
 </script>
 </body>
 </html>
