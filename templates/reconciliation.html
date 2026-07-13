@@ -220,16 +220,18 @@ let currentMonth = '';
 function onMonthChange(){
   currentMonth = document.getElementById('f-month').value;
   if (!currentMonth) return;
-  // restaure un relevé déjà collé pour ce mois (localStorage)
+  // restaure un relevé déjà collé pour ce mois (localStorage) ; sinon on prendra
+  // le relevé pré-injecté renvoyé par l'API (historique figé).
+  let userPasted = false;
   try {
     const saved = localStorage.getItem('recon_' + currentMonth);
-    revolutDays = saved ? JSON.parse(saved) : {};
-    revolutCutoff = localStorage.getItem('recon_cut_' + currentMonth) || '';
+    if (saved) { revolutDays = JSON.parse(saved); revolutCutoff = localStorage.getItem('recon_cut_' + currentMonth) || ''; userPasted = true; }
+    else { revolutDays = {}; revolutCutoff = ''; }
   } catch(e) { revolutDays = {}; revolutCutoff = ''; }
-  loadVendus();
+  loadVendus(userPasted);
 }
 
-async function loadVendus(){
+async function loadVendus(userPasted){
   if (window.uiLoadStart) uiLoadStart();
   try {
     const r = await fetch('/api/reconciliation?month=' + currentMonth);
@@ -238,6 +240,12 @@ async function loadVendus(){
     vendusDays = {};
     (d.days || []).forEach(x => vendusDays[x.date] = x);
     payTitles = d.payment_titles || [];
+    // Relevé Revolut pré-injecté côté serveur (sauf si l'utilisateur a collé le sien)
+    if (!userPasted && d.revolut && d.revolut.days) {
+      revolutDays = d.revolut.days;
+      revolutCutoff = d.revolut.cutoff || '';
+      document.getElementById('file-info').textContent = '✓ relevé pré-chargé' + (d.revolut.note ? ' — ' + d.revolut.note : '');
+    }
     buildPayTypes();
     render();
   } catch(e) {

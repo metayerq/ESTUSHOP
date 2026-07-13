@@ -8,6 +8,7 @@ Usage:
 """
 
 import os
+import json
 import hmac
 import time
 import hashlib
@@ -184,7 +185,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260712e"
+ASSET_VERSION = "20260712f"
 
 @app.context_processor
 def _inject_asset_version():
@@ -970,6 +971,15 @@ def api_reconciliation():
     if from_d > date.today():
         return jsonify({"month": month, "days": [], "payment_titles": []})
 
+    # Relevés Revolut pré-injectés (historique figé mai→juillet) — évite de
+    # recoller le CSV à chaque fois. Écrasé par un collage manuel si présent.
+    revolut = {}
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "revolut_data.json")) as f:
+            revolut = json.load(f).get(month, {})
+    except Exception:
+        pass
+
     docs = get_documents(from_d.isoformat(), to_d.isoformat(), detailed=True)
     days, titles = {}, set()
     for d in docs:
@@ -987,7 +997,8 @@ def api_reconciliation():
             "total": round(v["total"], 2),
             "payments": {t: round(a, 2) for t, a in v["payments"].items()}}
            for k, v in sorted(days.items())]
-    return jsonify({"month": month, "days": out, "payment_titles": sorted(titles)})
+    return jsonify({"month": month, "days": out, "payment_titles": sorted(titles),
+                    "revolut": revolut})
 
 @app.route("/api/cash")
 def api_cash():
