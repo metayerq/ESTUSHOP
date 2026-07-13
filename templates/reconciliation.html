@@ -122,10 +122,17 @@ td.date { color:var(--muted); white-space:nowrap; }
   </div>
 
   <div class="paste-card">
-    <label class="field-label">Relevé Revolut du mois (export CSV du portail marchand — colle tout, en-têtes compris)</label>
-    <textarea id="paste" rows="7" placeholder="Date,Type,State,Amount,Fee,Tip,...&#10;2026-07-01 09:12:44,Payment,Completed,2.20,0.03,0.20,..."></textarea>
+    <label class="field-label">Relevé Revolut du mois — importe le fichier CSV, ou colle son contenu ci-dessous</label>
+    <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
+      <label class="btn-primary" style="display:inline-block; cursor:pointer;">
+        ⇪ Choose CSV file
+        <input type="file" id="csv-file" accept=".csv,text/csv" style="display:none;" onchange="onFilePicked(event)">
+      </label>
+      <span class="parse-info" id="file-info" style="color:var(--muted);">aucun fichier — ou colle le texte plus bas</span>
+    </div>
+    <textarea id="paste" rows="6" placeholder="…ou colle ici tout le contenu du CSV (en-têtes compris)"></textarea>
     <div style="display:flex; gap:10px; align-items:center; margin-top:10px;">
-      <button class="btn-primary" onclick="parseRevolut()">Parse statement</button>
+      <button class="btn-add" onclick="parseRevolut()">Parse pasted text</button>
       <span class="parse-info" id="parse-info"></span>
     </div>
   </div>
@@ -297,6 +304,20 @@ function splitCsvLine(line, delim){
   }
   out.push(cur);
   return out;
+}
+
+// Import fichier CSV → remplit la zone de texte et parse automatiquement.
+function onFilePicked(ev){
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    document.getElementById('paste').value = reader.result;
+    document.getElementById('file-info').textContent = '✓ ' + f.name;
+    parseRevolut();
+  };
+  reader.onerror = () => { document.getElementById('file-info').textContent = 'Lecture du fichier échouée'; };
+  reader.readAsText(f);
 }
 
 function parseRevolut(){
