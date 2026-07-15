@@ -185,7 +185,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260712f"
+ASSET_VERSION = "20260712g"
 
 @app.context_processor
 def _inject_asset_version():
@@ -205,6 +205,11 @@ AUTH_SECRET        = os.environ.get("AUTH_SECRET", DASHBOARD_PASSWORD)
 STAFF_ALLOWED_PREFIXES = (
     "/cogs", "/api/cogs", "/api/ingredients", "/api/preparations",
     "/api/recipe", "/api/product", "/stock", "/api/supplies", "/logout",
+)
+
+# Chemins autorisés pour le rôle investisseur : le dashboard uniquement.
+INVESTOR_ALLOWED_PREFIXES = (
+    "/api/data", "/api/cashflow", "/logout",
 )
 
 def _auth_token(role):
@@ -235,9 +240,15 @@ def _require_auth():
         if request.path.startswith("/api/"):
             return jsonify({"error": "unauthorized"}), 401
         return redirect("/login")
-    # Investisseur : lecture seule — toute écriture est bloquée
-    if role == "investor" and request.method not in ("GET", "HEAD"):
-        return jsonify({"error": "read-only — investor access"}), 403
+    # Investisseur : lecture seule + dashboard uniquement
+    if role == "investor":
+        if request.method not in ("GET", "HEAD"):
+            return jsonify({"error": "read-only — investor access"}), 403
+        # autorisé : page dashboard "/" et ses APIs ; tout le reste est bloqué
+        if request.path != "/" and not request.path.startswith(INVESTOR_ALLOWED_PREFIXES):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "restricted — dashboard only"}), 403
+            return redirect("/")
     # Staff : accès limité à la page COGS (recettes) et ses APIs
     if role == "staff" and not request.path.startswith(STAFF_ALLOWED_PREFIXES):
         if request.path.startswith("/api/"):
@@ -304,7 +315,8 @@ def logout():
 
 @app.route("/")
 def index():
-    return render_template("index.html", seuil=SEUIL_TRANSACTIONS)
+    return render_template("index.html", seuil=SEUIL_TRANSACTIONS,
+                           role=_current_role() or "admin")
 
 
 @app.route("/api/data")
