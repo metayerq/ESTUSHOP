@@ -143,10 +143,12 @@
   </div>
 
   <!-- Overview / Cashflow -->
+  {% if role != 'investor' %}
   <div class="view-tabs">
     <button class="view-tab active" id="tab-view-overview" onclick="switchDashView('overview')">Overview</button>
     <button class="view-tab" id="tab-view-cashflow" onclick="switchDashView('cashflow')">Cashflow</button>
   </div>
+  {% endif %}
 
   <div id="view-overview">
 
