@@ -207,9 +207,13 @@ STAFF_ALLOWED_PREFIXES = (
     "/api/recipe", "/api/product", "/stock", "/api/supplies", "/logout",
 )
 
-# Chemins autorisés pour le rôle investisseur : le dashboard uniquement.
-INVESTOR_ALLOWED_PREFIXES = (
-    "/api/data", "/api/cashflow", "/logout",
+# Chemins fermés au rôle investisseur : détail dépenses, congés staff,
+# réconciliation (montre l'écart de caisse). Le reste (dashboard, COGS,
+# stock, coûts) reste accessible en lecture seule.
+INVESTOR_BLOCKED_PREFIXES = (
+    "/expenses", "/api/expenses",
+    "/holidays", "/api/time_off",
+    "/reconciliation", "/api/reconciliation", "/api/cash",
 )
 
 def _auth_token(role):
@@ -240,14 +244,13 @@ def _require_auth():
         if request.path.startswith("/api/"):
             return jsonify({"error": "unauthorized"}), 401
         return redirect("/login")
-    # Investisseur : lecture seule + dashboard uniquement
+    # Investisseur : lecture seule, et onglets sensibles fermés
     if role == "investor":
         if request.method not in ("GET", "HEAD"):
             return jsonify({"error": "read-only — investor access"}), 403
-        # autorisé : page dashboard "/" et ses APIs ; tout le reste est bloqué
-        if request.path != "/" and not request.path.startswith(INVESTOR_ALLOWED_PREFIXES):
+        if request.path.startswith(INVESTOR_BLOCKED_PREFIXES):
             if request.path.startswith("/api/"):
-                return jsonify({"error": "restricted — dashboard only"}), 403
+                return jsonify({"error": "restricted — not available for investor"}), 403
             return redirect("/")
     # Staff : accès limité à la page COGS (recettes) et ses APIs
     if role == "staff" and not request.path.startswith(STAFF_ALLOWED_PREFIXES):
@@ -695,12 +698,12 @@ def api_cashflow():
 
 @app.route("/cogs")
 def cogs_page():
-    return render_template("cogs.html")
+    return render_template("cogs.html", role=_current_role() or "admin")
 
 
 @app.route("/charges")
 def charges_page():
-    return render_template("charges.html")
+    return render_template("charges.html", role=_current_role() or "admin")
 
 
 @app.route("/expenses")
