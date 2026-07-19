@@ -54,9 +54,11 @@ const fmt = n => new Intl.NumberFormat('en-IE', {
 function delta(cur, prev, label) {
   label = label || 'vs prev. period';
   if (prev == null || prev === 0) return '';
-  const pct = ((cur - prev) / Math.abs(prev) * 100).toFixed(0);
-  const cls = pct >= 0 ? 'delta-up' : 'delta-down';
-  return `<span class="${cls}">${pct >= 0 ? '+' : ''}${pct}% ${label}</span>`;
+  const pct = Math.round((cur - prev) / Math.abs(prev) * 100);
+  const up = pct >= 0;
+  // Pastille Mesa (flèche + %) suivie du libellé en gris.
+  return `<span class="${up ? 'delta-up' : 'delta-down'}">${up ? '▲ +' : '▼ '}${pct}%</span>`
+       + `<span style="color:var(--muted);margin-left:8px;font-size:11.5px;">${label}</span>`;
 }
 
 function fmtDate(iso) {

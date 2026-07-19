@@ -128,58 +128,68 @@ body {
   text-align: right;
 }
 
-/* ── Section label — eyebrow mono façon landing ── */
+/* ── Section label — mono sobre façon Mesa (— TODAY) ── */
 .section-label {
   font-family: var(--mono);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: .13em;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: .08em;
   text-transform: uppercase;
-  color: var(--spec);
-  margin-bottom: 10px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
+  color: var(--muted);
+  margin-bottom: 12px;
 }
-.section-label::before { content: ""; width: 20px; height: 2px; background: var(--spec); flex-shrink: 0; }
+.section-label::before { content: "— "; color: var(--faint); }
 
 /* ── Card wrapper ── */
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
 }
 
-/* ── KPI grid ── */
+/* ── KPI grid — cartes séparées (Mesa) ── */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
 }
 .kpi-cell {
-  padding: 20px 22px;
-  border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
   background: var(--bg-card);
 }
-.kpi-cell:nth-child(4n)        { border-right: none; }
-.kpi-cell:nth-last-child(-n+4) { border-bottom: none; }
 .kpi-label {
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
   font-weight: 400;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
 }
 .kpi-value {
+  font-family: var(--mono);
   font-size: 26px;
   font-weight: 600;
-  letter-spacing: -.5px;
+  letter-spacing: -.01em;
   color: var(--text);
-  line-height: 1.1;
+  line-height: 1;
 }
-.kpi-delta { font-size: 12px; margin-top: 5px; }
-.delta-up   { color: var(--green); }
-.delta-down { color: var(--red); }
+.kpi-delta { font-size: 12px; margin-top: 6px; color: var(--muted); }
+/* Deltas en pastilles colorées (Mesa) */
+.delta-up, .delta-down {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  display: inline-block;
+}
+.delta-up   { color: var(--green); background: rgba(68,131,97,.10); }
+.delta-down { color: var(--red);   background: rgba(196,85,77,.10); }
 
 /* ── Progress ── */
 .progress-wrap  { margin-top: 10px; }
