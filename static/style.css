@@ -13,8 +13,8 @@
   --green:     #448361;
   --red:       #c4554d;
   --amber:     #c47535;
-  --bar:       rgba(38, 36, 30, 0.85);
-  --bar-bg:    rgba(38, 36, 30, 0.1);
+  --bar:       #2554C7;                  /* barres de données en bleu blueprint (Mesa) */
+  --bar-bg:    rgba(38, 36, 30, 0.08);
   --accent:    #2554C7;
   --spec:      #2554C7;
   --spec-soft: rgba(37, 84, 199, 0.09);

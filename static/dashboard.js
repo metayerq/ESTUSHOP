@@ -1,6 +1,6 @@
-const COLORS = ['rgba(55,53,47,1)','rgba(55,53,47,.65)','rgba(55,53,47,.4)','rgba(55,53,47,.25)','rgba(55,53,47,.12)','rgba(55,53,47,.07)'];
-const BAR_ACTIVE = 'rgba(55,53,47,0.85)';
-const BAR_IDLE   = 'rgba(55,53,47,0.12)';
+const COLORS = ['#2554C7','rgba(37,84,199,.7)','rgba(37,84,199,.5)','rgba(37,84,199,.35)','rgba(37,84,199,.2)','rgba(37,84,199,.12)'];
+const BAR_ACTIVE = '#2554C7';
+const BAR_IDLE   = 'rgba(37,84,199,.12)';
 let chartHourly = null, chartWeek = null;
 let chartCurve  = null, chartDaily = null;
 let activeProdTab = 'period'; // 'period' | '7d'
@@ -355,7 +355,7 @@ function render(d) {
   }
 
   // ── Mix produits + rentabilité par groupe ────────────────────────────────
-  const MIX_COLORS = {'Drinks':'rgba(55,53,47,1)','Food':'rgba(55,53,47,.55)','Viennoiserie':'rgba(55,53,47,.35)','Retail':'rgba(55,53,47,.18)'};
+  const MIX_COLORS = {'Drinks':'#2554C7','Food':'#2554C7','Viennoiserie':'#2554C7','Retail':'#2554C7'};
   if (d.mix && d.mix.length) {
     document.getElementById('mix-bars').innerHTML = d.mix.map(m => {
       const margeStr = m.marge_pct != null
@@ -418,7 +418,7 @@ function render(d) {
         datasets: [{
           data: d.curve.map(p => p.ca_cum),
           borderColor: BAR_ACTIVE,
-          backgroundColor: 'rgba(55,53,47,0.06)',
+          backgroundColor: 'rgba(37,84,199,0.06)',
           borderWidth: 2, fill: true, tension: 0.3,
           pointRadius: d.curve.map((_, i) => i === 0 ? 0 : 4),
           pointBackgroundColor: BAR_ACTIVE, pointBorderColor: '#fff', pointBorderWidth: 2,
@@ -639,7 +639,7 @@ function renderInsights(d) {
       for (const h of hm.hours) {
         const v = byKey[wd + '_' + h] || 0;
         const a = hm.max ? (v / hm.max) : 0;
-        html += `<div class="hm-cell" style="${v ? `background:rgba(55,53,47,${(0.10 + a * 0.75).toFixed(2)});` : ''}" title="${WD_SHORT[wd]} ${h}h · ${fmt(v)}"></div>`;
+        html += `<div class="hm-cell" style="${v ? `background:rgba(37,84,199,${(0.10 + a * 0.75).toFixed(2)});` : ''}" title="${WD_SHORT[wd]} ${h}h · ${fmt(v)}"></div>`;
       }
     }
     html += `</div>`;
@@ -672,8 +672,8 @@ function renderInsights(d) {
       <div class="ins-label">Month EBITDA — cumulative + projection</div>
       <svg class="ins-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
         <line x1="0" y1="${y(0).toFixed(1)}" x2="${W}" y2="${y(0).toFixed(1)}" stroke="var(--border)" stroke-width="1.5"/>
-        <path d="${path}" fill="none" stroke="rgba(55,53,47,.85)" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-        <path d="${projPath}" fill="none" stroke="rgba(55,53,47,.4)" stroke-width="2.5" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>
+        <path d="${path}" fill="none" stroke="#2554C7" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+        <path d="${projPath}" fill="none" stroke="rgba(37,84,199,.45)" stroke-width="2.5" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>
       </svg>
       <div class="ins-sub">
         MTD <strong style="color:${m.cum_now >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.cum_now)}</strong>
@@ -719,8 +719,8 @@ function renderInsights(d) {
       <div class="ins-label">Prime cost — COGS + labour (${d.period_label.toLowerCase()})</div>
       <div class="ins-big" style="color:${color}">${prime.toFixed(1)}%</div>
       <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin-top:10px;background:var(--bar-bg);">
-        <div style="width:${Math.min(100,cogsPct)}%;background:rgba(55,53,47,.75);"></div>
-        <div style="width:${Math.min(100,labPct)}%;background:rgba(55,53,47,.35);"></div>
+        <div style="width:${Math.min(100,cogsPct)}%;background:#2554C7;"></div>
+        <div style="width:${Math.min(100,labPct)}%;background:rgba(37,84,199,.35);"></div>
       </div>
       <div class="ins-sub">
         <span style="color:${cCol}">COGS ${cogsPct.toFixed(0)}%</span> ·
