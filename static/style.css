@@ -206,17 +206,19 @@ body {
 .progress-fill  { height: 2px; background: var(--bar); border-radius: 2px; transition: width .5s ease; }
 .progress-meta  { font-size: 11px; color: var(--faint); margin-top: 4px; }
 
-/* ── Charts grid ── */
+/* ── Charts grid — cartes séparées (Mesa) ── */
 .charts-grid {
   display: grid;
-  grid-template-columns: 1fr 290px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--bg-card);
+  grid-template-columns: 1fr 320px;
+  gap: 12px;
 }
-.chart-block { padding: 20px 22px; }
-.chart-block + .chart-block { border-left: 1px solid var(--border); }
+.chart-block {
+  padding: 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+@media (max-width: 760px) { .charts-grid { grid-template-columns: 1fr; } }
 
 /* ── Tables ── */
 .table-wrap {

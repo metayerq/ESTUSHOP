@@ -68,8 +68,8 @@
 .ins-grid.on { display:grid; }
 @media (max-width:760px) { .ins-grid { grid-template-columns:1fr; } }
 .ins-card {
-  border:1px solid var(--border); border-radius:8px;
-  background:var(--bg-card); padding:14px 18px; min-width:0;
+  border:1px solid var(--border); border-radius:12px;
+  background:var(--bg-card); padding:18px; min-width:0;
 }
 .ins-label {
   font-size:10px; font-weight:600; letter-spacing:.07em; text-transform:uppercase;
@@ -271,7 +271,7 @@
 
   <!-- Sparkline 7j + strip WoW fusionné -->
   <div class="section-label">Last 7 days</div>
-  <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:32px;">
+  <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:32px;">
     <div style="padding:20px 24px 12px;">
       <canvas id="chart-week" height="55"></canvas>
       <div id="week-labels" style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--muted);"></div>
@@ -298,8 +298,7 @@
   </div>
 
   <!-- Répartition : graphe temporel + paiements compacts -->
-  <div class="section-label">Breakdown</div>
-  <div class="charts-grid" style="margin-bottom:32px;">
+  <div class="charts-grid" style="margin-bottom:12px;">
     <div class="chart-block">
       <div class="section-label" id="time-chart-label" style="margin-bottom:4px;">Revenue by hour</div>
       <div id="hourly-sub" style="font-size:12px;color:var(--muted);margin-bottom:16px;min-height:16px;"></div>
@@ -313,9 +312,9 @@
   </div>
 
   <!-- Mix boissons / food -->
-  <div class="section-label" style="margin-top:4px;">Product mix</div>
-  <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:32px;background:var(--bg-card);">
-    <div style="padding:16px 20px;" id="mix-bars">
+  <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:32px;background:var(--bg-card);padding:18px;">
+    <div class="section-label" style="margin-bottom:14px;">Product mix</div>
+    <div id="mix-bars">
       <span style="font-size:12px;color:var(--muted);">Loading…</span>
     </div>
   </div>
@@ -429,7 +428,7 @@
       <div id="cf-updated" style="font-size:11px;color:var(--faint);"></div>
     </div>
 
-    <div class="kpi-grid" style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:24px;background:var(--bg-card);">
+    <div class="kpi-grid" style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px;background:var(--bg-card);">
       <div class="kpi-cell">
         <div class="kpi-label">Total cash in</div>
         <div class="kpi-value" id="cf-total-in">—</div>
@@ -448,7 +447,7 @@
       </div>
     </div>
 
-    <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:24px;background:var(--bg-card);padding:20px 24px;">
+    <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px;background:var(--bg-card);padding:20px 24px;">
       <canvas id="chart-cashflow" height="90"></canvas>
     </div>
 
