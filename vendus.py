@@ -221,9 +221,9 @@ def hourly_breakdown(docs):
         lt = d.get("local_time", "")
         try:
             hour = int(lt[11:13])
-            by_hour[hour]["times"].append(lt)
         except (TypeError, ValueError, IndexError):
-            hour = 0
+            continue   # heure illisible : ne pas fausser un créneau (doc ignoré ici seulement)
+        by_hour[hour]["times"].append(lt)
         by_hour[hour]["ca"] += float(d.get("amount_gross", 0))
         by_hour[hour]["nb"] += 1
 

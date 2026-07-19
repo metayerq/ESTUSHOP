@@ -185,7 +185,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260712h"
+ASSET_VERSION = "20260713a"
 
 @app.context_processor
 def _inject_asset_version():
@@ -331,17 +331,18 @@ def api_data():
 
     today_real = date.today()
 
+    from_date = to_date = None
     if preset == "custom" and start_arg and end_arg:
         try:
             from_date = date.fromisoformat(start_arg)
             to_date   = date.fromisoformat(end_arg)
+            if from_date > to_date:
+                from_date, to_date = to_date, from_date
+            from_date = min(from_date, today_real)
+            to_date   = min(to_date, today_real)
         except ValueError:
-            preset = "today"
-        if from_date > to_date:
-            from_date, to_date = to_date, from_date
-        from_date = min(from_date, today_real)
-        to_date   = min(to_date, today_real)
-    else:
+            preset, from_date, to_date = "today", None, None
+    if from_date is None:
         if preset not in PRESET_RANGES:
             preset = "today"
         from_date, to_date = PRESET_RANGES[preset](today_real)
@@ -380,12 +381,18 @@ def api_data():
             return None   # échec ≠ zéro vente
 
     def _load_heatmap_docs():
-        """28 derniers jours, document-level (léger) — pour la heatmap horaire."""
-        try:
-            return get_documents((today_real - timedelta(27)).isoformat(),
-                                 today_real.isoformat())
-        except Exception:
-            return None
+        """28 derniers jours, document-level — pour la heatmap horaire.
+        Cache TTL 1h : c'est l'appel Vendus le plus lourd de la page pour un
+        widget quasi statique. Clé datée → rollover automatique à minuit."""
+        from vendus import _ttl_get
+        def _fetch():
+            try:
+                return get_documents((today_real - timedelta(27)).isoformat(),
+                                     today_real.isoformat())
+            except Exception:
+                return None
+        return _ttl_get(("heatmap28", today_real.isoformat()), 3600, _fetch,
+                        cacheable=lambda v: v is not None)
 
     # Appels indépendants en parallèle avec le fetch principal
     with ThreadPoolExecutor(max_workers=5) as pool:
@@ -449,9 +456,9 @@ def api_data():
     merged_products = _merge_products(period_rows)
 
     # ── Séries dérivées du cache daily_summary (zéro appel Vendus) ───────────
-    rows_14 = _ensure_summaries(today_real - timedelta(13), today_real - timedelta(1), catalog)
+    rows_hist = _ensure_summaries(today_real - timedelta(14), today_real - timedelta(1), catalog)
     iso_7   = (today_real - timedelta(6)).isoformat()
-    rows_7d = [r for r in rows_14 if r["day"] >= iso_7]
+    rows_7d = [r for r in rows_hist if r["day"] >= iso_7]
 
     today_has_data = bool(today_docs)
     merged_7d = _merge_products(rows_7d + ([{"day": today_iso, **today_sum}] if today_has_data else []))
@@ -468,21 +475,28 @@ def api_data():
             ca, nb = (float(row["ca_ttc"]), row["nb"]) if row else (0.0, 0)
         week_data.append({"date": iso, "label": d7.strftime("%a"), "ca": round(ca, 2), "nb": nb})
 
-    # Croissance 7 jours vs 7 jours précédents
-    cur_ca  = round(sum(float(r["ca_ttc"]) for r in rows_7d) + ts["ca"], 2)
-    cur_nb  = sum(r["nb"] for r in rows_7d) + ts["nb"]
-    prev    = [r for r in rows_14 if r["day"] < iso_7]
-    prev_ca = round(sum(float(r["ca_ttc"]) for r in prev), 2)
-    prev_nb = sum(r["nb"] for r in prev)
+    # Croissance 7 jours PLEINS vs 7 jours pleins précédents.
+    # Aujourd'hui (partiel) est exclu : l'inclure biaisait le % à la baisse
+    # toute la matinée. Fenêtres : J-7..J-1 vs J-14..J-8.
+    iso_full7 = (today_real - timedelta(7)).isoformat()
+    wow_cur   = [r for r in rows_hist if r["day"] >= iso_full7]
+    wow_prev  = [r for r in rows_hist if r["day"] <  iso_full7]
+    cur_ca  = round(sum(float(r["ca_ttc"]) for r in wow_cur), 2)
+    cur_nb  = sum(r["nb"] for r in wow_cur)
+    prev_ca = round(sum(float(r["ca_ttc"]) for r in wow_prev), 2)
+    prev_nb = sum(r["nb"] for r in wow_prev)
     wow_data = {
         "cur_ca": cur_ca, "prev_ca": prev_ca, "cur_nb": cur_nb, "prev_nb": prev_nb,
         "growth_ca": round((cur_ca - prev_ca) / prev_ca * 100) if prev_ca else None,
         "growth_nb": round((cur_nb - prev_nb) / prev_nb * 100) if prev_nb else None,
     }
+    # Fenêtre de comparaison des movers (7 jours pleins avant rows_7d) — inchangée
+    prev = [r for r in rows_hist
+            if (today_real - timedelta(13)).isoformat() <= r["day"] < iso_7]
 
     # Meilleur jour de la semaine — historique complet depuis le cache
-    older = _get_summaries("2026-05-27", (today_real - timedelta(14)).isoformat())
-    wd_rows = (older if isinstance(older, list) else []) + rows_14
+    older = _get_summaries("2026-05-27", (today_real - timedelta(15)).isoformat())
+    wd_rows = (older if isinstance(older, list) else []) + rows_hist
     if ts["nb"]:
         wd_rows = wd_rows + [{"day": today_iso, "ca_ttc": ts["ca"], "nb": ts["nb"]}]
     by_wd = {}

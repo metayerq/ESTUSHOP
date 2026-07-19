@@ -156,14 +156,8 @@ function render(d) {
     + (d.today.ticket_ht ? `<span style="color:var(--faint)"> · ${fmt(d.today.ticket_ht)} excl. VAT</span>` : '');
   document.getElementById('kpi-median').textContent     = d.median != null ? fmt(d.median) : '—';
 
-  // Seuil transactions — proportionnel aux jours ouvrés de la période
-  const openDaysTx = (d.economics && d.economics.open_days) || 1;
-  const seuilTarget = d.seuil * (d.is_single_day ? 1 : openDaysTx);
-  const pct = Math.min(100, Math.round(d.today.nb / seuilTarget * 100));
-  document.getElementById('seuil-bar').style.width = pct + '%';
-  document.getElementById('seuil-meta').textContent = d.is_single_day
-    ? `Break-even: ${d.seuil} tx/day`
-    : `Break-even: ${seuilTarget} tx (${d.seuil}/day × ${openDaysTx} open days)`;
+  // (Barre "Break-even N tx/day" supprimée : constante BP statique, redondante
+  //  et parfois contradictoire avec le seuil CA réel affiché dans Economics.)
 
 
   // ── Économie ──────────────────────────────────────────────────────────────
@@ -476,6 +470,8 @@ function render(d) {
   const unsoldSection = document.getElementById('unsold-section');
   if (d.is_single_day && d.unsold && d.unsold.length) {
     unsoldSection.style.display = '';
+    document.getElementById('unsold-label').textContent =
+      d.is_today ? 'Not sold today' : `Not sold on ${fmtDate(d.date)}`;
     document.getElementById('unsold-list').innerHTML =
       d.unsold.map(p => `<span class="unsold-tag">${p.name}</span>`).join('');
   } else {

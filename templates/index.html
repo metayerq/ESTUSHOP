@@ -184,10 +184,6 @@
         <div class="kpi-label">Transactions</div>
         <div class="kpi-value" id="kpi-nb">—</div>
         <div class="kpi-delta" id="kpi-nb-delta"></div>
-        <div class="progress-wrap">
-          <div class="progress-track"><div class="progress-fill" id="seuil-bar" style="width:0%"></div></div>
-          <div class="progress-meta" id="seuil-meta">Break-even: {{ seuil }} tx/day</div>
-        </div>
       </div>
       <div class="kpi-cell">
         <div class="kpi-label">Average ticket</div>
@@ -255,7 +251,7 @@
     <!-- WoW + meilleur jour intégrés sous la sparkline -->
     <div class="wow-strip" id="wow-strip" style="display:none;">
       <div class="wow-item">
-        <span>Current week</span>
+        <span>Last 7 full days</span>
         <strong id="kpi-wow-ca">—</strong>
         <span id="kpi-wow-ca-delta"></span>
       </div>
@@ -360,7 +356,7 @@
 
   <!-- Produits non vendus (conditionnel) -->
   <div id="unsold-section" style="display:none;margin-bottom:32px;">
-    <div class="section-label">Not sold today</div>
+    <div class="section-label" id="unsold-label">Not sold today</div>
     <div id="unsold-list" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
   </div>
 
