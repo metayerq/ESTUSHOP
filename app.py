@@ -283,29 +283,46 @@ def login():
 <html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Estudantina — Sign in</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<meta name="theme-color" content="#EDEAE3">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-body {{ font-family:'Inter',sans-serif; background:#EDEAE3; display:flex; align-items:center;
-       justify-content:center; height:100vh; margin:0; color:#26241E; }}
-.box {{ background:#fff; border:1px solid #DBD7CB; border-radius:12px; padding:40px;
-        width:320px; box-shadow:0 14px 40px rgba(30,26,16,.10); }}
-h1 {{ font-size:18px; margin:0 0 4px; }}
-h1::before {{ content:"◳ "; color:#2554C7; }}
-p {{ font-size:13px; color:#78776f; margin:0 0 24px; }}
-input {{ width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #e8e6e0;
-         border-radius:6px; font-family:inherit; font-size:14px; margin-bottom:12px; }}
-button {{ width:100%; padding:10px; background:#37352f; color:#fff; border:none;
-          border-radius:6px; font-family:inherit; font-size:14px; font-weight:500; cursor:pointer; }}
-.err {{ color:#d33; font-size:12px; margin-bottom:12px; }}
+:root {{ --canvas:#EDEAE3; --ink:#26241E; --muted:#6E6A5E; --faint:#A29D8F;
+         --spec:#2554C7; --border:#DBD7CB; --card:#fff;
+         --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }}
+* {{ box-sizing:border-box; }}
+body {{ font-family:'Inter',-apple-system,sans-serif; background:var(--canvas); color:var(--ink);
+       margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+       padding:24px; -webkit-font-smoothing:antialiased; }}
+.wrap {{ width:100%; max-width:420px; }}
+.eyebrow {{ font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+            color:var(--muted); display:flex; align-items:center; gap:9px; margin-bottom:18px; }}
+.eyebrow b {{ color:var(--spec); font-weight:600; }}
+h1 {{ font-size:26px; font-weight:700; letter-spacing:-.02em; line-height:1.1; margin:0 0 8px; }}
+.sub {{ font-size:15px; color:var(--muted); margin:0 0 26px; line-height:1.5; }}
+label {{ font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+         color:var(--muted); display:block; margin-bottom:7px; }}
+input {{ width:100%; padding:12px 14px; border:1px solid var(--border); border-radius:10px;
+         font-family:inherit; font-size:15px; background:var(--card); color:var(--ink); }}
+input:focus {{ outline:none; border-color:var(--spec); box-shadow:0 0 0 3px rgba(37,84,199,.10); }}
+button {{ width:100%; margin-top:12px; padding:13px; background:var(--spec); color:#fff; border:none;
+          border-radius:10px; font-family:inherit; font-size:15px; font-weight:600; cursor:pointer; }}
+button:hover {{ opacity:.9; }}
+.err {{ color:#c4554d; font-size:13px; margin-bottom:12px; }}
+.note {{ background:rgba(38,36,30,.05); border-radius:10px; padding:14px 16px; margin-top:20px;
+         font-size:12.5px; color:var(--muted); line-height:1.5; }}
+.note b {{ color:var(--ink); }}
 </style></head><body>
-<div class="box">
-  <h1>Estudantina</h1>
-  <p>Private dashboard — enter password</p>
+<div class="wrap">
+  <div class="eyebrow"><b>◳ ESTUDANTINA</b> · SIGN IN</div>
+  <h1>Your numbers, in clear.</h1>
+  <p class="sub">Private dashboard for Estudantina — enter your password to continue.</p>
   {f'<div class="err">{error}</div>' if error else ''}
   <form method="POST">
-    <input type="password" name="password" placeholder="Password" autofocus>
-    <button type="submit">Sign in</button>
+    <label for="pw">Password</label>
+    <input id="pw" type="password" name="password" placeholder="••••••••" autofocus>
+    <button type="submit">Sign in →</button>
   </form>
+  <div class="note"><b>Private.</b> Access is role-based (owner, staff, investor). Your session stays signed in on this device for 30 days.</div>
 </div>
 </body></html>"""
 
