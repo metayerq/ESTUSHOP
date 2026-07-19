@@ -170,6 +170,34 @@
     <button class="pill" onclick="applyCustomRange()" style="background:var(--accent,#37352f); color:#fff;">Apply</button>
   </div>
 
+  <!-- Strip "Today" — visible seulement sur période multi-jours incluant aujourd'hui -->
+  <div id="today-strip" style="display:none; margin-bottom:32px;">
+    <div class="section-label">Today</div>
+    <div class="kpi-grid">
+      <div class="kpi-cell">
+        <div class="kpi-label">Revenue today</div>
+        <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
+          <span class="kpi-value" id="ts-ca">—</span><span id="ts-ca-badge"></span>
+        </div>
+        <div class="kpi-delta" id="ts-ca-sub"></div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">Transactions</div>
+        <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
+          <span class="kpi-value" id="ts-nb">—</span><span id="ts-nb-badge"></span>
+        </div>
+        <div class="kpi-delta" id="ts-nb-sub"></div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">Average ticket</div>
+        <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
+          <span class="kpi-value" id="ts-ticket">—</span><span id="ts-ticket-badge"></span>
+        </div>
+        <div class="kpi-delta" id="ts-ticket-sub"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- KPIs — label dynamique selon la période -->
   <div class="section-label" id="kpi-section-label">Today</div>
   <div style="margin-bottom:32px;">

@@ -61,6 +61,45 @@ function delta(cur, prev, label) {
        + `<span style="color:var(--muted);margin-left:8px;font-size:11.5px;">${label}</span>`;
 }
 
+// Pastille seule (flèche + %), sans libellé — pour le strip Today.
+function deltaBadge(cur, prev) {
+  if (prev == null || prev === 0) return '';
+  const pct = Math.round((cur - prev) / Math.abs(prev) * 100);
+  const up = pct >= 0;
+  return `<span class="${up ? 'delta-up' : 'delta-down'}">${up ? '▲ +' : '▼ '}${pct}%</span>`;
+}
+
+// "Sat 18 Jul"
+function dayShort(iso) {
+  return new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+// Strip "Today" : snapshot du jour + delta vs jour ouvré précédent.
+function renderTodayStrip(d) {
+  const strip = document.getElementById('today-strip');
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const includesToday = !d.is_single_day && d.to_date === todayIso && Array.isArray(d.week);
+  if (!includesToday) { strip.style.display = 'none'; return; }
+
+  const wk = d.week;
+  const today = wk[wk.length - 1];                     // dernier point = aujourd'hui
+  const prev  = [...wk.slice(0, -1)].reverse().find(x => x.nb > 0) || null;  // jour ouvré précédent
+  const tTicket = today.nb ? today.ca / today.nb : 0;
+  const pTicket = prev && prev.nb ? prev.ca / prev.nb : 0;
+  const vs = prev ? `vs ${dayShort(prev.date)} · ` : '';
+
+  document.getElementById('ts-ca').textContent      = fmt(today.ca);
+  document.getElementById('ts-ca-badge').innerHTML  = prev ? deltaBadge(today.ca, prev.ca) : '';
+  document.getElementById('ts-ca-sub').textContent  = prev ? vs + fmt(prev.ca) : '';
+  document.getElementById('ts-nb').textContent      = today.nb;
+  document.getElementById('ts-nb-badge').innerHTML  = prev ? deltaBadge(today.nb, prev.nb) : '';
+  document.getElementById('ts-nb-sub').textContent  = prev ? vs + prev.nb : '';
+  document.getElementById('ts-ticket').textContent  = fmt(tTicket);
+  document.getElementById('ts-ticket-badge').innerHTML = (prev && prev.nb && today.nb) ? deltaBadge(tTicket, pTicket) : '';
+  document.getElementById('ts-ticket-sub').textContent = (prev && prev.nb) ? vs + fmt(pTicket) : '';
+  strip.style.display = '';
+}
+
 function fmtDate(iso) {
   return new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
@@ -150,13 +189,24 @@ function render(d) {
   } else {
     document.getElementById('kpi-ca-ht').textContent = '';
   }
-  document.getElementById('kpi-ca-delta').innerHTML     = delta(d.today.ca,     d.yesterday.ca,     compLabel);
+  // Deltas "vs yesterday" seulement en jour unique. En multi-jours, le strip
+  // Today porte la comparaison ; le bloc période reste descriptif (comme Mesa).
+  const showDelta = d.is_single_day;
+  document.getElementById('kpi-ca-delta').innerHTML     = showDelta ? delta(d.today.ca, d.yesterday.ca, compLabel) : '';
   document.getElementById('kpi-nb').textContent         = d.today.nb;
-  document.getElementById('kpi-nb-delta').innerHTML     = delta(d.today.nb,     d.yesterday.nb,     compLabel);
+  document.getElementById('kpi-nb-delta').innerHTML     = showDelta ? delta(d.today.nb, d.yesterday.nb, compLabel)
+    : `<span style="color:var(--muted)">tickets (refunds deducted)</span>`;
   document.getElementById('kpi-ticket').textContent     = fmt(d.today.ticket);
-  document.getElementById('kpi-ticket-delta').innerHTML = delta(d.today.ticket, d.yesterday.ticket, compLabel)
-    + (d.today.ticket_ht ? `<span style="color:var(--faint)"> · ${fmt(d.today.ticket_ht)} excl. VAT</span>` : '');
+  document.getElementById('kpi-ticket-delta').innerHTML = showDelta
+    ? delta(d.today.ticket, d.yesterday.ticket, compLabel) + (d.today.ticket_ht ? `<span style="color:var(--faint)"> · ${fmt(d.today.ticket_ht)} excl. VAT</span>` : '')
+    : (d.median != null ? `<span style="color:var(--muted)">median ${fmt(d.median)}</span>` : '');
   document.getElementById('kpi-median').textContent     = d.median != null ? fmt(d.median) : '—';
+
+  // ── Strip "Today" (période multi-jours incluant aujourd'hui) ──────────────
+  // Mesa affiche toujours un snapshot du jour au-dessus de la période. Dérivé
+  // de d.week (7 derniers jours) : dernier point = aujourd'hui, jour ouvré
+  // précédent = dernier point antérieur avec des ventes.
+  renderTodayStrip(d);
 
   // (Barre "Break-even N tx/day" supprimée : constante BP statique, redondante
   //  et parfois contradictoire avec le seuil CA réel affiché dans Economics.)
