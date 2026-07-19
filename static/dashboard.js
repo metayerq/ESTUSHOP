@@ -311,23 +311,26 @@ function render(d) {
   ).join('');
 
   // ── Graphe temporel : horaire (1j) ou journalier (multi-jours) ───────────
-  const hourlyCanvas = document.getElementById('chart-hourly');
-  const dailyCanvas  = document.getElementById('chart-daily');
-  const timeLabel    = document.getElementById('time-chart-label');
+  const hourlyBars  = document.getElementById('hourly-bars');
+  const hourlySub   = document.getElementById('hourly-sub');
+  const dailyCanvas = document.getElementById('chart-daily');
+  const timeLabel   = document.getElementById('time-chart-label');
 
   if (d.is_single_day && d.hourly) {
-    hourlyCanvas.style.display = '';
-    dailyCanvas.style.display  = 'none';
-    timeLabel.textContent = 'CA par heure (€)';
-    renderHourlyChart(d);
+    hourlyBars.style.display = '';
+    dailyCanvas.style.display = 'none';
+    timeLabel.textContent = 'Revenue by hour';
+    renderHourlyBars(d.hourly);
   } else if (d.daily && d.daily.length) {
-    hourlyCanvas.style.display = 'none';
-    dailyCanvas.style.display  = '';
-    timeLabel.textContent = 'CA par jour (€)';
+    hourlyBars.style.display = 'none';
+    hourlySub.textContent = '';
+    dailyCanvas.style.display = '';
+    timeLabel.textContent = 'Revenue by day';
     renderDailyChart(d.daily);
   } else {
-    hourlyCanvas.style.display = 'none';
-    dailyCanvas.style.display  = 'none';
+    hourlyBars.style.display = 'none';
+    hourlySub.textContent = '';
+    dailyCanvas.style.display = 'none';
   }
 
   // ── Paiements compacts (remplace le donut) ───────────────────────────────
@@ -767,57 +770,37 @@ function renderInsights(d) {
     ${rowsHtml || '<div class="ins-sub">Not enough history yet.</div>'}`;
 }
 
-// ── Graphe horaire ─────────────────────────────────────────────────────────
-function renderHourlyChart(d) {
-  const maxHourVal = Math.max(...d.hourly.values);
-  const hCtx = document.getElementById('chart-hourly').getContext('2d');
-  if (chartHourly) chartHourly.destroy();
-  chartHourly = new Chart(hCtx, {
-    type: 'bar',
-    data: {
-      labels: d.hourly.labels,
-      datasets: [
-        {
-          type: 'bar', label: 'CA',
-          data: d.hourly.values,
-          backgroundColor: d.hourly.values.map(v => v > 0 && v === maxHourVal ? BAR_ACTIVE : BAR_IDLE),
-          borderRadius: 2, borderSkipped: false, yAxisID: 'y',
-        },
-        {
-          type: 'line', label: 'Ticket moy.',
-          data: d.hourly.avg_ticket,
-          borderColor: BAR_ACTIVE, backgroundColor: 'transparent',
-          borderWidth: 1.5, borderDash: [4, 3],
-          pointRadius: d.hourly.avg_ticket.map(v => v != null ? 3 : 0),
-          pointBackgroundColor: BAR_ACTIVE,
-          spanGaps: false, yAxisID: 'y2',
-        }
-      ]
-    },
-    options: {
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: ctx => {
-              if (ctx.datasetIndex === 0) {
-                const nb  = d.hourly.nb[ctx.dataIndex];
-                const gap = d.hourly.avg_gap[ctx.dataIndex];
-                return ` CA: ${fmt(ctx.raw)}  (${nb} tx${gap != null ? ' · ' + gap + 'min/tx' : ''})`;
-              }
-              return ctx.raw != null ? ` Ticket moy: ${fmt(ctx.raw)}` : null;
-            }
-          }
-        }
-      },
-      scales: {
-        y:  { ticks:{callback:v=>v+' €',font:{size:11},color:'rgba(120,119,111,1)'}, grid:{color:'rgba(55,53,47,0.06)'}, border:{display:false} },
-        y2: { position:'right', ticks:{callback:v=>v+' €',font:{size:10},color:'#bbb'}, grid:{display:false}, border:{display:false} },
-        x:  { ticks:{font:{size:11},color:'rgba(120,119,111,1)'}, grid:{display:false}, border:{display:false} }
-      }
-    }
-  });
+// ── Graphe horaire — barres div façon Mesa (pic plein, creuses en rouge) ────
+// hourly.labels = ["7h","8h",…] · values/nb/avg_ticket/avg_gap alignés.
+function renderHourlyBars(h) {
+  const hours = h.labels.map(l => parseInt(l, 10));
+  const vals  = h.values;
+  const maxV  = Math.max(...vals, 0) || 1;
+  const peakIdx = vals.reduce((mi, v, i, a) => v > a[mi] ? i : mi, 0);
+  const peakHour = hours[peakIdx];
+
+  // Heures creuses : entre la première et la dernière heure active, < 5% du pic.
+  const active = hours.filter((_, i) => vals[i] > 0);
+  const first = active[0], last = active[active.length - 1];
+  const dead = active.length >= 2
+    ? hours.filter((hr, i) => hr > first && hr < last && vals[i] < maxV * 0.05)
+    : [];
+  const deadSet = new Set(dead);
+
+  document.getElementById('hourly-bars').innerHTML =
+    `<div class="hbar-row">` + hours.map((hr, i) => {
+      const isPeak = i === peakIdx && vals[i] > 0;
+      const hpx = Math.round(vals[i] / maxV * 118);
+      const tip = `${hr}h · ${fmt(vals[i])} · ${h.nb[i]} tx`;
+      return `<div class="hbar" title="${tip}">
+        <div class="fill ${isPeak ? 'peak' : 'norm'}" style="height:${hpx}px;${vals[i] > 0 ? 'min-height:3px;' : 'border:none;'}"></div>
+        <span class="hr ${deadSet.has(hr) ? 'dead' : ''}">${hr}</span>
+      </div>`;
+    }).join('') + `</div>`;
+
+  document.getElementById('hourly-sub').innerHTML =
+    `Peak at <b style="color:var(--text)">${peakHour}h</b> · ${fmt(maxV === 1 && vals[peakIdx] === 0 ? 0 : vals[peakIdx])}`
+    + (dead.length ? ` · dead hours: <b style="color:var(--text)">${dead.map(x => x + 'h').join(', ')}</b>` : '');
 }
 
 // ── Graphe journalier (multi-jours) ───────────────────────────────────────

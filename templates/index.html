@@ -301,8 +301,9 @@
   <div class="section-label">Breakdown</div>
   <div class="charts-grid" style="margin-bottom:32px;">
     <div class="chart-block">
-      <div class="section-label" id="time-chart-label" style="margin-bottom:16px;">Revenue by hour (€)</div>
-      <canvas id="chart-hourly" height="130"></canvas>
+      <div class="section-label" id="time-chart-label" style="margin-bottom:4px;">Revenue by hour</div>
+      <div id="hourly-sub" style="font-size:12px;color:var(--muted);margin-bottom:16px;min-height:16px;"></div>
+      <div id="hourly-bars" style="overflow-x:auto;"></div>
       <canvas id="chart-daily"  height="130" style="display:none;"></canvas>
     </div>
     <div class="chart-block">

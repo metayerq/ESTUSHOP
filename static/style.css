@@ -191,6 +191,15 @@ body {
 .delta-up   { color: var(--green); background: rgba(68,131,97,.10); }
 .delta-down { color: var(--red);   background: rgba(196,85,77,.10); }
 
+/* ── Revenue by hour — barres div façon Mesa ── */
+.hbar-row { display: flex; align-items: flex-end; gap: 6px; height: 140px; min-width: 520px; }
+.hbar { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.hbar .fill { width: 100%; border-radius: 3px; transition: height .4s ease; }
+.hbar .fill.peak { background: var(--spec); }
+.hbar .fill.norm { background: var(--spec-soft); border-top: 2px solid var(--spec); }
+.hbar .hr { font-family: var(--mono); font-size: 10px; color: var(--faint); }
+.hbar .hr.dead { color: var(--red); }
+
 /* ── Progress ── */
 .progress-wrap  { margin-top: 10px; }
 .progress-track { height: 2px; background: var(--bar-bg); border-radius: 2px; }
