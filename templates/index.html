@@ -256,11 +256,28 @@
     </div>
   </div>
 
-  <!-- Insights visuels -->
+  <!-- ═══ Bloc Activity — peaks + revenue by hour + rush heatmap, groupés (Mesa) ═══ -->
+  <!-- Pics d'activité (conditionnel — jour unique) -->
+  <div id="rush-section" style="display:none;margin-bottom:16px;">
+    <div class="section-label">Activity peaks</div>
+    <div id="rush-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+  </div>
+
+  <!-- Revenue by hour — pleine largeur -->
+  <div class="chart-block" style="margin-bottom:12px;">
+    <div class="section-label" id="time-chart-label" style="margin-bottom:4px;">Revenue by hour</div>
+    <div id="hourly-sub" style="font-size:12px;color:var(--muted);margin-bottom:16px;min-height:16px;"></div>
+    <div id="hourly-bars" style="overflow-x:auto;"></div>
+    <canvas id="chart-daily" height="130" style="display:none;"></canvas>
+  </div>
+
+  <!-- Rush heatmap — pleine largeur, juste sous le graphe horaire -->
+  <div class="chart-block" id="ins-heatmap" style="margin-bottom:32px;"></div>
+
+  <!-- Insights visuels (les autres, en petites cartes) -->
   <div class="section-label" id="insights-label" style="display:none;">Insights</div>
   <div id="insights-grid" class="ins-grid">
     <div class="ins-card" id="ins-gauge"></div>
-    <div class="ins-card" id="ins-heatmap"></div>
     <div class="ins-card" id="ins-month"></div>
     <div class="ins-card" id="ins-calendar"></div>
     <div class="ins-card" id="ins-prime"></div>
@@ -297,32 +314,18 @@
     </div>
   </div>
 
-  <!-- Répartition : graphe temporel + paiements compacts -->
-  <div class="charts-grid" style="margin-bottom:12px;">
+  <!-- Payment methods + Product mix, groupés (répartitions) -->
+  <div class="charts-grid" style="margin-bottom:32px;">
     <div class="chart-block">
-      <div class="section-label" id="time-chart-label" style="margin-bottom:4px;">Revenue by hour</div>
-      <div id="hourly-sub" style="font-size:12px;color:var(--muted);margin-bottom:16px;min-height:16px;"></div>
-      <div id="hourly-bars" style="overflow-x:auto;"></div>
-      <canvas id="chart-daily"  height="130" style="display:none;"></canvas>
+      <div class="section-label" style="margin-bottom:14px;">Product mix</div>
+      <div id="mix-bars">
+        <span style="font-size:12px;color:var(--muted);">Loading…</span>
+      </div>
     </div>
     <div class="chart-block">
       <div class="section-label" style="margin-bottom:12px;">Payment methods</div>
       <div id="payment-compact" class="pay-compact"></div>
     </div>
-  </div>
-
-  <!-- Mix boissons / food -->
-  <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:32px;background:var(--bg-card);padding:18px;">
-    <div class="section-label" style="margin-bottom:14px;">Product mix</div>
-    <div id="mix-bars">
-      <span style="font-size:12px;color:var(--muted);">Loading…</span>
-    </div>
-  </div>
-
-  <!-- Pics d'activité (conditionnel — jour unique) -->
-  <div id="rush-section" style="display:none;margin-bottom:32px;">
-    <div class="section-label">Activity peaks</div>
-    <div id="rush-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
   </div>
 
   <!-- Courbe cumulative (conditionnel — jour unique) -->
