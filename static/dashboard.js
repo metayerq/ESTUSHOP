@@ -196,6 +196,24 @@ function render(d) {
   // delta() renvoie '' si la période de comparaison est vide (ex. since opening).
   const caDelta = delta(d.today.ca, d.yesterday.ca, compLabel);
   document.getElementById('kpi-ca-delta').innerHTML     = caDelta;
+
+  // Décomposition de la croissance : CA = trafic (tx) × panier (ticket moyen).
+  // Répond à "POURQUOI ça bouge" — plus de clients, ou panier plus gros ?
+  const driversEl = document.getElementById('kpi-ca-drivers');
+  const prevNb = d.yesterday.nb, prevTicket = d.yesterday.ticket;
+  if (caDelta && prevNb > 0 && prevTicket > 0) {
+    const gNb = Math.round((d.today.nb     - prevNb)     / prevNb     * 100);
+    const gTk = Math.round((d.today.ticket - prevTicket) / prevTicket * 100);
+    const part = (g, label) => {
+      const col = g > 0 ? 'var(--green)' : g < 0 ? 'var(--red)' : 'var(--muted)';
+      return `<span style="color:var(--muted)">${label}</span> <span style="color:${col};font-weight:500">${g >= 0 ? '+' : ''}${g}%</span>`;
+    };
+    driversEl.innerHTML =
+      `<span style="color:var(--faint)">=</span> ${part(gNb, 'traffic')}` +
+      `<span style="color:var(--faint)"> × </span>${part(gTk, 'basket')}`;
+  } else {
+    driversEl.innerHTML = '';
+  }
   document.getElementById('kpi-nb').textContent         = d.today.nb;
   document.getElementById('kpi-nb-delta').innerHTML     = delta(d.today.nb, d.yesterday.nb, compLabel)
     || `<span style="color:var(--muted)">tickets (refunds deducted)</span>`;
