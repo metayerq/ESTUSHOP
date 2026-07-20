@@ -225,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260713l"
+ASSET_VERSION = "20260713m"
 
 @app.context_processor
 def _inject_asset_version():
@@ -245,6 +245,7 @@ AUTH_SECRET        = os.environ.get("AUTH_SECRET", DASHBOARD_PASSWORD)
 STAFF_ALLOWED_PREFIXES = (
     "/cogs", "/api/cogs", "/api/ingredients", "/api/preparations",
     "/api/recipe", "/api/product", "/stock", "/api/supplies", "/logout",
+    "/sop", "/api/sop",
 )
 
 # Chemins fermés au rôle investisseur : détail dépenses, congés staff,
@@ -1080,6 +1081,89 @@ def api_time_off_post():
 @app.route("/api/time_off/<string:row_id>", methods=["DELETE"])
 def api_time_off_delete(row_id):
     ok = _supa_delete("time_off", "id", row_id)
+    return jsonify({"ok": ok})
+
+
+# ── SOP : procédures & checklists opérationnelles (+ registre HACCP) ───────────
+# sop_tasks = définition des tâches (titre, catégorie, fréquence, type).
+# sop_log   = complétions (qui, quand, valeur pour les relevés de température).
+
+@app.route("/sop")
+def sop_page():
+    return render_template("sop.html")
+
+@app.route("/api/sop/tasks", methods=["GET"])
+def api_sop_tasks_get():
+    rows = _supa_get("sop_tasks", {"order": "sort_order.asc"})
+    return jsonify(rows if isinstance(rows, list) else [])
+
+@app.route("/api/sop/tasks", methods=["POST"])
+def api_sop_tasks_post():
+    data  = request.get_json() or {}
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"ok": False, "error": "title required"}), 400
+    freq = data.get("frequency", "daily")
+    if freq not in ("opening", "closing", "daily", "weekly", "monthly"):
+        freq = "daily"
+    ttype = "temperature" if data.get("type") == "temperature" else "check"
+    row = {
+        "title":       title,
+        "category":    (data.get("category") or "Général").strip(),
+        "frequency":   freq,
+        "type":        ttype,
+        "target_min":  data.get("target_min"),
+        "target_max":  data.get("target_max"),
+        "unit":        (data.get("unit") or ("°C" if ttype == "temperature" else "")).strip(),
+        "sort_order":  int(data.get("sort_order", 100)),
+        "notes":       (data.get("notes") or "").strip(),
+        "active":      data.get("active", True),
+    }
+    if data.get("id"):
+        row["id"] = data["id"]
+    ok, err = _supa_upsert("sop_tasks", row)
+    return jsonify({"ok": ok, "error": err})
+
+@app.route("/api/sop/tasks/<string:task_id>", methods=["PATCH"])
+def api_sop_tasks_patch(task_id):
+    r = _req.patch(f"{SUPA_URL}/rest/v1/sop_tasks", json=request.get_json() or {},
+                   headers=_supa_headers(), params={"id": f"eq.{task_id}"})
+    return jsonify({"ok": r.ok})
+
+@app.route("/api/sop/tasks/<string:task_id>", methods=["DELETE"])
+def api_sop_tasks_delete(task_id):
+    ok = _supa_delete("sop_tasks", "id", task_id)
+    return jsonify({"ok": ok})
+
+@app.route("/api/sop/log", methods=["GET"])
+def api_sop_log_get():
+    # ?since=YYYY-MM-DD (défaut : 30 derniers jours) pour l'historique/export
+    since = request.args.get("since") or (date.today() - timedelta(30)).isoformat()
+    rows = _supa_get("sop_log", {"date": f"gte.{since}", "order": "done_at.desc"})
+    return jsonify(rows if isinstance(rows, list) else [])
+
+@app.route("/api/sop/log", methods=["POST"])
+def api_sop_log_post():
+    data    = request.get_json() or {}
+    task_id = data.get("task_id")
+    if not task_id:
+        return jsonify({"ok": False, "error": "task_id required"}), 400
+    row = {
+        "task_id": task_id,
+        "date":    data.get("date") or date.today().isoformat(),
+        "done_by": (data.get("done_by") or "").strip(),
+        "value":   data.get("value"),
+        "done_at": datetime.now().isoformat(),
+        "active":  True,
+    }
+    if data.get("id"):
+        row["id"] = data["id"]
+    ok, err = _supa_upsert("sop_log", row)
+    return jsonify({"ok": ok, "error": err})
+
+@app.route("/api/sop/log/<string:log_id>", methods=["DELETE"])
+def api_sop_log_delete(log_id):
+    ok = _supa_delete("sop_log", "id", log_id)
     return jsonify({"ok": ok})
 
 

@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/static/icons/favicon-32.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Estudantina">
+<meta name="theme-color" content="#EDEAE3">
+<title>Estudantina · SOP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<style>
+/* ── App nav (barre d'onglets partagée) ── */
+.app-nav { display:flex; gap:4px; margin-bottom:28px; border-bottom:1px solid var(--border); }
+.app-nav-item {
+  display:flex; align-items:center; gap:8px; padding:11px 18px;
+  font-size:13px; font-weight:500; color:var(--muted); text-decoration:none;
+  border-radius:8px 8px 0 0; border:1px solid transparent; border-bottom:none;
+  margin-bottom:-1px; white-space:nowrap;
+}
+.app-nav-item svg { width:16px; height:16px; flex-shrink:0; }
+.app-nav-item:hover { color:var(--text); background:var(--bg-hover); }
+.app-nav-item.active { color:var(--text); background:var(--bg-card); border-color:var(--border); font-weight:600; }
+@media (max-width:760px) { .app-nav { overflow-x:auto; } .app-nav-item span { display:none; } .app-nav-item { padding:11px 13px; } }
+
+.view-tabs { display:flex; margin-bottom:24px; border:1px solid var(--border);
+  border-radius:8px; overflow:hidden; width:fit-content; }
+.view-tab { font-family:inherit; font-size:13px; font-weight:500; padding:8px 20px;
+  border:none; background:transparent; color:var(--muted); cursor:pointer; border-right:1px solid var(--border); }
+.view-tab:last-child { border-right:none; }
+.view-tab:hover { background:var(--bg-hover); color:var(--text); }
+.view-tab.active { background:var(--bg-card); color:var(--text); font-weight:600; box-shadow:inset 0 -2px 0 var(--spec); }
+
+.who-bar { display:flex; align-items:center; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
+.who-bar .field-input { max-width:180px; }
+.field-label { font-size:11px; font-weight:500; color:var(--muted); margin-bottom:5px; display:block; }
+.field-input { font-family:inherit; font-size:13px; padding:9px 11px; border:1px solid var(--border);
+  border-radius:8px; background:var(--bg-card); color:var(--text); box-sizing:border-box; }
+.field-input:focus { outline:none; border-color:var(--spec); box-shadow:0 0 0 3px var(--spec-soft); }
+
+.sop-group { margin-bottom:22px; }
+.sop-group-head { font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--muted); margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+.sop-group-head::before { content:"— "; color:var(--faint); }
+.sop-group-head .count { font-weight:400; color:var(--faint); }
+
+.sop-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+.sop-row { display:flex; align-items:center; gap:14px; padding:13px 16px; border-bottom:1px solid var(--border); }
+.sop-row:last-child { border-bottom:none; }
+.sop-row.done { background:var(--bg-page); }
+.sop-check { width:22px; height:22px; border-radius:6px; border:1.8px solid var(--border);
+  flex-shrink:0; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:700; color:#fff; transition:.12s; }
+.sop-check:hover { border-color:var(--spec); }
+.sop-check.on { background:var(--green); border-color:var(--green); }
+.sop-body { flex:1; min-width:0; }
+.sop-title { font-size:14px; font-weight:500; }
+.sop-cat { font-size:11px; color:var(--faint); margin-top:1px; }
+.sop-meta { font-size:11px; color:var(--muted); white-space:nowrap; text-align:right; }
+.sop-meta b { color:var(--text); font-weight:600; }
+
+/* Température : champ valeur + plage cible */
+.temp-input { width:74px; text-align:center; font-variant-numeric:tabular-nums; font-weight:600; }
+.temp-ok  { border-color:var(--green) !important; color:var(--green); }
+.temp-bad { border-color:var(--red) !important; color:var(--red); background:#fdeceb; }
+.temp-range { font-size:11px; color:var(--faint); white-space:nowrap; }
+.temp-badge { font-size:10px; font-weight:600; padding:2px 7px; border-radius:9px; }
+.temp-badge.ok  { background:#e8f5e9; color:#2e7d32; }
+.temp-badge.bad { background:#fdeceb; color:var(--red); }
+
+.btn-add { font-family:inherit; font-size:12px; font-weight:500; padding:8px 14px;
+  border-radius:8px; cursor:pointer; border:1px solid var(--border); background:var(--bg-card); color:var(--text); }
+.btn-add:hover { background:var(--bg-hover); }
+.btn-primary { font-family:inherit; font-size:13px; font-weight:600; padding:10px 18px;
+  border-radius:8px; cursor:pointer; border:none; background:var(--spec); color:#fff; }
+.btn-ghost { font-family:inherit; font-size:12px; padding:6px 12px; border-radius:8px;
+  cursor:pointer; border:1px solid var(--border); background:transparent; color:var(--muted); }
+.btn-danger { font-family:inherit; font-size:12px; padding:5px 10px; border-radius:6px; cursor:pointer;
+  border:1px solid transparent; background:transparent; color:var(--red); }
+.btn-danger:hover { background:rgba(196,85,77,.07); }
+
+.progress-line { font-size:13px; color:var(--muted); margin-bottom:20px; }
+.progress-line b { color:var(--text); }
+.progress-track { height:6px; background:var(--bar-bg); border-radius:3px; margin-top:8px; overflow:hidden; }
+.progress-fill { height:6px; background:var(--green); border-radius:3px; transition:width .3s; }
+
+/* Manage / History tables */
+.table-wrap { border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--bg-card); }
+table { width:100%; border-collapse:collapse; }
+th { font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--faint); padding:11px 14px; background:var(--bg-page); border-bottom:1px solid var(--border); text-align:left; }
+td { font-size:13px; padding:11px 14px; border-bottom:1px solid var(--border); color:var(--text); vertical-align:middle; }
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:var(--bg-hover); }
+td.date, td.muted { color:var(--muted); white-space:nowrap; }
+.freq-badge { font-family:var(--mono); font-size:10px; padding:2px 8px; border-radius:9px; background:var(--spec-soft); color:var(--spec); white-space:nowrap; }
+.empty { text-align:center; color:var(--muted); padding:36px; font-size:13px; }
+
+.modal-overlay { position:fixed; inset:0; background:rgba(30,26,16,.4); display:none;
+  align-items:center; justify-content:center; z-index:100; padding:20px; }
+.modal-overlay.open { display:flex; }
+.modal { background:var(--bg-card); border-radius:14px; padding:28px; width:460px; max-width:100%; max-height:90vh; overflow-y:auto; }
+.modal-title { font-size:16px; font-weight:700; margin-bottom:18px; }
+.modal-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.modal-grid .full { grid-column:1/-1; }
+.modal-foot { display:flex; gap:8px; margin-top:22px; }
+label.fl { display:block; }
+
+.toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
+  background:var(--text); color:#fff; padding:10px 18px; border-radius:8px; font-size:13px;
+  opacity:0; transition:all .25s; z-index:200; }
+.toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
+.hint { font-size:12px; color:var(--muted); margin-bottom:20px; max-width:72ch; line-height:1.5; }
+.hint b { color:var(--text); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="app-nav">
+    <a href="/" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg><span>Dashboard</span></a>
+    <a href="/cogs" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"/></svg><span>COGS</span></a>
+    <a href="/stock" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5-9 4.5-9-4.5Z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg><span>Stock</span></a>
+    <a href="/charges" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1" fill="currentColor" stroke="none"/></svg><span>Costs</span></a>
+    <a href="/expenses" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 9h20L12 3Z"/><path d="M4 9v10M9 9v10M15 9v10M20 9v10"/><path d="M2.5 21.5h19"/></svg><span>Expenses</span></a>
+    <a href="/holidays" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span>Holidays</span></a>
+    <a href="/reconciliation" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h13M14 4l3 3-3 3"/><path d="M20 17H7M10 14l-3 3 3 3"/></svg><span>Reconciliation</span></a>
+    <a href="/sop" class="app-nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>SOP</span></a>
+  </div>
+
+  <div class="header">
+    <div>
+      <div class="header-title">Operations</div>
+      <div class="header-sub" id="today-label">Daily checklists, cleaning &amp; HACCP temperature log</div>
+    </div>
+  </div>
+
+  <div class="view-tabs">
+    <button class="view-tab active" id="tab-today"   onclick="switchView('today')">Today</button>
+    <button class="view-tab"        id="tab-manage"  onclick="switchView('manage')">Manage tasks</button>
+    <button class="view-tab"        id="tab-history" onclick="switchView('history')">History &amp; log</button>
+  </div>
+
+  <!-- ═══ TODAY ═══ -->
+  <div id="view-today">
+    <div class="who-bar">
+      <div>
+        <label class="field-label">Your initials / name</label>
+        <input class="field-input" id="who" placeholder="e.g. AM" oninput="saveWho()">
+      </div>
+      <div style="flex:1;"></div>
+    </div>
+    <div class="progress-line" id="progress">
+      <span id="progress-text">—</span>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+    </div>
+    <div id="today-groups"><div class="empty">Loading…</div></div>
+  </div>
+
+  <!-- ═══ MANAGE ═══ -->
+  <div id="view-manage" style="display:none;">
+    <p class="hint"><b>Define your procedures.</b> Add tasks, set their category and frequency (opening, closing, daily, weekly, monthly). A "temperature" task asks for a reading and turns red if outside the target range — for your HACCP records.</p>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+      <span class="field-label" style="margin:0;">All tasks</span>
+      <button class="btn-primary" onclick="openTaskModal()">+ Add task</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Task</th><th>Category</th><th>Frequency</th><th>Type</th><th style="width:120px;"></th></tr></thead>
+        <tbody id="manage-body"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══ HISTORY ═══ -->
+  <div id="view-history" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+      <div>
+        <label class="field-label">Since</label>
+        <input type="date" class="field-input" id="hist-since" onchange="loadHistory()">
+      </div>
+      <button class="btn-add" onclick="exportHistory()">⇩ Export CSV (HACCP)</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Task</th><th>Category</th><th>By</th><th class="right">Reading</th><th>Time</th></tr></thead>
+        <tbody id="hist-body"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<!-- Task editor modal -->
+<div class="modal-overlay" id="task-modal" onclick="if(event.target===this)closeTaskModal()">
+  <div class="modal">
+    <div class="modal-title" id="task-modal-title">Add task</div>
+    <input type="hidden" id="t-id">
+    <div class="modal-grid">
+      <label class="fl full"><span class="field-label">Task *</span><input class="field-input" id="t-title" placeholder="e.g. Backflush espresso machine"></label>
+      <label class="fl"><span class="field-label">Category</span><input class="field-input" id="t-category" list="cat-list" placeholder="e.g. Coffee machine"><datalist id="cat-list"></datalist></label>
+      <label class="fl"><span class="field-label">Frequency</span>
+        <select class="field-input" id="t-frequency">
+          <option value="opening">Opening</option>
+          <option value="closing">Closing</option>
+          <option value="daily" selected>Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </label>
+      <label class="fl full"><span class="field-label">Type</span>
+        <select class="field-input" id="t-type" onchange="toggleTempFields()">
+          <option value="check">Checkbox (done / not done)</option>
+          <option value="temperature">Temperature reading (HACCP)</option>
+        </select>
+      </label>
+      <label class="fl" id="tmin-wrap" style="display:none;"><span class="field-label">Target min</span><input class="field-input" id="t-min" type="number" step="0.1" placeholder="0"></label>
+      <label class="fl" id="tmax-wrap" style="display:none;"><span class="field-label">Target max</span><input class="field-input" id="t-max" type="number" step="0.1" placeholder="5"></label>
+      <label class="fl full"><span class="field-label">Note (optional)</span><input class="field-input" id="t-notes" placeholder="How-to, product, detail…"></label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-primary" style="flex:1;" onclick="saveTask()">Save</button>
+      <button class="btn-danger" id="t-delete" style="display:none;" onclick="deleteTask()">Delete</button>
+      <button class="btn-ghost" onclick="closeTaskModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/static/ui.js?v={{ v }}"></script>
+<script>
+const FREQ_ORDER = ['opening','daily','closing','weekly','monthly'];
+const FREQ_LABEL = {opening:'Opening',daily:'During the day',closing:'Closing',weekly:'This week',monthly:'This month'};
+let tasks = [];   // définitions
+let logs  = [];   // complétions récentes (30j)
+let view  = 'today';
+
+function showToast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+const todayIso = () => new Date().toISOString().slice(0,10);
+
+function saveWho(){ localStorage.setItem('sop_who', document.getElementById('who').value); }
+(function initWho(){ document.getElementById('who').value = localStorage.getItem('sop_who') || ''; })();
+
+async function loadAll(){
+  if (window.uiLoadStart) uiLoadStart();
+  try {
+    const [tR, lR] = await Promise.all([ fetch('/api/sop/tasks'), fetch('/api/sop/log') ]);
+    tasks = (await tR.json()).filter(t => t.active !== false);
+    logs  = await lR.json();
+    renderToday(); renderManage();
+  } catch(e){ showToast('Failed to load'); } finally { if (window.uiLoadEnd) uiLoadEnd(); }
+}
+
+// ── Statut de complétion d'une tâche sur sa période courante ─────────────────
+function logsForTask(id){ return logs.filter(l => l.task_id === id); }
+function completion(task){
+  const ls = logsForTask(task.id);
+  const t  = todayIso();
+  if (['opening','closing','daily'].includes(task.frequency)) {
+    return ls.find(l => l.date === t) || null;                 // fait aujourd'hui ?
+  }
+  if (task.frequency === 'weekly') {
+    const wk = new Date(); wk.setDate(wk.getDate()-6); const since = wk.toISOString().slice(0,10);
+    return ls.find(l => l.date >= since) || null;              // fait dans les 7 jours ?
+  }
+  if (task.frequency === 'monthly') {
+    const mk = t.slice(0,7);
+    return ls.find(l => (l.date||'').slice(0,7) === mk) || null; // fait ce mois ?
+  }
+  return null;
+}
+
+// ── Vue TODAY ────────────────────────────────────────────────────────────────
+function renderToday(){
+  const cont = document.getElementById('today-groups');
+  if (!tasks.length){ cont.innerHTML = '<div class="empty">No tasks yet — add them in “Manage tasks”.</div>'; document.getElementById('progress-text').textContent=''; document.getElementById('progress-fill').style.width='0%'; return; }
+
+  // progression du jour (opening + daily + closing)
+  const dayTasks = tasks.filter(t => ['opening','daily','closing'].includes(t.frequency));
+  const doneDay  = dayTasks.filter(t => completion(t)).length;
+  document.getElementById('progress-text').innerHTML =
+    `<b>${doneDay}/${dayTasks.length}</b> daily tasks done` + (dayTasks.length?` · ${Math.round(doneDay/dayTasks.length*100)}%`:'');
+  document.getElementById('progress-fill').style.width = (dayTasks.length? doneDay/dayTasks.length*100:0) + '%';
+
+  let html = '';
+  for (const freq of FREQ_ORDER){
+    const list = tasks.filter(t => t.frequency === freq).sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+    if (!list.length) continue;
+    const doneN = list.filter(t=>completion(t)).length;
+    html += `<div class="sop-group"><div class="sop-group-head">${FREQ_LABEL[freq]} <span class="count">${doneN}/${list.length}</span></div><div class="sop-card">`;
+    for (const t of list) html += rowHtml(t);
+    html += `</div></div>`;
+  }
+  cont.innerHTML = html;
+}
+
+function rowHtml(t){
+  const done = completion(t);
+  if (t.type === 'temperature'){
+    const v = done ? done.value : null;
+    const bad = v != null && ((t.target_min != null && v < t.target_min) || (t.target_max != null && v > t.target_max));
+    const range = (t.target_min!=null?t.target_min:'') + '–' + (t.target_max!=null?t.target_max:'') + (t.unit||'');
+    return `<div class="sop-row ${done?'done':''}">
+      <div class="sop-body">
+        <div class="sop-title">${t.title}</div>
+        <div class="sop-cat">${t.category||''} · target ${range}</div>
+      </div>
+      <input class="field-input temp-input ${v!=null?(bad?'temp-bad':'temp-ok'):''}" type="number" step="0.1"
+             value="${v!=null?v:''}" placeholder="${t.unit||'°C'}"
+             onchange="logTemp('${t.id}', this.value)">
+      ${done ? `<span class="temp-badge ${bad?'bad':'ok'}">${bad?'out':'ok'}</span>` : ''}
+      <div class="sop-meta">${done ? `<b>${done.done_by||'✓'}</b><br>${(done.done_at||'').slice(11,16)}` : ''}</div>
+    </div>`;
+  }
+  return `<div class="sop-row ${done?'done':''}">
+    <div class="sop-check ${done?'on':''}" onclick="toggleCheck('${t.id}')">${done?'✓':''}</div>
+    <div class="sop-body">
+      <div class="sop-title">${t.title}</div>
+      <div class="sop-cat">${t.category||''}${t.notes?' · '+t.notes:''}</div>
+    </div>
+    <div class="sop-meta">${done ? `<b>${done.done_by||'✓'}</b><br>${(done.done_at||'').slice(11,16)}` : ''}</div>
+  </div>`;
+}
+
+async function toggleCheck(taskId){
+  const done = completion(tasks.find(t=>t.id===taskId));
+  if (done){                                    // décocher → supprimer le log
+    await fetch('/api/sop/log/'+done.id, {method:'DELETE'});
+  } else {
+    const who = document.getElementById('who').value.trim();
+    await fetch('/api/sop/log', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({task_id:taskId, done_by:who})});
+  }
+  await loadAll();
+}
+
+async function logTemp(taskId, value){
+  if (value === '' || value == null) return;
+  const done = completion(tasks.find(t=>t.id===taskId));
+  const who = document.getElementById('who').value.trim();
+  const payload = {task_id:taskId, done_by:who, value:parseFloat(value)};
+  if (done) payload.id = done.id;              // met à jour le relevé du jour
+  await fetch('/api/sop/log', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+  await loadAll();
+}
+
+// ── Vue MANAGE ───────────────────────────────────────────────────────────────
+function renderManage(){
+  const cats = [...new Set(tasks.map(t=>t.category).filter(Boolean))].sort();
+  document.getElementById('cat-list').innerHTML = cats.map(c=>`<option value="${c}">`).join('');
+  const body = document.getElementById('manage-body');
+  if (!tasks.length){ body.innerHTML = '<tr><td colspan="5" class="empty">No tasks yet.</td></tr>'; return; }
+  const sorted = [...tasks].sort((a,b)=> FREQ_ORDER.indexOf(a.frequency)-FREQ_ORDER.indexOf(b.frequency) || (a.sort_order||0)-(b.sort_order||0));
+  body.innerHTML = sorted.map(t => `<tr>
+    <td>${t.title}${t.notes?`<div style="font-size:11px;color:var(--faint)">${t.notes}</div>`:''}</td>
+    <td class="muted">${t.category||'—'}</td>
+    <td><span class="freq-badge">${FREQ_LABEL[t.frequency]||t.frequency}</span></td>
+    <td class="muted">${t.type==='temperature'?`🌡 ${t.target_min??''}–${t.target_max??''}${t.unit||''}`:'✓ check'}</td>
+    <td><button class="btn-ghost" onclick='openTaskModal(${JSON.stringify(t).replace(/'/g,"&#39;")})'>Edit</button></td>
+  </tr>`).join('');
+}
+
+// ── Task modal ───────────────────────────────────────────────────────────────
+function toggleTempFields(){
+  const isTemp = document.getElementById('t-type').value === 'temperature';
+  document.getElementById('tmin-wrap').style.display = isTemp ? '' : 'none';
+  document.getElementById('tmax-wrap').style.display = isTemp ? '' : 'none';
+}
+function openTaskModal(t){
+  document.getElementById('task-modal-title').textContent = t ? 'Edit task' : 'Add task';
+  document.getElementById('t-id').value       = t ? t.id : '';
+  document.getElementById('t-title').value    = t ? t.title : '';
+  document.getElementById('t-category').value = t ? (t.category||'') : '';
+  document.getElementById('t-frequency').value= t ? t.frequency : 'daily';
+  document.getElementById('t-type').value     = t ? t.type : 'check';
+  document.getElementById('t-min').value      = t && t.target_min!=null ? t.target_min : '';
+  document.getElementById('t-max').value      = t && t.target_max!=null ? t.target_max : '';
+  document.getElementById('t-notes').value    = t ? (t.notes||'') : '';
+  document.getElementById('t-delete').style.display = t ? '' : 'none';
+  toggleTempFields();
+  document.getElementById('task-modal').classList.add('open');
+}
+function closeTaskModal(){ document.getElementById('task-modal').classList.remove('open'); }
+
+async function saveTask(){
+  const title = document.getElementById('t-title').value.trim();
+  if (!title){ showToast('Title required'); return; }
+  const isTemp = document.getElementById('t-type').value === 'temperature';
+  const body = {
+    title,
+    category:  document.getElementById('t-category').value.trim() || 'Général',
+    frequency: document.getElementById('t-frequency').value,
+    type:      isTemp ? 'temperature' : 'check',
+    notes:     document.getElementById('t-notes').value.trim(),
+    target_min: isTemp && document.getElementById('t-min').value!=='' ? parseFloat(document.getElementById('t-min').value) : null,
+    target_max: isTemp && document.getElementById('t-max').value!=='' ? parseFloat(document.getElementById('t-max').value) : null,
+    unit: isTemp ? '°C' : '',
+  };
+  const id = document.getElementById('t-id').value;
+  if (id) body.id = id;
+  const r = await fetch('/api/sop/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const d = await r.json();
+  if (!d.ok){ showToast(d.error||'Error'); return; }
+  closeTaskModal(); showToast('Saved'); loadAll();
+}
+async function deleteTask(){
+  const id = document.getElementById('t-id').value;
+  if (!id || !confirm('Delete this task? Its history is kept.')) return;
+  await fetch('/api/sop/tasks/'+id, {method:'DELETE'});
+  closeTaskModal(); showToast('Deleted'); loadAll();
+}
+
+// ── Vue HISTORY ──────────────────────────────────────────────────────────────
+(function initSince(){ const d=new Date(); d.setDate(d.getDate()-30); document.getElementById('hist-since').value = d.toISOString().slice(0,10); })();
+let histRows = [];
+async function loadHistory(){
+  const since = document.getElementById('hist-since').value;
+  const r = await fetch('/api/sop/log?since=' + since);
+  histRows = await r.json();
+  const byId = Object.fromEntries(tasks.map(t=>[t.id,t]));
+  const body = document.getElementById('hist-body');
+  if (!histRows.length){ body.innerHTML = '<tr><td colspan="6" class="empty">No records in this range.</td></tr>'; return; }
+  body.innerHTML = histRows.map(l => {
+    const t = byId[l.task_id] || {};
+    const bad = l.value!=null && ((t.target_min!=null && l.value<t.target_min)||(t.target_max!=null && l.value>t.target_max));
+    return `<tr>
+      <td class="date">${l.date}</td>
+      <td>${t.title||'(deleted task)'}</td>
+      <td class="muted">${t.category||'—'}</td>
+      <td>${l.done_by||'—'}</td>
+      <td class="num" style="text-align:right;${bad?'color:var(--red);font-weight:600':''}">${l.value!=null?l.value+(t.unit||'°C'):'✓'}</td>
+      <td class="muted">${(l.done_at||'').slice(11,16)}</td>
+    </tr>`;
+  }).join('');
+}
+function exportHistory(){
+  const byId = Object.fromEntries(tasks.map(t=>[t.id,t]));
+  const lines = ['Data;Tarefa;Categoria;Por;Leitura;Hora;Estado'];
+  histRows.forEach(l => {
+    const t = byId[l.task_id] || {};
+    const bad = l.value!=null && ((t.target_min!=null && l.value<t.target_min)||(t.target_max!=null && l.value>t.target_max));
+    lines.push([l.date, (t.title||'').replace(/;/g,','), (t.category||''), (l.done_by||''),
+      l.value!=null? String(l.value).replace('.',',')+(t.unit||'°C') : 'OK',
+      (l.done_at||'').slice(11,16), l.value!=null?(bad?'FORA':'OK'):'feito'].join(';'));
+  });
+  const blob = new Blob(['﻿'+lines.join('\r\n')], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'sop_haccp_'+document.getElementById('hist-since').value+'.csv'; a.click();
+  URL.revokeObjectURL(a.href); showToast('Exported');
+}
+
+// ── Navigation vues ──────────────────────────────────────────────────────────
+function switchView(v){
+  view = v;
+  ['today','manage','history'].forEach(x=>{
+    document.getElementById('view-'+x).style.display = x===v ? '' : 'none';
+    document.getElementById('tab-'+x).classList.toggle('active', x===v);
+  });
+  if (v==='history') loadHistory();
+}
+
+loadAll();
+</script>
+</body>
+</html>
