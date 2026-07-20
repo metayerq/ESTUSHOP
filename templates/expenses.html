@@ -123,17 +123,73 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
 <body>
 <div class="page">
 
-  <div class="app-nav">
-    <a href="/" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg><span>Dashboard</span></a>
-    <a href="/cogs" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"/></svg><span>COGS</span></a>
-    <a href="/stock" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5-9 4.5-9-4.5Z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg><span>Stock</span></a>
-    <a href="/charges" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1" fill="currentColor" stroke="none"/></svg><span>Costs</span></a>
-    <a href="/expenses" class="app-nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 9h20L12 3Z"/><path d="M4 9v10M9 9v10M15 9v10M20 9v10"/><path d="M2.5 21.5h19"/></svg><span>Expenses</span></a>
-    <a href="/holidays" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span>Holidays</span></a>
-    <a href="/reconciliation" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h13M14 4l3 3-3 3"/><path d="M20 17H7M10 14l-3 3 3 3"/></svg><span>Reconciliation</span></a>
-    <a href="/sop" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>SOP</span></a>
-    <a href="/events" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1a2 2 0 0 0 0 4v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1a2 2 0 0 0 0-4V9Z"/><path d="M12 8.5v7"/></svg><span>Events</span></a>
+  <style>
+/* ── Nav groupée (menus déroulants) ── */
+.topnav { display:flex; gap:4px; margin-bottom:28px; border-bottom:1px solid var(--border); position:relative; flex-wrap:wrap; }
+.nav-link, .nav-btn { display:flex; align-items:center; gap:8px; padding:11px 16px; font-size:13px; font-weight:500;
+  color:var(--muted); text-decoration:none; border-radius:8px 8px 0 0; border:1px solid transparent; border-bottom:none;
+  margin-bottom:-1px; white-space:nowrap; background:none; cursor:pointer; font-family:inherit; }
+.nav-link svg, .nav-btn svg { width:16px; height:16px; flex-shrink:0; }
+.nav-link:hover, .nav-btn:hover { color:var(--text); background:var(--bg-hover); }
+.nav-link.active, .nav-btn.active { color:var(--text); background:var(--bg-card); border-color:var(--border); font-weight:600; }
+.nav-group { position:relative; }
+.caret { font-style:normal; font-size:10px; opacity:.55; margin-left:1px; }
+.nav-menu { position:absolute; top:100%; left:0; min-width:190px; background:var(--bg-card); border:1px solid var(--border);
+  border-radius:0 10px 10px 10px; box-shadow:0 10px 28px rgba(20,18,14,.14); padding:6px; display:none; z-index:60; }
+.nav-group:hover .nav-menu, .nav-group.open .nav-menu { display:block; }
+.nav-menu a { display:block; padding:9px 12px; font-size:13px; color:var(--text); text-decoration:none; border-radius:7px; white-space:nowrap; }
+.nav-menu a:hover { background:var(--bg-hover); }
+.nav-menu a.active { background:var(--bg-hover); font-weight:600; color:var(--spec); }
+@media (max-width:760px){ .topnav { overflow-x:auto; } .nav-link span, .nav-btn span { display:inline; } }
+</style>
+<nav class="topnav" id="topnav">
+  <a href="/" class="nav-link" data-path="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg><span>Dashboard</span></a>
+  <div class="nav-group">
+    <button class="nav-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5-9 4.5-9-4.5Z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg><span>Carte &amp; Stock</span><i class="caret">&#9662;</i></button>
+    <div class="nav-menu">
+      <a href="/cogs" data-path="/cogs">COGS &mdash; recettes &amp; co&ucirc;ts</a>
+      <a href="/stock" data-path="/stock">Stock &mdash; inventaire</a>
+    </div>
   </div>
+  <div class="nav-group">
+    <button class="nav-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1" fill="currentColor" stroke="none"/></svg><span>Finances</span><i class="caret">&#9662;</i></button>
+    <div class="nav-menu">
+      <a href="/charges" data-path="/charges">Costs &mdash; charges fixes</a>
+      <a href="/expenses" data-path="/expenses">Expenses &mdash; d&eacute;penses</a>
+      <a href="/reconciliation" data-path="/reconciliation">Reconciliation &mdash; caisse</a>
+    </div>
+  </div>
+  <div class="nav-group">
+    <button class="nav-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>Op&eacute;rations</span><i class="caret">&#9662;</i></button>
+    <div class="nav-menu">
+      <a href="/sop" data-path="/sop">SOP &mdash; checklists</a>
+      <a href="/holidays" data-path="/holidays">Holidays &mdash; cong&eacute;s</a>
+      <a href="/events" data-path="/events">Events &mdash; pop-ups</a>
+    </div>
+  </div>
+</nav>
+<script>
+(function(){
+  var path=(location.pathname.replace(/\/+$/,'')||'/');
+  var nav=document.getElementById('topnav'); if(!nav) return;
+  nav.querySelectorAll('a[data-path]').forEach(function(a){
+    var p=a.getAttribute('data-path');
+    if(p===path||(p!=='/'&&path.indexOf(p)===0)){
+      a.classList.add('active');
+      var g=a.closest('.nav-group'); if(g) g.querySelector('.nav-btn').classList.add('active');
+    }
+  });
+  nav.querySelectorAll('.nav-group .nav-btn').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      var g=btn.parentElement, wasOpen=g.classList.contains('open');
+      nav.querySelectorAll('.nav-group').forEach(function(x){x.classList.remove('open');});
+      if(!wasOpen) g.classList.add('open');
+    });
+  });
+  document.addEventListener('click',function(){ nav.querySelectorAll('.nav-group').forEach(function(x){x.classList.remove('open');}); });
+})();
+</script>
 
   <div class="header">
     <div>
