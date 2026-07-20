@@ -225,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260713k"
+ASSET_VERSION = "20260713l"
 
 @app.context_processor
 def _inject_asset_version():
@@ -1429,15 +1429,29 @@ def _mix_from_merged(merged, catalog):
     # Viennoiserie achetée identifiée par NOM DE PRODUIT (prioritaire sur la
     # catégorie — ex. rangée dans "Food" à côté des cookies/clafoutis maison).
     VIENNOISERIE_NAMES = ("croissant", "pain au chocolat", "pain au choco")
+    # Overrides par nom : la catégorie Vendus "POPUP" mélange food et boissons,
+    # non reconnue par les mots-clés (tombait en Retail par défaut). Reclassé ici.
+    NAME_TO_GROUP = {"madeleine": "Food"}
+    NAME_PREFIX_TO_GROUP = {"mus": "Drinks", "rou": "Drinks", "sov": "Drinks", "pro": "Drinks"}
+
+    def _bucket_for(name, cat_name):
+        low = name.lower()
+        if any(k in low for k in VIENNOISERIE_NAMES):
+            return "Viennoiserie"
+        for key, grp in NAME_TO_GROUP.items():
+            if key in low:
+                return grp
+        first = low.split()[0] if low.split() else low
+        first = first.split("-")[0]                 # "SOV-1" → "sov"
+        if first in NAME_PREFIX_TO_GROUP:
+            return NAME_PREFIX_TO_GROUP[first]
+        return _group_for_category(cat_name)
+
     groups = {k: {"rev_ht": 0.0, "rev_ttc": 0.0, "cogs": 0.0, "covered": 0.0}
               for k in ("Drinks", "Food", "Viennoiserie", "Retail")}
     for name, s in merged.items():
         cat_name = catalog.get(name, {}).get("category_name")
-        low  = name.lower()
-        if any(k in low for k in VIENNOISERIE_NAMES):
-            g = groups["Viennoiserie"]            # override par nom de produit, prioritaire
-        else:
-            g = groups[_group_for_category(cat_name)]
+        g = groups[_bucket_for(name, cat_name)]
         g["rev_ht"]  += s["rev_ht"]
         g["rev_ttc"] += s["rev_ttc"]
         cost = catalog.get(name, {}).get("cost")
