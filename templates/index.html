@@ -88,17 +88,13 @@
 .mv-row { display:flex; justify-content:space-between; gap:8px; font-size:12px; padding:3px 0; }
 .mv-row .mv-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
-/* ── Product tab toggle ── */
-.prod-tabs { display:flex; gap:0; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
-.prod-tab  {
-  font-family:inherit; font-size:12px; font-weight:500;
-  padding:5px 14px; border:none; background:transparent;
-  color:var(--muted); cursor:pointer;
-  border-right:1px solid var(--border); transition:background .1s, color .1s;
+/* ── En-têtes de zone (mois en cours / patterns) ── */
+.zone-head { display:flex; align-items:center; gap:10px; margin-bottom:14px;
+  padding-top:18px; border-top:1px solid var(--border); }
+.zone-badge {
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--faint); background:var(--bg-hover); padding:3px 9px; border-radius:20px; white-space:nowrap;
 }
-.prod-tab:last-child { border-right:none; }
-.prod-tab:hover   { background:var(--bg-hover); color:var(--text); }
-.prod-tab.active  { background:var(--bg-card); color:var(--text); font-weight:600; }
 
 /* ── App nav (barre d'onglets partagée) ── */
 .app-nav { display:flex; gap:4px; margin-bottom:28px; border-bottom:1px solid var(--border); }
@@ -276,9 +272,9 @@
         <div class="kpi-delta" id="kpi-ticket-delta"></div>
       </div>
       <div class="kpi-cell">
-        <div class="kpi-label" id="kpi-basket-label">Median ticket</div>
-        <div class="kpi-value" id="kpi-median">—</div>
-        <div class="kpi-delta" style="color:var(--muted)">robust to outliers</div>
+        <div class="kpi-label" id="kpi-ebitda-label">Est. EBITDA</div>
+        <div class="kpi-value" id="kpi-ebitda">—</div>
+        <div class="kpi-delta" id="kpi-ebitda-sub" style="color:var(--muted)"></div>
       </div>
     </div>
   </div>
@@ -298,9 +294,12 @@
         <div class="kpi-delta" id="eco-charges-sub" style="color:var(--muted)"></div>
       </div>
       <div class="kpi-cell">
-        <div class="kpi-label" id="eco-ebitda-label">Est. EBITDA</div>
-        <div class="kpi-value" id="eco-ebitda">—</div>
-        <div class="kpi-delta" id="eco-ebitda-sub" style="color:var(--muted)"></div>
+        <div class="kpi-label" id="eco-prime-label">Prime cost</div>
+        <div class="kpi-value" id="eco-prime">—</div>
+        <div class="kpi-delta" id="eco-prime-sub" style="color:var(--muted)"></div>
+        <div class="progress-wrap">
+          <div style="display:flex;height:4px;border-radius:2px;overflow:hidden;background:var(--bar-bg);" id="eco-prime-bar"></div>
+        </div>
       </div>
       <div class="kpi-cell">
         <div class="kpi-label" id="eco-seuil-label">Break-even revenue</div>
@@ -328,51 +327,8 @@
     <canvas id="chart-daily" height="130" style="display:none;"></canvas>
   </div>
 
-  <!-- Rush heatmap — pleine largeur, juste sous le graphe horaire -->
-  <div class="chart-block" id="ins-heatmap" style="margin-bottom:32px;"></div>
-
-  <!-- Sparkline 7j + strip WoW fusionné -->
-  <div class="section-label">Last 7 days</div>
-  <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:32px;">
-    <div style="padding:20px 24px 12px;">
-      <canvas id="chart-week" height="55"></canvas>
-      <div id="week-labels" style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--muted);"></div>
-    </div>
-    <!-- WoW + meilleur jour intégrés sous la sparkline -->
-    <div class="wow-strip" id="wow-strip" style="display:none;">
-      <div class="wow-item">
-        <span>Last 7 full days</span>
-        <strong id="kpi-wow-ca">—</strong>
-        <span id="kpi-wow-ca-delta"></span>
-      </div>
-      <span class="wow-sep">·</span>
-      <div class="wow-item">
-        <span id="kpi-wow-nb">—</span> tx
-        <span id="kpi-wow-nb-delta"></span>
-      </div>
-      <span class="wow-sep">·</span>
-      <div class="wow-item" id="weekday-cell">
-        <span>Best day:</span>
-        <strong id="kpi-best-day">—</strong>
-        <span id="kpi-best-day-sub" style="color:var(--faint)"></span>
-      </div>
-    </div>
-  </div>
-
-
-  <!-- Insights visuels (les autres, en petites cartes) -->
-  <div class="section-label" id="insights-label" style="display:none;">Insights</div>
-  <div id="insights-grid" class="ins-grid">
-    <div class="ins-card" id="ins-gauge"></div>
-    <div class="ins-card" id="ins-month"></div>
-    <div class="ins-card" id="ins-calendar"></div>
-    <div class="ins-card" id="ins-prime"></div>
-    <div class="ins-card" id="ins-basket"></div>
-    <div class="ins-card" id="ins-seat"></div>
-  </div>
-
   <!-- Payment methods + Product mix, groupés (répartitions) -->
-  <div class="charts-grid" style="margin-bottom:32px;">
+  <div class="charts-grid" style="margin-bottom:14px;">
     <div class="chart-block">
       <div class="section-label" style="margin-bottom:14px;">Product mix</div>
       <div id="mix-bars">
@@ -385,6 +341,12 @@
     </div>
   </div>
 
+  <!-- Insights de la période (suivent le sélecteur) -->
+  <div class="ins-grid on" style="margin-bottom:32px;">
+    <div class="ins-card" id="ins-basket"></div>
+    <div class="ins-card" id="ins-seat"></div>
+  </div>
+
   <!-- Courbe cumulative (conditionnel — jour unique) -->
   <div id="curve-section" style="display:none;margin-bottom:32px;">
     <div class="section-label">Sales evolution</div>
@@ -393,18 +355,10 @@
     </div>
   </div>
 
-  <!-- Produits — un seul tableau avec toggle période / 7j -->
+  <!-- Produits — suit la période sélectionnée -->
   <div id="top-products-section">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-      <div class="section-label" style="margin:0;" id="products-section-label">Top products</div>
-      <div class="prod-tabs">
-        <button class="prod-tab active" id="tab-prod-period" onclick="switchProdTab('period')">Period</button>
-        <button class="prod-tab"        id="tab-prod-7d"     onclick="switchProdTab('7d')">7 days</button>
-      </div>
-    </div>
-
-    <!-- Vue période -->
-    <div id="prod-view-period" class="table-wrap" style="margin-bottom:32px;">
+    <div class="section-label" id="products-section-label">Products sold</div>
+    <div class="table-wrap" style="margin-bottom:32px;">
       <table>
         <thead>
           <tr>
@@ -417,25 +371,6 @@
           </tr>
         </thead>
         <tbody id="products-body">
-          <tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Loading…</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Vue 7 jours glissants -->
-    <div id="prod-view-7d" class="table-wrap" style="margin-bottom:32px;display:none;">
-      <table>
-        <thead>
-          <tr>
-            <th>Product</th>
-            <th class="right">Days sold</th>
-            <th class="right">Qty</th>
-            <th class="right">Revenue</th>
-            <th class="right">Margin</th>
-            <th class="right">Avg/day</th>
-          </tr>
-        </thead>
-        <tbody id="products7d-body">
           <tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Loading…</td></tr>
         </tbody>
       </table>
@@ -462,6 +397,58 @@
           <tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">Loading…</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- ═══ ZONE 2 · Le mois en cours (toujours mois calendaire, masquée si période = This month) ═══ -->
+  <div id="month-zone" style="display:none;margin-top:44px;">
+    <div class="zone-head">
+      <div class="section-label" id="month-zone-label" style="margin:0;">This month</div>
+      <span class="zone-badge" id="month-zone-badge">month to date</span>
+    </div>
+    <div class="ins-grid on">
+      <div class="ins-card" id="ins-month"></div>
+      <div class="ins-card" id="ins-calendar"></div>
+    </div>
+  </div>
+
+  <!-- ═══ ZONE 3 · Patterns structurels (fenêtres fixes, insensibles au sélecteur) ═══ -->
+  <div id="patterns-zone" style="display:none;margin-top:44px;">
+    <div class="zone-head">
+      <div class="section-label" style="margin:0;">Patterns</div>
+      <span class="zone-badge">fixed windows — not affected by the period filter</span>
+    </div>
+
+    <!-- Rush heatmap (28 jours) -->
+    <div class="chart-block" id="ins-heatmap" style="margin-bottom:14px;"></div>
+
+    <!-- Sparkline 7j + WoW (masquée si période = week/last week : doublon) -->
+    <div id="last7-block">
+      <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:32px;">
+        <div style="padding:20px 24px 12px;">
+          <div class="ins-label" style="margin-bottom:8px;">Last 7 days</div>
+          <canvas id="chart-week" height="55"></canvas>
+          <div id="week-labels" style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--muted);"></div>
+        </div>
+        <div class="wow-strip" id="wow-strip" style="display:none;">
+          <div class="wow-item">
+            <span>Last 7 full days</span>
+            <strong id="kpi-wow-ca">—</strong>
+            <span id="kpi-wow-ca-delta"></span>
+          </div>
+          <span class="wow-sep">·</span>
+          <div class="wow-item">
+            <span id="kpi-wow-nb">—</span> tx
+            <span id="kpi-wow-nb-delta"></span>
+          </div>
+          <span class="wow-sep">·</span>
+          <div class="wow-item" id="weekday-cell">
+            <span>Best day:</span>
+            <strong id="kpi-best-day">—</strong>
+            <span id="kpi-best-day-sub" style="color:var(--faint)"></span>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 

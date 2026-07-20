@@ -3,7 +3,6 @@ const BAR_ACTIVE = '#2554C7';
 const BAR_IDLE   = 'rgba(37,84,199,.12)';
 let chartHourly = null, chartWeek = null;
 let chartCurve  = null, chartDaily = null;
-let activeProdTab = 'period'; // 'period' | '7d'
 
 // ── Preset actif ──────────────────────────────────────────────────────────────
 let currentPreset = 'today';
@@ -198,10 +197,28 @@ function render(d) {
   document.getElementById('kpi-nb-delta').innerHTML     = showDelta ? delta(d.today.nb, d.yesterday.nb, compLabel)
     : `<span style="color:var(--muted)">tickets (refunds deducted)</span>`;
   document.getElementById('kpi-ticket').textContent     = fmt(d.today.ticket);
+  // Médiane en sous-texte du ticket moyen (qualificatif, pas un KPI autonome)
+  const medianNote = d.median != null ? `<span style="color:var(--muted)">median ${fmt(d.median)}</span>` : '';
   document.getElementById('kpi-ticket-delta').innerHTML = showDelta
-    ? delta(d.today.ticket, d.yesterday.ticket, compLabel) + (d.today.ticket_ht ? `<span style="color:var(--faint)"> · ${fmt(d.today.ticket_ht)} excl. VAT</span>` : '')
-    : (d.median != null ? `<span style="color:var(--muted)">median ${fmt(d.median)}</span>` : '');
-  document.getElementById('kpi-median').textContent     = d.median != null ? fmt(d.median) : '—';
+    ? delta(d.today.ticket, d.yesterday.ticket, compLabel) + (medianNote ? `<span style="color:var(--faint)"> · </span>` + medianNote : '')
+    : medianNote;
+
+  // EBITDA en rangée d'or — le chiffre qui répond à "est-ce que je gagne de l'argent ?"
+  const ebitdaEl  = document.getElementById('kpi-ebitda');
+  const ebitdaSub = document.getElementById('kpi-ebitda-sub');
+  const ecoTop = d.economics;
+  document.getElementById('kpi-ebitda-label').textContent =
+    'Est. EBITDA' + (d.is_single_day ? '' : ` · ${d.n_days} days`);
+  if (ecoTop && ecoTop.ebitda_ht != null) {
+    ebitdaEl.textContent = fmt(ecoTop.ebitda_ht);
+    ebitdaEl.style.color = ecoTop.ebitda_ht > 0 ? 'var(--green)' : ecoTop.ebitda_ht < 0 ? 'var(--red)' : 'var(--text)';
+    ebitdaSub.innerHTML = ecoTop.ebitda_ht >= 0
+      ? `<span style="color:var(--green)">Profitable ✓</span>`
+      : `<span style="color:var(--red)">Loss</span>`;
+  } else {
+    ebitdaEl.textContent = '—'; ebitdaEl.style.color = 'var(--text)';
+    ebitdaSub.innerHTML = '<span style="color:var(--muted)">not measurable</span>';
+  }
 
   // ── Strip "Today" (période multi-jours incluant aujourd'hui) ──────────────
   // Mesa affiche toujours un snapshot du jour au-dessus de la période. Dérivé
@@ -218,7 +235,7 @@ function render(d) {
   const periodSuffix = d.is_single_day ? '(day)' : `· ${d.n_days} days`;
   document.getElementById('eco-label').textContent      = `Economics ${periodSuffix}`;
   document.getElementById('eco-charges-label').textContent = `Costs ${periodSuffix}`;
-  document.getElementById('eco-ebitda-label').textContent  = `EBITDA ${periodSuffix}`;
+  document.getElementById('eco-prime-label').textContent   = `Prime cost ${periodSuffix}`;
   document.getElementById('eco-seuil-label').textContent   = `Break-even revenue ${periodSuffix}`;
   document.getElementById('eco-marge-label').textContent   = 'Gross margin';
 
@@ -247,15 +264,25 @@ function render(d) {
       : `${fmt(eco.cout_fixe_periode ?? eco.cout_fixe_jour)} fixed · ${fmt(eco.cout_perso_periode ?? eco.cout_perso_jour)} staff · <span style="color:var(--faint)">${openDays} open days × ${fmt(eco.cout_jour ?? (eco.cout_total_jour / openDays))}/day</span>`;
     document.getElementById('eco-charges-sub').innerHTML = chargesSub;
 
-    // EBITDA
-    const ebitdaEl = document.getElementById('eco-ebitda');
-    ebitdaEl.textContent = eco.ebitda_ht != null ? fmt(eco.ebitda_ht) : '—';
-    ebitdaEl.style.color = eco.ebitda_ht > 0 ? 'var(--green)' : eco.ebitda_ht < 0 ? 'var(--red)' : 'var(--text)';
-    const ebitdaSub = document.getElementById('eco-ebitda-sub');
-    if (eco.ebitda_ht != null) {
-      ebitdaSub.innerHTML = eco.ebitda_ht > 0
-        ? `<span style="color:var(--green)">Profitable ✓</span>`
-        : `<span style="color:var(--red)">Loss ${fmt(Math.abs(eco.ebitda_ht))}</span>`;
+    // Prime cost — COGS + labour, sur la période (déplacé des cartes Insights)
+    const primePerso = eco.cout_perso_periode ?? eco.cout_perso_jour;
+    const primeEl = document.getElementById('eco-prime');
+    const primeSub = document.getElementById('eco-prime-sub');
+    const primeBar = document.getElementById('eco-prime-bar');
+    if (eco.ca_ht > 0 && eco.cogs_ht != null && primePerso != null) {
+      const prime = (eco.cogs_ht + primePerso) / eco.ca_ht * 100;
+      const cogsPct = eco.marge_brute_ht_pct != null ? (100 - eco.marge_brute_ht_pct) : (eco.cogs_ht / eco.ca_ht * 100);
+      const labPct  = primePerso / eco.ca_ht * 100;
+      primeEl.textContent = prime.toFixed(1) + '%';
+      primeEl.style.color = prime <= 67 ? 'var(--green)' : prime <= 75 ? '#b07d00' : 'var(--red)';
+      primeSub.innerHTML = `COGS ${cogsPct.toFixed(0)}% · Labour ${labPct.toFixed(0)}% <span style="color:var(--faint)">· target &lt;65%</span>`;
+      primeBar.innerHTML =
+        `<div style="width:${Math.min(100,cogsPct)}%;background:#2554C7;"></div>` +
+        `<div style="width:${Math.min(100,labPct)}%;background:rgba(37,84,199,.35);"></div>`;
+    } else {
+      primeEl.textContent = '—'; primeEl.style.color = 'var(--text)';
+      primeSub.innerHTML = '<span style="color:var(--muted)">not measurable</span>';
+      primeBar.innerHTML = '';
     }
 
     // Seuil CA — TTC en principal, calculé sur la marge réelle mesurée
@@ -463,18 +490,17 @@ function render(d) {
   const topSection = document.getElementById('top-products-section');
   if (topSection) {
     topSection.style.display = '';
-    // Mettre à jour le label selon la période active
-    const periodLbl = d.is_single_day ? (d.is_today ? 'today' : 'this day') : d.period_label?.toLowerCase() || 'the period';
-    document.getElementById('products-section-label').textContent = `Products sold`;
-    // Activer le tab période seulement si on a des items
-    document.getElementById('tab-prod-period').style.display = d.has_items ? '' : 'none';
-    if (!d.has_items && activeProdTab === 'period') switchProdTab('7d');
+    const periodLbl = d.is_single_day ? (d.is_today ? 'today' : 'this day') : (d.period_label?.toLowerCase() || 'the period');
+    document.getElementById('products-section-label').textContent = `Products sold — ${periodLbl}`;
   }
-  if (d.has_items && d.products) {
+  if (!d.has_items) {
+    document.getElementById('products-body').innerHTML =
+      '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Item detail not available for this period.</td></tr>';
+  } else if (d.products) {
     const maxQty = d.products.length ? d.products[0].qty : 1;
     if (!d.products.length) {
       document.getElementById('products-body').innerHTML =
-        '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">No products sold.</td></tr>';
+        '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">No products sold.</td></tr>';
     } else {
       document.getElementById('products-body').innerHTML = d.products.map((p, i) => {
         const barW = Math.round(p.qty / maxQty * 100);
@@ -495,32 +521,6 @@ function render(d) {
       }).join('');
     }
   }
-
-  // ── CA moyen 7j par produit ───────────────────────────────────────────────
-  if (!d.products_7d || !d.products_7d.length) {
-    document.getElementById('products7d-body').innerHTML =
-      '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">No data over 7 days.</td></tr>';
-  } else {
-    const maxRev7 = d.products_7d[0].revenue;
-    document.getElementById('products7d-body').innerHTML = d.products_7d.map((p, i) => {
-      const bar = Math.round(p.revenue / maxRev7 * 100);
-      const marginHtml = p.margin_pct != null ? marginBadge(p.margin_pct) : '<span style="color:var(--muted)">—</span>';
-      return `<tr>
-        <td style="${i===0?'font-weight:600':''}">${p.name}</td>
-        <td class="amount" style="color:var(--muted)">${p.days_sold}j</td>
-        <td class="amount" style="color:var(--muted)">${p.qty}</td>
-        <td class="amount">${fmt(p.revenue)}</td>
-        <td class="amount">${marginHtml}</td>
-        <td style="padding-right:16px;vertical-align:middle;min-width:100px;">
-          <div style="height:3px;background:var(--bar-bg);border-radius:2px;">
-            <div style="height:3px;background:var(--bar);border-radius:2px;width:${bar}%"></div>
-          </div>
-          <span style="font-size:11px;color:var(--muted)">${fmt(p.avg_day)}/j</span>
-        </td>
-      </tr>`;
-    }).join('');
-  }
-
 
   // ── Transactions récentes ────────────────────────────────────────────────
   if (!d.recent || !d.recent.length) {
@@ -587,33 +587,24 @@ function hideTxTooltip() {
 const WD_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
 function renderInsights(d) {
-  const ins  = d.insights;
-  const grid = document.getElementById('insights-grid');
-  const lbl  = document.getElementById('insights-label');
-  if (!ins) { grid.classList.remove('on'); if (lbl) lbl.style.display = 'none'; return; }
-  grid.classList.add('on');
-  if (lbl) lbl.style.display = '';
+  const ins = d.insights;
+  const monthZone    = document.getElementById('month-zone');
+  const patternsZone = document.getElementById('patterns-zone');
+  if (!ins) { monthZone.style.display = 'none'; patternsZone.style.display = 'none'; return; }
 
-  // 1. Jauge du jour vs break-even
-  const g = ins.today_gauge || {};
-  if (g.seuil) {
-    const pct = Math.min(100, Math.round(g.ca / g.seuil * 100));
-    const done = g.ca >= g.seuil;
-    const barColor = done ? 'var(--green)' : (pct >= 70 ? '#b07d00' : 'var(--red)');
-    document.getElementById('ins-gauge').innerHTML = `
-      <div class="ins-label">Today vs break-even (live)</div>
-      <div class="ins-big">${fmt(g.ca)} <span style="font-size:12px;color:var(--muted);font-weight:400">/ ${fmt(g.seuil)}</span></div>
-      <div style="height:8px;background:var(--bar-bg);border-radius:4px;margin-top:10px;overflow:hidden;">
-        <div style="width:${pct}%;height:8px;background:${barColor};border-radius:4px;"></div>
-      </div>
-      <div class="ins-sub">${done
-        ? `<span style="color:var(--green)">Break-even reached ✓ · +${fmt(g.ca - g.seuil)}</span>`
-        : `${pct}% — ${fmt(g.seuil - g.ca)} to go`}</div>`;
-  } else {
-    document.getElementById('ins-gauge').innerHTML = `
-      <div class="ins-label">Today vs break-even (live)</div>
-      <div class="ins-sub">Break-even not measurable yet today.</div>`;
+  // Zone 2 "This month" : masquée quand la période EST le mois en cours (doublon).
+  const showMonthZone = currentPreset !== 'month' && ins.month && ins.month.days && ins.month.days.length;
+  monthZone.style.display = showMonthZone ? '' : 'none';
+  if (showMonthZone) {
+    document.getElementById('month-zone-label').textContent =
+      new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   }
+
+  // Zone 3 "Patterns" : toujours affichée (fenêtres fixes), sous-blocs gérés plus bas.
+  patternsZone.style.display = '';
+  // Sparkline 7j masquée quand la période = week/lastweek (doublon du graphe principal).
+  document.getElementById('last7-block').style.display =
+    (currentPreset === 'week' || currentPreset === 'lastweek') ? 'none' : '';
 
   // 2. Heatmap heure × jour (28 derniers jours)
   const hm = ins.heatmap;
@@ -693,34 +684,7 @@ function renderInsights(d) {
     document.getElementById('ins-calendar').innerHTML = `<div class="ins-label">Break-even calendar</div><div class="ins-sub">Not enough data yet.</div>`;
   }
 
-  // 5. Prime cost (période sélectionnée)
-  const eco = d.economics || {};
-  const perso = eco.cout_perso_periode ?? eco.cout_perso_jour;
-  if (eco.ca_ht > 0 && eco.cogs_ht != null && perso != null) {
-    const prime = (eco.cogs_ht + perso) / eco.ca_ht * 100;
-    const pc = Math.min(100, Math.max(0, prime));
-    const color = prime <= 67 ? 'var(--green)' : prime <= 75 ? '#b07d00' : 'var(--red)';
-    const cogsPct = eco.marge_brute_ht_pct != null ? (100 - eco.marge_brute_ht_pct) : (eco.cogs_ht / eco.ca_ht * 100);
-    const labPct  = perso / eco.ca_ht * 100;
-    const cCol = cogsPct <= 32 ? 'var(--green)' : cogsPct <= 38 ? '#b07d00' : 'var(--red)';
-    const lCol = labPct  <= 32 ? 'var(--green)' : labPct  <= 40 ? '#b07d00' : 'var(--red)';
-    document.getElementById('ins-prime').innerHTML = `
-      <div class="ins-label">Prime cost — COGS + labour (${d.period_label.toLowerCase()})</div>
-      <div class="ins-big" style="color:${color}">${prime.toFixed(1)}%</div>
-      <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin-top:10px;background:var(--bar-bg);">
-        <div style="width:${Math.min(100,cogsPct)}%;background:#2554C7;"></div>
-        <div style="width:${Math.min(100,labPct)}%;background:rgba(37,84,199,.35);"></div>
-      </div>
-      <div class="ins-sub">
-        <span style="color:${cCol}">COGS ${cogsPct.toFixed(0)}%</span> ·
-        <span style="color:${lCol}">Labour ${labPct.toFixed(0)}%</span>
-        <span style="color:var(--faint)"> — targets 28–32% each · prime &lt;65%</span>
-      </div>`;
-  } else {
-    document.getElementById('ins-prime').innerHTML = `<div class="ins-label">Prime cost</div><div class="ins-sub">Not measurable for this period.</div>`;
-  }
-
-  // 5b. Articles par ticket (attach)
+  // Articles par ticket (attach)
   const bk = ins.basket;
   if (bk && bk.items_per_ticket != null) {
     document.getElementById('ins-basket').innerHTML = `
@@ -843,15 +807,6 @@ function closeDrawer() {
 }
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
-
-// ── Toggle tableau produits ────────────────────────────────────────────────
-function switchProdTab(tab) {
-  activeProdTab = tab;
-  document.getElementById('prod-view-period').style.display = tab === 'period' ? '' : 'none';
-  document.getElementById('prod-view-7d').style.display     = tab === '7d'     ? '' : 'none';
-  document.getElementById('tab-prod-period').classList.toggle('active', tab === 'period');
-  document.getElementById('tab-prod-7d').classList.toggle('active',     tab === '7d');
-}
 
 // ── Overview / Cashflow ───────────────────────────────────────────────────
 let cashflowData = null;   // chargé une seule fois, mis en cache côté client
