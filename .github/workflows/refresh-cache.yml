@@ -1,0 +1,19 @@
+# Réchauffe le cache serverside des ventes du jour toutes les 5 min.
+# Évite d'attendre les N appels Vendus au chargement du dashboard.
+# Requiert le secret GitHub CRON_SECRET (= la variable d'env CRON_SECRET sur Vercel).
+name: Refresh Vendus cache
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"     # toutes les 5 minutes (UTC)
+  workflow_dispatch:           # déclenchement manuel possible
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping refresh endpoint
+        run: |
+          curl -sS -f -m 60 \
+            "https://estushop.vercel.app/api/cron/refresh?key=${{ secrets.CRON_SECRET }}" \
+            || (echo "refresh failed"; exit 1)

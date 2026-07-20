@@ -178,8 +178,9 @@ function render(d) {
     updatedEl.style.display = 'none';
   }
 
-  // Label comparaison
-  const compLabel = d.is_single_day ? 'vs yesterday' : 'vs prev. period';
+  // Label comparaison — en vue "aujourd'hui live", comparaison à la même heure
+  // du dernier jour ouvré (sinon la métrique est faussée avant la fermeture).
+  const compLabel = d.comp_label || (d.is_single_day ? 'vs yesterday' : 'vs prev. period');
 
   // ── KPIs ─────────────────────────────────────────────────────────────────
   document.getElementById('kpi-ca').textContent = fmt(d.today.ca);

@@ -25,21 +25,61 @@ from vendus import (
     daily_breakdown,
 )
 
-# ── Micro-cache des docs du jour (45s) ────────────────────────────────────────
-# Les items du jour coûtent ~1 appel Vendus par ticket ; on les partage entre
-# toutes les vues pendant 45s. Le bouton ↻ du dashboard force le refresh.
+# ── Cache des docs du jour : mémoire 45s + Supabase (rempli par le cron) ──────
+# Les items du jour coûtent ~1 appel Vendus PAR ticket. Sur Vercel serverless,
+# chaque cold start repart d'un cache mémoire vide → chargement lent. Un cron
+# externe (toutes les 5 min) rafraîchit une ligne Supabase `live_docs_cache`,
+# que les requêtes lisent instantanément au lieu de refaire N appels Vendus.
 _TODAY_DOCS_CACHE = {"ts": 0.0, "day": None, "docs": None}
-_TODAY_TTL = 45
+_TODAY_TTL      = 45      # mémoire (même instance lambda)
+_SUPA_CACHE_MAX = 600     # fraîcheur acceptée de la ligne Supabase (10 min)
+
+def _iso_age_seconds(iso):
+    """Âge en secondes d'un timestamp ISO Supabase ; +inf si illisible."""
+    if not iso:
+        return float("inf")
+    try:
+        s = iso.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        from datetime import timezone
+        now = datetime.now(timezone.utc) if dt.tzinfo else datetime.now()
+        return (now - dt).total_seconds()
+    except Exception:
+        return float("inf")
+
+def _refresh_today_cache():
+    """Fetch live des docs du jour + écriture mémoire ET Supabase. Appelé par
+    le cron et en dernier recours par une requête si le cache est périmé."""
+    today_iso = date.today().isoformat()
+    docs = get_documents_with_items(today_iso, today_iso)
+    _TODAY_DOCS_CACHE.update(ts=time.time(), day=today_iso, docs=docs)
+    try:
+        _supa_upsert("live_docs_cache", {
+            "day": today_iso, "docs": docs, "updated_at": datetime.utcnow().isoformat() + "Z",
+        })
+    except Exception:
+        pass   # l'écriture cache ne doit jamais casser la requête
+    return docs
 
 def _get_today_docs_cached(force=False):
     today_iso = date.today().isoformat()
     c = _TODAY_DOCS_CACHE
+    # 1) mémoire fraîche (même instance)
     if (not force and c["docs"] is not None and c["day"] == today_iso
             and time.time() - c["ts"] < _TODAY_TTL):
         return c["docs"]
-    docs = get_documents_with_items(today_iso, today_iso)
-    c.update(ts=time.time(), day=today_iso, docs=docs)
-    return docs
+    # 2) cache Supabase rempli par le cron — évite les N appels Vendus
+    if not force:
+        try:
+            rows = _supa_get("live_docs_cache", {"day": f"eq.{today_iso}", "limit": "1"})
+            if rows and _iso_age_seconds(rows[0].get("updated_at")) < _SUPA_CACHE_MAX:
+                docs = rows[0].get("docs") or []
+                c.update(ts=time.time(), day=today_iso, docs=docs)
+                return docs
+        except Exception:
+            pass
+    # 3) fallback : fetch live (et réécrit les deux caches)
+    return _refresh_today_cache()
 
 SEUIL_TRANSACTIONS = 40
 
@@ -185,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260713h"
+ASSET_VERSION = "20260713i"
 
 @app.context_processor
 def _inject_asset_version():
@@ -239,6 +279,9 @@ def _require_auth():
     if not DASHBOARD_PASSWORD:
         return
     if request.path == "/login" or request.path.startswith("/static/"):
+        return
+    # Endpoints cron : protégés par CRON_SECRET, pas par le login dashboard.
+    if request.path.startswith("/api/cron/"):
         return
     role = _current_role()
     if role is None:
@@ -370,6 +413,22 @@ def api_data():
     comp_to   = from_date - timedelta(1)
     comp_from = comp_to   - timedelta(n_days - 1)
 
+    # Vue "aujourd'hui" (live, jour partiel) : comparer au dernier JOUR OUVRÉ
+    # précédent, filtré à l'heure courante → "sommes-nous en avance/retard vs
+    # ce jour-là à la même heure ?" (vs jour fermé = inutile).
+    from config import count_open_days_raw
+    comp_is_sofar = False
+    comp_label    = None
+    if is_single and from_date == today_real:
+        prev = today_real - timedelta(1)
+        for _ in range(10):
+            if count_open_days_raw(prev, prev) == 1:
+                break
+            prev -= timedelta(1)
+        comp_from = comp_to = prev
+        comp_is_sofar = True
+        comp_label = "vs " + prev.strftime("%a") + " same time"
+
     # ── Stratégie de chargement ──────────────────────────────────────────────
     # Aujourd'hui : items live avec micro-cache 45s (partagé entre les vues).
     # Jour passé unique : items live (peu de tickets).
@@ -438,6 +497,12 @@ def api_data():
         if docs_comp is None:
             warnings.append("Previous-period comparison unavailable")
             docs_comp = []
+        # Vue "aujourd'hui" : ne garder du jour de comparaison que ce qui a été
+        # vendu avant l'heure courante → comparaison à périmètre horaire égal.
+        if comp_is_sofar and docs_comp:
+            now_hms = datetime.now().strftime("%H:%M:%S")
+            docs_comp = [d for d in docs_comp
+                         if (d.get("local_time", "") or "")[11:19] <= now_hms]
 
         catalog = fut_catalog.result(timeout=10) or {}
         if not catalog:
@@ -542,6 +607,9 @@ def api_data():
         "date":          to_date.isoformat(),
         "updated_at":    datetime.now().strftime("%H:%M"),
         "is_today":      (preset == "today"),
+        # Comparaison : libellé + mode "à la même heure" (vue aujourd'hui live)
+        "comp_label":    comp_label,
+        "comp_sofar":    comp_is_sofar,
         # Stats globales
         "today":         calc_stats(docs_main),
         "yesterday":     calc_stats(docs_comp),
@@ -652,6 +720,30 @@ def api_data():
         result["unsold"] = []
 
     return jsonify(result)
+
+
+@app.route("/api/cron/refresh")
+def api_cron_refresh():
+    """Rafraîchit le cache serverside des docs du jour. Appelé toutes les 5 min
+    par un cron externe (GitHub Actions / Vercel cron). Protégé par CRON_SECRET
+    (query ?key= ou header Authorization: Bearer)."""
+    secret = os.environ.get("CRON_SECRET", "")
+    if secret:
+        given = request.args.get("key") or ""
+        auth  = request.headers.get("Authorization", "")
+        if given != secret and auth != f"Bearer {secret}":
+            return jsonify({"error": "unauthorized"}), 401
+    try:
+        docs = _refresh_today_cache()
+        # Réchauffe aussi le catalogue et la heatmap (autres appels Vendus lourds).
+        try:
+            get_catalog()
+        except Exception:
+            pass
+        return jsonify({"ok": True, "day": date.today().isoformat(),
+                        "docs_cached": len(docs), "at": datetime.utcnow().isoformat() + "Z"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/summary/rebuild", methods=["POST"])
