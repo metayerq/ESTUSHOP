@@ -539,9 +539,9 @@
     <div style="display:flex;gap:8px;align-items:center;">
       <span class="spin-badge" id="spin-badge"></span>
       <button class="btn-primary" onclick="openNewProdModal()">+ New product</button>
-      <button class="btn-secondary" id="btn-recalc" onclick="recalculateAll()">↺ Recalculate all</button>
-      <button class="btn-secondary" id="btn-rebuild" onclick="rebuildHistory()" title="Recompute dashboard margins with current cost prices">↻ Rebuild history</button>
-      <button class="btn-secondary" onclick="loadCogs()">↻ Refresh</button>
+      <button class="btn-secondary" id="btn-recalc" onclick="recalculateAll()" title="Recompute recipe COGS and push the cost prices to your Vendus POS">↺ Sync COGS → POS</button>
+      <button class="btn-secondary" id="btn-rebuild" onclick="rebuildHistory()" title="Recompute past days' margin, EBITDA and break-even on the dashboard using the CURRENT cost prices. Use after fixing a recipe/cost.">⟳ Recompute past margins</button>
+      <button class="btn-secondary" onclick="loadCogs()" title="Reload this page">⟲ Refresh</button>
       <a href="/logout" title="Log out" style="font-size:12px;color:var(--faint);text-decoration:none;padding:5px 8px;">⎋</a>
     </div>
   </div>
@@ -1653,14 +1653,14 @@ async function recalculateAll() {
   } catch(e) {
     showToast('Network error');
   } finally {
-    btn.textContent = '↺ Recalculate all'; btn.disabled = false;
+    btn.textContent = '↺ Sync COGS → POS'; btn.disabled = false;
   }
 }
 
 async function rebuildHistory() {
-  if (!confirm(`Rebuild dashboard history with current cost prices?\nMargins for all past days will be recomputed.`)) return;
+  if (!confirm(`Recompute past margins with the current cost prices?\n\nEvery past day's margin, EBITDA and break-even on the dashboard will be recalculated using today's recipe/cost prices.\n\nUse this after correcting a wrong cost. Note: this overwrites the historical margins.`)) return;
   const btn = document.getElementById('btn-rebuild');
-  btn.textContent = '↻ Rebuilding…'; btn.disabled = true;
+  btn.textContent = '⟳ Recomputing…'; btn.disabled = true;
   try {
     const r = await fetch('/api/summary/rebuild', { method: 'POST' });
     const d = await r.json();
@@ -1669,7 +1669,7 @@ async function rebuildHistory() {
   } catch(e) {
     showToast('Network error');
   } finally {
-    btn.textContent = '↻ Rebuild history'; btn.disabled = false;
+    btn.textContent = '⟳ Recompute past margins'; btn.disabled = false;
   }
 }
 
