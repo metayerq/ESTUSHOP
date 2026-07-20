@@ -270,6 +270,8 @@
   <span class="badge" id="d-badge"></span>
   <div style="margin-top:14px; display:flex; gap:10px;">
     <button class="btn" id="d-edit">Éditer</button>
+    <button class="btn btn-danger" id="d-delete">Supprimer</button>
+    <button class="btn btn-danger" id="d-delete-series" style="display:none;">Supprimer la série</button>
   </div>
 
   <div class="dr-sec">
@@ -536,17 +538,21 @@ async function saveEvent(){
 }
 
 async function deleteEvent(id){
-  const ev=events.find(x=>x.id===id);
+  if(!id) return;
   if(!confirm('Supprimer cet event et ses tâches ?')) return;
-  let ids=[id];
-  if(ev && ev.series_id){
-    const sibs=events.filter(e=>e.series_id===ev.series_id);
-    if(sibs.length>1 && confirm(`Cet event fait partie d'une série de ${sibs.length}.\n\nOK = supprimer TOUTE la série.\nAnnuler = seulement cette occurrence.`))
-      ids=sibs.map(e=>e.id);
-  }
-  for(const i of ids){ await fetch('/api/events/'+i,{method:'DELETE'}); }
+  await deleteIds([id]);
+}
+async function deleteSeries(id){
+  const ev=events.find(x=>x.id===id); if(!ev) return;
+  const sibs = ev.series_id ? events.filter(e=>e.series_id===ev.series_id) : [ev];
+  if(!confirm(`Supprimer TOUTE la série — ${sibs.length} occurrences ?`)) return;
+  await deleteIds(sibs.map(e=>e.id));
+}
+async function deleteIds(ids){
+  let ok=0;
+  for(const i of ids){ const r=await fetch('/api/events/'+i,{method:'DELETE'}); if(r.ok) ok++; }
   closeModal(); closeDrawer();
-  showToast(ids.length>1 ? `Série supprimée (${ids.length})` : 'Event supprimé');
+  showToast(ids.length>1 ? `${ok}/${ids.length} supprimés` : (ok?'Event supprimé':'Échec suppression'));
   await loadAll();
 }
 
@@ -560,6 +566,9 @@ function openDrawer(id){
   $('d-meta').textContent = fmtDate(e.date)+(e.end_date&&e.end_date!==e.date?' → '+fmtDate(e.end_date):'')+time+(e.location?' · '+e.location:'');
   const badge=$('d-badge'); badge.textContent=lbl; badge.className='badge '+cls;
   $('d-desc').textContent = e.description || '—';
+  const seriesCount = e.series_id ? events.filter(x=>x.series_id===e.series_id).length : 0;
+  $('d-delete-series').style.display = seriesCount>1 ? 'inline-block' : 'none';
+  $('d-delete-series').textContent = `Supprimer la série (${seriesCount})`;
   renderTasks(e); renderNotes(e);
   overlayOn(); $('drawer').classList.add('show');
 }
@@ -635,6 +644,8 @@ $('m-save').onclick = saveEvent;
 $('m-delete').onclick = ()=> deleteEvent($('m-id').value);
 $('d-close').onclick = closeDrawer;
 $('d-edit').onclick = ()=>{ const e=events.find(x=>x.id===selectedId); if(e) openModal(e); };
+$('d-delete').onclick = ()=>{ if(selectedId) deleteEvent(selectedId); };
+$('d-delete-series').onclick = ()=>{ if(selectedId) deleteSeries(selectedId); };
 $('d-task-add').onclick = addTask;
 $('d-task-input').addEventListener('keydown',e=>{ if(e.key==='Enter') addTask(); });
 $('d-note-add').onclick = addNote;
