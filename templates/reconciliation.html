@@ -88,6 +88,19 @@ td.date { color:var(--muted); white-space:nowrap; }
   background:var(--text); color:#fff; padding:10px 18px; border-radius:8px; font-size:13px;
   opacity:0; transition:all .25s; z-index:200; }
 .toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
+
+/* ── Calculateur cash en caisse ── */
+.cash-calc { max-width:580px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:4px 20px; margin-bottom:16px; }
+.cc-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 0; border-bottom:1px solid var(--border); }
+.cc-row:last-child { border-bottom:none; }
+.cc-label { font-size:13px; font-weight:500; }
+.cc-hint { display:block; font-size:11px; color:var(--muted); font-weight:400; margin-top:3px; max-width:38ch; line-height:1.4; }
+.cc-input { white-space:nowrap; color:var(--muted); font-size:14px; }
+.cc-input input { width:100px; font-family:var(--mono); font-size:14px; text-align:right; padding:6px 8px;
+  border:1px solid var(--border); border-radius:6px; background:var(--bg-page); color:var(--text); }
+.cc-total { border-top:2px solid var(--text); }
+.cc-total .cc-label { font-weight:700; font-size:14px; }
+.cc-result { font-family:var(--mono); font-size:23px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-.5px; }
 </style>
 </head>
 <body>
@@ -116,26 +129,14 @@ td.date { color:var(--muted); white-space:nowrap; }
 
   <div class="controls">
     <div>
-      <label class="field-label">Month</label>
-      <input type="month" class="field-input" id="f-month">
+      <label class="field-label">De</label>
+      <input type="month" class="field-input" id="f-from">
     </div>
-    <button class="btn-add" id="btn-export" onclick="exportCsv()" disabled>⇩ Export CSV (comptable)</button>
-  </div>
-
-  <div class="paste-card">
-    <label class="field-label">Relevé Revolut du mois — importe le fichier CSV, ou colle son contenu ci-dessous</label>
-    <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
-      <label class="btn-primary" style="display:inline-block; cursor:pointer;">
-        ⇪ Choose CSV file
-        <input type="file" id="csv-file" accept=".csv,text/csv" style="display:none;" onchange="onFilePicked(event)">
-      </label>
-      <span class="parse-info" id="file-info" style="color:var(--muted);">aucun fichier — ou colle le texte plus bas</span>
+    <div>
+      <label class="field-label">À</label>
+      <input type="month" class="field-input" id="f-to">
     </div>
-    <textarea id="paste" rows="6" placeholder="…ou colle ici tout le contenu du CSV (en-têtes compris)"></textarea>
-    <div style="display:flex; gap:10px; align-items:center; margin-top:10px;">
-      <button class="btn-add" onclick="parseRevolut()">Parse pasted text</button>
-      <span class="parse-info" id="parse-info"></span>
-    </div>
+    <span class="parse-info" id="src-info" style="color:var(--muted); align-self:center;"></span>
   </div>
 
   <div class="paytypes" id="paytypes" style="display:none;">
@@ -171,27 +172,48 @@ td.date { color:var(--muted); white-space:nowrap; }
     </table>
   </div>
 
-  <!-- ── Caisse espèces ── -->
-  <div class="header" style="margin-top:44px; margin-bottom:16px;">
+  <!-- ── Cash en caisse (calculateur) ── -->
+  <div class="header" style="margin-top:48px; margin-bottom:8px;">
     <div>
-      <div style="font-size:18px; font-weight:700;">💶 Cash drawer</div>
-      <div class="header-sub">Espèces facturées dans Vendus depuis l'ouverture — ce que la caisse devrait contenir, avant tes sorties/dépôts</div>
+      <div style="font-size:18px; font-weight:700;">💶 Cash en caisse — théorique</div>
+      <div class="header-sub">Tu n'as jamais déposé en banque : le tiroir contient tout le cash encaissé depuis l'ouverture, moins tes sorties.</div>
     </div>
   </div>
-  <div class="summary-bar" style="max-width:520px;">
-    <div class="sum-item">
-      <div class="sum-label">Expected cash in drawer</div>
-      <div class="sum-val" id="cash-total" style="font-size:24px;">—</div>
-      <div class="sum-sub" id="cash-since"></div>
+
+  <div class="cash-calc">
+    <div class="cc-row">
+      <div class="cc-label">Fond de caisse initial<span class="cc-hint">montant mis dans le tiroir au 1er jour (27 mai)</span></div>
+      <div class="cc-input">+ <input type="number" id="cc-float" step="0.01" placeholder="0.00"> €</div>
+    </div>
+    <div class="cc-row">
+      <div class="cc-label">Cash encaissé<span class="cc-hint" id="cc-cash-src">chargement…</span></div>
+      <div class="cc-input">+ <input type="number" id="cc-cash" step="0.01" placeholder="0.00"> €</div>
+    </div>
+    <div class="cc-row">
+      <div class="cc-label">Sorties cash<span class="cc-hint">achats réglés en espèces, pourboires cash reversés au staff, cash pris perso</span></div>
+      <div class="cc-input">− <input type="number" id="cc-out" step="0.01" placeholder="0.00"> €</div>
+    </div>
+    <div class="cc-row">
+      <div class="cc-label">Dépôts en banque<span class="cc-hint">tu dis n'avoir jamais déposé → 0</span></div>
+      <div class="cc-input">− <input type="number" id="cc-deposit" step="0.01" placeholder="0.00" value="0"> €</div>
+    </div>
+    <div class="cc-row cc-total">
+      <div class="cc-label">= Cash théorique en tiroir<span class="cc-hint">à comparer avec ton comptage physique du tiroir</span></div>
+      <div class="cc-result" id="cc-result">—</div>
     </div>
   </div>
-  <div class="hint">⚠️ Vendus ne voit que ce qui est encaissé : soustrais toi-même les espèces sorties (achats, pourboires payés, dépôts en banque). Les jours de saisie groupée (juin) portent le cash de plusieurs journées réelles.</div>
-  <div class="table-wrap" style="max-width:520px;">
-    <table>
-      <thead><tr><th>Date</th><th class="right">Cash (Dinheiro)</th><th class="right">Cumul</th></tr></thead>
-      <tbody id="cash-tbody"><tr><td colspan="3" class="empty">Loading…</td></tr></tbody>
-    </table>
-  </div>
+
+  <p class="hint">⚠️ Le « cash encaissé » vient des ventes tapées <b>Dinheiro</b> dans Vendus — si du cash a été tapé « carte » par erreur, ce montant est <b>sous-estimé</b>. Corrige-le à la main si besoin ; le détail par jour est ci-dessous.</p>
+
+  <details style="max-width:580px; margin-bottom:16px;">
+    <summary style="cursor:pointer; font-size:12.5px; color:var(--spec); margin-bottom:10px;">Voir le détail du cash encaissé (Vendus)</summary>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th class="right">Cash (Dinheiro)</th><th class="right">Cumul</th></tr></thead>
+        <tbody id="cash-tbody"><tr><td colspan="3" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </details>
 
 </div><!-- /page -->
 
@@ -203,54 +225,71 @@ const fmt = v => new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR',
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400); }
 
 let vendusDays = {};        // date → {total, payments:{title:amount}}
-let payTitles = [];         // tous les moyens de paiement Vendus vus dans le mois
+let payTitles = [];         // tous les moyens de paiement Vendus vus sur la période
 let selectedTypes = new Set();
 let revolutDays = {};       // date → {gross, tips, fees, net, tx}
 let revolutCutoff = '';     // jour de génération du relevé → dernier jour incomplet
-let currentMonth = '';
+let fromM = '', toM = '';
 
-// ── Mois par défaut : mois précédent (usage = clôture mensuelle) ─────────────
-(function initMonth(){
-  const d = new Date(); d.setDate(1); d.setMonth(d.getMonth()-1);
-  const m = d.toISOString().slice(0,7);
-  document.getElementById('f-month').value = m;
-  document.getElementById('f-month').addEventListener('change', onMonthChange);
-  onMonthChange();
+// ── Période par défaut : mois précédent → mois courant ───────────────────────
+(function initRange(){
+  const now = new Date();
+  const ym = (y, m) => `${y}-${String(m).padStart(2,'0')}`;   // m = 1..12, sans piège de fuseau
+  const y = now.getFullYear(), m = now.getMonth() + 1;
+  const cur  = ym(y, m);
+  const prev = m === 1 ? ym(y - 1, 12) : ym(y, m - 1);
+  const fEl = document.getElementById('f-from'), tEl = document.getElementById('f-to');
+  fEl.value = prev; tEl.value = cur;
+  fEl.addEventListener('change', onRangeChange);
+  tEl.addEventListener('change', onRangeChange);
+  onRangeChange();
 })();
 
-function onMonthChange(){
-  currentMonth = document.getElementById('f-month').value;
-  if (!currentMonth) return;
-  // restaure un relevé déjà collé pour ce mois (localStorage) ; sinon on prendra
-  // le relevé pré-injecté renvoyé par l'API (historique figé).
-  let userPasted = false;
-  try {
-    const saved = localStorage.getItem('recon_' + currentMonth);
-    if (saved) { revolutDays = JSON.parse(saved); revolutCutoff = localStorage.getItem('recon_cut_' + currentMonth) || ''; userPasted = true; }
-    else { revolutDays = {}; revolutCutoff = ''; }
-  } catch(e) { revolutDays = {}; revolutCutoff = ''; }
-  loadVendus(userPasted);
+function monthsBetween(a, b){
+  if (a > b) { const t = a; a = b; b = t; }
+  const out = []; let [y, m] = a.split('-').map(Number);
+  const [by, bm] = b.split('-').map(Number);
+  while (y < by || (y === by && m <= bm)){
+    out.push(`${y}-${String(m).padStart(2,'0')}`);
+    if (++m > 12){ m = 1; y++; }
+  }
+  return out;
 }
 
-async function loadVendus(userPasted){
+function onRangeChange(){
+  fromM = document.getElementById('f-from').value;
+  toM   = document.getElementById('f-to').value;
+  if (fromM && toM) loadRange();
+}
+
+// Charge tous les mois de la période et fusionne (dates uniques → merge direct).
+async function loadRange(){
   if (window.uiLoadStart) uiLoadStart();
   try {
-    const r = await fetch('/api/reconciliation?month=' + currentMonth);
-    const d = await r.json();
-    if (d.error) throw new Error(d.error);
-    vendusDays = {};
-    (d.days || []).forEach(x => vendusDays[x.date] = x);
-    payTitles = d.payment_titles || [];
-    // Relevé Revolut pré-injecté côté serveur (sauf si l'utilisateur a collé le sien)
-    if (!userPasted && d.revolut && d.revolut.days) {
-      revolutDays = d.revolut.days;
-      revolutCutoff = d.revolut.cutoff || '';
-      document.getElementById('file-info').textContent = '✓ relevé pré-chargé' + (d.revolut.note ? ' — ' + d.revolut.note : '');
+    const months = monthsBetween(fromM, toM);
+    vendusDays = {}; revolutDays = {}; revolutCutoff = '';
+    const titles = new Set(); let note = '';
+    for (const mo of months){
+      const r = await fetch('/api/reconciliation?month=' + mo);
+      const d = await r.json();
+      if (d.error) continue;
+      (d.days || []).forEach(x => vendusDays[x.date] = x);
+      (d.payment_titles || []).forEach(t => titles.add(t));
+      if (d.revolut && d.revolut.days){
+        Object.assign(revolutDays, d.revolut.days);
+        if (d.revolut.cutoff && d.revolut.cutoff > revolutCutoff) revolutCutoff = d.revolut.cutoff;
+        if (d.revolut.note) note = d.revolut.note;
+      }
     }
+    payTitles = [...titles].sort();
+    const src = document.getElementById('src-info');
+    if (src) src.textContent = months.length > 1
+      ? `${months.length} mois · ${months[0]} → ${months[months.length-1]}`
+      : `relevé pré-chargé${note ? ' — ' + note : ''}`;
     buildPayTypes();
     render();
-  } catch(e) {
-    showToast('Vendus load failed — ' + e.message);
+  } catch(e){
+    showToast('Chargement échoué — ' + e.message);
   } finally {
     if (window.uiLoadEnd) uiLoadEnd();
   }
@@ -279,144 +318,6 @@ function buildPayTypes(){
   });
 }
 
-// ── Parseur relevé Revolut (souple : CSV , ; ou tab, colonnes détectées) ─────
-// Découpe respectant les guillemets : les exports Revolut contiennent des
-// champs quotés avec virgules ("QUIET FREQUENCY, UNIPESSOAL, LDA", JSON des
-// items…) — un split naïf décale toutes les colonnes.
-function splitRecords(raw){
-  const recs = []; let cur = ''; let inQ = false;
-  for (let i = 0; i < raw.length; i++){
-    const ch = raw[i];
-    if (ch === '"'){ inQ = !inQ; cur += ch; }
-    else if ((ch === '\n' || ch === '\r') && !inQ){
-      if (cur.trim()) recs.push(cur);
-      cur = '';
-      if (ch === '\r' && raw[i+1] === '\n') i++;
-    } else cur += ch;
-  }
-  if (cur.trim()) recs.push(cur);
-  return recs;
-}
-function splitCsvLine(line, delim){
-  const out = []; let cur = ''; let inQ = false;
-  for (let i = 0; i < line.length; i++){
-    const ch = line[i];
-    if (inQ){
-      if (ch === '"'){
-        if (line[i+1] === '"'){ cur += '"'; i++; } else inQ = false;
-      } else cur += ch;
-    } else {
-      if (ch === '"') inQ = true;
-      else if (ch === delim){ out.push(cur); cur = ''; }
-      else cur += ch;
-    }
-  }
-  out.push(cur);
-  return out;
-}
-
-// Import fichier CSV → remplit la zone de texte et parse automatiquement.
-function onFilePicked(ev){
-  const f = ev.target.files && ev.target.files[0];
-  if (!f) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    document.getElementById('paste').value = reader.result;
-    document.getElementById('file-info').textContent = '✓ ' + f.name;
-    parseRevolut();
-  };
-  reader.onerror = () => { document.getElementById('file-info').textContent = 'Lecture du fichier échouée'; };
-  reader.readAsText(f);
-}
-
-function parseRevolut(){
-  const raw = document.getElementById('paste').value;
-  const info = document.getElementById('parse-info');
-  info.classList.remove('err');
-  const lines = splitRecords(raw);
-  if (lines.length < 2){ info.textContent = 'Nothing to parse.'; info.classList.add('err'); return; }
-
-  const delim = [';','\t',','].find(d => splitCsvLine(lines[0], d).length > 2) || ',';
-  const norm = s => s.trim().toLowerCase().replace(/^"|"$/g,'');
-
-  // ligne d'en-tête = première ligne contenant "date" + une colonne de montant
-  let hIdx = -1, cols = [];
-  for (let i = 0; i < Math.min(lines.length, 5); i++){
-    const c = splitCsvLine(lines[i], delim).map(norm);
-    if (c.some(x => x.includes('date')) && c.some(x => /amount|gross|total/.test(x))) { hIdx = i; cols = c; break; }
-  }
-  if (hIdx < 0){ info.textContent = 'Header row not found (need Date + Amount columns).'; info.classList.add('err'); return; }
-
-  const find = (re, exclude) => cols.findIndex(c => re.test(c) && !(exclude && exclude.test(c)));
-  // Grouper par la VRAIE date de vente (capture), pas le settlement J+1 — pour
-  // s'aligner sur la date de facture Vendus. Fallback : première colonne "date".
-  const iCap  = find(/capture/);
-  const iDate = iCap >= 0 ? iCap : find(/date/);
-  // Date de settlement (completed/started) → sert à repérer le jour incomplet.
-  const iDone = find(/complet/) >= 0 ? find(/complet/) : find(/start|date.*started/);
-  const iAmt  = find(/original amount/) >= 0 ? find(/original amount/) : find(/amount|gross|total/, /tip|fee|tax|net|refund/);
-  // Frais : "Processing fee" (montant), pas "Fee currency"/"FX fee"/"...type".
-  const iFee  = find(/processing fee/, /type|currency/) >= 0 ? find(/processing fee/, /type|currency/) : find(/fee/, /currency|type|fx/);
-  // Pourboire : "Tip amount" (rempli), pas "Order total tip amount" (souvent vide).
-  const iTip  = find(/^tip amount/) >= 0 ? find(/^tip amount/) : find(/tip|gratuity/);
-  const iNet  = find(/settlement amount/) >= 0 ? find(/settlement amount/) : find(/net|settled/, /amount|currency/);
-  const iState= find(/state|status/);
-  if (iAmt < 0){ info.textContent = 'Amount column not found.'; info.classList.add('err'); return; }
-
-  const num = s => {
-    if (s == null) return 0;
-    s = String(s).replace(/^"|"$/g,'').replace(/[€\s]/g,'');
-    if (/^-?\d{1,3}(\.\d{3})*,\d+$/.test(s)) s = s.replace(/\./g,'').replace(',', '.');
-    else if (/^-?\d+,\d+$/.test(s)) s = s.replace(',', '.');
-    const v = parseFloat(s);
-    return isNaN(v) ? 0 : v;
-  };
-  const parseDay = s => {
-    s = String(s).replace(/^"|"$/g,'').trim();
-    let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);            // ISO
-    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-    m = s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/);    // DD/MM/YYYY
-    if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
-    const d = new Date(s);
-    return isNaN(d) ? null : d.toISOString().slice(0,10);
-  };
-
-  const days = {}; let tx = 0, skipped = 0, outOfMonth = 0, maxDone = '';
-  for (let i = hIdx + 1; i < lines.length; i++){
-    const c = splitCsvLine(lines[i], delim);
-    if (c.length < cols.length - 2) { skipped++; continue; }
-    if (iState >= 0 && !/completed|paid|succeeded/i.test(c[iState] || 'completed')) { skipped++; continue; }
-    if (iDone >= 0){ const dd = parseDay(c[iDone]); if (dd && dd > maxDone) maxDone = dd; }
-    const day = iDate >= 0 ? parseDay(c[iDate]) : null;
-    if (!day){ skipped++; continue; }
-    if (currentMonth && !day.startsWith(currentMonth)) { outOfMonth++; continue; }
-    const gross = num(c[iAmt]);
-    if (!gross) { skipped++; continue; }
-    const fee = iFee >= 0 ? Math.abs(num(c[iFee])) : 0;
-    const tip = iTip >= 0 ? num(c[iTip]) : 0;
-    const net = iNet >= 0 && num(c[iNet]) ? num(c[iNet]) : gross - fee;
-    const rec = days[day] = days[day] || { gross:0, tips:0, fees:0, net:0, tx:0 };
-    rec.gross += gross; rec.tips += tip; rec.fees += fee; rec.net += net; rec.tx++;
-    tx++;
-  }
-
-  if (!tx){ info.textContent = 'No valid transactions found' + (outOfMonth ? ` (${outOfMonth} outside ${currentMonth})` : '') + '.'; info.classList.add('err'); return; }
-  revolutDays = days;
-  // Jour incomplet = jour de génération du relevé (max date de settlement) : les
-  // ventes de ce jour settlent le lendemain et n'y figurent pas encore.
-  revolutCutoff = maxDone || '';
-  try {
-    localStorage.setItem('recon_' + currentMonth, JSON.stringify(days));
-    localStorage.setItem('recon_cut_' + currentMonth, revolutCutoff);
-  } catch(e) {}
-  info.textContent = `✓ ${tx} transactions · ${Object.keys(days).length} days` +
-    (iTip < 0 ? ' · no tip column detected' : '') +
-    (revolutCutoff ? ` · statement cutoff ${revolutCutoff} (last day incomplete)` : '') +
-    (outOfMonth ? ` · ${outOfMonth} ignored (other month)` : '') +
-    (skipped ? ` · ${skipped} lines skipped` : '');
-  render();
-}
-
 // ── Comparaison + rendu ──────────────────────────────────────────────────────
 function vendusFor(day){
   const v = vendusDays[day];
@@ -430,9 +331,8 @@ function render(){
   const allDays = [...new Set([...Object.keys(revolutDays), ...Object.keys(vendusDays)])].sort();
   const tbody = document.getElementById('tbody');
   const hasRevolut = Object.keys(revolutDays).length > 0;
-  document.getElementById('btn-export').disabled = !hasRevolut;
   if (!allDays.length){
-    tbody.innerHTML = '<tr><td colspan="8" class="empty">Choose a month, paste the Revolut statement, hit Parse.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">Aucune donnée sur cette période.</td></tr>';
     document.getElementById('summary').style.display = 'none';
     return;
   }
@@ -485,63 +385,62 @@ function render(){
   dEl.style.color = Math.abs(dTot) < 1 ? 'var(--green)' : 'var(--red)';
 }
 
-// ── Export CSV comptable (; + BOM → Excel PT ouvre proprement) ───────────────
-function exportCsv(){
-  const allDays = [...new Set([...Object.keys(revolutDays), ...Object.keys(vendusDays)])].sort();
-  const n = v => v.toFixed(2).replace('.', ',');
-  let T = { gross:0, tips:0, fees:0, net:0, vendus:0 };
-  const lines = ['Data;Cobrado Revolut (bruto);Gorjetas;Taxas Revolut;Liquido recebido;Faturado Vendus;Diferenca (s/ gorjetas);Nota'];
-  allDays.forEach(day => {
-    const r = revolutDays[day] || { gross:0, tips:0, fees:0, net:0 };
-    const vd = vendusFor(day);
-    const delta = (r.gross - r.tips) - vd;
-    const incomplete = revolutCutoff && day >= revolutCutoff;
-    if (!incomplete) { T.gross += r.gross; T.tips += r.tips; T.fees += r.fees; T.net += r.net; T.vendus += vd; }
-    lines.push([day, n(r.gross), n(r.tips), n(r.fees), n(r.net), n(vd), n(delta),
-                incomplete ? 'settlement em curso — excluido' : ''].join(';'));
-  });
-  lines.push(['TOTAL', n(T.gross), n(T.tips), n(T.fees), n(T.net), n(T.vendus), n((T.gross - T.tips) - T.vendus), 'jours complets'].join(';'));
-  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `reconciliacao_${currentMonth}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-  showToast('CSV exported');
+// ── Calculateur cash en caisse (depuis l'ouverture) ──────────────────────────
+function ccVal(id){ const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? 0 : v; }
+function ccRecalc(){
+  const total = ccVal('cc-float') + ccVal('cc-cash') - ccVal('cc-out') - ccVal('cc-deposit');
+  const el = document.getElementById('cc-result');
+  el.textContent = fmt(total);
+  el.style.color = total < 0 ? 'var(--red)' : 'var(--text)';
 }
 
-// ── Caisse espèces (indépendant du mois sélectionné : depuis l'ouverture) ────
+// Champs saisis à la main → persistés en localStorage.
+['cc-float','cc-out','cc-deposit'].forEach(id => {
+  const el = document.getElementById(id);
+  const saved = localStorage.getItem('cash_' + id);
+  if (saved !== null) el.value = saved;
+  el.addEventListener('input', () => { localStorage.setItem('cash_' + id, el.value); ccRecalc(); });
+});
+// Cash encaissé : prérempli par Vendus, mais éditable (source pas toujours fiable).
+(function(){
+  const el = document.getElementById('cc-cash');
+  el.addEventListener('input', () => { el.dataset.touched = '1'; localStorage.setItem('cash_cc-cash', el.value); ccRecalc(); });
+  const saved = localStorage.getItem('cash_cc-cash');
+  if (saved !== null){ el.value = saved; el.dataset.touched = '1'; }
+})();
+
 async function loadCash(){
-  if (window.uiLoadStart) uiLoadStart();
   try {
     const r = await fetch('/api/cash');
     const d = await r.json();
-    document.getElementById('cash-total').textContent = fmt(d.total || 0);
-    document.getElementById('cash-since').textContent =
-      'since opening · ' + new Date(d.since + 'T12:00:00').toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+    const el = document.getElementById('cc-cash');
+    if (!el.dataset.touched) el.value = (d.total || 0).toFixed(2);   // n'écrase pas une saisie manuelle
+    const since = d.since ? new Date(d.since + 'T12:00:00').toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : '';
+    const last  = (d.days && d.days.length) ? d.days[d.days.length-1].date : '';
+    document.getElementById('cc-cash-src').textContent =
+      `ventes Dinheiro Vendus depuis le ${since}` + (last ? ` · dernier jour vu : ${last}` : '') + ' — corrige si besoin';
     const tbody = document.getElementById('cash-tbody');
-    if (!(d.days || []).length){
-      tbody.innerHTML = '<tr><td colspan="3" class="empty">No cash sales recorded yet</td></tr>';
-      return;
+    if (!(d.days || []).length){ tbody.innerHTML = '<tr><td colspan="3" class="empty">Aucune vente cash</td></tr>'; }
+    else {
+      let cum = 0;
+      tbody.innerHTML = d.days.map(x => {
+        cum += x.cash;
+        const dow = new Date(x.date + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short' });
+        return `<tr>
+          <td class="date">${dow} ${x.date.slice(8)}/${x.date.slice(5,7)}</td>
+          <td class="num">${fmt(x.cash)}</td>
+          <td class="num" style="color:var(--muted);">${fmt(cum)}</td>
+        </tr>`;
+      }).join('');
     }
-    let cum = 0;
-    tbody.innerHTML = d.days.map(x => {
-      cum += x.cash;
-      const dow = new Date(x.date + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short' });
-      return `<tr>
-        <td class="date">${dow} ${x.date.slice(8)}/${x.date.slice(5,7)}</td>
-        <td class="num">${fmt(x.cash)}</td>
-        <td class="num" style="color:var(--muted);">${fmt(cum)}</td>
-      </tr>`;
-    }).join('');
+    ccRecalc();
   } catch(e) {
-    document.getElementById('cash-tbody').innerHTML =
-      '<tr><td colspan="3" class="empty">Load failed — <a href="javascript:loadCash()" style="color:var(--spec)">retry</a></td></tr>';
-  } finally {
-    if (window.uiLoadEnd) uiLoadEnd();
+    document.getElementById('cc-cash-src').textContent = 'Vendus indisponible — saisis le montant à la main';
+    ccRecalc();
   }
 }
 loadCash();
+ccRecalc();
 </script>
 </body>
 </html>
