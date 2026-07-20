@@ -225,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260720c"
+ASSET_VERSION = "20260720d"
 
 @app.context_processor
 def _inject_asset_version():
@@ -1199,6 +1199,7 @@ def api_events_post():
         "status":      status,
         "description": (data.get("description") or "").strip(),
         "color":       (data.get("color") or "#2554C7").strip(),
+        "series_id":   data.get("series_id"),
         "active":      data.get("active", True),
         "updated_at":  datetime.now().isoformat(),
     }
