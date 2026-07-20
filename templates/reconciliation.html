@@ -98,6 +98,7 @@ td.date { color:var(--muted); white-space:nowrap; }
 .cc-input { white-space:nowrap; color:var(--muted); font-size:14px; }
 .cc-input input { width:100px; font-family:var(--mono); font-size:14px; text-align:right; padding:6px 8px;
   border:1px solid var(--border); border-radius:6px; background:var(--bg-page); color:var(--text); }
+.cc-auto { background:var(--bg-hover); margin:0 -20px; padding-left:20px; padding-right:20px; }
 .cc-total { border-top:2px solid var(--text); }
 .cc-total .cc-label { font-weight:700; font-size:14px; }
 .cc-result { font-family:var(--mono); font-size:23px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-.5px; }
@@ -181,36 +182,48 @@ td.date { color:var(--muted); white-space:nowrap; }
   </div>
 
   <div class="cash-calc">
-    <div class="cc-row">
-      <div class="cc-label">Fond de caisse initial<span class="cc-hint">montant mis dans le tiroir au 1er jour (27 mai)</span></div>
-      <div class="cc-input">+ <input type="number" id="cc-float" step="0.01" placeholder="0.00"> €</div>
+    <div class="cc-row cc-auto">
+      <div class="cc-label">Cash encaissé réel<span class="cc-hint" id="cc-real-sub">calcul en cours…</span></div>
+      <div class="cc-result" id="cc-real" style="font-size:19px;">—</div>
     </div>
     <div class="cc-row">
-      <div class="cc-label">Cash encaissé<span class="cc-hint" id="cc-cash-src">chargement…</span></div>
-      <div class="cc-input">+ <input type="number" id="cc-cash" step="0.01" placeholder="0.00"> €</div>
+      <div class="cc-label">Fond de caisse initial<span class="cc-hint">tu as mis 0 € au départ</span></div>
+      <div class="cc-input">+ <input type="number" id="cc-float" step="0.01" placeholder="0.00" value="0"> €</div>
     </div>
     <div class="cc-row">
-      <div class="cc-label">Sorties cash<span class="cc-hint">achats réglés en espèces, pourboires cash reversés au staff, cash pris perso</span></div>
+      <div class="cc-label">Sorties cash<span class="cc-hint">achats en espèces, pourboires cash reversés au staff, cash pris perso</span></div>
       <div class="cc-input">− <input type="number" id="cc-out" step="0.01" placeholder="0.00"> €</div>
     </div>
     <div class="cc-row">
-      <div class="cc-label">Dépôts en banque<span class="cc-hint">tu dis n'avoir jamais déposé → 0</span></div>
+      <div class="cc-label">Dépôts en banque<span class="cc-hint">jamais déposé → 0</span></div>
       <div class="cc-input">− <input type="number" id="cc-deposit" step="0.01" placeholder="0.00" value="0"> €</div>
     </div>
     <div class="cc-row cc-total">
-      <div class="cc-label">= Cash théorique en tiroir<span class="cc-hint">à comparer avec ton comptage physique du tiroir</span></div>
-      <div class="cc-result" id="cc-result">—</div>
+      <div class="cc-label">= Cash théorique en tiroir<span class="cc-hint">ce que tu devrais compter aujourd'hui</span></div>
+      <div class="cc-result" id="cc-theo">—</div>
     </div>
   </div>
 
-  <p class="hint">⚠️ Le « cash encaissé » vient des ventes tapées <b>Dinheiro</b> dans Vendus — si du cash a été tapé « carte » par erreur, ce montant est <b>sous-estimé</b>. Corrige-le à la main si besoin ; le détail par jour est ci-dessous.</p>
+  <div class="cash-calc" style="margin-top:14px;">
+    <div class="cc-row">
+      <div class="cc-label">Cash physique compté<span class="cc-hint">ce que tu comptes vraiment dans le tiroir aujourd'hui</span></div>
+      <div class="cc-input"><input type="number" id="cc-phys" step="0.01" placeholder="0.00"> €</div>
+    </div>
+    <div class="cc-row cc-total">
+      <div class="cc-label">= Écart<span class="cc-hint" id="cc-interp">saisis le cash compté</span></div>
+      <div class="cc-result" id="cc-ecart">—</div>
+    </div>
+  </div>
+
+  <p class="hint" id="cc-cover" style="display:none; color:var(--red);">⚠️ La période inclut un mois sans relevé terminal détaillé (mai) — le « cash encaissé réel » y est approximé. Mets <b>De = juin 2026</b> pour un chiffre fiable.</p>
+  <p class="hint"><b>Cash encaissé réel</b> = ventes Vendus totales − carte encaissée au terminal. Contrairement au total « Dinheiro » brut de Vendus, il récupère le cash tapé « carte » par erreur. Ajuste la période (De → À) en haut de page.</p>
 
   <details style="max-width:580px; margin-bottom:16px;">
-    <summary style="cursor:pointer; font-size:12.5px; color:var(--spec); margin-bottom:10px;">Voir le détail du cash encaissé (Vendus)</summary>
+    <summary style="cursor:pointer; font-size:12.5px; color:var(--spec); margin-bottom:10px;">Voir le détail jour par jour</summary>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Date</th><th class="right">Cash (Dinheiro)</th><th class="right">Cumul</th></tr></thead>
-        <tbody id="cash-tbody"><tr><td colspan="3" class="empty">Loading…</td></tr></tbody>
+        <thead><tr><th>Date</th><th class="right">Vendus total</th><th class="right">Carte terminal</th><th class="right">Cash implicite</th></tr></thead>
+        <tbody id="cash-tbody"><tr><td colspan="4" class="empty">—</td></tr></tbody>
       </table>
     </div>
   </details>
@@ -334,6 +347,7 @@ function render(){
   if (!allDays.length){
     tbody.innerHTML = '<tr><td colspan="8" class="empty">Aucune donnée sur cette période.</td></tr>';
     document.getElementById('summary').style.display = 'none';
+    updateCashCalc();
     return;
   }
 
@@ -383,64 +397,87 @@ function render(){
   const dTot = (T.gross - T.tips) - T.vendus;
   dEl.textContent = fmt(dTot);
   dEl.style.color = Math.abs(dTot) < 1 ? 'var(--green)' : 'var(--red)';
+
+  updateCashCalc();
 }
 
-// ── Calculateur cash en caisse (depuis l'ouverture) ──────────────────────────
+// ── Calculateur cash en caisse — méthode fiable (Vendus total − carte terminal) ─
 function ccVal(id){ const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? 0 : v; }
-function ccRecalc(){
-  const total = ccVal('cc-float') + ccVal('cc-cash') - ccVal('cc-out') - ccVal('cc-deposit');
-  const el = document.getElementById('cc-result');
-  el.textContent = fmt(total);
-  el.style.color = total < 0 ? 'var(--red)' : 'var(--text)';
+
+// Cash réellement encaissé sur la période affichée : pour chaque jour complet,
+// ventes Vendus (tous moyens) − carte encaissée au terminal (brut − pourboires).
+// Ce reliquat = le cash, y compris celui tapé « carte » par erreur dans Vendus.
+function cashModel(){
+  const days = [...new Set([...Object.keys(revolutDays), ...Object.keys(vendusDays)])].sort();
+  const monthsWithRev = new Set(Object.keys(revolutDays).map(d => d.slice(0,7)));
+  let vTotal = 0, termCard = 0, declared = 0, coverageGap = false;
+  const detail = [];
+  days.forEach(day => {
+    if (revolutCutoff && day >= revolutCutoff) return;            // jour incomplet exclu
+    const v = vendusDays[day], r = revolutDays[day];
+    const vt = v ? (v.total || 0) : 0;
+    const tc = r ? ((r.gross || 0) - (r.tips || 0)) : 0;
+    if (v){
+      for (const [t, a] of Object.entries(v.payments || {}))
+        if (/dinheiro|cash|numer[áa]rio|esp[èe]ce/i.test(t)) declared += a;
+      if (!monthsWithRev.has(day.slice(0,7))) coverageGap = true; // mois sans terminal → approx
+    }
+    vTotal += vt; termCard += tc;
+    if (vt || tc) detail.push({ day, vt, tc, cash: vt - tc });
+  });
+  return { implied: vTotal - termCard, declared, miskey: (vTotal - termCard) - declared, coverageGap, detail };
 }
 
-// Champs saisis à la main → persistés en localStorage.
-['cc-float','cc-out','cc-deposit'].forEach(id => {
+function updateCashCalc(){
+  const m = cashModel();
+  document.getElementById('cc-real').textContent = fmt(m.implied);
+  document.getElementById('cc-real-sub').textContent =
+    `Vendus total − carte terminal · dont ${fmt(m.declared)} tapé Dinheiro + ${fmt(m.miskey)} tapé « carte » par erreur`;
+  document.getElementById('cc-cover').style.display = m.coverageGap ? 'block' : 'none';
+
+  const theo = ccVal('cc-float') + m.implied - ccVal('cc-out') - ccVal('cc-deposit');
+  const theoEl = document.getElementById('cc-theo');
+  theoEl.textContent = fmt(theo);
+  theoEl.style.color = theo < 0 ? 'var(--red)' : 'var(--text)';
+
+  const physEl = document.getElementById('cc-phys');
+  const ecartEl = document.getElementById('cc-ecart');
+  const interp  = document.getElementById('cc-interp');
+  if (physEl.value === ''){
+    ecartEl.textContent = '—'; ecartEl.style.color = 'var(--muted)';
+    interp.textContent = 'saisis le cash compté pour voir l’écart';
+  } else {
+    const e = parseFloat(physEl.value) - theo;
+    ecartEl.textContent = (e >= 0 ? '+' : '') + fmt(e);
+    ecartEl.style.color = Math.abs(e) < 5 ? 'var(--green)' : 'var(--red)';
+    interp.textContent = Math.abs(e) < 5
+      ? '✓ cohérent avec les ventes sonnées'
+      : e > 0
+        ? '🚩 surplus : des ventes cash peut-être jamais sonnées dans Vendus (ou erreur de comptage/rendu)'
+        : '⚠️ manque : sorties cash oubliées, rendu de monnaie, ou erreur de comptage';
+  }
+
+  const tb = document.getElementById('cash-tbody');
+  tb.innerHTML = m.detail.length
+    ? m.detail.map(x => {
+        const dow = new Date(x.day + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short' });
+        return `<tr>
+          <td class="date">${dow} ${x.day.slice(8)}/${x.day.slice(5,7)}</td>
+          <td class="num">${x.vt ? fmt(x.vt) : '—'}</td>
+          <td class="num">${x.tc ? fmt(x.tc) : '—'}</td>
+          <td class="num" style="font-weight:600;">${fmt(x.cash)}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="4" class="empty">Aucune donnée sur la période</td></tr>';
+}
+
+// Champs saisis à la main → persistés + recalcul instantané.
+['cc-float','cc-out','cc-deposit','cc-phys'].forEach(id => {
   const el = document.getElementById(id);
   const saved = localStorage.getItem('cash_' + id);
   if (saved !== null) el.value = saved;
-  el.addEventListener('input', () => { localStorage.setItem('cash_' + id, el.value); ccRecalc(); });
+  el.addEventListener('input', () => { localStorage.setItem('cash_' + id, el.value); updateCashCalc(); });
 });
-// Cash encaissé : prérempli par Vendus, mais éditable (source pas toujours fiable).
-(function(){
-  const el = document.getElementById('cc-cash');
-  el.addEventListener('input', () => { el.dataset.touched = '1'; localStorage.setItem('cash_cc-cash', el.value); ccRecalc(); });
-  const saved = localStorage.getItem('cash_cc-cash');
-  if (saved !== null){ el.value = saved; el.dataset.touched = '1'; }
-})();
-
-async function loadCash(){
-  try {
-    const r = await fetch('/api/cash');
-    const d = await r.json();
-    const el = document.getElementById('cc-cash');
-    if (!el.dataset.touched) el.value = (d.total || 0).toFixed(2);   // n'écrase pas une saisie manuelle
-    const since = d.since ? new Date(d.since + 'T12:00:00').toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : '';
-    const last  = (d.days && d.days.length) ? d.days[d.days.length-1].date : '';
-    document.getElementById('cc-cash-src').textContent =
-      `ventes Dinheiro Vendus depuis le ${since}` + (last ? ` · dernier jour vu : ${last}` : '') + ' — corrige si besoin';
-    const tbody = document.getElementById('cash-tbody');
-    if (!(d.days || []).length){ tbody.innerHTML = '<tr><td colspan="3" class="empty">Aucune vente cash</td></tr>'; }
-    else {
-      let cum = 0;
-      tbody.innerHTML = d.days.map(x => {
-        cum += x.cash;
-        const dow = new Date(x.date + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short' });
-        return `<tr>
-          <td class="date">${dow} ${x.date.slice(8)}/${x.date.slice(5,7)}</td>
-          <td class="num">${fmt(x.cash)}</td>
-          <td class="num" style="color:var(--muted);">${fmt(cum)}</td>
-        </tr>`;
-      }).join('');
-    }
-    ccRecalc();
-  } catch(e) {
-    document.getElementById('cc-cash-src').textContent = 'Vendus indisponible — saisis le montant à la main';
-    ccRecalc();
-  }
-}
-loadCash();
-ccRecalc();
 </script>
 </body>
 </html>
