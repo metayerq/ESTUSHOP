@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/static/icons/favicon-32.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Estudantina">
+<meta name="theme-color" content="#EDEAE3">
+<title>Estudantina · Events</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<style>
+.app-nav { display:flex; gap:4px; margin-bottom:28px; border-bottom:1px solid var(--border); }
+.app-nav-item { display:flex; align-items:center; gap:8px; padding:11px 18px; font-size:13px; font-weight:500;
+  color:var(--muted); text-decoration:none; border-radius:8px 8px 0 0; border:1px solid transparent;
+  border-bottom:none; margin-bottom:-1px; white-space:nowrap; }
+.app-nav-item svg { width:16px; height:16px; flex-shrink:0; }
+.app-nav-item:hover { color:var(--text); background:var(--bg-hover); }
+.app-nav-item.active { color:var(--text); background:var(--bg-card); border-color:var(--border); font-weight:600; }
+@media (max-width:760px){ .app-nav { overflow-x:auto; } .app-nav-item span { display:none; } .app-nav-item { padding:11px 13px; } }
+
+.toolbar { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:20px; }
+.month-nav { display:flex; align-items:center; gap:6px; }
+.month-nav button { width:32px; height:32px; border-radius:8px; border:1px solid var(--border);
+  background:var(--bg-card); color:var(--text); cursor:pointer; font-size:15px; display:flex; align-items:center; justify-content:center; }
+.month-nav button:hover { background:var(--bg-hover); }
+.month-title { font-size:17px; font-weight:600; min-width:150px; text-transform:capitalize; }
+.seg { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+.seg button { padding:7px 14px; font-size:12.5px; font-weight:500; border:none; background:var(--bg-card);
+  color:var(--muted); cursor:pointer; }
+.seg button.on { background:var(--spec); color:#fff; }
+.btn-primary { font-family:inherit; font-size:12.5px; font-weight:600; padding:9px 16px; border-radius:8px;
+  cursor:pointer; border:none; background:var(--spec); color:#fff; margin-left:auto; }
+.btn-primary:hover { filter:brightness(1.06); }
+.today-btn { padding:7px 12px; font-size:12.5px; border:1px solid var(--border); border-radius:8px;
+  background:var(--bg-card); color:var(--text); cursor:pointer; }
+.today-btn:hover { background:var(--bg-hover); }
+
+/* ── Calendrier ── */
+.cal { border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--bg-card); }
+.cal-head { display:grid; grid-template-columns:repeat(7,1fr); background:var(--bg-hover); }
+.cal-head div { padding:9px 10px; font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--muted); text-align:left; }
+.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); }
+.cal-cell { min-height:104px; border-top:1px solid var(--border); border-left:1px solid var(--border); padding:6px;
+  cursor:pointer; position:relative; }
+.cal-cell:nth-child(7n+1){ border-left:none; }
+.cal-cell:hover { background:var(--bg-hover); }
+.cal-cell.other { background:var(--bg-page); }
+.cal-cell.other .cal-daynum { color:var(--faint); }
+.cal-daynum { font-size:12.5px; font-weight:600; color:var(--text); margin-bottom:4px; display:inline-flex;
+  align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; }
+.cal-cell.today .cal-daynum { background:var(--spec); color:#fff; }
+.ev-chip { display:flex; align-items:center; gap:5px; padding:2px 6px; border-radius:5px; font-size:11px;
+  font-weight:500; margin-bottom:3px; background:var(--bg-hover); color:var(--text); overflow:hidden;
+  white-space:nowrap; text-overflow:ellipsis; }
+.ev-chip .dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.ev-chip.cancelled { text-decoration:line-through; opacity:.5; }
+.ev-chip .tt { overflow:hidden; text-overflow:ellipsis; }
+@media (max-width:760px){ .cal-cell { min-height:74px; } .ev-chip .tt { display:none; } .ev-chip { display:inline-flex; margin-right:3px; } }
+
+/* ── Liste ── */
+.ev-list { display:flex; flex-direction:column; gap:10px; }
+.ev-card { border:1px solid var(--border); border-radius:10px; padding:14px 16px; background:var(--bg-card);
+  cursor:pointer; display:flex; gap:12px; align-items:flex-start; }
+.ev-card:hover { background:var(--bg-hover); }
+.ev-card .cbar { width:4px; align-self:stretch; border-radius:3px; }
+.ev-card h3 { font-size:14.5px; font-weight:600; margin:0 0 3px; }
+.ev-card .meta { font-size:12px; color:var(--muted); }
+.list-group-label { font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--muted); margin:18px 0 8px; }
+
+.badge { font-size:10px; font-weight:600; padding:2px 9px; border-radius:20px; white-space:nowrap; }
+.b-planned { background:var(--bg-hover); color:var(--muted); }
+.b-confirmed { background:#e7edfb; color:var(--spec); }
+.b-done { background:#e8f5e9; color:#2e7d32; }
+.b-cancelled { background:#fdeceb; color:var(--red); }
+
+/* ── Overlay (modal + drawer) ── */
+.overlay { position:fixed; inset:0; background:rgba(20,18,14,.34); z-index:100; opacity:0; pointer-events:none;
+  transition:opacity .18s; }
+.overlay.show { opacity:1; pointer-events:auto; }
+.modal { position:fixed; z-index:101; top:50%; left:50%; transform:translate(-50%,-48%); width:min(520px,94vw);
+  max-height:90vh; overflow:auto; background:var(--bg-card); border:1px solid var(--border); border-radius:14px;
+  padding:22px 24px; opacity:0; pointer-events:none; transition:all .18s; }
+.modal.show { opacity:1; pointer-events:auto; transform:translate(-50%,-50%); }
+.drawer { position:fixed; z-index:101; top:0; right:0; height:100%; width:min(440px,96vw); background:var(--bg-card);
+  border-left:1px solid var(--border); overflow:auto; transform:translateX(100%); transition:transform .2s; padding:22px 22px 40px; }
+.drawer.show { transform:translateX(0); }
+
+.modal h2, .drawer h2 { font-size:17px; font-weight:600; margin:0 0 16px; }
+.f-row { margin-bottom:13px; }
+.f-row2 { display:flex; gap:10px; }
+.f-row2 > div { flex:1; }
+.field-label { font-size:11px; font-weight:500; color:var(--muted); margin-bottom:5px; display:block; }
+.field-input, .field-area, select.field-input { width:100%; font-family:inherit; font-size:13px; padding:8px 10px;
+  border:1px solid var(--border); border-radius:7px; background:var(--bg-page); color:var(--text); box-sizing:border-box; }
+.field-area { resize:vertical; min-height:66px; }
+.swatches { display:flex; gap:8px; }
+.swatch { width:24px; height:24px; border-radius:50%; cursor:pointer; border:2px solid transparent; }
+.swatch.on { border-color:var(--text); }
+.modal-actions { display:flex; gap:10px; justify-content:space-between; align-items:center; margin-top:20px; }
+.btn { font-family:inherit; font-size:12.5px; font-weight:500; padding:9px 16px; border-radius:8px; cursor:pointer;
+  border:1px solid var(--border); background:var(--bg-card); color:var(--text); }
+.btn:hover { background:var(--bg-hover); }
+.btn-danger { color:var(--red); border-color:transparent; background:transparent; }
+.btn-danger:hover { background:#fdeceb; }
+
+/* ── Drawer sections ── */
+.dr-meta { font-size:12.5px; color:var(--muted); margin-bottom:6px; }
+.dr-sec { margin-top:22px; }
+.dr-sec-h { font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--muted); margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; }
+.task { display:flex; align-items:center; gap:9px; padding:7px 0; border-bottom:1px solid var(--border); }
+.task:last-child { border-bottom:none; }
+.task input[type=checkbox]{ width:16px; height:16px; accent-color:var(--spec); cursor:pointer; flex-shrink:0; }
+.task .tlabel { flex:1; font-size:13px; }
+.task.done .tlabel { text-decoration:line-through; color:var(--faint); }
+.task .tdel { color:var(--faint); cursor:pointer; font-size:15px; border:none; background:none; }
+.task .tdel:hover { color:var(--red); }
+.addrow { display:flex; gap:8px; margin-top:9px; }
+.addrow input { flex:1; font-family:inherit; font-size:12.5px; padding:7px 9px; border:1px solid var(--border);
+  border-radius:7px; background:var(--bg-page); color:var(--text); }
+.addrow button { padding:7px 12px; border-radius:7px; border:none; background:var(--spec); color:#fff; cursor:pointer; font-size:13px; }
+.note { padding:9px 11px; background:var(--bg-hover); border-radius:8px; margin-bottom:8px; }
+.note .ntext { font-size:13px; white-space:pre-wrap; }
+.note .nts { font-family:var(--mono); font-size:9.5px; color:var(--faint); margin-top:4px; letter-spacing:.04em; }
+.empty-mini { font-size:12.5px; color:var(--faint); padding:6px 0; }
+.progress { font-family:var(--mono); font-size:11px; color:var(--muted); }
+
+.toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--text);
+  color:#fff; padding:10px 18px; border-radius:8px; font-size:13px; opacity:0; transition:all .25s; z-index:200; }
+.toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="app-nav">
+    <a href="/" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg><span>Dashboard</span></a>
+    <a href="/cogs" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"/></svg><span>COGS</span></a>
+    <a href="/stock" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5-9 4.5-9-4.5Z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg><span>Stock</span></a>
+    <a href="/charges" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1" fill="currentColor" stroke="none"/></svg><span>Costs</span></a>
+    <a href="/expenses" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 9h20L12 3Z"/><path d="M4 9v10M9 9v10M15 9v10M20 9v10"/><path d="M2.5 21.5h19"/></svg><span>Expenses</span></a>
+    <a href="/holidays" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span>Holidays</span></a>
+    <a href="/reconciliation" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h13M14 4l3 3-3 3"/><path d="M20 17H7M10 14l-3 3 3 3"/></svg><span>Reconciliation</span></a>
+    <a href="/sop" class="app-nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>SOP</span></a>
+    <a href="/events" class="app-nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1a2 2 0 0 0 0 4v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1a2 2 0 0 0 0-4V9Z"/><path d="M12 8.5v7"/></svg><span>Events</span></a>
+  </div>
+
+  <div class="header">
+    <div>
+      <div class="header-title">Events</div>
+      <div class="header-sub">Pop-ups & événements — calendrier, tâches, notes</div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="month-nav">
+      <button id="prev" aria-label="Mois précédent">‹</button>
+      <div class="month-title" id="month-title">—</div>
+      <button id="next" aria-label="Mois suivant">›</button>
+    </div>
+    <button class="today-btn" id="today-btn">Aujourd'hui</button>
+    <div class="seg">
+      <button id="v-cal" class="on">Calendrier</button>
+      <button id="v-list">Liste</button>
+    </div>
+    <button class="btn-primary" id="new-btn">+ Nouvel event</button>
+  </div>
+
+  <div id="cal-wrap" class="cal">
+    <div class="cal-head" id="cal-head"></div>
+    <div class="cal-grid" id="cal-grid"></div>
+  </div>
+
+  <div id="list-wrap" class="ev-list" style="display:none;"></div>
+
+</div><!-- /page -->
+
+<!-- Overlay + Modal création/édition -->
+<div class="overlay" id="overlay"></div>
+<div class="modal" id="modal">
+  <h2 id="modal-title">Nouvel event</h2>
+  <input type="hidden" id="m-id">
+  <div class="f-row">
+    <label class="field-label">Titre</label>
+    <input class="field-input" id="m-title" placeholder="Ex. Pop-up torréfacteur invité">
+  </div>
+  <div class="f-row f-row2">
+    <div><label class="field-label">Date</label><input type="date" class="field-input" id="m-date"></div>
+    <div><label class="field-label">Fin (si plusieurs jours)</label><input type="date" class="field-input" id="m-end"></div>
+  </div>
+  <div class="f-row f-row2">
+    <div><label class="field-label">Heure début</label><input type="time" class="field-input" id="m-start"></div>
+    <div><label class="field-label">Heure fin</label><input type="time" class="field-input" id="m-endtime"></div>
+  </div>
+  <div class="f-row f-row2">
+    <div><label class="field-label">Lieu</label><input class="field-input" id="m-loc" placeholder="Café, terrasse…"></div>
+    <div><label class="field-label">Statut</label>
+      <select class="field-input" id="m-status">
+        <option value="planned">Prévu</option>
+        <option value="confirmed">Confirmé</option>
+        <option value="done">Terminé</option>
+        <option value="cancelled">Annulé</option>
+      </select>
+    </div>
+  </div>
+  <div class="f-row">
+    <label class="field-label">Couleur</label>
+    <div class="swatches" id="m-swatches"></div>
+  </div>
+  <div class="f-row">
+    <label class="field-label">Description</label>
+    <textarea class="field-area" id="m-desc" placeholder="De quoi il s'agit, invités, format…"></textarea>
+  </div>
+  <div class="modal-actions">
+    <button class="btn btn-danger" id="m-delete" style="visibility:hidden;">Supprimer</button>
+    <div style="display:flex; gap:10px;">
+      <button class="btn" id="m-cancel">Annuler</button>
+      <button class="btn-primary" id="m-save" style="margin:0;">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Drawer détail -->
+<div class="drawer" id="drawer">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+    <h2 id="d-title" style="flex:1;">—</h2>
+    <button class="btn" id="d-close" style="padding:5px 10px;">✕</button>
+  </div>
+  <div class="dr-meta" id="d-meta"></div>
+  <span class="badge" id="d-badge"></span>
+  <div style="margin-top:14px; display:flex; gap:10px;">
+    <button class="btn" id="d-edit">Éditer</button>
+  </div>
+
+  <div class="dr-sec">
+    <div class="dr-sec-h">Description</div>
+    <div id="d-desc" style="font-size:13px; white-space:pre-wrap; color:var(--text);"></div>
+  </div>
+
+  <div class="dr-sec">
+    <div class="dr-sec-h"><span>Tâches à faire</span><span class="progress" id="d-progress"></span></div>
+    <div id="d-tasks"></div>
+    <div class="addrow">
+      <input id="d-task-input" placeholder="Ajouter une tâche…">
+      <button id="d-task-add">+</button>
+    </div>
+  </div>
+
+  <div class="dr-sec">
+    <div class="dr-sec-h">Notes (au fil de l'eau)</div>
+    <div id="d-notes"></div>
+    <div class="addrow">
+      <input id="d-note-input" placeholder="Ajouter une note…">
+      <button id="d-note-add">+</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/static/ui.js?v={{ v }}"></script>
+<script>
+const COLORS = ['#2554C7','#2e7d32','#b07d00','#c0392b','#7b4fbf','#0d8f8f'];
+const STATUS = { planned:['Prévu','b-planned'], confirmed:['Confirmé','b-confirmed'], done:['Terminé','b-done'], cancelled:['Annulé','b-cancelled'] };
+const MONTHS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+const WD = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+
+let events = [];            // liste brute
+let tasksByEvent = {};      // id → [tasks]
+let cur = new Date(); cur.setDate(1);
+let view = 'cal';
+let selectedId = null;
+
+const $ = id => document.getElementById(id);
+function showToast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+function ymd(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function todayStr(){ return ymd(new Date()); }
+function fmtDate(s){ if(!s) return ''; const d=new Date(s+'T12:00:00'); return `${WD[(d.getDay()+6)%7]} ${d.getDate()} ${MONTHS[d.getMonth()]}`; }
+
+// ── Chargement ───────────────────────────────────────────────────────────────
+async function loadAll(){
+  if (window.uiLoadStart) uiLoadStart();
+  try {
+    const [er, tr] = await Promise.all([ fetch('/api/events'), fetch('/api/events/tasks') ]);
+    events = er.ok ? await er.json() : [];
+    const tasks = tr.ok ? await tr.json() : [];
+    tasksByEvent = {};
+    tasks.forEach(t => (tasksByEvent[t.event_id] = tasksByEvent[t.event_id] || []).push(t));
+  } catch(e) {
+    events = []; tasksByEvent = {};
+  } finally {
+    if (window.uiLoadEnd) uiLoadEnd();
+  }
+  render();
+}
+
+function eventsOn(dateStr){
+  return events.filter(e => {
+    const end = e.end_date || e.date;
+    return dateStr >= e.date && dateStr <= end;
+  });
+}
+
+// ── Rendu ────────────────────────────────────────────────────────────────────
+function render(){
+  $('month-title').textContent = `${MONTHS[cur.getMonth()]} ${cur.getFullYear()}`;
+  $('v-cal').classList.toggle('on', view==='cal');
+  $('v-list').classList.toggle('on', view==='list');
+  $('cal-wrap').style.display  = view==='cal' ? 'block' : 'none';
+  $('list-wrap').style.display = view==='list' ? 'flex' : 'none';
+  view==='cal' ? renderCalendar() : renderList();
+}
+
+function renderCalendar(){
+  $('cal-head').innerHTML = WD.map(d=>`<div>${d}</div>`).join('');
+  const y=cur.getFullYear(), m=cur.getMonth();
+  const first=new Date(y,m,1);
+  const startOffset=(first.getDay()+6)%7;           // lundi = 0
+  const start=new Date(y,m,1-startOffset);
+  const today=todayStr();
+  let html='';
+  for(let i=0;i<42;i++){
+    const d=new Date(start); d.setDate(start.getDate()+i);
+    const ds=ymd(d);
+    const other = d.getMonth()!==m;
+    const evs=eventsOn(ds);
+    const chips=evs.slice(0,3).map(e=>{
+      const cls = e.status==='cancelled' ? 'ev-chip cancelled' : 'ev-chip';
+      return `<div class="${cls}" data-ev="${e.id}"><span class="dot" style="background:${e.color||'#2554C7'}"></span><span class="tt">${esc(e.title)}</span></div>`;
+    }).join('');
+    const more = evs.length>3 ? `<div style="font-size:10px;color:var(--muted);padding-left:2px;">+${evs.length-3}</div>` : '';
+    html += `<div class="cal-cell${other?' other':''}${ds===today?' today':''}" data-day="${ds}">
+      <span class="cal-daynum">${d.getDate()}</span>${chips}${more}</div>`;
+  }
+  $('cal-grid').innerHTML=html;
+}
+
+function renderList(){
+  const wrap=$('list-wrap');
+  if(!events.length){ wrap.innerHTML='<div class="empty-mini" style="padding:30px;text-align:center;">Aucun event. Clique « + Nouvel event ».</div>'; return; }
+  const today=todayStr();
+  const sorted=[...events].sort((a,b)=>a.date.localeCompare(b.date));
+  const up=sorted.filter(e=>(e.end_date||e.date)>=today);
+  const past=sorted.filter(e=>(e.end_date||e.date)<today).reverse();
+  const card=e=>{
+    const [lbl,cls]=STATUS[e.status]||STATUS.planned;
+    const t=tasksByEvent[e.id]||[]; const done=t.filter(x=>x.done).length;
+    const time=e.start_time?` · ${e.start_time}${e.end_time?'–'+e.end_time:''}`:'';
+    const loc=e.location?` · ${esc(e.location)}`:'';
+    const tp=t.length?` · ✓ ${done}/${t.length}`:'';
+    return `<div class="ev-card" data-ev="${e.id}">
+      <div class="cbar" style="background:${e.color||'#2554C7'}"></div>
+      <div style="flex:1;">
+        <h3>${esc(e.title)} <span class="badge ${cls}">${lbl}</span></h3>
+        <div class="meta">${fmtDate(e.date)}${e.end_date&&e.end_date!==e.date?' → '+fmtDate(e.end_date):''}${time}${loc}${tp}</div>
+      </div></div>`;
+  };
+  wrap.innerHTML =
+    (up.length?`<div class="list-group-label">À venir</div>`+up.map(card).join(''):'') +
+    (past.length?`<div class="list-group-label">Passés</div>`+past.map(card).join(''):'');
+}
+
+function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// ── Modal création / édition ─────────────────────────────────────────────────
+let modalColor = COLORS[0];
+function buildSwatches(){
+  $('m-swatches').innerHTML = COLORS.map(c=>`<div class="swatch${c===modalColor?' on':''}" data-c="${c}" style="background:${c}"></div>`).join('');
+}
+function openModal(ev, prefillDate){
+  const isEdit=!!ev;
+  $('modal-title').textContent = isEdit?'Éditer l\'event':'Nouvel event';
+  $('m-id').value      = ev?.id || '';
+  $('m-title').value   = ev?.title || '';
+  $('m-date').value    = ev?.date || prefillDate || todayStr();
+  $('m-end').value     = ev?.end_date || '';
+  $('m-start').value   = ev?.start_time || '';
+  $('m-endtime').value = ev?.end_time || '';
+  $('m-loc').value     = ev?.location || '';
+  $('m-status').value  = ev?.status || 'planned';
+  $('m-desc').value    = ev?.description || '';
+  modalColor = ev?.color || COLORS[0];
+  buildSwatches();
+  $('m-delete').style.visibility = isEdit?'visible':'hidden';
+  overlayOn(); $('modal').classList.add('show');
+}
+function closeModal(){ $('modal').classList.remove('show'); overlayMaybeOff(); }
+
+async function saveEvent(){
+  const title=$('m-title').value.trim();
+  if(!title){ showToast('Titre requis'); return; }
+  const body={
+    id: $('m-id').value || undefined,
+    title,
+    date: $('m-date').value,
+    end_date: $('m-end').value || null,
+    start_time: $('m-start').value || null,
+    end_time: $('m-endtime').value || null,
+    location: $('m-loc').value.trim(),
+    status: $('m-status').value,
+    color: modalColor,
+    description: $('m-desc').value.trim(),
+  };
+  const r=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok||d.ok===false){ showToast('Échec: '+(d.error||r.status)); return; }
+  closeModal(); showToast('Event enregistré'); await loadAll();
+}
+
+async function deleteEvent(id){
+  if(!confirm('Supprimer cet event et ses tâches ?')) return;
+  const r=await fetch('/api/events/'+id,{method:'DELETE'});
+  if(!r.ok){ showToast('Échec suppression'); return; }
+  closeModal(); closeDrawer(); showToast('Event supprimé'); await loadAll();
+}
+
+// ── Drawer détail ────────────────────────────────────────────────────────────
+function openDrawer(id){
+  const e=events.find(x=>x.id===id); if(!e) return;
+  selectedId=id;
+  $('d-title').textContent=e.title;
+  const [lbl,cls]=STATUS[e.status]||STATUS.planned;
+  const time=e.start_time?` · ${e.start_time}${e.end_time?'–'+e.end_time:''}`:'';
+  $('d-meta').textContent = fmtDate(e.date)+(e.end_date&&e.end_date!==e.date?' → '+fmtDate(e.end_date):'')+time+(e.location?' · '+e.location:'');
+  const badge=$('d-badge'); badge.textContent=lbl; badge.className='badge '+cls;
+  $('d-desc').textContent = e.description || '—';
+  renderTasks(e); renderNotes(e);
+  overlayOn(); $('drawer').classList.add('show');
+}
+function closeDrawer(){ $('drawer').classList.remove('show'); selectedId=null; overlayMaybeOff(); }
+
+function renderTasks(e){
+  const t=(tasksByEvent[e.id]||[]).slice().sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+  const done=t.filter(x=>x.done).length;
+  $('d-progress').textContent = t.length?`${done}/${t.length}`:'';
+  $('d-tasks').innerHTML = t.length ? t.map(x=>`
+    <div class="task${x.done?' done':''}">
+      <input type="checkbox" ${x.done?'checked':''} data-task="${x.id}">
+      <span class="tlabel">${esc(x.label)}</span>
+      <button class="tdel" data-taskdel="${x.id}">✕</button>
+    </div>`).join('') : '<div class="empty-mini">Aucune tâche.</div>';
+}
+
+async function addTask(){
+  const inp=$('d-task-input'); const label=inp.value.trim(); if(!label||!selectedId) return;
+  const n=(tasksByEvent[selectedId]||[]).length;
+  const r=await fetch('/api/events/tasks',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({event_id:selectedId,label,sort_order:(n+1)*10})});
+  if(!r.ok){ showToast('Échec ajout tâche'); return; }
+  inp.value=''; await reloadTasks();
+}
+async function toggleTask(id,done){
+  await fetch('/api/events/tasks/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({done,done_at:done?new Date().toISOString():null})});
+  await reloadTasks();
+}
+async function delTask(id){
+  await fetch('/api/events/tasks/'+id,{method:'DELETE'});
+  await reloadTasks();
+}
+async function reloadTasks(){
+  const tr=await fetch('/api/events/tasks'); const tasks=tr.ok?await tr.json():[];
+  tasksByEvent={}; tasks.forEach(t=>(tasksByEvent[t.event_id]=tasksByEvent[t.event_id]||[]).push(t));
+  const e=events.find(x=>x.id===selectedId); if(e) renderTasks(e);
+  if(view==='list') renderList();
+}
+
+// Notes stockées en jsonb sur l'event ({ts,text}), ajoutées au fil de l'eau.
+function renderNotes(e){
+  const notes=Array.isArray(e.notes)?e.notes:[];
+  $('d-notes').innerHTML = notes.length ? notes.slice().reverse().map(n=>`
+    <div class="note"><div class="ntext">${esc(n.text)}</div><div class="nts">${fmtNoteTs(n.ts)}</div></div>`).join('')
+    : '<div class="empty-mini">Aucune note.</div>';
+}
+function fmtNoteTs(ts){ try{ const d=new Date(ts); return d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+' '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+async function addNote(){
+  const inp=$('d-note-input'); const text=inp.value.trim(); if(!text||!selectedId) return;
+  const e=events.find(x=>x.id===selectedId); if(!e) return;
+  const notes=Array.isArray(e.notes)?e.notes.slice():[];
+  notes.push({ts:new Date().toISOString(),text});
+  const r=await fetch('/api/events/'+selectedId,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({notes})});
+  if(!r.ok){ showToast('Échec ajout note'); return; }
+  e.notes=notes; inp.value=''; renderNotes(e);
+}
+
+// ── Overlay helpers ──────────────────────────────────────────────────────────
+function overlayOn(){ $('overlay').classList.add('show'); }
+function overlayMaybeOff(){ if(!$('modal').classList.contains('show') && !$('drawer').classList.contains('show')) $('overlay').classList.remove('show'); }
+
+// ── Écouteurs ────────────────────────────────────────────────────────────────
+$('prev').onclick = ()=>{ cur.setMonth(cur.getMonth()-1); render(); };
+$('next').onclick = ()=>{ cur.setMonth(cur.getMonth()+1); render(); };
+$('today-btn').onclick = ()=>{ cur=new Date(); cur.setDate(1); render(); };
+$('v-cal').onclick = ()=>{ view='cal'; render(); };
+$('v-list').onclick = ()=>{ view='list'; render(); };
+$('new-btn').onclick = ()=> openModal(null);
+$('m-cancel').onclick = closeModal;
+$('m-save').onclick = saveEvent;
+$('m-delete').onclick = ()=> deleteEvent($('m-id').value);
+$('d-close').onclick = closeDrawer;
+$('d-edit').onclick = ()=>{ const e=events.find(x=>x.id===selectedId); if(e) openModal(e); };
+$('d-task-add').onclick = addTask;
+$('d-task-input').addEventListener('keydown',e=>{ if(e.key==='Enter') addTask(); });
+$('d-note-add').onclick = addNote;
+$('d-note-input').addEventListener('keydown',e=>{ if(e.key==='Enter') addNote(); });
+$('overlay').onclick = ()=>{ closeModal(); closeDrawer(); };
+
+$('m-swatches').addEventListener('click',e=>{
+  const s=e.target.closest('.swatch'); if(!s) return;
+  modalColor=s.dataset.c; buildSwatches();
+});
+// Calendrier : clic cellule = créer ; clic chip = ouvrir détail
+$('cal-grid').addEventListener('click',e=>{
+  const chip=e.target.closest('[data-ev]');
+  if(chip){ e.stopPropagation(); openDrawer(chip.dataset.ev); return; }
+  const cell=e.target.closest('[data-day]');
+  if(cell) openModal(null, cell.dataset.day);
+});
+// Liste : clic carte = ouvrir détail
+$('list-wrap').addEventListener('click',e=>{
+  const c=e.target.closest('[data-ev]'); if(c) openDrawer(c.dataset.ev);
+});
+// Drawer : cases à cocher + suppression tâche
+$('d-tasks').addEventListener('change',e=>{
+  const cb=e.target.closest('[data-task]'); if(cb) toggleTask(cb.dataset.task, cb.checked);
+});
+$('d-tasks').addEventListener('click',e=>{
+  const del=e.target.closest('[data-taskdel]'); if(del) delTask(del.dataset.taskdel);
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeModal(); closeDrawer(); } });
+
+loadAll();
+</script>
+</body>
+</html>

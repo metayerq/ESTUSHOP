@@ -225,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260720b"
+ASSET_VERSION = "20260720c"
 
 @app.context_processor
 def _inject_asset_version():
@@ -246,6 +246,7 @@ STAFF_ALLOWED_PREFIXES = (
     "/cogs", "/api/cogs", "/api/ingredients", "/api/preparations",
     "/api/recipe", "/api/product", "/stock", "/api/supplies", "/logout",
     "/sop", "/api/sop",
+    "/events", "/api/events",
 )
 
 # Chemins fermés au rôle investisseur : détail dépenses, congés staff,
@@ -1164,6 +1165,98 @@ def api_sop_log_post():
 @app.route("/api/sop/log/<string:log_id>", methods=["DELETE"])
 def api_sop_log_delete(log_id):
     ok = _supa_delete("sop_log", "id", log_id)
+    return jsonify({"ok": ok})
+
+
+# ── Events / pop-ups (calendrier, tâches, notes) ─────────────────────────────
+@app.route("/events")
+def events_page():
+    return render_template("events.html")
+
+@app.route("/api/events", methods=["GET"])
+def api_events_get():
+    rows = _supa_get("events", {"active": "eq.true", "order": "date.asc"})
+    return jsonify(rows if isinstance(rows, list) else [])
+
+@app.route("/api/events", methods=["POST"])
+def api_events_post():
+    data  = request.get_json() or {}
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"ok": False, "error": "title required"}), 400
+    if not data.get("date"):
+        return jsonify({"ok": False, "error": "date required"}), 400
+    status = data.get("status", "planned")
+    if status not in ("planned", "confirmed", "done", "cancelled"):
+        status = "planned"
+    row = {
+        "title":       title,
+        "date":        data["date"],
+        "end_date":    data.get("end_date") or None,
+        "start_time":  (data.get("start_time") or "").strip() or None,
+        "end_time":    (data.get("end_time") or "").strip() or None,
+        "location":    (data.get("location") or "").strip(),
+        "status":      status,
+        "description": (data.get("description") or "").strip(),
+        "color":       (data.get("color") or "#2554C7").strip(),
+        "active":      data.get("active", True),
+        "updated_at":  datetime.now().isoformat(),
+    }
+    if "notes" in data:
+        row["notes"] = data["notes"]
+    if data.get("id"):
+        row["id"] = data["id"]
+    ok, err = _supa_upsert("events", row)
+    return jsonify({"ok": ok, "error": err})
+
+@app.route("/api/events/<string:event_id>", methods=["PATCH"])
+def api_events_patch(event_id):
+    data = request.get_json() or {}
+    data["updated_at"] = datetime.now().isoformat()
+    r = _req.patch(f"{SUPA_URL}/rest/v1/events", json=data,
+                   headers=_supa_headers(), params={"id": f"eq.{event_id}"})
+    return jsonify({"ok": r.ok})
+
+@app.route("/api/events/<string:event_id>", methods=["DELETE"])
+def api_events_delete(event_id):
+    ok = _supa_delete("events", "id", event_id)
+    return jsonify({"ok": ok})
+
+@app.route("/api/events/tasks", methods=["GET"])
+def api_event_tasks_get():
+    params = {"order": "sort_order.asc"}
+    eid = request.args.get("event_id")
+    if eid:
+        params["event_id"] = f"eq.{eid}"
+    rows = _supa_get("event_tasks", params)
+    return jsonify(rows if isinstance(rows, list) else [])
+
+@app.route("/api/events/tasks", methods=["POST"])
+def api_event_tasks_post():
+    data = request.get_json() or {}
+    if not data.get("event_id") or not (data.get("label") or "").strip():
+        return jsonify({"ok": False, "error": "event_id + label required"}), 400
+    row = {
+        "event_id":   data["event_id"],
+        "label":      data["label"].strip(),
+        "done":       bool(data.get("done", False)),
+        "done_at":    data.get("done_at"),
+        "sort_order": int(data.get("sort_order", 100)),
+    }
+    if data.get("id"):
+        row["id"] = data["id"]
+    ok, err = _supa_upsert("event_tasks", row)
+    return jsonify({"ok": ok, "error": err})
+
+@app.route("/api/events/tasks/<string:task_id>", methods=["PATCH"])
+def api_event_tasks_patch(task_id):
+    r = _req.patch(f"{SUPA_URL}/rest/v1/event_tasks", json=request.get_json() or {},
+                   headers=_supa_headers(), params={"id": f"eq.{task_id}"})
+    return jsonify({"ok": r.ok})
+
+@app.route("/api/events/tasks/<string:task_id>", methods=["DELETE"])
+def api_event_tasks_delete(task_id):
+    ok = _supa_delete("event_tasks", "id", task_id)
     return jsonify({"ok": ok})
 
 
