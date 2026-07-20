@@ -191,6 +191,16 @@ body {
 .delta-up   { color: var(--green); background: rgba(68,131,97,.10); }
 .delta-down { color: var(--red);   background: rgba(196,85,77,.10); }
 
+/* ── Tooltip instantanée partagée (remplace les title natifs, trop lents) ── */
+#hover-tip {
+  position: fixed; z-index: 400; display: none; pointer-events: none;
+  background: var(--text); color: #fff;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.45;
+  padding: 6px 10px; border-radius: 7px; white-space: nowrap;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18);
+}
+[data-tip]:hover { cursor: default; }
+
 /* ── Revenue by hour — barres div façon Mesa ── */
 .hbar-row { display: flex; align-items: flex-end; gap: 6px; height: 140px; min-width: 520px; }
 .hbar { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }

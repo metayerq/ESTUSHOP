@@ -639,7 +639,7 @@ function renderInsights(d) {
       for (const h of hm.hours) {
         const v = byKey[wd + '_' + h] || 0;
         const a = hm.max ? (v / hm.max) : 0;
-        html += `<div class="hm-cell" style="${v ? `background:rgba(37,84,199,${(0.10 + a * 0.75).toFixed(2)});` : ''}" title="${WD_SHORT[wd]} ${h}h · ${fmt(v)}"></div>`;
+        html += `<div class="hm-cell" style="${v ? `background:rgba(37,84,199,${(0.10 + a * 0.75).toFixed(2)});` : ''}" data-tip="${WD_SHORT[wd]} ${h}h · ${fmt(v)}"></div>`;
       }
     }
     html += `</div>`;
@@ -692,7 +692,7 @@ function renderInsights(d) {
         bg = day.ebitda >= 0 ? 'rgba(80,161,116,.28)' : 'rgba(196,85,77,.24)';
         color = 'var(--text)';
       }
-      cal += `<div class="cal-cell" style="background:${bg};color:${color};" title="${day.date}${day.ebitda != null ? ' · ' + fmt(day.ebitda) : ''}">${dt.getDate()}</div>`;
+      cal += `<div class="cal-cell" style="background:${bg};color:${color};" data-tip="${new Date(day.date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}${day.ebitda != null ? ' · EBITDA ' + fmt(day.ebitda) : ' · closed'}">${dt.getDate()}</div>`;
     }
     const greens = opens.filter(x => x.ebitda >= 0).length;
     document.getElementById('ins-calendar').innerHTML = `
@@ -792,7 +792,7 @@ function renderHourlyBars(h) {
       const isPeak = i === peakIdx && vals[i] > 0;
       const hpx = Math.round(vals[i] / maxV * 118);
       const tip = `${hr}h · ${fmt(vals[i])} · ${h.nb[i]} tx`;
-      return `<div class="hbar" title="${tip}">
+      return `<div class="hbar" data-tip="${tip}">
         <div class="fill ${isPeak ? 'peak' : 'norm'}" style="height:${hpx}px;${vals[i] > 0 ? 'min-height:3px;' : 'border:none;'}"></div>
         <span class="hr ${deadSet.has(hr) ? 'dead' : ''}">${hr}</span>
       </div>`;
@@ -981,6 +981,41 @@ function renderCashflow() {
     </tr>`;
   }).join('');
 }
+
+// ── Tooltip instantanée partagée ([data-tip]) ───────────────────────────────
+// Remplace les title natifs : affichage immédiat au survol, suit la souris,
+// délégation → fonctionne sur tout contenu re-rendu sans réattacher.
+(function () {
+  const tip = document.createElement('div');
+  tip.id = 'hover-tip';
+  document.body.appendChild(tip);
+
+  function place(e) {
+    const pad = 12;
+    let x = e.clientX + pad, y = e.clientY + pad;
+    const r = tip.getBoundingClientRect();
+    if (x + r.width  > window.innerWidth  - 8) x = e.clientX - r.width  - pad;
+    if (y + r.height > window.innerHeight - 8) y = e.clientY - r.height - pad;
+    tip.style.left = x + 'px';
+    tip.style.top  = y + 'px';
+  }
+
+  document.addEventListener('mouseover', e => {
+    const el = e.target.closest('[data-tip]');
+    if (!el) return;
+    tip.textContent = el.dataset.tip;
+    tip.style.display = 'block';
+    place(e);
+  });
+  document.addEventListener('mousemove', e => {
+    if (tip.style.display === 'block' && e.target.closest('[data-tip]')) place(e);
+  });
+  document.addEventListener('mouseout', e => {
+    if (e.target.closest('[data-tip]') && !(e.relatedTarget && e.relatedTarget.closest('[data-tip]'))) {
+      tip.style.display = 'none';
+    }
+  });
+})();
 
 // ── Init ───────────────────────────────────────────────────────────────────
 loadData();

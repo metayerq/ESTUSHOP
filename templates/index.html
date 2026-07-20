@@ -79,7 +79,8 @@
 .ins-sub { font-size:11px; color:var(--muted); margin-top:6px; }
 .ins-svg { width:100%; height:78px; display:block; }
 .hm-grid { display:grid; gap:2px; }
-.hm-cell { height:13px; border-radius:3px; background:var(--bar-bg); }
+.hm-cell { height:14px; border-radius:3px; background:var(--bar-bg); }
+.hm-cell:hover, .cal-cell:hover { outline:2px solid var(--spec); outline-offset:-1px; }
 .hm-lbl  { font-size:9px; color:var(--faint); display:flex; align-items:center; justify-content:center; }
 .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; margin-top:2px; }
 .cal-cell { height:17px; border-radius:4px; font-size:9px; display:flex; align-items:center;
@@ -274,18 +275,6 @@
   <!-- Rush heatmap — pleine largeur, juste sous le graphe horaire -->
   <div class="chart-block" id="ins-heatmap" style="margin-bottom:32px;"></div>
 
-  <!-- Insights visuels (les autres, en petites cartes) -->
-  <div class="section-label" id="insights-label" style="display:none;">Insights</div>
-  <div id="insights-grid" class="ins-grid">
-    <div class="ins-card" id="ins-gauge"></div>
-    <div class="ins-card" id="ins-month"></div>
-    <div class="ins-card" id="ins-calendar"></div>
-    <div class="ins-card" id="ins-prime"></div>
-    <div class="ins-card" id="ins-basket"></div>
-    <div class="ins-card" id="ins-seat"></div>
-    <div class="ins-card" id="ins-movers"></div>
-  </div>
-
   <!-- Sparkline 7j + strip WoW fusionné -->
   <div class="section-label">Last 7 days</div>
   <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:32px;">
@@ -312,6 +301,19 @@
         <span id="kpi-best-day-sub" style="color:var(--faint)"></span>
       </div>
     </div>
+  </div>
+
+
+  <!-- Insights visuels (les autres, en petites cartes) -->
+  <div class="section-label" id="insights-label" style="display:none;">Insights</div>
+  <div id="insights-grid" class="ins-grid">
+    <div class="ins-card" id="ins-gauge"></div>
+    <div class="ins-card" id="ins-month"></div>
+    <div class="ins-card" id="ins-calendar"></div>
+    <div class="ins-card" id="ins-prime"></div>
+    <div class="ins-card" id="ins-basket"></div>
+    <div class="ins-card" id="ins-seat"></div>
+    <div class="ins-card" id="ins-movers"></div>
   </div>
 
   <!-- Payment methods + Product mix, groupés (répartitions) -->
