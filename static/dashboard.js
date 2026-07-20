@@ -325,6 +325,28 @@ function render(d) {
       seuilSub.innerHTML = '<span style="color:var(--muted)">real margin not measurable</span>';
       document.getElementById('eco-seuil-bar').style.width = '0%';
     }
+
+    // Point mort moyen par jour ouvré + évolution vs période de comparaison.
+    // Couleurs INVERSÉES : un point mort qui BAISSE est une bonne nouvelle (vert).
+    const avgEl = document.getElementById('eco-seuil-avg');
+    const perDay = eco.seuil_ca_ttc_jour, prevDay = eco.seuil_jour_prev;
+    if (perDay != null) {
+      let evo = '';
+      if (prevDay != null && prevDay > 0) {
+        const pct = Math.round((perDay - prevDay) / prevDay * 100);
+        if (pct !== 0) {
+          const down = pct < 0;                       // point mort en baisse = mieux
+          const col = down ? 'var(--green)' : 'var(--red)';
+          evo = ` <span style="color:${col};font-weight:500">${down ? '▼ ' : '▲ +'}${pct}%</span>`
+              + `<span style="color:var(--faint);font-size:11px;"> ${compLabel || 'vs prev.'}</span>`;
+        } else {
+          evo = ` <span style="color:var(--muted)">= stable</span>`;
+        }
+      }
+      avgEl.innerHTML = `<span style="color:var(--muted)">avg ${fmt(perDay)}/open day</span>${evo}`;
+    } else {
+      avgEl.innerHTML = '';
+    }
   }
 
   // ── Insights visuels ──────────────────────────────────────────────────────

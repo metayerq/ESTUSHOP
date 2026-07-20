@@ -767,6 +767,7 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         "ebitda_ht":        ebitda_ht,
         # Seuil (TTC en principal — ce qu'on lit sur la caisse)
         "seuil_ca_ttc":     seuil_ca_ttc,
+        "seuil_ca_ttc_jour": round(seuil_ca_jour_ttc, 2) if seuil_ca_jour_ttc is not None else None,  # point mort / jour ouvré
         "seuil_ca_ht":      seuil_ca,       # HT gardé pour info
         "manque_seuil":     manque_seuil,   # en TTC
         "pct_seuil":        pct_seuil,      # basé sur TTC vs TTC

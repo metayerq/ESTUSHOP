@@ -225,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260721c"
+ASSET_VERSION = "20260721d"
 
 @app.context_processor
 def _inject_asset_version():
@@ -654,6 +654,26 @@ def api_data():
                                            cogs_agg=cogs_agg)
     if result["economics"].get("charges_source") == "indisponible":
         warnings.append("Supabase costs unreachable — costs and break-even not computed")
+
+    # ── Break-even de la période de comparaison (point mort/jour ouvré) ───────
+    # Permet de suivre l'évolution du point mort d'une période à l'autre.
+    # NB : les charges sont lues en direct (mêmes valeurs pour les 2 périodes),
+    # donc cette évolution reflète surtout les changements de MARGE (mix/prix).
+    try:
+        comp_days = (comp_to - comp_from).days + 1
+        comp_rows = _ensure_summaries(comp_from, comp_to, catalog) if comp_from <= comp_to else []
+        if comp_rows:
+            comp_cogs_agg = (
+                round(sum(r.get("cogs_ht",    0) for r in comp_rows), 2),
+                round(sum(r.get("covered_ht", 0) for r in comp_rows), 2),
+                round(sum(r.get("items_ht",   0) for r in comp_rows), 2),
+            )
+            comp_eco = daily_economics([], catalog, comp_days,
+                                       from_date=comp_from, to_date=comp_to,
+                                       cogs_agg=comp_cogs_agg)
+            result["economics"]["seuil_jour_prev"] = comp_eco.get("seuil_ca_ttc_jour")
+    except Exception:
+        pass
     result["warnings"] = warnings
 
     # ── Insights visuels (indépendants du preset sélectionné) ─────────────────
