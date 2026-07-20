@@ -502,9 +502,14 @@ function updateRecurPreview(){
     : 'aucune date (coche au moins une occurrence)';
 }
 
+let saving=false;   // verrou anti-double-soumission
 async function saveEvent(){
+  if(saving) return;                                  // ignore les clics répétés
   const title=$('m-title').value.trim();
   if(!title){ showToast('Titre requis'); return; }
+  const id=$('m-id').value;
+  const rule = id ? 'none' : $('m-recur').value;      // récurrence uniquement à la création
+  const endDate = $('m-end').value || null;
   const base={
     title,
     start_time: $('m-start').value || null,
@@ -514,27 +519,35 @@ async function saveEvent(){
     color: modalColor,
     description: $('m-desc').value.trim(),
   };
-  const id=$('m-id').value;
-  const rule = id ? 'none' : $('m-recur').value;   // récurrence uniquement à la création
 
-  if(rule==='none'){
-    const body={...base, id:id||undefined, date:$('m-date').value, end_date:$('m-end').value||null};
-    const r=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const d=await r.json().catch(()=>({}));
-    if(!r.ok||d.ok===false){ showToast('Échec: '+(d.error||r.status)); return; }
-    closeModal(); showToast('Event enregistré'); await loadAll(); return;
+  // Calcule les dates AVANT toute écriture
+  let dates;
+  if(rule==='none'){ dates=[$('m-date').value]; }
+  else {
+    dates=computeOccurrences($('m-date').value, rule, selectedOrdinals(), parseInt($('m-horizon').value));
+    if(!dates.length){ showToast('Aucune occurrence — vérifie les réglages'); return; }
   }
 
-  const dates=computeOccurrences($('m-date').value, rule, selectedOrdinals(), parseInt($('m-horizon').value));
-  if(!dates.length){ showToast('Aucune occurrence — vérifie les réglages'); return; }
-  const series_id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('s'+Date.now());
-  let ok=0;
-  for(const dt of dates){
-    const r=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({...base, date:dt, end_date:null, series_id})});
-    if(r.ok){ const d=await r.json().catch(()=>({})); if(d.ok!==false) ok++; }
+  saving=true;
+  const btn=$('m-save'); btn.disabled=true; const oldTxt=btn.textContent; btn.textContent='…';
+  closeModal();                                       // ferme tout de suite → plus de double-clic
+  try {
+    const series_id = (rule!=='none')
+      ? ((window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('s'+Date.now()))
+      : null;
+    let ok=0;
+    for(const dt of dates){
+      const body = rule==='none'
+        ? {...base, id:id||undefined, date:dt, end_date:endDate}
+        : {...base, date:dt, end_date:null, series_id};
+      const r=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(r.ok){ const d=await r.json().catch(()=>({})); if(d.ok!==false) ok++; }
+    }
+    showToast(dates.length>1 ? `${ok} occurrences créées` : (ok?'Event enregistré':'Échec de la création'));
+  } finally {
+    saving=false; btn.disabled=false; btn.textContent=oldTxt;
+    await loadAll();
   }
-  closeModal(); showToast(`${ok} occurrences créées`); await loadAll();
 }
 
 async function deleteEvent(id){
