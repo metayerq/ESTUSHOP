@@ -218,19 +218,19 @@ function render(d) {
   document.getElementById('kpi-nb-delta').innerHTML     = delta(d.today.nb, d.yesterday.nb, compLabel)
     || `<span style="color:var(--muted)">tickets (refunds deducted)</span>`;
   document.getElementById('kpi-ticket').textContent     = fmt(d.today.ticket);
-  // Médiane en sous-texte du ticket moyen (qualificatif, pas un KPI autonome)
-  const medianNote = d.median != null ? `<span style="color:var(--muted)">median ${fmt(d.median)}</span>` : '';
-  const ticketDelta = delta(d.today.ticket, d.yesterday.ticket, compLabel);
-  document.getElementById('kpi-ticket-delta').innerHTML = ticketDelta
-    ? ticketDelta + (medianNote ? `<span style="color:var(--faint)"> · </span>` + medianNote : '')
-    : medianNote;
+  // Delta et médiane sur DEUX lignes distinctes → la médiane reste toujours
+  // visible, y compris sur TODAY où le libellé de delta est long.
+  document.getElementById('kpi-ticket-delta').innerHTML = delta(d.today.ticket, d.yesterday.ticket, compLabel);
+  document.getElementById('kpi-ticket-median').innerHTML =
+    d.median != null ? `median ${fmt(d.median)}` : '';
 
   // EBITDA en rangée d'or — le chiffre qui répond à "est-ce que je gagne de l'argent ?"
   const ebitdaEl  = document.getElementById('kpi-ebitda');
   const ebitdaSub = document.getElementById('kpi-ebitda-sub');
   const ecoTop = d.economics;
+  const ebitdaOpenN = ecoTop && ecoTop.open_days;
   document.getElementById('kpi-ebitda-label').textContent =
-    'Est. EBITDA' + (d.is_single_day ? '' : ` · ${d.n_days} days`);
+    'Est. EBITDA' + (d.is_single_day ? '' : (ebitdaOpenN ? ` · ${ebitdaOpenN} open days` : ` · ${d.n_days} days`));
   if (ecoTop && ecoTop.ebitda_ht != null) {
     ebitdaEl.textContent = fmt(ecoTop.ebitda_ht);
     ebitdaEl.style.color = ecoTop.ebitda_ht > 0 ? 'var(--green)' : ecoTop.ebitda_ht < 0 ? 'var(--red)' : 'var(--text)';
@@ -254,7 +254,11 @@ function render(d) {
 
   // ── Économie ──────────────────────────────────────────────────────────────
   // Labels dynamiques selon la période
-  const periodSuffix = d.is_single_day ? '(day)' : `· ${d.n_days} days`;
+  // Suffixe = jours réellement OUVERTS (les coûts sont calculés dessus), pas les
+  // jours calendaires — sinon "Since opening · 55 days" alors qu'on a ouvert 42j.
+  const openN = (d.economics && d.economics.open_days) || null;
+  const periodSuffix = d.is_single_day ? '(day)'
+    : (openN ? `· ${openN} open days` : `· ${d.n_days} days`);
   document.getElementById('eco-label').textContent      = `Economics ${periodSuffix}`;
   document.getElementById('eco-charges-label').textContent = `Costs ${periodSuffix}`;
   document.getElementById('eco-prime-label').textContent   = `Prime cost ${periodSuffix}`;
