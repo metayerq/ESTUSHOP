@@ -225,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260713i"
+ASSET_VERSION = "20260713j"
 
 @app.context_processor
 def _inject_asset_version():
@@ -413,21 +413,17 @@ def api_data():
     comp_to   = from_date - timedelta(1)
     comp_from = comp_to   - timedelta(n_days - 1)
 
-    # Vue "aujourd'hui" (live, jour partiel) : comparer au dernier JOUR OUVRÉ
-    # précédent, filtré à l'heure courante → "sommes-nous en avance/retard vs
-    # ce jour-là à la même heure ?" (vs jour fermé = inutile).
-    from config import count_open_days_raw
+    # Vue "aujourd'hui" (live, jour partiel) : comparer au MÊME JOUR de la
+    # semaine dernière, filtré à l'heure courante → "sommes-nous en avance/
+    # retard vs le même jour la semaine passée, à la même heure ?". Un café a
+    # des rythmes très différents selon le jour ; comparer lundi vs lundi.
     comp_is_sofar = False
     comp_label    = None
     if is_single and from_date == today_real:
-        prev = today_real - timedelta(1)
-        for _ in range(10):
-            if count_open_days_raw(prev, prev) == 1:
-                break
-            prev -= timedelta(1)
+        prev = today_real - timedelta(7)
         comp_from = comp_to = prev
         comp_is_sofar = True
-        comp_label = "vs " + prev.strftime("%a") + " same time"
+        comp_label = "vs last " + prev.strftime("%a") + " same time"
 
     # ── Stratégie de chargement ──────────────────────────────────────────────
     # Aujourd'hui : items live avec micro-cache 45s (partagé entre les vues).
