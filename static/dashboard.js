@@ -191,16 +191,20 @@ function render(d) {
   }
   // Deltas "vs yesterday" seulement en jour unique. En multi-jours, le strip
   // Today porte la comparaison ; le bloc période reste descriptif (comme Mesa).
-  const showDelta = d.is_single_day;
-  document.getElementById('kpi-ca-delta').innerHTML     = showDelta ? delta(d.today.ca, d.yesterday.ca, compLabel) : '';
+  // Deltas vs période de comparaison — sur TOUTES les périodes (le backend
+  // aligne la fenêtre : même jour / mêmes jours de semaine / même quantième).
+  // delta() renvoie '' si la période de comparaison est vide (ex. since opening).
+  const caDelta = delta(d.today.ca, d.yesterday.ca, compLabel);
+  document.getElementById('kpi-ca-delta').innerHTML     = caDelta;
   document.getElementById('kpi-nb').textContent         = d.today.nb;
-  document.getElementById('kpi-nb-delta').innerHTML     = showDelta ? delta(d.today.nb, d.yesterday.nb, compLabel)
-    : `<span style="color:var(--muted)">tickets (refunds deducted)</span>`;
+  document.getElementById('kpi-nb-delta').innerHTML     = delta(d.today.nb, d.yesterday.nb, compLabel)
+    || `<span style="color:var(--muted)">tickets (refunds deducted)</span>`;
   document.getElementById('kpi-ticket').textContent     = fmt(d.today.ticket);
   // Médiane en sous-texte du ticket moyen (qualificatif, pas un KPI autonome)
   const medianNote = d.median != null ? `<span style="color:var(--muted)">median ${fmt(d.median)}</span>` : '';
-  document.getElementById('kpi-ticket-delta').innerHTML = showDelta
-    ? delta(d.today.ticket, d.yesterday.ticket, compLabel) + (medianNote ? `<span style="color:var(--faint)"> · </span>` + medianNote : '')
+  const ticketDelta = delta(d.today.ticket, d.yesterday.ticket, compLabel);
+  document.getElementById('kpi-ticket-delta').innerHTML = ticketDelta
+    ? ticketDelta + (medianNote ? `<span style="color:var(--faint)"> · </span>` + medianNote : '')
     : medianNote;
 
   // EBITDA en rangée d'or — le chiffre qui répond à "est-ce que je gagne de l'argent ?"

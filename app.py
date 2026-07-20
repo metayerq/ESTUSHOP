@@ -225,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260721a"
+ASSET_VERSION = "20260721b"
 
 @app.context_processor
 def _inject_asset_version():
@@ -415,10 +415,13 @@ def api_data():
     comp_to   = from_date - timedelta(1)
     comp_from = comp_to   - timedelta(n_days - 1)
 
-    # Vue "aujourd'hui" (live, jour partiel) : comparer au MÊME JOUR de la
-    # semaine dernière, filtré à l'heure courante → "sommes-nous en avance/
-    # retard vs le même jour la semaine passée, à la même heure ?". Un café a
-    # des rythmes très différents selon le jour ; comparer lundi vs lundi.
+    # Fenêtres de comparaison alignées sur la saisonnalité hebdo (un café ne se
+    # compare pas lundi-mardi vs samedi-dimanche) :
+    #  · aujourd'hui (live)   → même jour semaine passée, filtré à l'heure courante
+    #  · jour passé unique    → même jour de la semaine précédente
+    #  · this/last week       → mêmes jours décalés de 7 jours
+    #  · this month           → mêmes jours écoulés du mois précédent
+    #  · custom / since open  → période précédente de même longueur (défaut)
     comp_is_sofar = False
     comp_label    = None
     if is_single and from_date == today_real:
@@ -426,6 +429,20 @@ def api_data():
         comp_from = comp_to = prev
         comp_is_sofar = True
         comp_label = "vs last " + prev.strftime("%a") + " same time"
+    elif is_single:
+        prev = from_date - timedelta(7)
+        comp_from = comp_to = prev
+        comp_label = "vs " + prev.strftime("%a %d %b")
+    elif preset in ("week", "lastweek"):
+        comp_from, comp_to = from_date - timedelta(7), to_date - timedelta(7)
+        comp_label = "vs same days last week"
+    elif preset == "month":
+        prev_last = from_date - timedelta(1)               # dernier jour du mois précédent
+        comp_from = prev_last.replace(day=1)
+        comp_to   = comp_from + timedelta(min(n_days, prev_last.day) - 1)
+        comp_label = "vs same days last month"
+    else:
+        comp_label = f"vs previous {n_days} days"
 
     # ── Stratégie de chargement ──────────────────────────────────────────────
     # Aujourd'hui : items live avec micro-cache 45s (partagé entre les vues).
