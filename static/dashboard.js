@@ -522,18 +522,6 @@ function render(d) {
   }
 
 
-  // ── Produits non vendus (jour unique) ────────────────────────────────────
-  const unsoldSection = document.getElementById('unsold-section');
-  if (d.is_single_day && d.unsold && d.unsold.length) {
-    unsoldSection.style.display = '';
-    document.getElementById('unsold-label').textContent =
-      d.is_today ? 'Not sold today' : `Not sold on ${fmtDate(d.date)}`;
-    document.getElementById('unsold-list').innerHTML =
-      d.unsold.map(p => `<span class="unsold-tag">${p.name}</span>`).join('');
-  } else {
-    unsoldSection.style.display = 'none';
-  }
-
   // ── Transactions récentes ────────────────────────────────────────────────
   if (!d.recent || !d.recent.length) {
     document.getElementById('recent-body').innerHTML =
@@ -753,22 +741,6 @@ function renderInsights(d) {
   } else {
     document.getElementById('ins-seat').innerHTML = `<div class="ins-label">Revenue per seat</div><div class="ins-sub">Not enough data yet.</div>`;
   }
-
-  // 6. Top movers semaine vs semaine
-  const mv = ins.movers || {};
-  const rowHtml = (c, up) => `
-    <div class="mv-row">
-      <span class="mv-name">${c.name}</span>
-      <span style="color:${up ? 'var(--green)' : 'var(--red)'};font-weight:500;white-space:nowrap;">
-        ${c.pct == null ? 'new' : (up ? '▲ +' : '▼ ') + c.pct + '%'}
-        <span style="color:var(--faint);font-weight:400;">· ${fmt(c.cur)}</span>
-      </span>
-    </div>`;
-  const rowsHtml = (mv.up || []).map(c => rowHtml(c, true)).join('')
-                 + (mv.down || []).map(c => rowHtml(c, false)).join('');
-  document.getElementById('ins-movers').innerHTML = `
-    <div class="ins-label">Top movers — last 7 days vs previous 7</div>
-    ${rowsHtml || '<div class="ins-sub">Not enough history yet.</div>'}`;
 }
 
 // ── Graphe horaire — barres div façon Mesa (pic plein, creuses en rouge) ────
