@@ -54,19 +54,20 @@
 }
 .sum-item { flex:1; padding:16px 20px; border-right:1px solid var(--border); }
 .sum-item:last-child { border-right:none; }
-.sum-label { font-size:10px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
-.sum-val   { font-size:20px; font-weight:600; letter-spacing:-.4px; color:var(--text); }
-.sum-sub   { font-size:11px; color:var(--faint); margin-top:2px; }
+.sum-label { font-family:var(--mono); font-size:9px; font-weight:400; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-bottom:5px; }
+.sum-val   { font-family:var(--mono); font-size:19px; font-weight:700; letter-spacing:-.5px; color:var(--text); font-variant-numeric:tabular-nums; }
+.sum-sub   { font-size:11px; color:var(--faint); margin-top:3px; }
 
 /* ── Section header ── */
 .sec-header {
   display:flex; align-items:center; justify-content:space-between;
-  margin-bottom:16px;
+  margin-bottom:14px;
 }
 .section-label {
-  font-size:10px; font-weight:600; letter-spacing:.08em;
+  font-family:var(--mono); font-size:10px; font-weight:400; letter-spacing:.1em;
   text-transform:uppercase; color:var(--muted);
 }
+.section-label::before { content:"— "; color:var(--faint); }
 
 /* ── Buttons ── */
 .btn-add {
@@ -113,15 +114,16 @@ tr:hover td { background:var(--bg-hover); }
 .inactive td { opacity:.45; }
 
 .badge {
-  font-size:10px; font-weight:500; padding:2px 8px; border-radius:10px;
-  display:inline-block;
+  font-family:var(--mono); font-size:9.5px; font-weight:600; padding:2px 8px; border-radius:10px;
+  display:inline-block; letter-spacing:.02em;
 }
-.badge-monthly  { background:#eef2ff; color:#4f46e5; }
-.badge-annual   { background:#fef3c7; color:#b45309; }
-.badge-quarterly{ background:#ecfdf5; color:#059669; }
-.badge-ft  { background:#f0fdf4; color:#16a34a; }
-.badge-pt  { background:#fff7ed; color:#c2410c; }
-.badge-ext { background:#f5f3ff; color:#7c3aed; }
+/* Palette app : neutre / ambre (converti en mensuel) / vert / bleu */
+.badge-monthly  { background:var(--bg-hover); color:var(--muted); }
+.badge-annual   { background:#fdf3dd; color:#b07d00; }
+.badge-quarterly{ background:#fdf3dd; color:#b07d00; }
+.badge-ft  { background:#e8f5e9; color:#2e7d32; }
+.badge-pt  { background:#fdf3dd; color:#b07d00; }
+.badge-ext { background:#e7edfb; color:#2554C7; }
 
 /* ── Inline form (add row) ── */
 .add-row { background:var(--bg-page); }
@@ -158,10 +160,10 @@ select.field-input { cursor:pointer; }
   padding:14px 20px; border-right:1px solid var(--border);
 }
 .emp-cell:last-child { border-right:none; }
-.emp-cell-label { font-size:10px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
-.emp-cell-val   { font-size:14px; font-weight:600; }
-.emp-cell-sub   { font-size:11px; color:var(--faint); margin-top:2px; }
-.emp-cost-total { font-size:16px; font-weight:700; color:var(--text); }
+.emp-cell-label { font-family:var(--mono); font-size:9px; font-weight:400; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-bottom:5px; }
+.emp-cell-val   { font-family:var(--mono); font-size:14px; font-weight:700; letter-spacing:-.3px; font-variant-numeric:tabular-nums; }
+.emp-cell-sub   { font-size:11px; color:var(--faint); margin-top:3px; }
+.emp-cost-total { font-size:16px; font-weight:700; color:var(--spec); }
 
 /* ── Modal ── */
 .modal-overlay {
@@ -185,11 +187,11 @@ select.field-input { cursor:pointer; }
 
 /* ── TSU info box ── */
 .tsu-box {
-  background:#f0fdf4; border:1px solid #bbf7d0;
-  border-radius:8px; padding:12px 16px;
-  font-size:12px; color:#15803d; margin-top:12px;
+  background:#e8f5e9; border:1px solid rgba(46,125,50,.25);
+  border-radius:8px; padding:13px 16px;
+  font-size:12px; color:#2e7d32; margin-top:12px;
 }
-.tsu-box.warning { background:#fff7ed; border-color:#fed7aa; color:#c2410c; }
+.tsu-box.warning { background:#fdf3dd; border-color:#f0d69a; color:#b07d00; }
 .tsu-row { display:flex; justify-content:space-between; padding:2px 0; }
 
 /* ── Loading ── */
@@ -310,22 +312,22 @@ select.field-input { cursor:pointer; }
 
   <!-- Summary bar -->
   <div class="summary-bar">
-    <div class="sum-item">
+    <div class="sum-item" title="Sum of your active fixed costs, all normalised to a monthly amount (quarterly ÷ 3, annual ÷ 12).">
       <div class="sum-label">Total fixed costs / month</div>
       <div class="sum-val" id="sum-fixes">—</div>
       <div class="sum-sub" id="sum-fixes-sub"></div>
     </div>
-    <div class="sum-item">
+    <div class="sum-item" title="Real employer cost, smoothed monthly: gross × 14 (13th & 14th month), employer TSU 23.75%, and meal cards (~242 days/year).">
       <div class="sum-label">Total staff / month (smoothed)</div>
       <div class="sum-val" id="sum-perso">—</div>
       <div class="sum-sub" id="sum-perso-sub">incl. TSU + 13th/14th + meals</div>
     </div>
-    <div class="sum-item">
+    <div class="sum-item" title="Fixed costs + staff. This is the monthly base your break-even and EBITDA are computed from.">
       <div class="sum-label">Total cost / month</div>
       <div class="sum-val" id="sum-total">—</div>
       <div class="sum-sub" id="sum-total-sub"></div>
     </div>
-    <div class="sum-item">
+    <div class="sum-item" title="Monthly cost ÷ 21.25 average open days. This per-day figure drives the daily break-even on the dashboard.">
       <div class="sum-label">Cost / open day</div>
       <div class="sum-val" id="sum-jour">—</div>
       <div class="sum-sub">over 21.25 days/month</div>
@@ -492,14 +494,14 @@ select.field-input { cursor:pointer; }
       <div class="tsu-row"><span>+ 13th &amp; 14th smoothed (+16.7%)</span><span id="prev-mois">—</span></div>
       <div class="tsu-row"><span id="prev-tsu-label">+ Employer TSU 23.75%</span><span id="prev-tsu">—</span></div>
       <div class="tsu-row"><span>+ Meal allowance (~242d/yr)</span><span id="prev-repas">—</span></div>
-      <div class="tsu-row" style="border-top:1px solid #bbf7d0;margin-top:6px;padding-top:6px;font-weight:700;font-size:13px;">
+      <div class="tsu-row" style="border-top:1px solid rgba(46,125,50,.3);margin-top:6px;padding-top:6px;font-weight:700;font-size:13px;">
         <span>Total / month (employer)</span><span id="prev-total">—</span>
       </div>
     </div>
 
     <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeEmpModal()">Annuler</button>
-      <button class="btn-primary" onclick="saveEmployee()">Enregistrer</button>
+      <button class="btn-ghost" onclick="closeEmpModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveEmployee()">Save</button>
     </div>
   </div>
 </div>
@@ -724,7 +726,7 @@ function openChargeModal(id) {
   document.getElementById('charge-frequency').value = 'monthly';
   document.getElementById('charge-category').value = '';
   document.getElementById('charge-notes').value = '';
-  document.getElementById('charge-modal-title').textContent = 'Nouvelle charge';
+  document.getElementById('charge-modal-title').textContent = 'New fixed cost';
   document.getElementById('charge-modal').classList.add('open');
   document.getElementById('charge-name').focus();
 }
@@ -737,7 +739,7 @@ function editCharge(id) {
   document.getElementById('charge-frequency').value = c.frequency;
   document.getElementById('charge-category').value = c.category || '';
   document.getElementById('charge-notes').value = c.notes || '';
-  document.getElementById('charge-modal-title').textContent = 'Modifier la charge';
+  document.getElementById('charge-modal-title').textContent = 'Edit fixed cost';
   document.getElementById('charge-modal').classList.add('open');
 }
 function closeChargeModal(e) {

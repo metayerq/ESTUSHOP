@@ -227,21 +227,21 @@
   <div id="today-strip" style="display:none; margin-bottom:32px;">
     <div class="section-label">Today</div>
     <div class="kpi-grid">
-      <div class="kpi-cell">
+      <div class="kpi-cell" data-tip="Live snapshot of today so far, shown above the selected period. The badge compares it to the same weekday last week at the same time — a fair 'are we ahead or behind?' read mid-service.">
         <div class="kpi-label">Revenue today</div>
         <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
           <span class="kpi-value" id="ts-ca">—</span><span id="ts-ca-badge"></span>
         </div>
         <div class="kpi-delta" id="ts-ca-sub"></div>
       </div>
-      <div class="kpi-cell">
+      <div class="kpi-cell" data-tip="Tickets rung up today so far, compared to the same weekday last week at the same time.">
         <div class="kpi-label">Transactions</div>
         <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
           <span class="kpi-value" id="ts-nb">—</span><span id="ts-nb-badge"></span>
         </div>
         <div class="kpi-delta" id="ts-nb-sub"></div>
       </div>
-      <div class="kpi-cell">
+      <div class="kpi-cell" data-tip="Today's average ticket so far vs the same weekday last week at the same time.">
         <div class="kpi-label">Average ticket</div>
         <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
           <span class="kpi-value" id="ts-ticket">—</span><span id="ts-ticket-badge"></span>
@@ -255,25 +255,25 @@
   <div class="section-label" id="kpi-section-label">Today</div>
   <div style="margin-bottom:32px;">
     <div class="kpi-grid">
-      <div class="kpi-cell">
+      <div class="kpi-cell" data-tip="Total charged to customers, VAT included. The line below splits it into revenue excl. VAT and the VAT you collected. 'traffic × basket' explains what drove the change: more customers, or a bigger average spend.">
         <div class="kpi-label">Revenue (incl. VAT)</div>
         <div class="kpi-value" id="kpi-ca">—</div>
         <div class="kpi-delta" id="kpi-ca-delta"></div>
         <div class="kpi-delta" id="kpi-ca-drivers" style="margin-top:2px;"></div>
         <div class="kpi-delta" id="kpi-ca-ht" style="color:var(--muted);margin-top:2px;"></div>
       </div>
-      <div class="kpi-cell">
+      <div class="kpi-cell" data-tip="Number of sales tickets over the period, refunds deducted. A ticket is one customer checkout, whatever the number of items.">
         <div class="kpi-label">Transactions</div>
         <div class="kpi-value" id="kpi-nb">—</div>
         <div class="kpi-delta" id="kpi-nb-delta"></div>
       </div>
-      <div class="kpi-cell">
+      <div class="kpi-cell" data-tip="Revenue ÷ transactions. The median below is the typical ticket — it ignores outliers like one big catering order that inflates the average.">
         <div class="kpi-label">Average ticket</div>
         <div class="kpi-value" id="kpi-ticket">—</div>
         <div class="kpi-delta" id="kpi-ticket-delta"></div>
         <div class="kpi-delta" id="kpi-ticket-median" style="color:var(--muted);margin-top:2px;"></div>
       </div>
-      <div class="kpi-cell">
+      <div class="kpi-cell" data-tip="Estimated operating profit: gross margin minus all costs (fixed + payroll) for the period. Green = the café made money, red = it lost money.">
         <div class="kpi-label" id="kpi-ebitda-label">Est. EBITDA</div>
         <div class="kpi-value" id="kpi-ebitda">—</div>
         <div class="kpi-delta" id="kpi-ebitda-sub" style="color:var(--muted)"></div>
@@ -285,17 +285,17 @@
   <div class="section-label" id="eco-label" style="margin-top:32px;">Today's economics</div>
   <div style="margin-bottom:32px;">
     <div class="kpi-grid">
-      <div class="kpi-cell">
+      <div class="kpi-cell" data-tip="Revenue excl. VAT minus the cost of goods sold (from your Vendus cost prices). 'COGS coverage' is the share of sales whose cost is actually known — the rest is estimated.">
         <div class="kpi-label" id="eco-marge-label">Gross margin</div>
         <div class="kpi-value" id="eco-marge">—</div>
         <div class="kpi-delta" id="eco-marge-pct" style="color:var(--muted)"></div>
       </div>
-      <div class="kpi-cell">
+      <div class="kpi-cell" data-tip="Fixed costs (rent, subscriptions…) plus payroll for the period, spread over the real open days — not calendar days. Edit these in the Costs tab.">
         <div class="kpi-label" id="eco-charges-label">Costs (day)</div>
         <div class="kpi-value" id="eco-charges">—</div>
         <div class="kpi-delta" id="eco-charges-sub" style="color:var(--muted)"></div>
       </div>
-      <div class="kpi-cell">
+      <div class="kpi-cell" data-tip="COGS + labour as a % of revenue — the core restaurant health ratio. Target under 65%. The bar splits it: solid = COGS, light = labour.">
         <div class="kpi-label" id="eco-prime-label">Prime cost</div>
         <div class="kpi-value" id="eco-prime">—</div>
         <div class="kpi-delta" id="eco-prime-sub" style="color:var(--muted)"></div>
@@ -303,7 +303,7 @@
           <div style="display:flex;height:4px;border-radius:2px;overflow:hidden;background:var(--bar-bg);" id="eco-prime-bar"></div>
         </div>
       </div>
-      <div class="kpi-cell">
+      <div class="kpi-cell" data-tip="The revenue you need to cover all costs, VAT included. Computed as costs ÷ your real margin. 'avg /open day' and its arrow track whether your break-even is rising or falling vs the comparison period.">
         <div class="kpi-label" id="eco-seuil-label">Break-even revenue</div>
         <div class="kpi-value" id="eco-seuil">—</div>
         <div class="kpi-delta" id="eco-seuil-sub"></div>
