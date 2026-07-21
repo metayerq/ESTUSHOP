@@ -132,6 +132,40 @@
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-weight: 700; letter-spacing: -.5px; }
   .dbody.estu .bars i { background: rgba(37,84,199,.12); }
   .dbody.estu .bars i.hot { background: #2554C7; }
+  /* Period pills (réplique dashboard) */
+  .ppills { display: flex; gap: 7px; flex-wrap: wrap; margin: 2px 0 6px; }
+  .ppill { font-family: inherit; font-size: 12px; font-weight: 500; padding: 6px 13px; border-radius: 16px;
+    border: 1px solid var(--border); background: #fff; color: var(--tmuted); cursor: pointer; }
+  .ppill.on { background: var(--spec); border-color: var(--spec); color: #fff; font-weight: 600; }
+  /* Tables données (products / transactions / charges) */
+  .dtable { width: 100%; border-collapse: collapse; font-size: 12.5px; background: #fff; }
+  .dtable th { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 9px; font-weight: 400;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--tmuted); text-align: left; padding: 9px 12px;
+    background: var(--bg); border-bottom: 1px solid var(--border); }
+  .dtable th.r { text-align: right; }
+  .dtable td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+  .dtable tr:last-child td { border-bottom: none; }
+  .dtable td.r { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .twrap { border: 1px solid #DCD8CC; border-radius: 9px; overflow: hidden; background: #fff; }
+  .qbar { display: inline-block; width: 64px; height: 3px; background: var(--border); border-radius: 2px; vertical-align: middle; }
+  .qbar i { display: block; height: 3px; background: var(--spec); border-radius: 2px; }
+  .txb { font-family: ui-monospace, monospace; font-size: 9.5px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 5px; padding: 2px 7px; color: var(--tmuted); }
+  /* Zone badges + mois */
+  .zhead { display: flex; align-items: center; gap: 9px; margin: 22px 0 10px; padding-top: 16px; border-top: 1px solid #DCD8CC; }
+  .zhead .slabel { margin: 0; }
+  .zbadge { font-family: ui-monospace, monospace; font-size: 8.5px; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--tfaint); background: rgba(0,0,0,.045); padding: 3px 9px; border-radius: 12px; white-space: nowrap; }
+  .mez { width: 100%; height: 86px; display: block; }
+  .bcal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+  .bcal b { font-family: ui-monospace, monospace; font-size: 8px; font-weight: 400; color: var(--tfaint); text-align: center; padding-bottom: 2px; }
+  .bcal i { height: 20px; border-radius: 4px; background: var(--bg); font-size: 9px; color: var(--tfaint);
+    display: flex; align-items: center; justify-content: center; font-style: normal; }
+  .bcal i.g { background: rgba(46,125,50,.22); color: var(--text); }
+  .bcal i.rd { background: rgba(196,85,77,.20); color: var(--text); }
+  .tab-badge { font-family: ui-monospace, monospace; font-size: 9px; background: var(--border); border-radius: 8px; padding: 1px 7px; margin-left: 6px; color: var(--tmuted); }
+  .vtab.on .tab-badge { background: var(--spec-soft); color: var(--spec); }
+  .fq { font-size: 9px; font-weight: 600; padding: 2px 7px; border-radius: 9px; background: var(--border); color: var(--tmuted); }
   .pill { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 10px; padding: 1px 7px; }
   .pill.up { background: var(--green-bg); color: var(--green); }
   .pill.dn { background: #fdeceb; color: var(--red); }
@@ -460,6 +494,16 @@
       <!-- ═══ VIEW · DASHBOARD ═══ -->
       <div id="v-dash">
 
+        <div class="ppills" id="ppills">
+          <button class="ppill on">Today</button>
+          <button class="ppill">Yesterday</button>
+          <button class="ppill">This week</button>
+          <button class="ppill">Last week</button>
+          <button class="ppill">This month</button>
+          <button class="ppill">Since opening</button>
+          <button class="ppill">Custom…</button>
+        </div>
+
         <div class="slabel">Today</div>
         <!-- Gold row -->
         <div class="kgrid4">
@@ -467,6 +511,7 @@
             <div class="k">Revenue (incl. VAT)</div><div class="v">€487.50</div>
             <div class="d"><span class="pill up">▲ +12%</span> vs last Tue same time</div>
             <div class="sub2">= traffic <span style="color:var(--green);font-weight:600;">+8%</span> × basket <span style="color:var(--green);font-weight:600;">+4%</span></div>
+            <div class="sub2">€431.42 excl. VAT · VAT €56.08</div>
           </div>
           <div class="kcard">
             <div class="k">Transactions</div><div class="v">63</div>
@@ -507,28 +552,22 @@
         </div>
 
         <div class="slabel">Activity</div>
-        <div class="grid2">
-          <div class="panel">
-            <div class="k">Revenue by hour — peak solid, dead hours red</div>
-            <div class="bars">
-              <i style="height:14%"></i><i style="height:30%"></i><i style="height:52%"></i><i class="hot" style="height:84%"></i><i class="hot" style="height:100%"></i><i style="height:60%"></i><i class="dead" style="height:6%"></i><i style="height:50%"></i><i style="height:56%"></i><i style="height:32%"></i>
-            </div>
-            <div class="wowline"><span>⚡ Rush 11:00–13:00 · 41% of the day</span></div>
+        <div class="panel" style="margin-bottom:12px;">
+          <div class="k">Revenue by hour — peak solid, dead hours red</div>
+          <div class="bars" style="height:84px;">
+            <i style="height:14%"></i><i style="height:30%"></i><i style="height:52%"></i><i class="hot" style="height:84%"></i><i class="hot" style="height:100%"></i><i style="height:60%"></i><i class="dead" style="height:6%"></i><i style="height:50%"></i><i style="height:56%"></i><i style="height:32%"></i>
           </div>
-          <div class="panel">
-            <div class="k">Rush heat map · 28 days</div>
-            <div class="heat5" id="demo-heat"></div>
-            <div class="wowline"><span><b>44%</b> of weekly revenue in the 3 busiest hours</span></div>
-          </div>
+          <div class="wowline"><span>⚡ Rush 11:00–13:00 · <b>41%</b> of the day</span><span>· dead hour 14h flagged red</span></div>
         </div>
 
+        <div class="slabel">Breakdown</div>
         <div class="grid2">
           <div class="panel">
-            <div class="k">Last 7 days</div>
-            <div class="bars" style="height:56px;">
-              <i style="height:52%"></i><i class="hot" style="height:100%"></i><i style="height:48%"></i><i style="height:51%"></i><i style="height:57%"></i><i style="height:53%"></i><i style="height:62%"></i>
-            </div>
-            <div class="wowline"><span>Last 7 full days <b>€2,847</b> <span class="pill up">▲ +9%</span></span><span>· 371 tx <span class="pill up">▲ +5%</span></span><span>· Best day: <b>Saturday</b></span></div>
+            <div class="k">Product mix</div>
+            <div class="mixrow"><div class="t"><b>Drinks</b><span class="n">58% · €282.75 incl.VAT</span></div><div class="bar"><i style="width:58%;"></i></div><div class="t" style="margin-top:2px;"><span class="n" style="font-size:10.5px;">margin <span style="color:var(--green);font-weight:600;">79%</span> · €176.10</span></div></div>
+            <div class="mixrow"><div class="t"><b>Food</b><span class="n">27% · €131.63 incl.VAT</span></div><div class="bar"><i style="width:27%;"></i></div><div class="t" style="margin-top:2px;"><span class="n" style="font-size:10.5px;">margin <span style="color:var(--amber);font-weight:600;">62%</span> · €72.20</span></div></div>
+            <div class="mixrow"><div class="t"><b>Viennoiserie</b><span class="n">9% · €43.88 incl.VAT</span></div><div class="bar"><i style="width:9%;"></i></div><div class="t" style="margin-top:2px;"><span class="n" style="font-size:10.5px;">margin <span style="color:var(--amber);font-weight:600;">51%</span> · €19.80</span></div></div>
+            <div class="mixrow"><div class="t"><b>Retail</b><span class="n">6% · €29.25 incl.VAT</span></div><div class="bar"><i style="width:6%;"></i></div><div class="t" style="margin-top:2px;"><span class="n" style="font-size:10.5px;">margin <span style="color:var(--red);font-weight:600;">44%</span> · €11.40</span></div></div>
           </div>
           <div class="panel">
             <div class="k">Payment methods</div>
@@ -539,22 +578,75 @@
           </div>
         </div>
 
-        <div class="slabel">Breakdown</div>
+        <div class="slabel">Products sold — today</div>
+        <div class="twrap" style="margin-bottom:12px;">
+          <table class="dtable">
+            <thead><tr><th>Product</th><th class="r">Qty</th><th class="r">Unit price</th><th class="r">Revenue</th><th class="r">Margin</th><th style="width:80px;"></th></tr></thead>
+            <tbody>
+              <tr><td style="font-weight:600;">Espresso</td><td class="r">84</td><td class="r" style="color:var(--tmuted);">€1.30</td><td class="r">€109.20</td><td class="r"><span class="bdg g">82%</span></td><td><span class="qbar"><i style="width:100%;"></i></span></td></tr>
+              <tr><td>Croissant</td><td class="r">29</td><td class="r" style="color:var(--tmuted);">€1.80</td><td class="r">€52.20</td><td class="r"><span class="bdg a">54%</span></td><td><span class="qbar"><i style="width:35%;"></i></span></td></tr>
+              <tr><td>Iced latte</td><td class="r">14</td><td class="r" style="color:var(--tmuted);">€3.50</td><td class="r">€49.00</td><td class="r"><span class="bdg g">76%</span></td><td><span class="qbar"><i style="width:17%;"></i></span></td></tr>
+              <tr><td>Avocado toast</td><td class="r">11</td><td class="r" style="color:var(--tmuted);">€7.50</td><td class="r">€82.50</td><td class="r"><span class="bdg a">61%</span></td><td><span class="qbar"><i style="width:13%;"></i></span></td></tr>
+              <tr><td>Fresh juice</td><td class="r">9</td><td class="r" style="color:var(--tmuted);">€4.00</td><td class="r">€36.00</td><td class="r"><span class="bdg r">52%</span></td><td><span class="qbar"><i style="width:11%;"></i></span></td></tr>
+              <tr><td>Granola bowl</td><td class="r">7</td><td class="r" style="color:var(--tmuted);">€6.50</td><td class="r">€45.50</td><td class="r"><span class="bdg g">69%</span></td><td><span class="qbar"><i style="width:8%;"></i></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="slabel">Recent transactions</div>
+        <div class="twrap">
+          <table class="dtable">
+            <thead><tr><th>Time</th><th>Document</th><th>Type</th><th class="r">Amount</th></tr></thead>
+            <tbody>
+              <tr><td style="color:var(--tmuted);">14:31</td><td class="mono" style="font-size:11.5px;">FS 01P2026/633</td><td><span class="txb">FS</span></td><td class="r">€4.00</td></tr>
+              <tr><td style="color:var(--tmuted);">14:07</td><td class="mono" style="font-size:11.5px;">FS 01P2026/632</td><td><span class="txb">FS</span></td><td class="r">€11.20</td></tr>
+              <tr><td style="color:var(--tmuted);">13:45</td><td class="mono" style="font-size:11.5px;">FS 01P2026/631</td><td><span class="txb">FS</span></td><td class="r">€23.50</td></tr>
+              <tr><td style="color:var(--tmuted);">13:45</td><td class="mono" style="font-size:11.5px;">FS 01P2026/630</td><td><span class="txb">FS</span></td><td class="r">€2.80</td></tr>
+              <tr><td style="color:var(--tmuted);">13:12</td><td class="mono" style="font-size:11.5px;">FS 01P2026/629</td><td><span class="txb">FS</span></td><td class="r">€7.50</td></tr>
+              <tr><td style="color:var(--tmuted);">12:58</td><td class="mono" style="font-size:11.5px;">FS 01P2026/628</td><td><span class="txb">FS</span></td><td class="r">€4.00</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Zone mois -->
+        <div class="zhead"><div class="slabel">July 2026</div><span class="zbadge">month to date</span></div>
         <div class="grid2">
           <div class="panel">
-            <div class="k">Product mix · margin per bucket</div>
-            <div class="mixrow"><div class="t"><b>Drinks</b><span class="n">58% · margin <span style="color:var(--green);font-weight:600;">79%</span></span></div><div class="bar"><i style="width:58%;"></i></div></div>
-            <div class="mixrow"><div class="t"><b>Food</b><span class="n">27% · margin <span style="color:var(--amber);font-weight:600;">62%</span></span></div><div class="bar"><i style="width:27%;"></i></div></div>
-            <div class="mixrow"><div class="t"><b>Viennoiserie</b><span class="n">9% · margin <span style="color:var(--amber);font-weight:600;">51%</span></span></div><div class="bar"><i style="width:9%;"></i></div></div>
-            <div class="mixrow"><div class="t"><b>Retail</b><span class="n">6% · margin <span style="color:var(--red);font-weight:600;">44%</span></span></div><div class="bar"><i style="width:6%;"></i></div></div>
+            <div class="k">Month EBITDA — cumulative + projection</div>
+            <svg class="mez" viewBox="0 0 600 90" preserveAspectRatio="none">
+              <line x1="0" y1="52" x2="600" y2="52" stroke="#DCD8CC" stroke-width="1.5"/>
+              <path d="M0,64 L45,67 L90,71 L135,66 L180,69 L225,60 L270,63 L315,50 L360,44 L405,47 L430,42" fill="none" stroke="#2554C7" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+              <path d="M430,42 L596,16" fill="none" stroke="rgba(37,84,199,.45)" stroke-width="2.5" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>
+            </svg>
+            <div class="wowline"><span>MTD <b style="color:var(--green);">€132.23</b></span><span>· projected <b style="color:var(--green);">€473.03</b> by month end</span><span>· crossed €0 on 16 Jul</span></div>
           </div>
-          <div class="panel rows">
-            <div class="k">Top products · today</div>
-            <div class="r"><span>Espresso · 84 sold</span><span class="n">€109.20 <span class="bdg g">82%</span></span></div>
-            <div class="r"><span>Iced latte · 14 sold</span><span class="n">€49.00 <span class="bdg g">76%</span></span></div>
-            <div class="r"><span>Avocado toast · 11 sold</span><span class="n">€82.50 <span class="bdg a">61%</span></span></div>
-            <div class="r"><span>Croissant · 29 sold</span><span class="n">€52.20 <span class="bdg a">54%</span></span></div>
-            <div class="r"><span>Fresh juice · 9 sold</span><span class="n">€36.00 <span class="bdg r">52%</span></span></div>
+          <div class="panel">
+            <div class="k">Break-even calendar</div>
+            <div class="bcal">
+              <b>M</b><b>T</b><b>W</b><b>T</b><b>F</b><b>S</b><b>S</b>
+              <i></i><i></i><i>1</i><i class="rd">2</i><i class="rd">3</i><i class="rd">4</i><i class="g">5</i>
+              <i class="rd">6</i><i>7</i><i>8</i><i class="rd">9</i><i class="rd">10</i><i class="g">11</i><i class="g">12</i>
+              <i class="rd">13</i><i>14</i><i>15</i><i class="g">16</i><i class="rd">17</i><i class="rd">18</i><i class="g">19</i>
+              <i class="rd">20</i><i>21</i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+            <div class="wowline"><span>green = above break-even · <b>5/15</b> open days</span></div>
+          </div>
+        </div>
+
+        <!-- Zone patterns -->
+        <div class="zhead"><div class="slabel">Patterns</div><span class="zbadge">fixed windows — not affected by the period filter</span></div>
+        <div class="grid2">
+          <div class="panel">
+            <div class="k">Rush heat map · 28 days</div>
+            <div class="heat5" id="demo-heat"></div>
+            <div class="wowline"><span><b>44%</b> of weekly revenue in the 3 busiest hours</span></div>
+          </div>
+          <div class="panel">
+            <div class="k">Last 7 days</div>
+            <div class="bars" style="height:56px;">
+              <i style="height:52%"></i><i class="hot" style="height:100%"></i><i style="height:48%"></i><i style="height:51%"></i><i style="height:57%"></i><i style="height:53%"></i><i style="height:62%"></i>
+            </div>
+            <div class="wowline"><span>Last 7 full days <b>€2,847</b> <span class="pill up">▲ +9%</span></span><span>· 371 tx <span class="pill up">▲ +5%</span></span><span>· Best day: <b>Saturday</b></span></div>
           </div>
         </div>
 
@@ -572,8 +664,8 @@
         </div>
 
         <div class="vtabs" style="margin-top:4px;">
-          <button class="vtab on" id="ct-fixed" onclick="switchCost('fixed')">Fixed costs</button>
-          <button class="vtab" id="ct-staff" onclick="switchCost('staff')">Staff</button>
+          <button class="vtab on" id="ct-fixed" onclick="switchCost('fixed')">Fixed costs <span class="tab-badge" id="bc-fixed">—</span></button>
+          <button class="vtab" id="ct-staff" onclick="switchCost('staff')">Staff <span class="tab-badge" id="bc-staff">—</span></button>
         </div>
 
         <!-- Fixed costs -->
@@ -582,8 +674,11 @@
             <span class="lab">Monthly fixed costs</span>
             <button class="btn-add" onclick="openCharge()">+ Add</button>
           </div>
-          <div class="panel" style="padding:6px 16px 10px;">
-            <table class="ctable" id="charges-body"></table>
+          <div class="twrap">
+            <table class="dtable">
+              <thead><tr><th>Name</th><th>Category</th><th>Frequency</th><th class="r">Amount</th><th class="r">/ month</th><th></th></tr></thead>
+              <tbody id="charges-body"></tbody>
+            </table>
           </div>
         </div>
 
@@ -835,18 +930,21 @@
     CH.forEach(function (c) { (byCat[c.cat || 'Misc'] = byCat[c.cat || 'Misc'] || []).push(c); });
     var html = '';
     Object.keys(byCat).forEach(function (cat) {
-      html += '<tr class="catrow"><td colspan="4">' + cat + '</td></tr>';
+      html += '<tr class="catrow"><td colspan="6">' + cat + '</td></tr>';
       byCat[cat].forEach(function (c) {
         var mo = toMonthly(c.amount, c.freq);
-        var freqTxt = c.freq === 'monthly' ? '' : ' <span class="badge2">' + c.freq + '</span>';
-        html += '<tr><td>' + c.name + freqTxt + '</td>'
-          + '<td class="n">' + eur(c.amount) + (c.freq !== 'monthly' ? '<br><span style="font-size:10px;color:var(--tfaint)">' + eur(mo) + '/mo</span>' : '') + '</td>'
-          + '<td class="act"><button class="lnk edit" onclick="editCharge(' + c.id + ')">Edit</button> <button class="lnk del" onclick="delCharge(' + c.id + ')">✕</button></td></tr>';
+        html += '<tr><td>' + c.name + '</td>'
+          + '<td style="color:var(--tfaint);font-size:11.5px;">' + (c.cat || '') + '</td>'
+          + '<td><span class="fq">' + c.freq + '</span></td>'
+          + '<td class="r">' + eur(c.amount) + '</td>'
+          + '<td class="r" style="font-weight:600;">' + (c.freq !== 'monthly' ? eur(mo) : '—') + '</td>'
+          + '<td class="r"><button class="lnk edit" onclick="editCharge(' + c.id + ')">Edit</button> <button class="lnk del" onclick="delCharge(' + c.id + ')">✕</button></td></tr>';
       });
     });
     var tot = CH.reduce(function (s, c) { return s + toMonthly(c.amount, c.freq); }, 0);
-    html += '<tr><td class="tot">Total / month</td><td class="n tot">' + eur(tot) + '</td><td></td></tr>';
+    html += '<tr style="background:var(--bg);"><td colspan="3" style="font-weight:600;font-size:11.5px;color:var(--tmuted);">Total active fixed costs</td><td></td><td class="r" style="font-weight:700;font-size:13.5px;">' + eur(tot) + '</td><td></td></tr>';
     document.getElementById('charges-body').innerHTML = html;
+    var bf = document.getElementById('bc-fixed'); if (bf) bf.textContent = CH.length;
   }
 
   function renderEmps() {
@@ -867,6 +965,7 @@
         + '<div class="egrid">' + cells + '</div></div>';
     });
     document.getElementById('emp-cards').innerHTML = html || '<div style="color:var(--tmuted);padding:20px;text-align:center;">No team yet — click “+ Add”.</div>';
+    var bs = document.getElementById('bc-staff'); if (bs) bs.textContent = EM.length;
   }
   function cell(l, v, s, tot) { return '<div class="ecell"><div class="l">' + l + '</div><div class="v' + (tot ? ' tot' : '') + '">' + v + '</div>' + (s ? '<div class="s">' + s + '</div>' : '') + '</div>'; }
 
@@ -973,6 +1072,14 @@
     closeEmp(); renderEmps(); recompute();
   };
   window.delEmp = function (id) { EM = EM.filter(function (x) { return x.id !== id; }); renderEmps(); recompute(); };
+
+  // Pills de période (démo : état visuel uniquement, les données restent celles du jour)
+  document.querySelectorAll('#ppills .ppill').forEach(function (p) {
+    p.addEventListener('click', function () {
+      document.querySelectorAll('#ppills .ppill').forEach(function (x) { x.classList.remove('on'); });
+      p.classList.add('on');
+    });
+  });
 
   renderCharges(); renderEmps(); recompute();
 
