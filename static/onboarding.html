@@ -410,9 +410,10 @@
     <label class="fl"><span class="lab">Your biggest question about your numbers <em>optional</em></span>
       <input class="fi" id="f-question" placeholder='e.g. "Am I actually making money on brunch?"'>
     </label>
-    <label class="fl"><span class="lab">Phone <em>optional — for the setup call, WhatsApp works</em></span>
+    <label class="fl"><span class="lab">Phone <em>for the setup call — WhatsApp works</em></span>
       <input class="fi" id="f-phone" type="tel" placeholder="+351 9XX XXX XXX" autocomplete="tel">
     </label>
+    <div class="ferr" id="e3">Please add a phone number so we can call you for setup.</div>
     <button class="fbtn blue" onclick="go(3)">Request early access →</button>
   </div>
 </div>
@@ -465,69 +466,67 @@
       <div id="v-dash">
 
         <div class="ppills" id="ppills">
-          <button class="ppill on">Today</button>
-          <button class="ppill">Yesterday</button>
-          <button class="ppill">This week</button>
-          <button class="ppill">Last week</button>
-          <button class="ppill">This month</button>
-          <button class="ppill">Since opening</button>
-          <button class="ppill">Custom…</button>
+          <button class="ppill on" data-period="today">Today</button>
+          <button class="ppill" data-period="yesterday">Yesterday</button>
+          <button class="ppill" data-period="week">This week</button>
+          <button class="ppill" data-period="lastweek">Last week</button>
+          <button class="ppill" data-period="month">This month</button>
+          <button class="ppill" data-period="all">Since opening</button>
+          <button class="ppill" data-period="custom">Custom…</button>
         </div>
 
-        <div class="slabel">Today</div>
+        <div class="slabel" id="lbl-period">Today</div>
         <!-- Gold row -->
         <div class="kgrid4">
           <div class="kcard">
-            <div class="k">Revenue (incl. VAT)</div><div class="v">€512.40</div>
-            <div class="d"><span class="pill up">▲ +6%</span> vs last Tue same time</div>
-            <div class="sub2">= traffic <span style="color:var(--green);font-weight:600;">+4%</span> × basket <span style="color:var(--green);font-weight:600;">+2%</span></div>
-            <div class="sub2">€461.30 excl. VAT · VAT €51.10</div>
+            <div class="k">Revenue (incl. VAT)</div><div class="v" id="g-rev">—</div>
+            <div class="d" id="g-rev-d"></div>
+            <div class="sub2" id="g-rev-drivers"></div>
+            <div class="sub2" id="g-rev-vat"></div>
           </div>
           <div class="kcard">
-            <div class="k">Transactions</div><div class="v">108</div>
-            <div class="d"><span class="pill up">▲ +4%</span> vs last Tue same time</div>
+            <div class="k">Transactions</div><div class="v" id="g-tx">—</div>
+            <div class="d" id="g-tx-d"></div>
           </div>
           <div class="kcard">
-            <div class="k">Average ticket</div><div class="v">€4.74</div>
-            <div class="d"><span class="pill up">▲ +2%</span></div>
-            <div class="sub2">median €3.60</div>
+            <div class="k">Average ticket</div><div class="v" id="g-ticket">—</div>
+            <div class="d" id="g-ticket-d"></div>
+            <div class="sub2" id="g-ticket-median"></div>
           </div>
           <div class="kcard">
-            <div class="k">Est. EBITDA (today)</div><div class="v" id="d-ebitda" style="color:var(--green);">+€47.80</div>
-            <div class="d" id="d-ebitda-sub" style="color:var(--green);">Profitable ✓</div>
+            <div class="k" id="g-ebitda-label">Est. EBITDA</div><div class="v" id="d-ebitda">—</div>
+            <div class="d" id="d-ebitda-sub"></div>
           </div>
         </div>
 
-        <div class="slabel">Economics (day)</div>
+        <div class="slabel" id="lbl-eco">Economics</div>
         <!-- Economics row -->
         <div class="kgrid4">
           <div class="kcard">
-            <div class="k">Gross margin</div><div class="v">71.0%</div>
-            <div class="sub2">€327.50 · <span style="color:var(--green);">COGS coverage 94%</span></div>
+            <div class="k">Gross margin</div><div class="v" id="e-margin">—</div>
+            <div class="sub2" id="e-margin-sub"></div>
           </div>
           <div class="kcard">
-            <div class="k">Costs (day)</div><div class="v" id="d-costday">€270.60</div>
-            <div class="sub2" id="d-costday-sub">€126 fixed · €145 staff</div>
+            <div class="k" id="e-costs-label">Costs</div><div class="v" id="d-costday">—</div>
+            <div class="sub2" id="d-costday-sub"></div>
           </div>
           <div class="kcard">
-            <div class="k">Prime cost</div><div class="v" id="d-prime" style="color:var(--amber);">64.6%</div>
-            <div class="sub2" id="d-prime-sub">COGS 26% · Labour 39% · target &lt;65%</div>
-            <div class="primebar"><i id="d-prime-cogs" style="width:26%;background:var(--spec);"></i><i id="d-prime-lab" style="width:39%;background:rgba(37,84,199,.35);"></i></div>
+            <div class="k">Prime cost</div><div class="v" id="d-prime">—</div>
+            <div class="sub2" id="d-prime-sub"></div>
+            <div class="primebar"><i id="d-prime-cogs" style="width:0;background:var(--spec);"></i><i id="d-prime-lab" style="width:0;background:rgba(37,84,199,.35);"></i></div>
           </div>
           <div class="kcard">
-            <div class="k">Break-even revenue</div><div class="v" id="d-be">€412.00</div>
-            <div class="sub2" id="d-be-sub"><span style="color:var(--green);">Reached ✓ at 12:47</span> · avg €412/open day</div>
-            <div class="progress"><i id="d-be-bar" style="width:100%;"></i></div>
+            <div class="k" id="e-be-label">Break-even revenue</div><div class="v" id="d-be">—</div>
+            <div class="sub2" id="d-be-sub"></div>
+            <div class="progress"><i id="d-be-bar" style="width:0;"></i></div>
           </div>
         </div>
 
         <div class="slabel">Activity</div>
         <div class="panel" style="margin-bottom:12px;">
-          <div class="k">Revenue by hour — peak solid, dead hours red</div>
-          <div class="bars" style="height:84px;">
-            <i style="height:36%"></i><i class="hot" style="height:88%"></i><i class="hot" style="height:100%"></i><i style="height:54%"></i><i style="height:40%"></i><i style="height:62%"></i><i style="height:74%"></i><i style="height:38%"></i><i class="dead" style="height:6%"></i><i style="height:26%"></i>
-          </div>
-          <div class="wowline"><span>⚡ Morning rush 08:00–10:00 · <b>39%</b> of the day</span><span>· lunch bump 12–14h</span><span>· dead hour 15h flagged red</span></div>
+          <div class="k" id="act-title">Revenue by hour — peak solid, dead hours red</div>
+          <div class="bars" id="act-bars" style="height:84px;"></div>
+          <div class="wowline" id="act-note"></div>
         </div>
 
         <div class="slabel">Breakdown</div>
@@ -548,18 +547,11 @@
           </div>
         </div>
 
-        <div class="slabel">Products sold — today</div>
+        <div class="slabel" id="lbl-prod">Products sold — today</div>
         <div class="twrap" style="margin-bottom:12px;">
           <table class="dtable">
             <thead><tr><th>Product</th><th class="r">Qty</th><th class="r">Unit price</th><th class="r">Revenue</th><th class="r">Margin</th><th style="width:80px;"></th></tr></thead>
-            <tbody>
-              <tr><td style="font-weight:600;">Bica</td><td class="r">92</td><td class="r" style="color:var(--tmuted);">€1.10</td><td class="r">€101.20</td><td class="r"><span class="bdg g">85%</span></td><td><span class="qbar"><i style="width:100%;"></i></span></td></tr>
-              <tr><td>Pastel de nata</td><td class="r">64</td><td class="r" style="color:var(--tmuted);">€1.40</td><td class="r">€89.60</td><td class="r"><span class="bdg a">58%</span></td><td><span class="qbar"><i style="width:70%;"></i></span></td></tr>
-              <tr><td>Galão</td><td class="r">41</td><td class="r" style="color:var(--tmuted);">€1.60</td><td class="r">€65.60</td><td class="r"><span class="bdg g">78%</span></td><td><span class="qbar"><i style="width:45%;"></i></span></td></tr>
-              <tr><td>Meia de leite</td><td class="r">22</td><td class="r" style="color:var(--tmuted);">€1.40</td><td class="r">€30.80</td><td class="r"><span class="bdg g">80%</span></td><td><span class="qbar"><i style="width:24%;"></i></span></td></tr>
-              <tr><td>Tosta mista</td><td class="r">18</td><td class="r" style="color:var(--tmuted);">€3.90</td><td class="r">€70.20</td><td class="r"><span class="bdg a">62%</span></td><td><span class="qbar"><i style="width:20%;"></i></span></td></tr>
-              <tr><td>Sumo de laranja</td><td class="r">11</td><td class="r" style="color:var(--tmuted);">€3.50</td><td class="r">€38.50</td><td class="r"><span class="bdg r">54%</span></td><td><span class="qbar"><i style="width:12%;"></i></span></td></tr>
-            </tbody>
+            <tbody id="prod-body"></tbody>
           </table>
         </div>
 
@@ -777,9 +769,12 @@
     } else if (from === 2) {
       show(3);
     } else if (from === 3) {
+      var ph = document.getElementById('f-phone').value.trim();
+      if (ph.replace(/[^0-9]/g, '').length < 6) { document.getElementById('e3').style.display = 'block'; return; }
+      document.getElementById('e3').style.display = 'none';
       state.goal = document.getElementById('f-goal').value;
       state.question = document.getElementById('f-question').value.trim();
-      state.phone = document.getElementById('f-phone').value.trim();
+      state.phone = ph;
       // Prototype : c'est ici qu'on POSTerait la demande (Supabase / Formspree).
       document.getElementById('cf-title').textContent = 'Obrigado' + (state.first ? ', ' + state.first : '') + '!';
       show(4);
@@ -926,41 +921,149 @@
   }
   function cell(l, v, s, tot) { return '<div class="ecell"><div class="l">' + l + '</div><div class="v' + (tot ? ' tot' : '') + '">' + v + '</div>' + (s ? '<div class="s">' + s + '</div>' : '') + '</div>'; }
 
-  function recompute() {
+  // ── Données par période (démo café Lisbonne) ──────────────────────────────
+  // rev = CA TTC · tx · days = jours ouverts · dr/dt/dk = deltas % · tr/bk = drivers
+  var PERIODS = {
+    today:     { label: 'Today',         single: true,  days: 1,  rev: 512.40,  tx: 108,  median: 3.60, comp: 'vs last Tue same time', dr: 6,  dt: 4,  dk: 2,  tr: 4,  bk: 2 },
+    yesterday: { label: 'Yesterday',     single: true,  days: 1,  rev: 463.80,  tx: 99,   median: 3.55, comp: 'vs Mon last week',      dr: -3, dt: -1, dk: -2, tr: -1, bk: -2 },
+    week:      { label: 'This week',     single: false, days: 3,  rev: 1512,    tx: 318,  median: 3.60, comp: 'vs same days last week', dr: 8,  dt: 6,  dk: 2,  tr: 6,  bk: 2 },
+    lastweek:  { label: 'Last week',     single: false, days: 6,  rev: 3186,    tx: 672,  median: 3.60, comp: 'vs same days last week', dr: 5,  dt: 4,  dk: 1,  tr: 4,  bk: 1 },
+    month:     { label: 'This month',    single: false, days: 15, rev: 7742,    tx: 1634, median: 3.55, comp: 'vs same days last month', dr: 11, dt: 9, dk: 2, tr: 9, bk: 2 },
+    all:       { label: 'Since opening', single: false, days: 92, rev: 43980,   tx: 9280, median: 3.55, comp: null },
+    custom:    { label: 'Custom · 12–18 Jul', single: false, days: 6, rev: 3040, tx: 640, median: 3.60, comp: 'vs previous 6 days', dr: 2, dt: 1, dk: 1, tr: 1, bk: 1 }
+  };
+  // Produits de base (mix "today") — la quantité scale avec le nb de transactions
+  var BASE_PRODUCTS = [
+    { name: 'Bica',           price: 1.10, margin: 85, q: 92 },
+    { name: 'Pastel de nata', price: 1.40, margin: 58, q: 64 },
+    { name: 'Galão',          price: 1.60, margin: 78, q: 41 },
+    { name: 'Meia de leite',  price: 1.40, margin: 80, q: 22 },
+    { name: 'Tosta mista',    price: 3.90, margin: 62, q: 18 },
+    { name: 'Sumo de laranja',price: 3.50, margin: 54, q: 11 }
+  ];
+  var HOUR_BARS = [36, 88, 100, 54, 40, 62, 74, 38, 6, 26];   // profil journée (café)
+  var DAY_BARS  = [64, 100, 48, 51, 57, 53, 62];              // profil semaine
+
+  var COST = { fixedMonth: 0, staffMonth: 0, dayCost: 0, fixedDay: 0, staffDay: 0 };
+  var currentPeriod = 'today';
+
+  function computeCosts() {
     var fixed = CH.reduce(function (s, c) { return s + toMonthly(c.amount, c.freq); }, 0);
     var staff = EM.reduce(function (s, e) { return s + empCost(e).monthly; }, 0);
-    var total = fixed + staff, costday = total / JMOIS;
-    var fixedDay = fixed / JMOIS, staffDay = staff / JMOIS;
-    var beTtc = MARGIN > 0 ? costday / MARGIN * (1 + VAT) : 0;
-    var revHt = REV_TTC / (1 + VAT);
-    var cogsPct = (1 - MARGIN) * 100, labPct = staffDay / revHt * 100, prime = cogsPct + labPct;
-    var ebitda = MARGIN_EUR - costday;
-
-    // Costs summary
+    COST.fixedMonth = fixed; COST.staffMonth = staff;
+    COST.dayCost = (fixed + staff) / JMOIS; COST.fixedDay = fixed / JMOIS; COST.staffDay = staff / JMOIS;
+    // Costs summary (onglet Costs)
     set('cs-fixed', eur0(fixed)); set('cs-fixed-sub', CH.length + ' items');
-    set('cs-staff', eur0(staff)); set('cs-perday', eur(costday)); set('cs-be', eur0(beTtc));
+    set('cs-staff', eur0(staff)); set('cs-perday', eur(COST.dayCost));
+    set('cs-be', eur0(COST.dayCost / MARGIN * (1 + VAT)));
+  }
 
-    // Dashboard — live
-    set('d-costday', eur(costday));
-    set('d-costday-sub', eur0(fixedDay) + ' fixed · ' + eur0(staffDay) + ' staff');
+  function pillHtml(pct) {
+    if (pct == null) return '';
+    var up = pct >= 0;
+    return '<span class="pill ' + (up ? 'up' : 'dn') + '">' + (up ? '▲ +' : '▼ ') + pct + '%</span>';
+  }
+
+  function renderDash() {
+    var p = PERIODS[currentPeriod];
+    var ticket = p.rev / p.tx;
+    var revHt = p.rev / (1 + VAT);
+    var marginEur = revHt * MARGIN;
+    var costsPeriod = COST.dayCost * p.days;
+    var ebitda = marginEur - costsPeriod;
+    var bePerDay = MARGIN > 0 ? COST.dayCost / MARGIN * (1 + VAT) : 0;
+    var bePeriod = bePerDay * p.days;
+    var cogsPct = (1 - MARGIN) * 100;
+    var labPct = (COST.staffDay * p.days) / revHt * 100;
+    var prime = cogsPct + labPct;
+    var suffix = p.single ? '(day)' : '· ' + p.days + ' open days';
+    var compTxt = p.comp ? ' <span style="color:var(--tfaint)">' + p.comp + '</span>' : '';
+
+    // Section labels
+    set('lbl-period', p.label);
+    set('lbl-eco', 'Economics ' + suffix);
+    set('lbl-prod', 'Products sold — ' + p.label.toLowerCase());
+
+    // Gold row
+    set('g-rev', eur(p.rev));
+    document.getElementById('g-rev-d').innerHTML = pillHtml(p.dr) + compTxt;
+    document.getElementById('g-rev-drivers').innerHTML = (p.tr == null) ? '' :
+      '= traffic <span style="color:' + (p.tr >= 0 ? 'var(--green)' : 'var(--red)') + ';font-weight:600;">' + (p.tr >= 0 ? '+' : '') + p.tr + '%</span> × basket <span style="color:' + (p.bk >= 0 ? 'var(--green)' : 'var(--red)') + ';font-weight:600;">' + (p.bk >= 0 ? '+' : '') + p.bk + '%</span>';
+    set('g-rev-vat', eur(revHt) + ' excl. VAT · VAT ' + eur(p.rev - revHt));
+    set('g-tx', p.tx.toLocaleString('en-IE'));
+    document.getElementById('g-tx-d').innerHTML = pillHtml(p.dt) + compTxt;
+    set('g-ticket', eur(ticket));
+    document.getElementById('g-ticket-d').innerHTML = pillHtml(p.dk);
+    set('g-ticket-median', 'median ' + eur(p.median));
+
+    // EBITDA
+    set('g-ebitda-label', 'Est. EBITDA ' + suffix);
+    var ebEl = document.getElementById('d-ebitda'), ebSub = document.getElementById('d-ebitda-sub');
+    ebEl.textContent = (ebitda >= 0 ? '+' : '') + eur(ebitda);
+    ebEl.style.color = ebitda >= 0 ? 'var(--green)' : 'var(--red)';
+    ebSub.textContent = ebitda >= 0 ? 'Profitable ✓' : 'Below break-even';
+    ebSub.style.color = ebitda >= 0 ? 'var(--green)' : 'var(--red)';
+
+    // Economics
+    set('e-margin', (MARGIN * 100).toFixed(1) + '%');
+    document.getElementById('e-margin-sub').innerHTML = eur(marginEur) + ' · <span style="color:var(--green)">COGS coverage 94%</span>';
+    set('e-costs-label', 'Costs ' + suffix);
+    set('d-costday', eur(costsPeriod));
+    set('d-costday-sub', eur0(COST.fixedDay * p.days) + ' fixed · ' + eur0(COST.staffDay * p.days) + ' staff');
     var primeEl = document.getElementById('d-prime');
     primeEl.textContent = prime.toFixed(1) + '%';
     primeEl.style.color = prime <= 65 ? 'var(--green)' : prime <= 72 ? 'var(--amber)' : 'var(--red)';
     set('d-prime-sub', 'COGS ' + Math.round(cogsPct) + '% · Labour ' + Math.round(labPct) + '% · target <65%');
     document.getElementById('d-prime-cogs').style.width = Math.min(100, cogsPct) + '%';
     document.getElementById('d-prime-lab').style.width = Math.min(100, labPct) + '%';
-    set('d-be', eur(beTtc));
+    set('e-be-label', 'Break-even revenue ' + suffix);
+    set('d-be', eur(bePeriod));
     var beSub = document.getElementById('d-be-sub');
-    var avgTxt = ' · avg ' + eur0(beTtc) + '/open day';
-    if (REV_TTC >= beTtc) beSub.innerHTML = '<span style="color:var(--green)">Reached ✓ at 12:47</span>' + avgTxt;
-    else beSub.innerHTML = '<span style="color:var(--red)">' + eur(beTtc - REV_TTC) + ' short</span>' + avgTxt;
-    document.getElementById('d-be-bar').style.width = Math.min(100, REV_TTC / beTtc * 100) + '%';
-    var ebEl = document.getElementById('d-ebitda'), ebSub = document.getElementById('d-ebitda-sub');
-    ebEl.textContent = (ebitda >= 0 ? '+' : '') + eur(ebitda);
-    ebEl.style.color = ebitda >= 0 ? 'var(--green)' : 'var(--red)';
-    ebSub.textContent = ebitda >= 0 ? 'Profitable ✓' : 'Below break-even';
-    ebSub.style.color = ebitda >= 0 ? 'var(--green)' : 'var(--red)';
+    var avgTxt = ' · avg ' + eur0(bePerDay) + '/open day';
+    if (p.rev >= bePeriod) beSub.innerHTML = '<span style="color:var(--green)">Reached ✓</span>' + avgTxt;
+    else beSub.innerHTML = '<span style="color:var(--red)">' + eur(bePeriod - p.rev) + ' short</span>' + avgTxt;
+    document.getElementById('d-be-bar').style.width = Math.min(100, p.rev / bePeriod * 100) + '%';
+
+    // Activity — hourly (single day) / daily (multi)
+    var bars = p.single ? HOUR_BARS : DAY_BARS;
+    var mx = Math.max.apply(null, bars), peak = bars.indexOf(mx);
+    document.getElementById('act-bars').innerHTML = bars.map(function (h, i) {
+      var cls = i === peak ? 'hot' : (p.single && h < 10 ? 'dead' : '');
+      return '<i class="' + cls + '" style="height:' + h + '%"></i>';
+    }).join('');
+    set('act-title', p.single ? 'Revenue by hour — peak solid, dead hours red' : 'Revenue by day — ' + p.days + ' open days');
+    document.getElementById('act-note').innerHTML = p.single
+      ? '<span>⚡ Morning rush 08:00–10:00 · <b>39%</b> of the day</span><span>· dead hour 15h flagged red</span>'
+      : '<span>Best day <b>Saturday</b></span><span>· ' + eur0(p.rev / p.days) + '/open day average</span>';
+
+    // Products — scale by tx ratio
+    var factor = p.tx / PERIODS.today.tx;
+    var rows = BASE_PRODUCTS.map(function (b) {
+      var q = Math.round(b.q * factor);
+      return { name: b.name, q: q, price: b.price, rev: q * b.price, margin: b.margin };
+    });
+    var maxQ = rows[0].q;
+    document.getElementById('prod-body').innerHTML = rows.map(function (r, i) {
+      var bdg = r.margin >= 75 ? 'g' : r.margin >= 56 ? 'a' : 'r';
+      return '<tr><td' + (i === 0 ? ' style="font-weight:600;"' : '') + '>' + r.name + '</td>'
+        + '<td class="r">' + r.q.toLocaleString('en-IE') + '</td>'
+        + '<td class="r" style="color:var(--tmuted);">' + eur(r.price) + '</td>'
+        + '<td class="r">' + eur(r.rev) + '</td>'
+        + '<td class="r"><span class="bdg ' + bdg + '">' + r.margin + '%</span></td>'
+        + '<td><span class="qbar"><i style="width:' + Math.round(r.q / maxQ * 100) + '%;"></i></span></td></tr>';
+    }).join('');
   }
+
+  // Recalcul complet (appelé après édition des coûts)
+  function recompute() { computeCosts(); renderDash(); }
+
+  window.applyPeriod = function (key) {
+    currentPeriod = key;
+    document.querySelectorAll('#ppills .ppill').forEach(function (x) {
+      x.classList.toggle('on', x.dataset.period === key);
+    });
+    renderDash();
+  };
 
   // ── Charge modal ──
   window.openCharge = function () { fillCharge({ id: '', name: '', amount: '', freq: 'monthly', cat: '' }, 'New fixed cost'); };
@@ -1030,15 +1133,12 @@
   };
   window.delEmp = function (id) { EM = EM.filter(function (x) { return x.id !== id; }); renderEmps(); recompute(); };
 
-  // Pills de période (démo : état visuel uniquement, les données restent celles du jour)
+  // Pills de période → change réellement les données
   document.querySelectorAll('#ppills .ppill').forEach(function (p) {
-    p.addEventListener('click', function () {
-      document.querySelectorAll('#ppills .ppill').forEach(function (x) { x.classList.remove('on'); });
-      p.classList.add('on');
-    });
+    p.addEventListener('click', function () { applyPeriod(p.dataset.period); });
   });
 
-  renderCharges(); renderEmps(); recompute();
+  renderCharges(); renderEmps(); computeCosts(); applyPeriod('today');
 
   // (upgrade modal on hold — paid layer kept in the HTML comment above)
 
