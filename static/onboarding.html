@@ -110,6 +110,45 @@
   .trustrow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; justify-content: center; }
   .trustrow span { font-size: 10.5px; color: var(--tmuted); background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 4px 11px; white-space: nowrap; }
 
+  /* ── Full demo dashboard ── */
+  .vtabs { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; width: fit-content; margin-bottom: 16px; background: #fff; }
+  .vtab { font-family: inherit; font-size: 12.5px; font-weight: 500; padding: 8px 18px; border: none; background: transparent; color: var(--tmuted); cursor: pointer; border-right: 1px solid var(--border); }
+  .vtab:last-child { border-right: none; }
+  .vtab.on { background: var(--bg); color: var(--text); font-weight: 600; box-shadow: inset 0 -2px 0 var(--spec); }
+  .kgrid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+  @media (max-width: 860px) { .kgrid4 { grid-template-columns: repeat(2, 1fr); } }
+  .kcard .sub2 { font-size: 10.5px; color: var(--tmuted); margin-top: 2px; }
+  .pill { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 10px; padding: 1px 7px; }
+  .pill.up { background: var(--green-bg); color: var(--green); }
+  .pill.dn { background: #fdeceb; color: var(--red); }
+  .bdg { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 9px; }
+  .bdg.g { background: var(--green-bg); color: var(--green); }
+  .bdg.a { background: var(--amber-bg); color: var(--amber); }
+  .bdg.r { background: #fdeceb; color: var(--red); }
+  .bars i.dead { background: rgba(196,85,77,.35); }
+  .heat5 { display: grid; grid-template-columns: 26px repeat(10, 1fr); gap: 2px; }
+  .heat5 b { font-size: 8.5px; font-weight: 600; color: var(--tfaint); display: flex; align-items: center; }
+  .heat5 i { height: 13px; border-radius: 3px; background: var(--border); }
+  .wowline { display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; font-size: 11px; color: var(--tmuted); border-top: 1px solid var(--border); margin-top: 10px; padding-top: 9px; }
+  .wowline b { color: var(--text); }
+  .mixrow { margin-bottom: 9px; }
+  .mixrow .t { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 3px; }
+  .mixrow .t b { font-weight: 600; }
+  .mixrow .t .n { color: var(--tmuted); font-variant-numeric: tabular-nums; }
+  .mixrow .bar { height: 4px; background: var(--border); border-radius: 2px; }
+  .mixrow .bar i { display: block; height: 4px; border-radius: 2px; background: var(--spec); }
+  .primebar { display: flex; height: 5px; border-radius: 3px; overflow: hidden; background: var(--border); margin-top: 8px; }
+  .primebar i { display: block; height: 5px; }
+  .progress { height: 4px; background: var(--border); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+  .progress i { display: block; height: 4px; background: var(--green); border-radius: 2px; }
+  .ctable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .ctable td { padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .ctable tr:last-child td { border-bottom: none; }
+  .ctable td.n { text-align: right; font-variant-numeric: tabular-nums; color: var(--tmuted); white-space: nowrap; }
+  .ctable td.tot { font-weight: 700; color: var(--text); }
+  .costnote { font-size: 12px; color: var(--tmuted); background: #fff; border: 1px solid var(--border); border-left: 3px solid var(--spec); border-radius: 8px; padding: 12px 15px; line-height: 1.55; }
+  .costnote b { color: var(--text); }
+
   .fine { font-size: 11px; color: var(--tfaint); margin-top: 16px; text-align: center; }
 
   /* ── Dashboard ── */
@@ -356,59 +395,150 @@
         <span class="live" id="d-live" style="display:none;"><i></i>LIVE</span>
       </div>
 
-      <!-- KPIs — everything included in early access -->
-      <div class="kgrid">
-        <div class="kcard"><div class="k">Revenue (incl. VAT)</div><div class="v">€487.50</div><div class="d">+12% vs last Thu</div></div>
-        <div class="kcard"><div class="k">Transactions</div><div class="v">63</div><div class="d">+8%</div></div>
-        <div class="kcard"><div class="k">Average ticket</div><div class="v">€7.74</div><div class="d">+4%</div></div>
+      <div class="vtabs">
+        <button class="vtab on" id="vt-dash" onclick="switchView('dash')">Dashboard</button>
+        <button class="vtab" id="vt-costs" onclick="switchView('costs')">Costs</button>
       </div>
 
-      <div class="lgrid">
-        <div class="kcard">
-          <div class="k">Gross margin</div><div class="v">74.2%</div><div class="d">€318.40 today</div>
-        </div>
-        <div class="kcard">
-          <div class="k">Daily break-even</div><div class="v" style="color:var(--green);">Reached</div><div class="d">at 12:47 · +€75.50</div>
-        </div>
-        <div class="kcard">
-          <div class="k">Est. EBITDA (month)</div><div class="v">€2,184</div><div class="d">margin 18.3%</div>
-        </div>
-      </div>
+      <!-- ═══ VIEW · DASHBOARD ═══ -->
+      <div id="v-dash">
 
-      <div class="grid2">
-        <div class="panel">
-          <div class="k">Revenue by hour</div>
-          <div class="bars">
-            <i style="height:16%"></i><i style="height:32%"></i><i style="height:54%"></i><i class="hot" style="height:86%"></i><i class="hot" style="height:100%"></i><i style="height:62%"></i><i style="height:44%"></i><i style="height:52%"></i><i style="height:58%"></i><i style="height:34%"></i>
+        <!-- Gold row -->
+        <div class="kgrid4">
+          <div class="kcard">
+            <div class="k">Revenue (incl. VAT)</div><div class="v">€487.50</div>
+            <div class="d"><span class="pill up">▲ +12%</span> vs last Tue same time</div>
+            <div class="sub2">= traffic <span style="color:var(--green);font-weight:600;">+8%</span> × basket <span style="color:var(--green);font-weight:600;">+4%</span></div>
+          </div>
+          <div class="kcard">
+            <div class="k">Transactions</div><div class="v">63</div>
+            <div class="d"><span class="pill up">▲ +8%</span> vs last Tue same time</div>
+          </div>
+          <div class="kcard">
+            <div class="k">Average ticket</div><div class="v">€7.74</div>
+            <div class="d"><span class="pill up">▲ +4%</span></div>
+            <div class="sub2">median €6.20</div>
+          </div>
+          <div class="kcard">
+            <div class="k">Est. EBITDA (today)</div><div class="v" style="color:var(--green);">+€47.80</div>
+            <div class="d" style="color:var(--green);">Profitable ✓</div>
           </div>
         </div>
-        <div class="panel rows">
-          <div class="k">Top products · margin</div>
-          <div class="r"><span>Espresso · 84 sold</span><span class="n">82%</span></div>
-          <div class="r"><span>Avocado toast · 11 sold</span><span class="n">61%</span></div>
-          <div class="r"><span>Iced latte · 14 sold</span><span class="n">76%</span></div>
-          <div class="r"><span>Croissant · 29 sold</span><span class="n">54%</span></div>
-        </div>
-      </div>
 
-      <div class="grid2">
-        <div class="panel">
-          <div class="k">Product mix · margin per bucket</div>
-          <div class="rows">
-            <div class="r"><span>Drinks</span><span class="n">58% · margin 79%</span></div>
-            <div class="r"><span>Food</span><span class="n">27% · margin 62%</span></div>
-            <div class="r"><span>Viennoiserie</span><span class="n">9% · margin 51%</span></div>
+        <!-- Economics row -->
+        <div class="kgrid4">
+          <div class="kcard">
+            <div class="k">Gross margin</div><div class="v">74.2%</div>
+            <div class="sub2">€318.40 · <span style="color:var(--green);">COGS coverage 96%</span></div>
+          </div>
+          <div class="kcard">
+            <div class="k">Costs (day)</div><div class="v">€270.60</div>
+            <div class="sub2">€103 fixed · €167 staff</div>
+          </div>
+          <div class="kcard">
+            <div class="k">Prime cost</div><div class="v" style="color:var(--amber);">64.6%</div>
+            <div class="sub2">COGS 26% · Labour 39% · target &lt;65%</div>
+            <div class="primebar"><i style="width:26%;background:var(--spec);"></i><i style="width:39%;background:rgba(37,84,199,.35);"></i></div>
+          </div>
+          <div class="kcard">
+            <div class="k">Break-even revenue</div><div class="v">€412.00</div>
+            <div class="sub2"><span style="color:var(--green);">Reached ✓ at 12:47</span> · avg €412/open day <span class="pill up">▼ −3%</span></div>
+            <div class="progress"><i style="width:100%;"></i></div>
           </div>
         </div>
-        <div class="panel">
-          <div class="k">Week heat map &amp; movers</div>
-          <div class="rows">
-            <div class="r"><span>Iced matcha</span><span class="n" style="color:var(--green);">+24%</span></div>
-            <div class="r"><span>Sat 11:00–12:00</span><span class="n">9.4% of week</span></div>
-            <div class="r"><span>Filter coffee</span><span class="n" style="color:var(--red);">−12%</span></div>
+
+        <div class="grid2">
+          <div class="panel">
+            <div class="k">Revenue by hour — peak solid, dead hours red</div>
+            <div class="bars">
+              <i style="height:14%"></i><i style="height:30%"></i><i style="height:52%"></i><i class="hot" style="height:84%"></i><i class="hot" style="height:100%"></i><i style="height:60%"></i><i class="dead" style="height:6%"></i><i style="height:50%"></i><i style="height:56%"></i><i style="height:32%"></i>
+            </div>
+            <div class="wowline"><span>⚡ Rush 11:00–13:00 · 41% of the day</span></div>
+          </div>
+          <div class="panel">
+            <div class="k">Rush heat map · 28 days</div>
+            <div class="heat5" id="demo-heat"></div>
+            <div class="wowline"><span><b>44%</b> of weekly revenue in the 3 busiest hours</span></div>
           </div>
         </div>
-      </div>
+
+        <div class="grid2">
+          <div class="panel">
+            <div class="k">Last 7 days</div>
+            <div class="bars" style="height:56px;">
+              <i style="height:52%"></i><i class="hot" style="height:100%"></i><i style="height:48%"></i><i style="height:51%"></i><i style="height:57%"></i><i style="height:53%"></i><i style="height:62%"></i>
+            </div>
+            <div class="wowline"><span>Last 7 full days <b>€2,847</b> <span class="pill up">▲ +9%</span></span><span>· 371 tx <span class="pill up">▲ +5%</span></span><span>· Best day: <b>Saturday</b></span></div>
+          </div>
+          <div class="panel">
+            <div class="k">Payment methods</div>
+            <div class="mixrow"><div class="t"><b>Multibanco</b><span class="n">€298.10 · 61%</span></div><div class="bar"><i style="width:61%;"></i></div></div>
+            <div class="mixrow"><div class="t"><b>Dinheiro</b><span class="n">€98.90 · 20%</span></div><div class="bar"><i style="width:20%;"></i></div></div>
+            <div class="mixrow"><div class="t"><b>Vendus Pay</b><span class="n">€61.30 · 13%</span></div><div class="bar"><i style="width:13%;"></i></div></div>
+            <div class="mixrow"><div class="t"><b>Cartão de Crédito</b><span class="n">€29.20 · 6%</span></div><div class="bar"><i style="width:6%;"></i></div></div>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="panel">
+            <div class="k">Product mix · margin per bucket</div>
+            <div class="mixrow"><div class="t"><b>Drinks</b><span class="n">58% · margin <span style="color:var(--green);font-weight:600;">79%</span></span></div><div class="bar"><i style="width:58%;"></i></div></div>
+            <div class="mixrow"><div class="t"><b>Food</b><span class="n">27% · margin <span style="color:var(--amber);font-weight:600;">62%</span></span></div><div class="bar"><i style="width:27%;"></i></div></div>
+            <div class="mixrow"><div class="t"><b>Viennoiserie</b><span class="n">9% · margin <span style="color:var(--amber);font-weight:600;">51%</span></span></div><div class="bar"><i style="width:9%;"></i></div></div>
+            <div class="mixrow"><div class="t"><b>Retail</b><span class="n">6% · margin <span style="color:var(--red);font-weight:600;">44%</span></span></div><div class="bar"><i style="width:6%;"></i></div></div>
+          </div>
+          <div class="panel rows">
+            <div class="k">Top products · today</div>
+            <div class="r"><span>Espresso · 84 sold</span><span class="n">€109.20 <span class="bdg g">82%</span></span></div>
+            <div class="r"><span>Iced latte · 14 sold</span><span class="n">€49.00 <span class="bdg g">76%</span></span></div>
+            <div class="r"><span>Avocado toast · 11 sold</span><span class="n">€82.50 <span class="bdg a">61%</span></span></div>
+            <div class="r"><span>Croissant · 29 sold</span><span class="n">€52.20 <span class="bdg a">54%</span></span></div>
+            <div class="r"><span>Fresh juice · 9 sold</span><span class="n">€36.00 <span class="bdg r">52%</span></span></div>
+          </div>
+        </div>
+
+      </div><!-- /v-dash -->
+
+      <!-- ═══ VIEW · COSTS ═══ -->
+      <div id="v-costs" style="display:none;">
+
+        <div class="kgrid4">
+          <div class="kcard"><div class="k">Fixed charges / month</div><div class="v">€2,680</div><div class="sub2">rent, utilities, insurance…</div></div>
+          <div class="kcard"><div class="k">Payroll / month</div><div class="v">€4,355</div><div class="sub2">incl. TSU 23.75% &amp; meal cards</div></div>
+          <div class="kcard"><div class="k">Cost per open day</div><div class="v">€270.60</div><div class="sub2">€7,035 ÷ 26 open days</div></div>
+          <div class="kcard"><div class="k">Daily break-even</div><div class="v" style="color:var(--spec);">€412</div><div class="sub2">÷ real margin 74.2% · incl. VAT</div></div>
+        </div>
+
+        <div class="grid2">
+          <div class="panel">
+            <div class="k">Fixed charges</div>
+            <table class="ctable">
+              <tr><td>Rent</td><td class="n">€950</td></tr>
+              <tr><td>Coffee machine lease</td><td class="n">€240</td></tr>
+              <tr><td>Electricity &amp; water</td><td class="n">€265</td></tr>
+              <tr><td>Accountant</td><td class="n">€150</td></tr>
+              <tr><td>Insurance</td><td class="n">€96</td></tr>
+              <tr><td>Internet &amp; software</td><td class="n">€96</td></tr>
+              <tr><td>Bank &amp; card fees, waste, other</td><td class="n">€883</td></tr>
+              <tr><td class="tot">Total / month</td><td class="n tot">€2,680</td></tr>
+            </table>
+          </div>
+          <div class="panel">
+            <div class="k">Payroll — Mesa does the Portuguese math</div>
+            <table class="ctable">
+              <tr><td>Maria — barista, full time<br><span style="color:var(--tfaint);font-size:11px;">€1,000 gross ×14 + TSU + meal card</span></td><td class="n">€1,742/mo</td></tr>
+              <tr><td>João — barista, full time<br><span style="color:var(--tfaint);font-size:11px;">€1,000 gross ×14 + TSU + meal card</span></td><td class="n">€1,742/mo</td></tr>
+              <tr><td>Weekend extra<br><span style="color:var(--tfaint);font-size:11px;">recibos verdes</span></td><td class="n">€871/mo</td></tr>
+              <tr><td class="tot">Total / month</td><td class="n tot">€4,355</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <div class="costnote">
+          <b>The only thing you ever type in Mesa.</b> Enter rent and payroll once — Mesa combines them with the cost prices already on your Vendus products and computes your daily break-even: <span class="mono">(€2,680 + €4,355) ÷ 26 open days ÷ 74.2% real margin = <b>€412/day incl. VAT</b></span>. Everything else is read from Vendus, automatically.
+        </div>
+
+      </div><!-- /v-costs -->
 
     </div>
   </div>
@@ -520,6 +650,31 @@
     document.getElementById('d-live').style.display = 'none';
     landDash();
   };
+
+  // ── Vue Dashboard / Costs ──────────────────────────────────────────────────
+  window.switchView = function (v) {
+    document.getElementById('v-dash').style.display  = v === 'dash'  ? '' : 'none';
+    document.getElementById('v-costs').style.display = v === 'costs' ? '' : 'none';
+    document.getElementById('vt-dash').classList.toggle('on',  v === 'dash');
+    document.getElementById('vt-costs').classList.toggle('on', v === 'costs');
+  };
+
+  // Rush heat map (démo) — 5 jours ouverts × 10 heures
+  (function () {
+    var el = document.getElementById('demo-heat');
+    if (!el) return;
+    var days = [['Mon', .5], ['Thu', .65], ['Fri', .75], ['Sat', 1], ['Sun', .85]];
+    var hours = [.2, .45, .8, 1, .9, .5, .1, .45, .5, .3];
+    var html = '';
+    days.forEach(function (d) {
+      html += '<b>' + d[0] + '</b>';
+      hours.forEach(function (h) {
+        var o = Math.max(.06, d[1] * h);
+        html += '<i style="background:rgba(37,84,199,' + o.toFixed(2) + ');"></i>';
+      });
+    });
+    el.innerHTML = html;
+  })();
 
   // (upgrade modal on hold — paid layer kept in the HTML comment above)
 
