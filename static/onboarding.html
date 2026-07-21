@@ -146,8 +146,51 @@
   .ctable tr:last-child td { border-bottom: none; }
   .ctable td.n { text-align: right; font-variant-numeric: tabular-nums; color: var(--tmuted); white-space: nowrap; }
   .ctable td.tot { font-weight: 700; color: var(--text); }
-  .costnote { font-size: 12px; color: var(--tmuted); background: #fff; border: 1px solid var(--border); border-left: 3px solid var(--spec); border-radius: 8px; padding: 12px 15px; line-height: 1.55; }
+  .costnote { font-size: 12px; color: var(--tmuted); background: #fff; border: 1px solid var(--border); border-left: 3px solid var(--spec); border-radius: 8px; padding: 12px 15px; line-height: 1.55; margin-top: 4px; }
   .costnote b { color: var(--text); }
+
+  /* ── Editable costs ── */
+  .sec-h { display: flex; justify-content: space-between; align-items: center; margin: 6px 0 12px; }
+  .sec-h .lab { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--tmuted); }
+  .btn-add { font-family: inherit; font-size: 12px; font-weight: 600; padding: 7px 13px; border-radius: 7px; border: 1px solid var(--border); background: #fff; color: var(--text); cursor: pointer; }
+  .btn-add:hover { border-color: var(--tmuted); }
+  .catrow td { background: var(--bg) !important; font-size: 9.5px !important; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--tfaint); padding: 9px 2px 5px !important; border-bottom: none !important; }
+  .ctable td.act { text-align: right; white-space: nowrap; }
+  .lnk { font-family: inherit; font-size: 11.5px; border: none; background: none; cursor: pointer; padding: 2px 3px; }
+  .lnk.edit { color: var(--spec); } .lnk.edit:hover { text-decoration: underline; }
+  .lnk.del { color: var(--red); font-weight: 600; }
+  .badge2 { font-size: 9px; font-weight: 600; padding: 2px 7px; border-radius: 9px; background: var(--border); color: var(--tmuted); }
+  .badge2.ext { background: #efe6fb; color: #7b4fbf; }
+  .badge2.ft { background: var(--green-bg); color: var(--green); }
+
+  .ecard { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
+  .ecard-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; }
+  .ecard-top .nm { font-weight: 600; font-size: 13.5px; }
+  .egrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 640px) { .egrid { grid-template-columns: repeat(2, 1fr); } }
+  .ecell .l { font-size: 9px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--tfaint); margin-bottom: 3px; }
+  .ecell .v { font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .ecell .v.tot { color: var(--green); }
+  .ecell .s { font-size: 10px; color: var(--tmuted); }
+
+  .cmodal-ov { position: fixed; inset: 0; background: rgba(30,26,16,.42); display: none; align-items: center; justify-content: center; z-index: 300; padding: 20px; }
+  .cmodal-ov.on { display: flex; }
+  .cmodal { background: var(--bg); border-radius: 14px; padding: 26px 28px; width: 470px; max-width: 100%; box-shadow: 0 24px 70px rgba(0,0,0,.25); max-height: 92vh; overflow: auto; }
+  .cmodal h3 { font-size: 18px; margin: 0 0 16px; letter-spacing: -.01em; }
+  .mgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .mgrid .full { grid-column: 1 / -1; }
+  .fld .l { font-size: 11px; font-weight: 500; color: var(--tmuted); margin-bottom: 4px; display: block; }
+  .fld input, .fld select { font-family: inherit; font-size: 13.5px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 7px; background: #fff; color: var(--text); width: 100%; }
+  .fld input:focus, .fld select:focus { outline: none; border-color: var(--spec); box-shadow: 0 0 0 3px var(--spec-soft); }
+  .mfoot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+  .mfoot .fghost { width: auto; margin: 0; text-decoration: none; padding: 10px 16px; }
+  .mfoot .fbtn { width: auto; margin: 0; padding: 10px 20px; }
+  .tsubox { background: var(--green-bg); border: 1px solid rgba(46,125,50,.25); border-radius: 9px; padding: 13px 15px; margin-top: 15px; font-size: 12.5px; }
+  .tsurow { display: flex; justify-content: space-between; padding: 2px 0; }
+  .tsuinfo { border: 1px solid var(--border); border-radius: 9px; background: #fff; padding: 16px 18px; margin-top: 4px; }
+  .tsuinfo .g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; font-size: 11.5px; color: var(--tmuted); }
+  .tsuinfo .g3 b { color: var(--text); display: block; margin-bottom: 3px; }
+  @media (max-width: 640px) { .tsuinfo .g3 { grid-template-columns: 1fr; } }
 
   .fine { font-size: 11px; color: var(--tfaint); margin-top: 16px; text-align: center; }
 
@@ -420,8 +463,8 @@
             <div class="sub2">median €6.20</div>
           </div>
           <div class="kcard">
-            <div class="k">Est. EBITDA (today)</div><div class="v" style="color:var(--green);">+€47.80</div>
-            <div class="d" style="color:var(--green);">Profitable ✓</div>
+            <div class="k">Est. EBITDA (today)</div><div class="v" id="d-ebitda" style="color:var(--green);">+€47.80</div>
+            <div class="d" id="d-ebitda-sub" style="color:var(--green);">Profitable ✓</div>
           </div>
         </div>
 
@@ -432,18 +475,18 @@
             <div class="sub2">€318.40 · <span style="color:var(--green);">COGS coverage 96%</span></div>
           </div>
           <div class="kcard">
-            <div class="k">Costs (day)</div><div class="v">€270.60</div>
-            <div class="sub2">€103 fixed · €167 staff</div>
+            <div class="k">Costs (day)</div><div class="v" id="d-costday">€270.60</div>
+            <div class="sub2" id="d-costday-sub">€126 fixed · €145 staff</div>
           </div>
           <div class="kcard">
-            <div class="k">Prime cost</div><div class="v" style="color:var(--amber);">64.6%</div>
-            <div class="sub2">COGS 26% · Labour 39% · target &lt;65%</div>
-            <div class="primebar"><i style="width:26%;background:var(--spec);"></i><i style="width:39%;background:rgba(37,84,199,.35);"></i></div>
+            <div class="k">Prime cost</div><div class="v" id="d-prime" style="color:var(--amber);">64.6%</div>
+            <div class="sub2" id="d-prime-sub">COGS 26% · Labour 39% · target &lt;65%</div>
+            <div class="primebar"><i id="d-prime-cogs" style="width:26%;background:var(--spec);"></i><i id="d-prime-lab" style="width:39%;background:rgba(37,84,199,.35);"></i></div>
           </div>
           <div class="kcard">
-            <div class="k">Break-even revenue</div><div class="v">€412.00</div>
-            <div class="sub2"><span style="color:var(--green);">Reached ✓ at 12:47</span> · avg €412/open day <span class="pill up">▼ −3%</span></div>
-            <div class="progress"><i style="width:100%;"></i></div>
+            <div class="k">Break-even revenue</div><div class="v" id="d-be">€412.00</div>
+            <div class="sub2" id="d-be-sub"><span style="color:var(--green);">Reached ✓ at 12:47</span> · avg €412/open day</div>
+            <div class="progress"><i id="d-be-bar" style="width:100%;"></i></div>
           </div>
         </div>
 
@@ -499,43 +542,51 @@
 
       </div><!-- /v-dash -->
 
-      <!-- ═══ VIEW · COSTS ═══ -->
+      <!-- ═══ VIEW · COSTS (editable) ═══ -->
       <div id="v-costs" style="display:none;">
 
         <div class="kgrid4">
-          <div class="kcard"><div class="k">Fixed charges / month</div><div class="v">€2,680</div><div class="sub2">rent, utilities, insurance…</div></div>
-          <div class="kcard"><div class="k">Payroll / month</div><div class="v">€4,355</div><div class="sub2">incl. TSU 23.75% &amp; meal cards</div></div>
-          <div class="kcard"><div class="k">Cost per open day</div><div class="v">€270.60</div><div class="sub2">€7,035 ÷ 26 open days</div></div>
-          <div class="kcard"><div class="k">Daily break-even</div><div class="v" style="color:var(--spec);">€412</div><div class="sub2">÷ real margin 74.2% · incl. VAT</div></div>
+          <div class="kcard"><div class="k">Fixed costs / month</div><div class="v" id="cs-fixed">—</div><div class="sub2" id="cs-fixed-sub"></div></div>
+          <div class="kcard"><div class="k">Staff / month (smoothed)</div><div class="v" id="cs-staff">—</div><div class="sub2">incl. TSU + 13th/14th + meals</div></div>
+          <div class="kcard"><div class="k">Cost / open day</div><div class="v" id="cs-perday">—</div><div class="sub2">over 21.25 days/month</div></div>
+          <div class="kcard"><div class="k">Daily break-even</div><div class="v" id="cs-be" style="color:var(--spec);">—</div><div class="sub2">÷ real margin 74.2% · incl. VAT</div></div>
         </div>
 
-        <div class="grid2">
-          <div class="panel">
-            <div class="k">Fixed charges</div>
-            <table class="ctable">
-              <tr><td>Rent</td><td class="n">€950</td></tr>
-              <tr><td>Coffee machine lease</td><td class="n">€240</td></tr>
-              <tr><td>Electricity &amp; water</td><td class="n">€265</td></tr>
-              <tr><td>Accountant</td><td class="n">€150</td></tr>
-              <tr><td>Insurance</td><td class="n">€96</td></tr>
-              <tr><td>Internet &amp; software</td><td class="n">€96</td></tr>
-              <tr><td>Bank &amp; card fees, waste, other</td><td class="n">€883</td></tr>
-              <tr><td class="tot">Total / month</td><td class="n tot">€2,680</td></tr>
-            </table>
+        <div class="vtabs" style="margin-top:4px;">
+          <button class="vtab on" id="ct-fixed" onclick="switchCost('fixed')">Fixed costs</button>
+          <button class="vtab" id="ct-staff" onclick="switchCost('staff')">Staff</button>
+        </div>
+
+        <!-- Fixed costs -->
+        <div id="cv-fixed">
+          <div class="sec-h">
+            <span class="lab">Monthly fixed costs</span>
+            <button class="btn-add" onclick="openCharge()">+ Add</button>
           </div>
-          <div class="panel">
-            <div class="k">Payroll — Mesa does the Portuguese math</div>
-            <table class="ctable">
-              <tr><td>Maria — barista, full time<br><span style="color:var(--tfaint);font-size:11px;">€1,000 gross ×14 + TSU + meal card</span></td><td class="n">€1,742/mo</td></tr>
-              <tr><td>João — barista, full time<br><span style="color:var(--tfaint);font-size:11px;">€1,000 gross ×14 + TSU + meal card</span></td><td class="n">€1,742/mo</td></tr>
-              <tr><td>Weekend extra<br><span style="color:var(--tfaint);font-size:11px;">recibos verdes</span></td><td class="n">€871/mo</td></tr>
-              <tr><td class="tot">Total / month</td><td class="n tot">€4,355</td></tr>
-            </table>
+          <div class="panel" style="padding:6px 16px 10px;">
+            <table class="ctable" id="charges-body"></table>
+          </div>
+        </div>
+
+        <!-- Staff -->
+        <div id="cv-staff" style="display:none;">
+          <div class="sec-h">
+            <span class="lab">Team</span>
+            <button class="btn-add" onclick="openEmp()">+ Add</button>
+          </div>
+          <div id="emp-cards"></div>
+          <div class="tsuinfo">
+            <div class="lab" style="margin-bottom:11px;">Portugal payroll rules applied</div>
+            <div class="g3">
+              <div><b>Permanent</b>Employer TSU 23.75%<br>TSU exempt (first job): 0%<br>Employee 11% (from gross)</div>
+              <div><b>13th &amp; 14th month</b>Salary × 14 ÷ 12<br>= +16.7% on monthly gross<br>TSU applied over 14 months</div>
+              <div><b>Meal allowance</b>Exempt from TSU &amp; IRS<br>up to €10.20/day<br>~242 days/year</div>
+            </div>
           </div>
         </div>
 
         <div class="costnote">
-          <b>The only thing you ever type in Mesa.</b> Enter rent and payroll once — Mesa combines them with the cost prices already on your Vendus products and computes your daily break-even: <span class="mono">(€2,680 + €4,355) ÷ 26 open days ÷ 74.2% real margin = <b>€412/day incl. VAT</b></span>. Everything else is read from Vendus, automatically.
+          <b>The only thing you ever type in Mesa.</b> Add your fixed costs and team once — Mesa combines them with the cost prices already on your Vendus products to compute your daily break-even. Edit anything here and watch the Dashboard update. Everything else is read from Vendus, automatically.
         </div>
 
       </div><!-- /v-costs -->
@@ -560,6 +611,52 @@
   </div>
 </div>
 -->
+
+<!-- ═══ Cost modal ═══ -->
+<div class="cmodal-ov" id="charge-ov" onclick="if(event.target===this)closeCharge()">
+  <div class="cmodal">
+    <h3 id="charge-title">New fixed cost</h3>
+    <input type="hidden" id="ch-id">
+    <div class="mgrid">
+      <div class="fld full"><span class="l">Name *</span><input id="ch-name" placeholder="e.g. Rent"></div>
+      <div class="fld"><span class="l">Amount (€) *</span><input id="ch-amount" type="number" step="0.01" placeholder="0.00"></div>
+      <div class="fld"><span class="l">Frequency</span>
+        <select id="ch-freq"><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option></select>
+      </div>
+      <div class="fld full"><span class="l">Category</span>
+        <input id="ch-cat" placeholder="e.g. Energy, Insurance…" list="ch-cats">
+        <datalist id="ch-cats"><option value="Real estate"><option value="Energy &amp; utilities"><option value="Services"><option value="Insurance"><option value="Telecom &amp; software"><option value="Bank &amp; fees"><option value="Misc"></datalist>
+      </div>
+    </div>
+    <div class="mfoot"><button class="fghost" onclick="closeCharge()">Cancel</button><button class="fbtn blue" onclick="saveCharge()">Save</button></div>
+  </div>
+</div>
+
+<!-- ═══ Employee modal ═══ -->
+<div class="cmodal-ov" id="emp-ov" onclick="if(event.target===this)closeEmp()">
+  <div class="cmodal">
+    <h3 id="emp-title">New team member</h3>
+    <input type="hidden" id="em-id">
+    <div class="mgrid">
+      <div class="fld full"><span class="l">Name *</span><input id="em-name" placeholder="First Last"></div>
+      <div class="fld"><span class="l">Contract</span>
+        <select id="em-type" onchange="empPreview()"><option value="full_time">Permanent full-time</option><option value="part_time">Permanent part-time</option><option value="extra">Extra / Recibos verdes</option></select>
+      </div>
+      <div class="fld"><span class="l" id="em-gross-l">Gross monthly (€) *</span><input id="em-gross" type="number" step="0.01" placeholder="0.00" oninput="empPreview()"></div>
+      <div class="fld"><span class="l">Meal allowance (€/day)</span><input id="em-meal" type="number" step="0.01" value="10.20" oninput="empPreview()"></div>
+      <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;margin-top:22px;"><input type="checkbox" id="em-exempt" onchange="empPreview()" style="width:15px;height:15px;">TSU exempt (first job)</label></div>
+    </div>
+    <div class="tsubox" id="em-preview" style="display:none;">
+      <div style="font-weight:600;margin-bottom:8px;">Estimated smoothed monthly cost</div>
+      <div class="tsurow"><span>Monthly gross</span><span id="pv-gross">—</span></div>
+      <div class="tsurow"><span>+ 13th &amp; 14th smoothed (+16.7%)</span><span id="pv-sup">—</span></div>
+      <div class="tsurow" id="pv-tsu-row"><span id="pv-tsu-l">+ Employer TSU 23.75%</span><span id="pv-tsu">—</span></div>
+      <div class="tsurow"><span>+ Meal allowance (~242d/yr)</span><span id="pv-meal">—</span></div>
+      <div class="tsurow" style="border-top:1px solid rgba(46,125,50,.3);margin-top:6px;padding-top:6px;font-weight:700;"><span>Total / month (employer)</span><span id="pv-total">—</span></div>
+    </div>
+    <div class="mfoot"><button class="fghost" onclick="closeEmp()">Cancel</button><button class="fbtn blue" onclick="saveEmp()">Save</button></div>
+  </div>
+</div>
 
 <script>
 (function () {
@@ -675,6 +772,190 @@
     });
     el.innerHTML = html;
   })();
+
+  // ══════════ EDITABLE COSTS ENGINE (self-contained demo) ══════════
+  var MARGIN = 0.742, VAT = 0.13, JMOIS = 21.25, TSU = 0.2375, REPAS = 242;
+  var REV_TTC = 487.50, MARGIN_EUR = 318.40;   // demo "today"
+  var cid = 100;
+  var CH = [
+    { id: ++cid, name: 'Rent',                    amount: 950, freq: 'monthly', cat: 'Real estate' },
+    { id: ++cid, name: 'Coffee machine lease',    amount: 240, freq: 'monthly', cat: 'Services' },
+    { id: ++cid, name: 'Electricity & water',     amount: 265, freq: 'monthly', cat: 'Energy & utilities' },
+    { id: ++cid, name: 'Accountant',              amount: 150, freq: 'monthly', cat: 'Services' },
+    { id: ++cid, name: 'Insurance',               amount: 1152, freq: 'annual', cat: 'Insurance' },
+    { id: ++cid, name: 'Internet & software',     amount: 96,  freq: 'monthly', cat: 'Telecom & software' },
+    { id: ++cid, name: 'Bank & card fees, waste', amount: 883, freq: 'monthly', cat: 'Bank & fees' }
+  ];
+  var EM = [
+    { id: ++cid, name: 'Maria Santos', type: 'full_time', gross: 1000, meal: 10.20, exempt: false },
+    { id: ++cid, name: 'João Pereira', type: 'part_time', gross: 600,  meal: 10.20, exempt: false },
+    { id: ++cid, name: 'Weekend extra', type: 'extra',    gross: 700,  meal: 0,     exempt: false }
+  ];
+  var TYPE_LBL = { full_time: 'Full-time', part_time: 'Part-time', extra: 'Extra · recibos verdes' };
+
+  function eur(v) { return '€' + (Math.round(v * 100) / 100).toLocaleString('en-IE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function eur0(v) { return '€' + Math.round(v).toLocaleString('en-IE'); }
+  function toMonthly(a, f) { return f === 'quarterly' ? a / 3 : f === 'annual' ? a / 12 : a; }
+  function empCost(e) {
+    if (e.type === 'extra') return { monthly: +e.gross || 0, tsu: 0, sup: 0, meal: 0 };
+    var g = +e.gross || 0, m = +e.meal || 0, rate = e.exempt ? 0 : TSU;
+    var aG = g * 14, aT = aG * rate, aR = m * REPAS;
+    return { monthly: (aG + aT + aR) / 12, tsu: aT / 12, sup: g * 14 / 12 - g, meal: aR / 12 };
+  }
+  function set(id, txt) { var el = document.getElementById(id); if (el) el.textContent = txt; }
+
+  window.switchCost = function (v) {
+    document.getElementById('cv-fixed').style.display = v === 'fixed' ? '' : 'none';
+    document.getElementById('cv-staff').style.display = v === 'staff' ? '' : 'none';
+    document.getElementById('ct-fixed').classList.toggle('on', v === 'fixed');
+    document.getElementById('ct-staff').classList.toggle('on', v === 'staff');
+  };
+
+  function renderCharges() {
+    var byCat = {};
+    CH.forEach(function (c) { (byCat[c.cat || 'Misc'] = byCat[c.cat || 'Misc'] || []).push(c); });
+    var html = '';
+    Object.keys(byCat).forEach(function (cat) {
+      html += '<tr class="catrow"><td colspan="4">' + cat + '</td></tr>';
+      byCat[cat].forEach(function (c) {
+        var mo = toMonthly(c.amount, c.freq);
+        var freqTxt = c.freq === 'monthly' ? '' : ' <span class="badge2">' + c.freq + '</span>';
+        html += '<tr><td>' + c.name + freqTxt + '</td>'
+          + '<td class="n">' + eur(c.amount) + (c.freq !== 'monthly' ? '<br><span style="font-size:10px;color:var(--tfaint)">' + eur(mo) + '/mo</span>' : '') + '</td>'
+          + '<td class="act"><button class="lnk edit" onclick="editCharge(' + c.id + ')">Edit</button> <button class="lnk del" onclick="delCharge(' + c.id + ')">✕</button></td></tr>';
+      });
+    });
+    var tot = CH.reduce(function (s, c) { return s + toMonthly(c.amount, c.freq); }, 0);
+    html += '<tr><td class="tot">Total / month</td><td class="n tot">' + eur(tot) + '</td><td></td></tr>';
+    document.getElementById('charges-body').innerHTML = html;
+  }
+
+  function renderEmps() {
+    var html = '';
+    EM.forEach(function (e) {
+      var c = empCost(e), cls = e.type === 'extra' ? 'ext' : 'ft';
+      var cells;
+      if (e.type === 'extra') {
+        cells = cell('Invoice / month', eur(e.gross), '') + cell('Total cost', eur(c.monthly), 'employer', true) + '<div></div><div></div>';
+      } else {
+        cells = cell('Monthly gross', eur(e.gross), e.exempt ? 'TSU exempt' : 'TSU ' + eur(c.tsu) + '/mo')
+          + cell('13th + 14th', '+' + eur(c.sup), '/ month')
+          + cell('Meal ' + eur(e.meal) + '/d', '+' + eur(c.meal), '/ month')
+          + cell('Total / month', eur(c.monthly), 'employer, smoothed', true);
+      }
+      html += '<div class="ecard"><div class="ecard-top"><div><span class="nm">' + e.name + '</span> <span class="badge2 ' + cls + '">' + TYPE_LBL[e.type] + '</span></div>'
+        + '<div><button class="lnk edit" onclick="editEmp(' + e.id + ')">Edit</button> <button class="lnk del" onclick="delEmp(' + e.id + ')">✕</button></div></div>'
+        + '<div class="egrid">' + cells + '</div></div>';
+    });
+    document.getElementById('emp-cards').innerHTML = html || '<div style="color:var(--tmuted);padding:20px;text-align:center;">No team yet — click “+ Add”.</div>';
+  }
+  function cell(l, v, s, tot) { return '<div class="ecell"><div class="l">' + l + '</div><div class="v' + (tot ? ' tot' : '') + '">' + v + '</div>' + (s ? '<div class="s">' + s + '</div>' : '') + '</div>'; }
+
+  function recompute() {
+    var fixed = CH.reduce(function (s, c) { return s + toMonthly(c.amount, c.freq); }, 0);
+    var staff = EM.reduce(function (s, e) { return s + empCost(e).monthly; }, 0);
+    var total = fixed + staff, costday = total / JMOIS;
+    var fixedDay = fixed / JMOIS, staffDay = staff / JMOIS;
+    var beTtc = MARGIN > 0 ? costday / MARGIN * (1 + VAT) : 0;
+    var revHt = REV_TTC / (1 + VAT);
+    var cogsPct = (1 - MARGIN) * 100, labPct = staffDay / revHt * 100, prime = cogsPct + labPct;
+    var ebitda = MARGIN_EUR - costday;
+
+    // Costs summary
+    set('cs-fixed', eur0(fixed)); set('cs-fixed-sub', CH.length + ' items');
+    set('cs-staff', eur0(staff)); set('cs-perday', eur(costday)); set('cs-be', eur0(beTtc));
+
+    // Dashboard — live
+    set('d-costday', eur(costday));
+    set('d-costday-sub', eur0(fixedDay) + ' fixed · ' + eur0(staffDay) + ' staff');
+    var primeEl = document.getElementById('d-prime');
+    primeEl.textContent = prime.toFixed(1) + '%';
+    primeEl.style.color = prime <= 65 ? 'var(--green)' : prime <= 72 ? 'var(--amber)' : 'var(--red)';
+    set('d-prime-sub', 'COGS ' + Math.round(cogsPct) + '% · Labour ' + Math.round(labPct) + '% · target <65%');
+    document.getElementById('d-prime-cogs').style.width = Math.min(100, cogsPct) + '%';
+    document.getElementById('d-prime-lab').style.width = Math.min(100, labPct) + '%';
+    set('d-be', eur(beTtc));
+    var beSub = document.getElementById('d-be-sub');
+    var avgTxt = ' · avg ' + eur0(beTtc) + '/open day';
+    if (REV_TTC >= beTtc) beSub.innerHTML = '<span style="color:var(--green)">Reached ✓ at 12:47</span>' + avgTxt;
+    else beSub.innerHTML = '<span style="color:var(--red)">' + eur(beTtc - REV_TTC) + ' short</span>' + avgTxt;
+    document.getElementById('d-be-bar').style.width = Math.min(100, REV_TTC / beTtc * 100) + '%';
+    var ebEl = document.getElementById('d-ebitda'), ebSub = document.getElementById('d-ebitda-sub');
+    ebEl.textContent = (ebitda >= 0 ? '+' : '') + eur(ebitda);
+    ebEl.style.color = ebitda >= 0 ? 'var(--green)' : 'var(--red)';
+    ebSub.textContent = ebitda >= 0 ? 'Profitable ✓' : 'Below break-even';
+    ebSub.style.color = ebitda >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+
+  // ── Charge modal ──
+  window.openCharge = function () { fillCharge({ id: '', name: '', amount: '', freq: 'monthly', cat: '' }, 'New fixed cost'); };
+  window.editCharge = function (id) { var c = CH.find(function (x) { return x.id === id; }); if (c) fillCharge(c, 'Edit fixed cost'); };
+  function fillCharge(c, title) {
+    document.getElementById('charge-title').textContent = title;
+    document.getElementById('ch-id').value = c.id;
+    document.getElementById('ch-name').value = c.name;
+    document.getElementById('ch-amount').value = c.amount;
+    document.getElementById('ch-freq').value = c.freq;
+    document.getElementById('ch-cat').value = c.cat || '';
+    document.getElementById('charge-ov').classList.add('on');
+  }
+  window.closeCharge = function () { document.getElementById('charge-ov').classList.remove('on'); };
+  window.saveCharge = function () {
+    var name = document.getElementById('ch-name').value.trim();
+    var amt = parseFloat(document.getElementById('ch-amount').value);
+    if (!name || isNaN(amt)) return;
+    var id = document.getElementById('ch-id').value;
+    var data = { name: name, amount: amt, freq: document.getElementById('ch-freq').value, cat: document.getElementById('ch-cat').value.trim() || 'Misc' };
+    if (id) { var c = CH.find(function (x) { return x.id === +id; }); Object.assign(c, data); }
+    else { data.id = ++cid; CH.push(data); }
+    closeCharge(); renderCharges(); recompute();
+  };
+  window.delCharge = function (id) { CH = CH.filter(function (x) { return x.id !== id; }); renderCharges(); recompute(); };
+
+  // ── Employee modal ──
+  window.openEmp = function () { fillEmp({ id: '', name: '', type: 'full_time', gross: '', meal: 10.20, exempt: false }, 'New team member'); };
+  window.editEmp = function (id) { var e = EM.find(function (x) { return x.id === id; }); if (e) fillEmp(e, 'Edit team member'); };
+  function fillEmp(e, title) {
+    document.getElementById('emp-title').textContent = title;
+    document.getElementById('em-id').value = e.id;
+    document.getElementById('em-name').value = e.name;
+    document.getElementById('em-type').value = e.type;
+    document.getElementById('em-gross').value = e.gross;
+    document.getElementById('em-meal').value = e.meal;
+    document.getElementById('em-exempt').checked = !!e.exempt;
+    document.getElementById('emp-ov').classList.add('on');
+    empPreview();
+  }
+  window.closeEmp = function () { document.getElementById('emp-ov').classList.remove('on'); };
+  window.empPreview = function () {
+    var type = document.getElementById('em-type').value;
+    var extra = type === 'extra';
+    document.getElementById('em-gross-l').textContent = extra ? 'Invoice / month (€) *' : 'Gross monthly (€) *';
+    var e = { type: type, gross: parseFloat(document.getElementById('em-gross').value) || 0, meal: parseFloat(document.getElementById('em-meal').value) || 0, exempt: document.getElementById('em-exempt').checked };
+    var c = empCost(e), pv = document.getElementById('em-preview');
+    if (!e.gross) { pv.style.display = 'none'; return; }
+    pv.style.display = '';
+    set('pv-gross', eur(e.gross));
+    set('pv-sup', extra ? '—' : '+' + eur(c.sup));
+    set('pv-meal', extra ? '—' : '+' + eur(c.meal));
+    document.getElementById('pv-tsu-row').style.display = extra ? 'none' : 'flex';
+    set('pv-tsu-l', e.exempt ? '+ Employer TSU (exempt)' : '+ Employer TSU 23.75%');
+    set('pv-tsu', extra ? '—' : '+' + eur(c.tsu));
+    set('pv-total', eur(c.monthly));
+  };
+  window.saveEmp = function () {
+    var name = document.getElementById('em-name').value.trim();
+    var gross = parseFloat(document.getElementById('em-gross').value);
+    if (!name || isNaN(gross)) return;
+    var id = document.getElementById('em-id').value;
+    var data = { name: name, type: document.getElementById('em-type').value, gross: gross, meal: parseFloat(document.getElementById('em-meal').value) || 0, exempt: document.getElementById('em-exempt').checked };
+    if (id) { var e = EM.find(function (x) { return x.id === +id; }); Object.assign(e, data); }
+    else { data.id = ++cid; EM.push(data); }
+    closeEmp(); renderEmps(); recompute();
+  };
+  window.delEmp = function (id) { EM = EM.filter(function (x) { return x.id !== id; }); renderEmps(); recompute(); };
+
+  renderCharges(); renderEmps(); recompute();
 
   // (upgrade modal on hold — paid layer kept in the HTML comment above)
 
