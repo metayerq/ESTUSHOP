@@ -325,41 +325,55 @@
 
 <div class="proto">Interactive prototype · <b>click through the funnel</b> · no data is sent anywhere</div>
 
-<!-- ═══ STEP 1 · ACCOUNT ═══ -->
+<!-- ═══ STEP 1 · WHO ═══ -->
 <div class="scr on" id="s1">
   <div class="fcard">
     <div class="flogo">mesa</div>
-    <div class="fstep"><span>Step 1 / 4 · Account</span><span class="t">~60 s total</span></div>
-    <div class="fbar"><i style="width:25%"></i></div>
-    <h2 class="ft">Create your account</h2>
-    <p class="fs">Free — no card, no password. We'll email you a sign-in link.</p>
+    <div class="fstep"><span>Step 1 / 3 · You</span><span class="t">~45 s total</span></div>
+    <div class="fbar"><i style="width:33%"></i></div>
+    <h2 class="ft">Request early access</h2>
+    <p class="fs">Free while in early access. We open accounts one café at a time, together with you — tell us who you are.</p>
     <div class="row2">
       <label class="fl"><span class="lab">First name</span><input class="fi" id="f-first" placeholder="Maria" autocomplete="given-name"></label>
-      <label class="fl"><span class="lab">Last name</span><input class="fi" id="f-last" placeholder="Santos" autocomplete="family-name"></label>
+      <label class="fl"><span class="lab">Your café</span><input class="fi" id="f-company" placeholder="Café da Graça"></label>
     </div>
-    <label class="fl"><span class="lab">Work email</span><input class="fi" id="f-email" type="email" placeholder="maria@yourcafe.pt" autocomplete="email"></label>
-    <div class="ferr" id="e1">Please fill in your name and a valid email.</div>
+    <label class="fl"><span class="lab">Work email</span><input class="fi" id="f-email" type="email" placeholder="maria@seucafe.pt" autocomplete="email"></label>
+    <div class="ferr" id="e1">Please fill in your name, café and a valid email.</div>
     <button class="fbtn" onclick="go(1)">Continue →</button>
+    <button class="fghost" onclick="skip()">Just show me the demo →</button>
     <div class="fine">By continuing you accept our Terms &amp; Privacy Policy.</div>
   </div>
 </div>
 
-<!-- ═══ STEP 2 · BUSINESS ═══ -->
+<!-- ═══ STEP 2 · YOUR CAFÉ ═══ -->
 <div class="scr" id="s2">
   <div class="fcard">
     <div class="flogo">mesa</div>
-    <div class="fstep"><span>Step 2 / 4 · Your business</span><span class="t">~30 s left</span></div>
-    <div class="fbar"><i style="width:50%"></i></div>
+    <div class="fstep"><span>Step 2 / 3 · Your café</span><span class="t">~30 s left</span></div>
+    <div class="fbar"><i style="width:66%"></i></div>
     <button class="fback" onclick="back(1)">← Back</button>
     <h2 class="ft" id="t2">Nice to meet you 👋</h2>
-    <p class="fs">This shapes your dashboard — defaults, categories, benchmarks.</p>
-    <label class="fl"><span class="lab">Business name</span><input class="fi" id="f-company" placeholder="Café Alcântara"></label>
+    <p class="fs">30 seconds — this tells us how to prepare your setup call.</p>
+    <div class="fl"><span class="lab">Which POS do you use?</span>
+      <div class="chips" data-k="pos">
+        <button class="chip on" data-v="Vendus">Vendus</button>
+        <button class="chip" data-v="Other POS">Another POS</button>
+        <button class="chip" data-v="Not sure">Not sure</button>
+      </div>
+    </div>
     <div class="fl"><span class="lab">Type</span>
       <div class="chips" data-k="type">
         <button class="chip on" data-v="Café / Coffee shop">Café / Coffee shop</button>
+        <button class="chip" data-v="Pastelaria">Pastelaria</button>
         <button class="chip" data-v="Restaurant">Restaurant</button>
         <button class="chip" data-v="Bar">Bar</button>
-        <button class="chip" data-v="Bakery">Bakery</button>
+      </div>
+    </div>
+    <div class="fl"><span class="lab">Locations</span>
+      <div class="chips" data-k="locations">
+        <button class="chip on" data-v="1">1</button>
+        <button class="chip" data-v="2">2</button>
+        <button class="chip" data-v="3+">3+</button>
       </div>
     </div>
     <div class="fl"><span class="lab">Team size</span>
@@ -370,38 +384,20 @@
         <button class="chip" data-v="16+">16+</button>
       </div>
     </div>
-    <div class="fl"><span class="lab">Annual revenue <em>optional</em></span>
-      <div class="chips" data-k="revenue">
-        <button class="chip" data-v="<100k">&lt; €100k</button>
-        <button class="chip" data-v="100-300k">€100–300k</button>
-        <button class="chip" data-v="300k-1M">€300k–1M</button>
-        <button class="chip" data-v=">1M">&gt; €1M</button>
-      </div>
-    </div>
-    <label class="fl"><span class="lab">NIF <em>optional — for invoices, you can add it later</em></span><input class="fi" id="f-nif" placeholder="5XXXXXXXX" inputmode="numeric"></label>
-    <div class="ferr" id="e2">Please enter your business name.</div>
     <button class="fbtn" onclick="go(2)">Continue →</button>
+    <button class="fghost" onclick="skip()">Just show me the demo →</button>
   </div>
 </div>
 
-<!-- ═══ STEP 3 · CONTEXT ═══ -->
+<!-- ═══ STEP 3 · YOUR NUMBERS ═══ -->
 <div class="scr" id="s3">
   <div class="fcard">
     <div class="flogo">mesa</div>
-    <div class="fstep"><span>Step 3 / 4 · About you</span><span class="t">~15 s left</span></div>
-    <div class="fbar"><i style="width:75%"></i></div>
+    <div class="fstep"><span>Step 3 / 3 · Your numbers</span><span class="t">last step</span></div>
+    <div class="fbar"><i style="width:95%"></i></div>
     <button class="fback" onclick="back(2)">← Back</button>
-    <h2 class="ft">Two quick questions</h2>
-    <p class="fs">So we can point you at the right things first.</p>
-    <label class="fl"><span class="lab">Your role</span>
-      <select class="fi" id="f-role">
-        <option>Owner</option>
-        <option>Manager</option>
-        <option>Head barista / chef</option>
-        <option>Accountant</option>
-        <option>Other</option>
-      </select>
-    </label>
+    <h2 class="ft">One real question</h2>
+    <p class="fs">This is what we'll dig into together on your setup call.</p>
     <label class="fl"><span class="lab">What matters most to you right now?</span>
       <select class="fi" id="f-goal">
         <option value="margins">Knowing my real margins per product</option>
@@ -411,53 +407,25 @@
         <option value="exploring">Just exploring</option>
       </select>
     </label>
-    <label class="fl"><span class="lab">How did you hear about us? <em>optional</em></span>
-      <select class="fi" id="f-heard">
-        <option value="">Select…</option>
-        <option>Word of mouth — another owner</option>
-        <option>Instagram / social media</option>
-        <option>Google search</option>
-        <option>Vendus community / forum</option>
-        <option>My accountant</option>
-        <option>Other</option>
-      </select>
+    <label class="fl"><span class="lab">Your biggest question about your numbers <em>optional</em></span>
+      <input class="fi" id="f-question" placeholder='e.g. "Am I actually making money on brunch?"'>
     </label>
-    <button class="fbtn" onclick="go(3)">Continue →</button>
+    <label class="fl"><span class="lab">Phone <em>optional — for the setup call, WhatsApp works</em></span>
+      <input class="fi" id="f-phone" type="tel" placeholder="+351 9XX XXX XXX" autocomplete="tel">
+    </label>
+    <button class="fbtn blue" onclick="go(3)">Request early access →</button>
   </div>
 </div>
 
-<!-- ═══ STEP 4 · CONNECT ═══ -->
+<!-- ═══ CONFIRMATION ═══ -->
 <div class="scr" id="s4">
-  <div class="fcard">
-    <div class="flogo">mesa</div>
-    <div class="fstep"><span>Step 4 / 4 · Connect Vendus</span><span class="t">last step</span></div>
-    <div class="fbar"><i style="width:95%"></i></div>
-    <button class="fback" onclick="back(3)">← Back</button>
-    <h2 class="ft">Connect your Vendus account</h2>
-    <p class="fs">Paste one key — your sales start importing immediately. Mesa can only <b>read</b>: it can never touch anything in your POS.</p>
-
-    <div class="vguide">
-      <div class="vg-head">
-        <span>Where to find your key</span>
-        <a class="vg-link" href="https://app.vendus.pt" target="_blank" rel="noopener">Open Vendus ↗</a>
-      </div>
-      <div class="vg-path">
-        <span class="crumb">Configurações</span><span class="vg-sep">→</span>
-        <span class="crumb">Integrações</span><span class="vg-sep">→</span>
-        <span class="crumb">API</span>
-      </div>
-      <div class="vg-note">Copy the key shown there — a long code like <span class="mono">f47ac10b-58cc-…</span> — and paste it below. If your accountant manages Vendus, forward them this page.</div>
-    </div>
-
-    <label class="fl">
-      <span class="lab"><span>Vendus API key</span><em id="key-state"></em></span>
-      <input class="fi mono key-input" id="f-key" placeholder="Paste your key here" autocomplete="off" spellcheck="false">
-    </label>
-    <button class="fbtn blue" id="btn-connect" onclick="connect()" disabled>Connect &amp; see my numbers →</button>
-    <button class="fghost" onclick="skip()">Skip for now — explore with demo data</button>
-    <div class="trustrow">
-      <span>🔒 Read-only</span><span>AES-256 encrypted</span><span>GDPR · EU-hosted</span>
-    </div>
+  <div class="fcard" style="text-align:center;">
+    <div class="flogo" style="text-align:left;">mesa</div>
+    <div style="width:52px;height:52px;border-radius:50%;background:var(--green-bg);color:var(--green);font-size:24px;display:flex;align-items:center;justify-content:center;margin:6px auto 16px;">✓</div>
+    <h2 class="ft" id="cf-title">Obrigado!</h2>
+    <p class="fs" style="max-width:340px;margin-left:auto;margin-right:auto;">We'll call you within <b>24–48 h</b> to open your account together — it takes about 15 minutes and you'll see <b>your own numbers</b> live before we hang up.</p>
+    <button class="fbtn blue" onclick="skip()">Explore the demo meanwhile →</button>
+    <div class="fine">Free in early access · no card, ever.<br>You'll receive your <b>activation code</b> during the call.</div>
   </div>
 </div>
 
@@ -471,16 +439,18 @@
     <div class="dbody estu">
 
       <div class="banner" id="demo-banner">
-        <span>📊 <b>You're viewing demo data.</b> Connect Vendus (3 min) to see your own numbers here.</span>
-        <button class="btn-mini" onclick="show(4)">Connect Vendus</button>
+        <span>☕ <b>Demo — a small café in Lisbon.</b> Your setup call unlocks your own numbers. Got your activation code?</span>
+        <input class="fi mono" id="f-code" placeholder="MESA-····" autocomplete="off" spellcheck="false"
+               style="width:130px;font-size:12px;padding:7px 10px;margin-left:auto;text-transform:uppercase;">
+        <button class="btn-mini" style="margin-left:8px;" onclick="activate()">Activate</button>
       </div>
       <div class="banner ok" id="live-banner" style="display:none;">
-        <span>✓ <b>Vendus connected.</b> 12,384 sales imported · 247 products · last sale 12 min ago.</span>
+        <span>✓ <b>Code accepted — account unlocked.</b> We'll connect your Vendus together on the call and your numbers will replace this demo.</span>
       </div>
 
       <div class="dhead">
         <div>
-          <div class="nm" id="d-company">Café Alcântara</div>
+          <div class="nm" id="d-company">Café da Graça</div>
           <div class="sb">Today · <span id="d-date"></span></div>
         </div>
         <span class="live" id="d-live" style="display:none;"><i></i>LIVE</span>
@@ -508,19 +478,19 @@
         <!-- Gold row -->
         <div class="kgrid4">
           <div class="kcard">
-            <div class="k">Revenue (incl. VAT)</div><div class="v">€487.50</div>
-            <div class="d"><span class="pill up">▲ +12%</span> vs last Tue same time</div>
-            <div class="sub2">= traffic <span style="color:var(--green);font-weight:600;">+8%</span> × basket <span style="color:var(--green);font-weight:600;">+4%</span></div>
-            <div class="sub2">€431.42 excl. VAT · VAT €56.08</div>
+            <div class="k">Revenue (incl. VAT)</div><div class="v">€512.40</div>
+            <div class="d"><span class="pill up">▲ +6%</span> vs last Tue same time</div>
+            <div class="sub2">= traffic <span style="color:var(--green);font-weight:600;">+4%</span> × basket <span style="color:var(--green);font-weight:600;">+2%</span></div>
+            <div class="sub2">€461.30 excl. VAT · VAT €51.10</div>
           </div>
           <div class="kcard">
-            <div class="k">Transactions</div><div class="v">63</div>
-            <div class="d"><span class="pill up">▲ +8%</span> vs last Tue same time</div>
+            <div class="k">Transactions</div><div class="v">108</div>
+            <div class="d"><span class="pill up">▲ +4%</span> vs last Tue same time</div>
           </div>
           <div class="kcard">
-            <div class="k">Average ticket</div><div class="v">€7.74</div>
-            <div class="d"><span class="pill up">▲ +4%</span></div>
-            <div class="sub2">median €6.20</div>
+            <div class="k">Average ticket</div><div class="v">€4.74</div>
+            <div class="d"><span class="pill up">▲ +2%</span></div>
+            <div class="sub2">median €3.60</div>
           </div>
           <div class="kcard">
             <div class="k">Est. EBITDA (today)</div><div class="v" id="d-ebitda" style="color:var(--green);">+€47.80</div>
@@ -532,8 +502,8 @@
         <!-- Economics row -->
         <div class="kgrid4">
           <div class="kcard">
-            <div class="k">Gross margin</div><div class="v">74.2%</div>
-            <div class="sub2">€318.40 · <span style="color:var(--green);">COGS coverage 96%</span></div>
+            <div class="k">Gross margin</div><div class="v">71.0%</div>
+            <div class="sub2">€327.50 · <span style="color:var(--green);">COGS coverage 94%</span></div>
           </div>
           <div class="kcard">
             <div class="k">Costs (day)</div><div class="v" id="d-costday">€270.60</div>
@@ -555,26 +525,26 @@
         <div class="panel" style="margin-bottom:12px;">
           <div class="k">Revenue by hour — peak solid, dead hours red</div>
           <div class="bars" style="height:84px;">
-            <i style="height:14%"></i><i style="height:30%"></i><i style="height:52%"></i><i class="hot" style="height:84%"></i><i class="hot" style="height:100%"></i><i style="height:60%"></i><i class="dead" style="height:6%"></i><i style="height:50%"></i><i style="height:56%"></i><i style="height:32%"></i>
+            <i style="height:36%"></i><i class="hot" style="height:88%"></i><i class="hot" style="height:100%"></i><i style="height:54%"></i><i style="height:40%"></i><i style="height:62%"></i><i style="height:74%"></i><i style="height:38%"></i><i class="dead" style="height:6%"></i><i style="height:26%"></i>
           </div>
-          <div class="wowline"><span>⚡ Rush 11:00–13:00 · <b>41%</b> of the day</span><span>· dead hour 14h flagged red</span></div>
+          <div class="wowline"><span>⚡ Morning rush 08:00–10:00 · <b>39%</b> of the day</span><span>· lunch bump 12–14h</span><span>· dead hour 15h flagged red</span></div>
         </div>
 
         <div class="slabel">Breakdown</div>
         <div class="grid2">
           <div class="panel">
             <div class="k">Product mix</div>
-            <div class="mixrow"><div class="t"><b>Drinks</b><span class="n">58% · €282.75 incl.VAT</span></div><div class="bar"><i style="width:58%;"></i></div><div class="t" style="margin-top:2px;"><span class="n" style="font-size:10.5px;">margin <span style="color:var(--green);font-weight:600;">79%</span> · €176.10</span></div></div>
-            <div class="mixrow"><div class="t"><b>Food</b><span class="n">27% · €131.63 incl.VAT</span></div><div class="bar"><i style="width:27%;"></i></div><div class="t" style="margin-top:2px;"><span class="n" style="font-size:10.5px;">margin <span style="color:var(--amber);font-weight:600;">62%</span> · €72.20</span></div></div>
-            <div class="mixrow"><div class="t"><b>Viennoiserie</b><span class="n">9% · €43.88 incl.VAT</span></div><div class="bar"><i style="width:9%;"></i></div><div class="t" style="margin-top:2px;"><span class="n" style="font-size:10.5px;">margin <span style="color:var(--amber);font-weight:600;">51%</span> · €19.80</span></div></div>
-            <div class="mixrow"><div class="t"><b>Retail</b><span class="n">6% · €29.25 incl.VAT</span></div><div class="bar"><i style="width:6%;"></i></div><div class="t" style="margin-top:2px;"><span class="n" style="font-size:10.5px;">margin <span style="color:var(--red);font-weight:600;">44%</span> · €11.40</span></div></div>
+            <div class="mixrow"><div class="t"><b>Café</b><span class="n">46% · €235.70 incl.VAT</span></div><div class="bar"><i style="width:46%;"></i></div><div class="t" style="margin-top:2px;"><span class="n" style="font-size:10.5px;">margin <span style="color:var(--green);font-weight:600;">82%</span> · €152.30</span></div></div>
+            <div class="mixrow"><div class="t"><b>Pastelaria</b><span class="n">26% · €133.20 incl.VAT</span></div><div class="bar"><i style="width:26%;"></i></div><div class="t" style="margin-top:2px;"><span class="n" style="font-size:10.5px;">margin <span style="color:var(--amber);font-weight:600;">57%</span> · €59.80</span></div></div>
+            <div class="mixrow"><div class="t"><b>Cozinha</b><span class="n">20% · €102.50 incl.VAT</span></div><div class="bar"><i style="width:20%;"></i></div><div class="t" style="margin-top:2px;"><span class="n" style="font-size:10.5px;">margin <span style="color:var(--amber);font-weight:600;">63%</span> · €50.90</span></div></div>
+            <div class="mixrow"><div class="t"><b>Bebidas frias</b><span class="n">8% · €41.00 incl.VAT</span></div><div class="bar"><i style="width:8%;"></i></div><div class="t" style="margin-top:2px;"><span class="n" style="font-size:10.5px;">margin <span style="color:var(--red);font-weight:600;">54%</span> · €19.40</span></div></div>
           </div>
           <div class="panel">
             <div class="k">Payment methods</div>
-            <div class="mixrow"><div class="t"><b>Multibanco</b><span class="n">€298.10 · 61%</span></div><div class="bar"><i style="width:61%;"></i></div></div>
-            <div class="mixrow"><div class="t"><b>Dinheiro</b><span class="n">€98.90 · 20%</span></div><div class="bar"><i style="width:20%;"></i></div></div>
-            <div class="mixrow"><div class="t"><b>Vendus Pay</b><span class="n">€61.30 · 13%</span></div><div class="bar"><i style="width:13%;"></i></div></div>
-            <div class="mixrow"><div class="t"><b>Cartão de Crédito</b><span class="n">€29.20 · 6%</span></div><div class="bar"><i style="width:6%;"></i></div></div>
+            <div class="mixrow"><div class="t"><b>Multibanco</b><span class="n">€266.45 · 52%</span></div><div class="bar"><i style="width:52%;"></i></div></div>
+            <div class="mixrow"><div class="t"><b>Dinheiro</b><span class="n">€158.85 · 31%</span></div><div class="bar"><i style="width:31%;"></i></div></div>
+            <div class="mixrow"><div class="t"><b>MB Way</b><span class="n">€61.50 · 12%</span></div><div class="bar"><i style="width:12%;"></i></div></div>
+            <div class="mixrow"><div class="t"><b>Cartão de Crédito</b><span class="n">€25.60 · 5%</span></div><div class="bar"><i style="width:5%;"></i></div></div>
           </div>
         </div>
 
@@ -583,12 +553,12 @@
           <table class="dtable">
             <thead><tr><th>Product</th><th class="r">Qty</th><th class="r">Unit price</th><th class="r">Revenue</th><th class="r">Margin</th><th style="width:80px;"></th></tr></thead>
             <tbody>
-              <tr><td style="font-weight:600;">Espresso</td><td class="r">84</td><td class="r" style="color:var(--tmuted);">€1.30</td><td class="r">€109.20</td><td class="r"><span class="bdg g">82%</span></td><td><span class="qbar"><i style="width:100%;"></i></span></td></tr>
-              <tr><td>Croissant</td><td class="r">29</td><td class="r" style="color:var(--tmuted);">€1.80</td><td class="r">€52.20</td><td class="r"><span class="bdg a">54%</span></td><td><span class="qbar"><i style="width:35%;"></i></span></td></tr>
-              <tr><td>Iced latte</td><td class="r">14</td><td class="r" style="color:var(--tmuted);">€3.50</td><td class="r">€49.00</td><td class="r"><span class="bdg g">76%</span></td><td><span class="qbar"><i style="width:17%;"></i></span></td></tr>
-              <tr><td>Avocado toast</td><td class="r">11</td><td class="r" style="color:var(--tmuted);">€7.50</td><td class="r">€82.50</td><td class="r"><span class="bdg a">61%</span></td><td><span class="qbar"><i style="width:13%;"></i></span></td></tr>
-              <tr><td>Fresh juice</td><td class="r">9</td><td class="r" style="color:var(--tmuted);">€4.00</td><td class="r">€36.00</td><td class="r"><span class="bdg r">52%</span></td><td><span class="qbar"><i style="width:11%;"></i></span></td></tr>
-              <tr><td>Granola bowl</td><td class="r">7</td><td class="r" style="color:var(--tmuted);">€6.50</td><td class="r">€45.50</td><td class="r"><span class="bdg g">69%</span></td><td><span class="qbar"><i style="width:8%;"></i></span></td></tr>
+              <tr><td style="font-weight:600;">Bica</td><td class="r">92</td><td class="r" style="color:var(--tmuted);">€1.10</td><td class="r">€101.20</td><td class="r"><span class="bdg g">85%</span></td><td><span class="qbar"><i style="width:100%;"></i></span></td></tr>
+              <tr><td>Pastel de nata</td><td class="r">64</td><td class="r" style="color:var(--tmuted);">€1.40</td><td class="r">€89.60</td><td class="r"><span class="bdg a">58%</span></td><td><span class="qbar"><i style="width:70%;"></i></span></td></tr>
+              <tr><td>Galão</td><td class="r">41</td><td class="r" style="color:var(--tmuted);">€1.60</td><td class="r">€65.60</td><td class="r"><span class="bdg g">78%</span></td><td><span class="qbar"><i style="width:45%;"></i></span></td></tr>
+              <tr><td>Meia de leite</td><td class="r">22</td><td class="r" style="color:var(--tmuted);">€1.40</td><td class="r">€30.80</td><td class="r"><span class="bdg g">80%</span></td><td><span class="qbar"><i style="width:24%;"></i></span></td></tr>
+              <tr><td>Tosta mista</td><td class="r">18</td><td class="r" style="color:var(--tmuted);">€3.90</td><td class="r">€70.20</td><td class="r"><span class="bdg a">62%</span></td><td><span class="qbar"><i style="width:20%;"></i></span></td></tr>
+              <tr><td>Sumo de laranja</td><td class="r">11</td><td class="r" style="color:var(--tmuted);">€3.50</td><td class="r">€38.50</td><td class="r"><span class="bdg r">54%</span></td><td><span class="qbar"><i style="width:12%;"></i></span></td></tr>
             </tbody>
           </table>
         </div>
@@ -598,12 +568,12 @@
           <table class="dtable">
             <thead><tr><th>Time</th><th>Document</th><th>Type</th><th class="r">Amount</th></tr></thead>
             <tbody>
-              <tr><td style="color:var(--tmuted);">14:31</td><td class="mono" style="font-size:11.5px;">FS 01P2026/633</td><td><span class="txb">FS</span></td><td class="r">€4.00</td></tr>
-              <tr><td style="color:var(--tmuted);">14:07</td><td class="mono" style="font-size:11.5px;">FS 01P2026/632</td><td><span class="txb">FS</span></td><td class="r">€11.20</td></tr>
-              <tr><td style="color:var(--tmuted);">13:45</td><td class="mono" style="font-size:11.5px;">FS 01P2026/631</td><td><span class="txb">FS</span></td><td class="r">€23.50</td></tr>
-              <tr><td style="color:var(--tmuted);">13:45</td><td class="mono" style="font-size:11.5px;">FS 01P2026/630</td><td><span class="txb">FS</span></td><td class="r">€2.80</td></tr>
-              <tr><td style="color:var(--tmuted);">13:12</td><td class="mono" style="font-size:11.5px;">FS 01P2026/629</td><td><span class="txb">FS</span></td><td class="r">€7.50</td></tr>
-              <tr><td style="color:var(--tmuted);">12:58</td><td class="mono" style="font-size:11.5px;">FS 01P2026/628</td><td><span class="txb">FS</span></td><td class="r">€4.00</td></tr>
+              <tr><td style="color:var(--tmuted);">14:31</td><td class="mono" style="font-size:11.5px;">FS 01P2026/633</td><td><span class="txb">FS</span></td><td class="r">€1.10</td></tr>
+              <tr><td style="color:var(--tmuted);">14:07</td><td class="mono" style="font-size:11.5px;">FS 01P2026/632</td><td><span class="txb">FS</span></td><td class="r">€4.30</td></tr>
+              <tr><td style="color:var(--tmuted);">13:45</td><td class="mono" style="font-size:11.5px;">FS 01P2026/631</td><td><span class="txb">FS</span></td><td class="r">€7.80</td></tr>
+              <tr><td style="color:var(--tmuted);">13:45</td><td class="mono" style="font-size:11.5px;">FS 01P2026/630</td><td><span class="txb">FS</span></td><td class="r">€2.50</td></tr>
+              <tr><td style="color:var(--tmuted);">13:12</td><td class="mono" style="font-size:11.5px;">FS 01P2026/629</td><td><span class="txb">FS</span></td><td class="r">€5.60</td></tr>
+              <tr><td style="color:var(--tmuted);">12:58</td><td class="mono" style="font-size:11.5px;">FS 01P2026/628</td><td><span class="txb">FS</span></td><td class="r">€3.40</td></tr>
             </tbody>
           </table>
         </div>
@@ -646,7 +616,7 @@
             <div class="bars" style="height:56px;">
               <i style="height:52%"></i><i class="hot" style="height:100%"></i><i style="height:48%"></i><i style="height:51%"></i><i style="height:57%"></i><i style="height:53%"></i><i style="height:62%"></i>
             </div>
-            <div class="wowline"><span>Last 7 full days <b>€2,847</b> <span class="pill up">▲ +9%</span></span><span>· 371 tx <span class="pill up">▲ +5%</span></span><span>· Best day: <b>Saturday</b></span></div>
+            <div class="wowline"><span>Last 7 full days <b>€2,412</b> <span class="pill up">▲ +7%</span></span><span>· 693 tx <span class="pill up">▲ +4%</span></span><span>· Best day: <b>Saturday</b></span></div>
           </div>
         </div>
 
@@ -797,63 +767,50 @@
   window.go = function (from) {
     if (from === 1) {
       var f = document.getElementById('f-first').value.trim();
+      var c = document.getElementById('f-company').value.trim();
       var e = document.getElementById('f-email').value.trim();
-      if (!f || e.indexOf('@') < 1) { document.getElementById('e1').style.display = 'block'; return; }
+      if (!f || !c || e.indexOf('@') < 1) { document.getElementById('e1').style.display = 'block'; return; }
       document.getElementById('e1').style.display = 'none';
-      state.first = f;
+      state.first = f; state.company = c; state.email = e;
       document.getElementById('t2').textContent = 'Nice to meet you, ' + f + ' 👋';
       show(2);
     } else if (from === 2) {
-      var c = document.getElementById('f-company').value.trim();
-      if (!c) { document.getElementById('e2').style.display = 'block'; return; }
-      document.getElementById('e2').style.display = 'none';
-      state.company = c;
       show(3);
     } else if (from === 3) {
       state.goal = document.getElementById('f-goal').value;
+      state.question = document.getElementById('f-question').value.trim();
+      state.phone = document.getElementById('f-phone').value.trim();
+      // Prototype : c'est ici qu'on POSTerait la demande (Supabase / Formspree).
+      document.getElementById('cf-title').textContent = 'Obrigado' + (state.first ? ', ' + state.first : '') + '!';
       show(4);
     }
   };
 
   function landDash() {
-    document.getElementById('d-company').textContent = state.company || 'Café Alcântara';
+    document.getElementById('d-company').textContent = 'Café da Graça';
     var d = new Date();
     document.getElementById('d-date').textContent = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
     show(5);
   }
 
-  // ── Step 4 : clé API — validation live + état de connexion ────────────────
-  var keyEl = document.getElementById('f-key');
-  var keyState = document.getElementById('key-state');
-  var btnConnect = document.getElementById('btn-connect');
-  function keyLooksValid(k) { return k.replace(/[^a-f0-9]/gi, '').length >= 20; }
-  keyEl.addEventListener('input', function () {
-    var k = keyEl.value.trim();
-    var ok = keyLooksValid(k);
-    btnConnect.disabled = !ok;
-    keyEl.classList.toggle('ok', ok);
-    keyState.className = ok ? 'ok' : '';
-    keyState.textContent = ok ? '✓ format looks good' : (k ? 'keep pasting — keys are longer' : '');
-  });
-
-  window.connect = function () {
-    var k = keyEl.value.trim();
-    if (!keyLooksValid(k)) { keyEl.focus(); return; }
-    btnConnect.disabled = true;
-    btnConnect.textContent = 'Connecting to Vendus…';
-    setTimeout(function () {                       // prototype : simule le handshake
-      btnConnect.textContent = '✓ Connected — importing your sales';
-      setTimeout(function () {
-        state.connected = true;
-        document.getElementById('demo-banner').style.display = 'none';
-        document.getElementById('live-banner').style.display = 'flex';
-        document.getElementById('d-live').style.display = 'inline-flex';
-        btnConnect.textContent = 'Connect & see my numbers →';
-        btnConnect.disabled = false;
-        landDash();
-      }, 700);
-    }, 900);
+  // Code d'activation — remis en main propre pendant le setup call.
+  // Prototype : accepte tout code au format MESA-XXXX.
+  window.activate = function () {
+    var el = document.getElementById('f-code');
+    var code = (el.value || '').trim().toUpperCase();
+    if (!/^MESA-[A-Z0-9]{3,}$/.test(code)) {
+      el.style.borderColor = 'var(--red)';
+      el.placeholder = 'MESA-···· ?';
+      el.value = '';
+      setTimeout(function () { el.style.borderColor = ''; }, 1400);
+      return;
+    }
+    document.getElementById('demo-banner').style.display = 'none';
+    document.getElementById('live-banner').style.display = 'flex';
+    document.getElementById('d-live').style.display = 'inline-flex';
+    state.connected = true;
   };
+
   window.skip = function () {
     state.connected = false;
     document.getElementById('demo-banner').style.display = 'flex';
@@ -888,22 +845,22 @@
   })();
 
   // ══════════ EDITABLE COSTS ENGINE (self-contained demo) ══════════
-  var MARGIN = 0.742, VAT = 0.13, JMOIS = 21.25, TSU = 0.2375, REPAS = 242;
-  var REV_TTC = 487.50, MARGIN_EUR = 318.40;   // demo "today"
+  var MARGIN = 0.71, VAT = 0.13, JMOIS = 21.25, TSU = 0.2375, REPAS = 242;
+  var REV_TTC = 512.40, MARGIN_EUR = 327.50;   // demo "today" — petit café Lisbonne
   var cid = 100;
   var CH = [
-    { id: ++cid, name: 'Rent',                    amount: 950, freq: 'monthly', cat: 'Real estate' },
-    { id: ++cid, name: 'Coffee machine lease',    amount: 240, freq: 'monthly', cat: 'Services' },
-    { id: ++cid, name: 'Electricity & water',     amount: 265, freq: 'monthly', cat: 'Energy & utilities' },
-    { id: ++cid, name: 'Accountant',              amount: 150, freq: 'monthly', cat: 'Services' },
-    { id: ++cid, name: 'Insurance',               amount: 1152, freq: 'annual', cat: 'Insurance' },
-    { id: ++cid, name: 'Internet & software',     amount: 96,  freq: 'monthly', cat: 'Telecom & software' },
-    { id: ++cid, name: 'Bank & card fees, waste', amount: 883, freq: 'monthly', cat: 'Bank & fees' }
+    { id: ++cid, name: 'Rent — Graça',            amount: 1100, freq: 'monthly', cat: 'Real estate' },
+    { id: ++cid, name: 'Coffee machine lease',    amount: 190, freq: 'monthly', cat: 'Services' },
+    { id: ++cid, name: 'Electricity & water',     amount: 240, freq: 'monthly', cat: 'Energy & utilities' },
+    { id: ++cid, name: 'Accountant (TOC)',        amount: 125, freq: 'monthly', cat: 'Services' },
+    { id: ++cid, name: 'Insurance',               amount: 780, freq: 'annual', cat: 'Insurance' },
+    { id: ++cid, name: 'Internet & software',     amount: 75,  freq: 'monthly', cat: 'Telecom & software' },
+    { id: ++cid, name: 'Bank & card fees, waste', amount: 470, freq: 'monthly', cat: 'Bank & fees' }
   ];
   var EM = [
-    { id: ++cid, name: 'Maria Santos', type: 'full_time', gross: 1000, meal: 10.20, exempt: false },
-    { id: ++cid, name: 'João Pereira', type: 'part_time', gross: 600,  meal: 10.20, exempt: false },
-    { id: ++cid, name: 'Weekend extra', type: 'extra',    gross: 700,  meal: 0,     exempt: false }
+    { id: ++cid, name: 'Maria Santos', type: 'full_time', gross: 960, meal: 10.20, exempt: false },
+    { id: ++cid, name: 'Rui Almeida',  type: 'part_time', gross: 600, meal: 10.20, exempt: false },
+    { id: ++cid, name: 'Weekend extra', type: 'extra',    gross: 520, meal: 0,     exempt: false }
   ];
   var TYPE_LBL = { full_time: 'Full-time', part_time: 'Part-time', extra: 'Extra · recibos verdes' };
 
@@ -1093,7 +1050,7 @@
     if (cur.id === 's1') go(1);
     else if (cur.id === 's2') go(2);
     else if (cur.id === 's3') go(3);
-    else if (cur.id === 's4') connect();
+    else if (cur.id === 's4') skip();
   });
 })();
 </script>
