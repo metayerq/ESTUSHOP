@@ -323,10 +323,10 @@
 </head>
 <body>
 
-<div class="proto">Interactive prototype · <b>click through the funnel</b> · no data is sent anywhere</div>
+<div class="proto">Live demo · <b>sample data from a Lisbon café</b> · edit anything — nothing is saved</div>
 
-<!-- ═══ STEP 1 · WHO ═══ -->
-<div class="scr on" id="s1">
+<!-- ═══ STEP 1 · WHO (dormant — funnel bypassed, kept for later) ═══ -->
+<div class="scr" id="s1">
   <div class="fcard">
     <div class="flogo">mesa</div>
     <div class="fstep"><span>Step 1 / 3 · You</span><span class="t">~45 s total</span></div>
@@ -431,23 +431,19 @@
 </div>
 
 <!-- ═══ DASHBOARD ═══ -->
-<div class="scr" id="s5">
+<div class="scr on" id="s5">
   <div class="dash">
     <div class="dtop">
       <div class="flogo">mesa</div>
-      <span class="plan">EARLY ACCESS · FREE</span>
+      <span class="plan">FREE</span>
+      <a class="btn-up" href="landing.html" style="margin-left:auto;text-decoration:none;">← Back to site</a>
     </div>
     <div class="dbody estu">
 
       <div class="banner" id="demo-banner">
-        <span>☕ <b>Demo — a small café in Lisbon.</b> Your setup call unlocks your own numbers. Got your activation code?</span>
-        <input class="fi mono" id="f-code" placeholder="MESA-····" autocomplete="off" spellcheck="false"
-               style="width:130px;font-size:12px;padding:7px 10px;margin-left:auto;text-transform:uppercase;">
-        <button class="btn-mini" style="margin-left:8px;" onclick="activate()">Activate</button>
+        <span>☕ <b>Café da Graça — sample data.</b> Play freely: switch periods, edit your costs, watch the numbers move. Nothing is saved.</span>
       </div>
-      <div class="banner ok" id="live-banner" style="display:none;">
-        <span>✓ <b>Code accepted — account unlocked.</b> We'll connect your Vendus together on the call and your numbers will replace this demo.</span>
-      </div>
+      <div class="banner ok" id="live-banner" style="display:none;"></div>
 
       <div class="dhead">
         <div>
@@ -1138,6 +1134,10 @@
     p.addEventListener('click', function () { applyPeriod(p.dataset.period); });
   });
 
+  // Atterrissage direct sur la démo — zéro friction, aucun formulaire.
+  document.getElementById('d-company').textContent = 'Café da Graça';
+  document.getElementById('d-date').textContent =
+    new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
   renderCharges(); renderEmps(); computeCosts(); applyPeriod('today');
 
   // (upgrade modal on hold — paid layer kept in the HTML comment above)
