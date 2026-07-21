@@ -118,6 +118,20 @@
   .kgrid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
   @media (max-width: 860px) { .kgrid4 { grid-template-columns: repeat(2, 1fr); } }
   .kcard .sub2 { font-size: 10.5px; color: var(--tmuted); margin-top: 2px; }
+  /* Signature Estushop : canvas crème + labels mono "—" + valeurs monospace */
+  .dbody.estu { background: var(--canvas); }
+  .dbody.estu .kcard, .dbody.estu .panel { border-color: #DCD8CC; }
+  .slabel { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 10px; font-weight: 400;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--tmuted); margin: 18px 0 10px; }
+  .slabel::before { content: "— "; color: var(--tfaint); }
+  .slabel:first-child { margin-top: 0; }
+  .dbody.estu .kcard .k, .dbody.estu .panel .k, .dbody.estu .ecell .l {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-weight: 400; letter-spacing: .1em; }
+  .dbody.estu .panel .k::before { content: "— "; color: var(--tfaint); }
+  .dbody.estu .kcard .v, .dbody.estu .ecell .v {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-weight: 700; letter-spacing: -.5px; }
+  .dbody.estu .bars i { background: rgba(37,84,199,.12); }
+  .dbody.estu .bars i.hot { background: #2554C7; }
   .pill { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 10px; padding: 1px 7px; }
   .pill.up { background: var(--green-bg); color: var(--green); }
   .pill.dn { background: #fdeceb; color: var(--red); }
@@ -420,7 +434,7 @@
       <div class="flogo">mesa</div>
       <span class="plan">EARLY ACCESS · FREE</span>
     </div>
-    <div class="dbody">
+    <div class="dbody estu">
 
       <div class="banner" id="demo-banner">
         <span>📊 <b>You're viewing demo data.</b> Connect Vendus (3 min) to see your own numbers here.</span>
@@ -446,6 +460,7 @@
       <!-- ═══ VIEW · DASHBOARD ═══ -->
       <div id="v-dash">
 
+        <div class="slabel">Today</div>
         <!-- Gold row -->
         <div class="kgrid4">
           <div class="kcard">
@@ -468,6 +483,7 @@
           </div>
         </div>
 
+        <div class="slabel">Economics (day)</div>
         <!-- Economics row -->
         <div class="kgrid4">
           <div class="kcard">
@@ -490,6 +506,7 @@
           </div>
         </div>
 
+        <div class="slabel">Activity</div>
         <div class="grid2">
           <div class="panel">
             <div class="k">Revenue by hour — peak solid, dead hours red</div>
@@ -522,6 +539,7 @@
           </div>
         </div>
 
+        <div class="slabel">Breakdown</div>
         <div class="grid2">
           <div class="panel">
             <div class="k">Product mix · margin per bucket</div>
@@ -545,6 +563,7 @@
       <!-- ═══ VIEW · COSTS (editable) ═══ -->
       <div id="v-costs" style="display:none;">
 
+        <div class="slabel">Monthly cost structure</div>
         <div class="kgrid4">
           <div class="kcard"><div class="k">Fixed costs / month</div><div class="v" id="cs-fixed">—</div><div class="sub2" id="cs-fixed-sub"></div></div>
           <div class="kcard"><div class="k">Staff / month (smoothed)</div><div class="v" id="cs-staff">—</div><div class="sub2">incl. TSU + 13th/14th + meals</div></div>
