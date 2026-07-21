@@ -401,7 +401,7 @@
     <div>
       <div class="eyebrow">Built for Vendus POS · Made in Lisbon</div>
       <h1>Your POS knows what you sold. Mesa knows what you <em>earned</em>.</h1>
-      <p class="lead">Mesa plugs into your Vendus account — read-only, in 3 minutes — and turns raw sales into the numbers that actually run a café: real margins per product, your daily break-even, and where every euro goes.</p>
+      <p class="lead">Mesa plugs into your Vendus account — read-only, in 3 minutes — and turns raw sales into the numbers that actually run a café: real margins per product, your daily break-even, and the hours that pay your rent. Nothing to type twice: your cost prices live in Vendus, Mesa does the math.</p>
       <div class="ctas">
         <a class="btn blue" href="onboarding.html">Start free — 14 days</a>
         <a class="btn ghost" href="#gap">See what you're missing ↓</a>
@@ -456,7 +456,7 @@
         <tbody>
           <tr><td>Revenue &amp; transactions by day</td><td class="c"><span class="yes">✓</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
           <tr><td>Top products by units sold</td><td class="c"><span class="yes">✓</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
-          <tr><td>Gross margin per product <div class="sub">recipe-level costing, down to the grams of flour or coffee</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
+          <tr><td>Gross margin per product <div class="sub">computed from the cost prices you already keep in your Vendus catalog</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
           <tr><td>VAT-aware net revenue <div class="sub">6 / 13 / 23% mapped per product — margins computed on net, not gross</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
           <tr><td>Day × hour revenue heat map <div class="sub">staff your Saturday rush with data, not gut feeling</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
           <tr><td>Week-over-week product movers <div class="sub">what's trending up or fading, before it shows on the P&amp;L</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
@@ -465,7 +465,6 @@
           <tr><td>Rush-hour concentration <div class="sub">what % of revenue happens in your top 2 hours</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
           <tr><td>Product mix profitability <div class="sub">drinks vs food vs retail — margin per bucket, not just sales</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
           <tr><td>Payroll &amp; fixed costs vs revenue <div class="sub">estimated daily <span class="j" tabindex="0">EBITDA<span class="tip"><b>EBITDA</b> — your operating profit before interest, tax and depreciation. In plain terms: what the café actually makes, day by day.</span></span></div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
-          <tr><td>Bank statement import &amp; expense tracking <div class="sub">every receipt reconciled, categorised, exportable</div></td><td class="c"><span class="no">–</span></td><td class="c mesa-col"><span class="yes">✓</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -489,7 +488,7 @@
 
     <div class="tabpane on" id="p1">
       <div class="frame">
-        <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">app.mesa.pt/cogs</div></div>
+        <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">app.mesa.pt/margins</div></div>
         <div class="stage">
           <div style="font-weight:700; font-size:14px; margin-bottom:10px;">Products &amp; margins</div>
           <div class="m-panel m-rows">
@@ -500,19 +499,18 @@
             <div class="row"><span style="font-weight:600;">Fresh orange juice</span><span class="num">€4.00 · cost €1.55</span><span><span class="badge r">52%</span></span></div>
           </div>
           <div class="m-panel m-rows" style="margin-top:10px;">
-            <div class="k">Recipe — Granola bowl · €6.50</div>
-            <div class="row"><span>Greek yogurt · 150 g</span><span class="num">€0.45</span></div>
-            <div class="row"><span>House granola · 80 g <span style="color:var(--m-faint);">(sub-recipe · €7.75/kg)</span></span><span class="num">€0.62</span></div>
-            <div class="row"><span>Seasonal fruit · 90 g</span><span class="num">€0.58</span></div>
-            <div class="row"><span>Honey · 15 g</span><span class="num">€0.12</span></div>
-            <div class="row"><span style="font-weight:600;">COGS €1.77 → margin</span><span><span class="badge g">69%</span></span></div>
+            <div class="k">Fresh orange juice — the math</div>
+            <div class="row"><span>Selling price (incl. 23% VAT)</span><span class="num">€4.00</span></div>
+            <div class="row"><span>Net of VAT</span><span class="num">€3.25</span></div>
+            <div class="row"><span>Cost price <span style="color:var(--m-faint);">— set in Vendus</span></span><span class="num">€1.55</span></div>
+            <div class="row"><span style="font-weight:600;">Margin €1.70 →</span><span><span class="badge r">52%</span></span></div>
           </div>
         </div>
       </div>
       <div class="tabnote">
-        <h3>Recipe-level costing — drinks and food alike</h3>
-        <p>Build a recipe once — 150g of yogurt, 80g of your house granola, 18g of coffee — and Mesa prices it from your supplier costs. Sub-recipes cascade: your granola bowl inherits the per-gram cost of the granola you bake in-house. Flour price goes up? Every affected margin updates instantly.</p>
-        <div class="kfacts">→ margin % and € per product<br>→ sub-recipes &amp; preparations (batch → per-gram)<br>→ unit conversions (kg → g, L → ml)<br>→ margins on net price, per-product VAT</div>
+        <h3>Margins from the cost prices you already keep in Vendus</h3>
+        <p>Every product in Vendus has a cost-price field — most owners already fill it in. Mesa reads it through the same read-only API as your sales, nets out the exact VAT per product, and turns your whole menu into live margins. Update a cost in Vendus, every number follows. One source of truth, nothing to maintain twice.</p>
+        <div class="kfacts">→ margin % and € per product<br>→ VAT netted per product (6 / 13 / 23%)<br>→ one source of truth: your Vendus catalog<br>→ zero duplicate data entry</div>
       </div>
     </div>
 
@@ -616,19 +614,14 @@
         </div>
       </div>
       <div class="deep rv">
-        <div class="dk">Cash</div>
-        <h3>Money in, money out, reconciled</h3>
-        <p>Paste a bank statement — Mesa parses it, filters internal transfers, auto-categorises expenses and lines them up against revenue.</p>
-        <div class="cf-bars">
-          <div class="grp"><i class="in" style="height:52%"></i><i class="out" style="height:78%"></i></div>
-          <div class="grp"><i class="in" style="height:60%"></i><i class="out" style="height:64%"></i></div>
-          <div class="grp"><i class="in" style="height:74%"></i><i class="out" style="height:58%"></i></div>
-          <div class="grp"><i class="in" style="height:82%"></i><i class="out" style="height:60%"></i></div>
-          <div class="grp"><i class="in" style="height:90%"></i><i class="out" style="height:56%"></i></div>
-          <div class="grp"><i class="in" style="height:100%"></i><i class="out" style="height:62%"></i></div>
+        <div class="dk">Profit days</div>
+        <h3>Which days actually made money</h3>
+        <p>Every open day, green or red against your break-even. Patterns jump out — the quiet Tuesday, the rainy week, the Saturday that paid the rent.</p>
+        <div style="display:grid; grid-template-columns:repeat(13,1fr); gap:3px; margin-top:8px;">
+          <i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.42)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.62)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(196,85,77,.45)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.5)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.72)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.9)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.66)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(196,85,77,.4)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.46)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.58)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.78)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.95)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.7)"></i>
+          <i style="display:block;height:16px;border-radius:3px;background:rgba(196,85,77,.5)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.44)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.55)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(196,85,77,.42)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.6)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.85)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.64)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.4)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(196,85,77,.55)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.52)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.74)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,1)"></i><i style="display:block;height:16px;border-radius:3px;background:rgba(46,125,50,.68)"></i>
         </div>
-        <div class="cf-lbl"><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span></div>
-        <div class="cap">→ June: +€2,140 net · 96% of receipts reconciled</div>
+        <div class="cap">→ June: 19 of 26 open days above break-even · best streak 8 days</div>
       </div>
     </div>
   </div>
@@ -657,9 +650,9 @@
       </div>
       <div class="node">
         <div class="nn">03 · COST</div>
-        <h3>COGS engine</h3>
-        <p>A recipe graph with sub-recipes and unit conversions. One supplier price change recomputes every affected margin.</p>
-        <div class="spec-li">→ batch → per-gram costing<br>→ kg→g, L→ml conversions<br>→ cascading sub-recipes</div>
+        <h3>Cost prices — from Vendus</h3>
+        <p>Mesa reads the cost price on each product of your catalog, through the same read-only API. Update it in Vendus, every affected margin recomputes.</p>
+        <div class="spec-li">→ cost price read per product<br>→ margins on net, per-product VAT<br>→ zero duplicate data entry</div>
       </div>
       <div class="node">
         <div class="nn">04 · ANALYZE</div>
@@ -692,7 +685,7 @@
           <input type="range" id="c-price" min="0.90" max="12" step="0.05" value="1.30">
         </label>
         <label>
-          <span class="lab"><span>Ingredient cost — everything on the plate or in the cup</span><b>€<span id="c-cost-v">0.21</span></b></span>
+          <span class="lab"><span>Cost price — as set on the product in Vendus</span><b>€<span id="c-cost-v">0.21</span></b></span>
           <input type="range" id="c-cost" min="0.10" max="5" step="0.01" value="0.21">
         </label>
         <label>
@@ -736,9 +729,9 @@
         <div class="t">→ 12,384 sales imported · last sale 12 min ago</div>
       </div>
       <div class="step rv">
-        <div class="n">STEP 03 — 5 MIN</div>
-        <h3>Cost your top 10 sellers</h3>
-        <p>Your 10 best-sellers are ~70% of revenue. Add their ingredient costs once — margins, break-even and mix profitability light up. Refine the rest whenever.</p>
+        <div class="n">STEP 03 — 2 MIN</div>
+        <h3>Add your monthly costs</h3>
+        <p>Rent, payroll, subscriptions — one short form, once. Combined with the cost prices already on your Vendus products (start with your top 10 sellers, ~70% of revenue), it lights up margins, daily break-even and EBITDA.</p>
         <div class="t">→ unlocks: margins · break-even · EBITDA</div>
       </div>
     </div>
@@ -769,11 +762,11 @@
       <div class="per">per location · cancel anytime</div>
       <ul>
         <li>Live dashboard — revenue, margins, break-even</li>
-        <li>Recipe-level COGS engine, unlimited products</li>
+        <li>Margins for unlimited products — straight from your Vendus cost prices</li>
         <li>Product mix &amp; rush-hour analytics</li>
-        <li>Fixed costs, payroll (TSU, meal cards) &amp; expenses</li>
-        <li>Bank statement import &amp; receipt tracking</li>
-        <li>Team access — owner, staff &amp; investor roles</li>
+        <li>Fixed costs &amp; payroll (TSU, meal cards) → daily break-even &amp; EBITDA</li>
+        <li>90 days of history imported on day one</li>
+        <li>Share access — accountant or investor, read-only</li>
         <li>Works on your phone (add to home screen)</li>
       </ul>
       <a class="btn blue" style="width:100%; text-align:center; padding:13px;" href="onboarding.html">Start your free trial →</a>
@@ -802,12 +795,12 @@
         <div class="a">Three minutes: paste one key (we show you exactly where it is in Vendus, with screenshots) and your dashboard fills itself with your real data. If Vendus is handled by your accountant, one click sends them the guide instead.</div>
       </details>
       <details>
-        <summary>Where do the ingredient costs come from?</summary>
-        <div class="a">You enter them once — starting with just your top 10 sellers (about 5 minutes). Mesa's recipe engine does the rest: unit conversions, sub-recipes, and automatic margin updates whenever a supplier price changes.</div>
+        <summary>Where do the cost prices come from?</summary>
+        <div class="a">From your Vendus catalog. Every product in Vendus has a cost-price field — Mesa reads it through the same read-only API as your sales. Fill in your top 10 sellers first (~70% of revenue, about 5 minutes in Vendus) and margins light up. Update a cost anytime in Vendus; Mesa recomputes automatically.</div>
       </details>
       <details>
         <summary>Who can see my numbers?</summary>
-        <div class="a">You decide. Three roles: owner (everything), staff (recipes and stock only — no financials), investor (read-only). Your data is EU-hosted, GDPR-compliant, and exportable anytime.</div>
+        <div class="a">You decide. Invite your accountant or an investor with read-only access — they see the dashboards, never the settings. Your data is EU-hosted, GDPR-compliant, and exportable anytime.</div>
       </details>
     </div>
   </div>
