@@ -103,6 +103,23 @@
   border:1px solid var(--border); color:var(--faint); background:var(--bg-page);
 }
 
+/* ── En-tête de catégorie pliable (partagé Products/Preps/Ingredients) ── */
+.cat-toggle {
+  display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none;
+  padding:8px 6px; margin-top:14px; border-radius:6px;
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);
+}
+.cat-toggle:first-child { margin-top:0; }
+.cat-toggle:hover { background:var(--bg-hover); }
+.cat-toggle .chev { font-size:10px; color:var(--faint); transition:transform .15s; width:10px; }
+.cat-toggle.collapsed .chev { transform:rotate(-90deg); }
+.cat-toggle .cat-count {
+  font-size:10px; padding:1px 8px; border-radius:20px;
+  border:1px solid var(--border); color:var(--faint); background:var(--bg-page);
+}
+.cat-toggle.collapsed { color:var(--faint); }
+.cat-body { margin-bottom:6px; }
+
 /* ── Table ── */
 .cogs-table { width:100%; border-collapse:collapse; font-size:13px; }
 .cogs-table thead th {
@@ -1381,6 +1398,41 @@ function groupedTableHeaders() {
   </tr></thead>`;
 }
 
+// ── Catégories pliables (partagé Products / Preps / Ingredients) ──────────────
+// Plusieurs ouvertes en même temps. Par défaut : seule la 1re est ouverte.
+// Recherche active → tout ouvert (pour voir les résultats).
+const catOpen = { products: new Set(), preps: new Set(), ingr: new Set() };
+const catInit = { products: false, preps: false, ingr: false };
+
+function resolveCatOpen(tab, order, searchActive) {
+  if (searchActive) return new Set(order);            // override temporaire, n'écrase pas l'état
+  if (!catInit[tab]) {
+    catInit[tab] = true;
+    catOpen[tab] = new Set(order.length ? [order[0]] : []);
+  } else {
+    catOpen[tab] = new Set([...catOpen[tab]].filter(k => order.includes(k)));
+  }
+  return catOpen[tab];
+}
+
+function catHead(tab, key, label, count, isOpen) {
+  const k = String(key).replace(/"/g, '&quot;');
+  return `<div class="cat-toggle${isOpen ? '' : ' collapsed'}" data-tab="${tab}" data-key="${k}" onclick="toggleCatGroup(this)">
+    <span class="chev">▾</span><span class="cat-label">${label}</span><span class="cat-count">${count}</span>
+  </div>`;
+}
+
+function toggleCatGroup(head) {
+  const tab = head.dataset.tab, key = head.dataset.key;
+  const body = head.nextElementSibling;
+  if (!body) return;
+  const willOpen = body.style.display === 'none';
+  body.style.display = willOpen ? '' : 'none';
+  head.classList.toggle('collapsed', !willOpen);
+  catInit[tab] = true;
+  if (willOpen) catOpen[tab].add(key); else catOpen[tab].delete(key);
+}
+
 function renderProducts(products) {
   let html = '';
 
@@ -1404,7 +1456,7 @@ function renderProducts(products) {
     return;
   }
 
-  // ── Mode groupé (par défaut) ───────────────────────────────
+  // ── Mode groupé (par défaut) — catégories pliables ─────────
   const grouped = {};
   for (const id of categoryOrder) grouped[id] = [];
   for (const p of products) {
@@ -1413,28 +1465,23 @@ function renderProducts(products) {
   }
   const other = products.filter(p => !categoryOrder.includes(p.category_id));
 
-  for (const id of categoryOrder) {
-    const g = grouped[id];
-    if (!g?.length) continue;
-    html += `
-    <div class="cogs-section">
-      <div class="cogs-section-title">${categoryNames[id] || id} <span class="badge-cat">${g.length}</span></div>
-      <div class="table-wrap">
-        <table class="cogs-table">
+  const order = categoryOrder.filter(id => grouped[id]?.length);
+  if (other.length) order.push('__other__');
+  const searchActive = !!(document.getElementById('search')?.value.trim()
+                       || document.getElementById('cat-filter')?.value);
+  const open = resolveCatOpen('products', order, searchActive);
+
+  for (const key of order) {
+    const g = key === '__other__' ? other : grouped[key];
+    const label = key === '__other__' ? 'Other' : (categoryNames[key] || key);
+    const isOpen = open.has(key);
+    html += catHead('products', key, label, g.length, isOpen)
+      + `<div class="cat-body"${isOpen ? '' : ' style="display:none"'}>
+        <div class="table-wrap"><table class="cogs-table">
           ${groupedTableHeaders()}
           <tbody>${g.map(p => rowHtml(p)).join('')}</tbody>
-        </table>
-      </div>
-    </div>`;
-  }
-  if (other.length) {
-    html += `<div class="cogs-section">
-      <div class="cogs-section-title">Other <span class="badge-cat">${other.length}</span></div>
-      <div class="table-wrap"><table class="cogs-table">
-        ${groupedTableHeaders()}
-        <tbody>${other.map(p => rowHtml(p)).join('')}</tbody>
-      </table></div>
-    </div>`;
+        </table></div>
+      </div>`;
   }
   document.getElementById('content').innerHTML = html || '<div class="loading">No products</div>';
 }
@@ -2024,10 +2071,13 @@ function renderIngrLib() {
     </div>`;
   };
 
-  body.innerHTML = order.map(label => `
-    <div class="prep-group-head">${label} <span>${groups[label].length}</span></div>
-    <div class="prep-group">${groups[label].map(([n, l]) => rowHtml(n, l)).join('')}</div>
-  `).join('');
+  const searchActive = !!(q || catSel);
+  const open = resolveCatOpen('ingr', order, searchActive);
+  body.innerHTML = order.map(label => {
+    const isOpen = open.has(label);
+    return catHead('ingr', label, label, groups[label].length, isOpen)
+      + `<div class="cat-body"${isOpen ? '' : ' style="display:none"'}><div class="prep-group">${groups[label].map(([n, l]) => rowHtml(n, l)).join('')}</div></div>`;
+  }).join('');
 }
 
 async function updateIngrPrice(name, val, inputEl) {
@@ -2519,10 +2569,13 @@ function renderPrepList() {
     </div>`;
   };
 
-  el.innerHTML = catOrder.map(cat => `
-    <div class="prep-group-head">${cat} <span>${groups[cat].length}</span></div>
-    <div class="prep-group">${groups[cat].map(([n, p]) => rowHtml(n, p)).join('')}</div>
-  `).join('');
+  const searchActive = !!(q || catSel);
+  const open = resolveCatOpen('preps', catOrder, searchActive);
+  el.innerHTML = catOrder.map(cat => {
+    const isOpen = open.has(cat);
+    return catHead('preps', cat, cat, groups[cat].length, isOpen)
+      + `<div class="cat-body"${isOpen ? '' : ' style="display:none"'}><div class="prep-group">${groups[cat].map(([n, p]) => rowHtml(n, p)).join('')}</div></div>`;
+  }).join('');
 }
 
 async function editPrep(name) {
