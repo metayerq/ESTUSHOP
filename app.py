@@ -225,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260722d"
+ASSET_VERSION = "20260722e"
 
 @app.context_processor
 def _inject_asset_version():
@@ -1584,7 +1584,12 @@ def _save_ingredient(name, data):
                 })
     except Exception:
         pass
-    ok, _ = _supa_upsert("ingredients", {"name": name, **data})
+    row = {"name": name, **data}
+    ok, err = _supa_upsert("ingredients", row)
+    # Tolérance migration : colonne 'supplier' pas encore créée → réessaie sans.
+    if not ok and err and "supplier" in str(err):
+        row.pop("supplier", None)
+        ok, _ = _supa_upsert("ingredients", row)
     return ok
 
 def _save_recipe(title, ingredients, notes, waste_pct=0):
@@ -2072,6 +2077,7 @@ def api_ingredients_post():
         "unit_ref": data.get("unit_ref", "unit"),
         "category": data.get("category", ""),
         "note":     data.get("note", ""),
+        "supplier": data.get("supplier", ""),
     }
     _save_ingredient(name, ingr)
     return jsonify({"ok": True, "ingredient": {name: ingr}})

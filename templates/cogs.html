@@ -564,8 +564,8 @@
     <div style="display:flex;gap:8px;align-items:center;">
       <span class="spin-badge" id="spin-badge"></span>
       <button class="btn-primary" onclick="openNewProdModal()">+ New product</button>
-      <button class="btn-secondary" id="btn-recalc" onclick="recalculateAll()" title="Recompute recipe COGS and push the cost prices to your Vendus POS">⇪ Push costs → POS</button>
-      <button class="btn-secondary" id="btn-rebuild" onclick="rebuildHistory()" title="Recompute past days' margin, EBITDA and break-even on the dashboard using the CURRENT cost prices. Use after fixing a recipe/cost.">⟳ Recompute history</button>
+      <button class="btn-secondary" id="btn-recalc" onclick="recalculateAll()" title="Sends each product's cost price (supply_price) to Vendus so your POS shows the right margins. Optional — the Estushop dashboard doesn't need it. Saving a recipe already syncs that one product; use this to re-sync ALL products at once after changing ingredient prices.">⇪ Sync prices to Vendus</button>
+      <button class="btn-secondary" id="btn-rebuild" onclick="rebuildHistory()" title="ADVANCED — rewrites PAST days' margins with today's prices. Normally past days stay frozen at the prices of the day (a price change only affects future days). Use this ONLY to repair a past mistake (a wrong recipe/cost you've since fixed).">⟳ Rebuild past margins</button>
       <button class="btn-secondary" onclick="loadCogs()" title="Reload this page">↻</button>
       <a href="/logout" title="Log out" style="font-size:12px;color:var(--faint);text-decoration:none;padding:5px 8px;">⎋</a>
     </div>
@@ -702,13 +702,21 @@
           <span id="pack-result" style="color:var(--muted);font-size:12px;margin-left:auto;"></span>
         </div>
       </div>
-      <div>
-        <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:5px;">Category</label>
-        <input id="new-cat" class="field-input" type="text" placeholder="e.g. Fresh, Grocery…" style="width:100%;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:5px;">Category</label>
+          <input id="new-cat" class="field-input" type="text" list="cat-suggest" placeholder="Choose or type…" style="width:100%;">
+          <datalist id="cat-suggest"></datalist>
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:5px;">Supplier</label>
+          <select id="new-supplier" class="field-input" style="width:100%;" onchange="onSupplierSelect()"></select>
+          <input id="new-supplier-new" class="field-input" type="text" placeholder="New supplier name…" style="width:100%;display:none;margin-top:6px;">
+        </div>
       </div>
       <div>
         <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:5px;">Note</label>
-        <input id="new-note" class="field-input" type="text" placeholder="Supplier, packaging…" style="width:100%;">
+        <input id="new-note" class="field-input" type="text" placeholder="Packaging, reference, comment…" style="width:100%;">
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:20px;">
@@ -910,8 +918,8 @@
 </div>
 
 <!-- ── Drawer Préparation ── -->
-<div id="prep-drawer-overlay" onclick="closePrepDrawer()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:99;"></div>
-<div id="prep-drawer" style="position:fixed;top:0;right:0;height:100vh;width:480px;background:var(--bg-card);box-shadow:-4px 0 24px rgba(0,0,0,.1);z-index:100;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);">
+<div id="prep-drawer-overlay" onclick="closePrepDrawer()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;"></div>
+<div id="prep-drawer" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:520px;max-width:92vw;max-height:85vh;background:var(--bg-card);border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.18);z-index:201;display:none;flex-direction:column;overflow:hidden;">
   <div class="drawer-head" style="display:flex;align-items:flex-start;justify-content:space-between;">
     <div>
       <div class="drawer-title" id="prep-d-title">New preparation</div>
@@ -1878,7 +1886,7 @@ function renderIngrLib() {
     return `
     <tr data-ingr="${encodeURIComponent(name)}">
       <td style="font-weight:500;">${name}</td>
-      <td style="color:var(--muted);">${lib.category || '—'}</td>
+      <td style="color:var(--muted);">${lib.category || '—'}${lib.supplier ? `<div style="font-size:11px;color:var(--faint);">🏭 ${lib.supplier}</div>` : ''}</td>
       <td class="r">
         <input class="ingr-inline" type="number" step="0.01" min="0"
                value="${lib.price}" onblur="updateIngrPrice('${esc}', this.value, this)">
@@ -1977,6 +1985,40 @@ async function showPriceHistory(name) {
 
 let editingIngrName = null;
 
+// Catégories & fournisseurs suggérés : presets + valeurs déjà utilisées
+const CAT_PRESETS = ['Dairy', 'Dry goods', 'Fruit & veg', 'Coffee & tea', 'Syrups & sauces', 'Frozen', 'Bakery', 'Packaging'];
+function distinctFromLib(key, presets) {
+  const seen = new Set();
+  Object.values(ingrLib).forEach(l => { const v = (l[key] || '').trim(); if (v) seen.add(v); });
+  (presets || []).forEach(p => seen.add(p));
+  return [...seen].sort((a, b) => a.localeCompare(b));
+}
+function buildCatSuggest() {
+  document.getElementById('cat-suggest').innerHTML =
+    distinctFromLib('category', CAT_PRESETS).map(c => `<option value="${c.replace(/"/g,'&quot;')}">`).join('');
+}
+function buildSupplierOptions(selected) {
+  const sel = document.getElementById('new-supplier');
+  const suppliers = distinctFromLib('supplier', []);
+  sel.innerHTML = `<option value="">— None —</option>`
+    + suppliers.map(s => `<option value="${s.replace(/"/g,'&quot;')}">${s}</option>`).join('')
+    + `<option value="__new__">+ New supplier…</option>`;
+  sel.value = selected && suppliers.includes(selected) ? selected : '';
+  document.getElementById('new-supplier-new').style.display = 'none';
+  document.getElementById('new-supplier-new').value = '';
+}
+function onSupplierSelect() {
+  const isNew = document.getElementById('new-supplier').value === '__new__';
+  const inp = document.getElementById('new-supplier-new');
+  inp.style.display = isNew ? '' : 'none';
+  if (isNew) setTimeout(() => inp.focus(), 30);
+}
+function currentSupplier() {
+  const sel = document.getElementById('new-supplier').value;
+  if (sel === '__new__') return document.getElementById('new-supplier-new').value.trim();
+  return sel;
+}
+
 function openIngrModal() {
   editingIngrName = null;
   document.getElementById('ingr-modal-title').textContent = 'New ingredient';
@@ -1988,6 +2030,8 @@ function openIngrModal() {
   document.getElementById('new-price').value   = '';
   document.getElementById('new-note').value    = '';
   document.getElementById('new-unit').value    = 'kg';
+  buildCatSuggest();
+  buildSupplierOptions('');
   document.getElementById('btn-add-ingr').textContent = 'Create ingredient';
   resetPackHelper();
   document.getElementById('ingr-modal').style.display = '';
@@ -2015,6 +2059,8 @@ function editIngr(name) {
   document.getElementById('new-price').value   = lib.price;
   document.getElementById('new-note').value    = lib.note || '';
   document.getElementById('new-unit').value    = lib.unit_ref;
+  buildCatSuggest();
+  buildSupplierOptions(lib.supplier || '');
   document.getElementById('btn-add-ingr').textContent = 'Save changes';
   resetPackHelper();
   document.getElementById('ingr-modal').style.display = '';
@@ -2034,11 +2080,12 @@ async function addIngredient() {
   const price = parseFloat(document.getElementById('new-price').value);
   const unit  = document.getElementById('new-unit').value;
   const note  = document.getElementById('new-note').value.trim();
+  const supplier = currentSupplier();
   if (!name || isNaN(price)) { showToast('Name and price required'); return; }
   const wasEdit = !!editingIngrName;
   const doSave = async () => {
-    await saveIngredient(name, { price, unit_ref: unit, category: cat, note });
-    ingrLib[name] = { ...(ingrLib[name] || {}), price, unit_ref: unit, category: cat, note };
+    await saveIngredient(name, { price, unit_ref: unit, category: cat, note, supplier });
+    ingrLib[name] = { ...(ingrLib[name] || {}), price, unit_ref: unit, category: cat, note, supplier };
     closeIngrModal();
     renderIngrLib();
     updateTabBadges();
@@ -2090,7 +2137,7 @@ async function recalculateAll() {
   } catch(e) {
     showToast('Network error');
   } finally {
-    btn.textContent = '⇪ Push costs → POS'; btn.disabled = false;
+    btn.textContent = '⇪ Sync prices to Vendus'; btn.disabled = false;
   }
 }
 
@@ -2106,7 +2153,7 @@ async function rebuildHistory() {
   } catch(e) {
     showToast('Network error');
   } finally {
-    btn.textContent = '⟳ Recompute history'; btn.disabled = false;
+    btn.textContent = '⟳ Rebuild past margins'; btn.disabled = false;
   }
 }
 
@@ -2333,7 +2380,7 @@ async function editPrep(name) {
   document.getElementById('prep-notes').value = p.notes || '';
   renderPrepIngredients();
   updatePrepCost();
-  document.getElementById('prep-drawer').style.transform = 'translateX(0)';
+  document.getElementById('prep-drawer').style.display = 'flex';
   document.getElementById('prep-drawer-overlay').style.display = '';
 }
 
@@ -2348,43 +2395,52 @@ function openPrepDrawer() {
   document.getElementById('prep-notes').value = '';
   document.getElementById('prep-ingredients-list').innerHTML = '';
   document.getElementById('prep-cost-box').style.display = 'none';
-  document.getElementById('prep-drawer').style.transform = 'translateX(0)';
+  document.getElementById('prep-drawer').style.display = 'flex';
   document.getElementById('prep-drawer-overlay').style.display = '';
   setTimeout(() => document.getElementById('prep-name').focus(), 50);
 }
 
 function closePrepDrawer() {
-  document.getElementById('prep-drawer').style.transform = 'translateX(100%)';
+  document.getElementById('prep-drawer').style.display = 'none';
   document.getElementById('prep-drawer-overlay').style.display = 'none';
   document.getElementById('prep-ac-dropdown').classList.remove('open');
 }
 
+const PREP_CONV = {g:{kg:0.001,g:1},kg:{kg:1,g:1000},ml:{l:0.001,ml:1},cl:{l:0.01,cl:1},dl:{l:0.1},l:{l:1,ml:1000},unit:{unit:1}};
+function prepRowCost(ing) {
+  const lib = ingrLib[ing.name];
+  if (!lib) return null;
+  const f = (PREP_CONV[ing.unit] || {})[lib.unit_ref];
+  return f != null ? ing.qty * f * parseFloat(lib.price) : null;
+}
 function renderPrepIngredients() {
   const el = document.getElementById('prep-ingredients-list');
   if (!prepIngredients.length) { el.innerHTML = ''; return; }
-  // Simple conversion factors to price_unit
-  const CONV = {g:{kg:0.001,g:1},kg:{kg:1,g:1000},ml:{l:0.001,ml:1},cl:{l:0.01,cl:1},dl:{l:0.1},l:{l:1,ml:1000},unit:{unit:1}};
   el.innerHTML = prepIngredients.map((ing, i) => {
-    const lib = ingrLib[ing.name];
-    let costStr = '—';
-    if (lib) {
-      const f = (CONV[ing.unit] || {})[lib.unit_ref];
-      if (f != null) costStr = fmt2c(ing.qty * f * parseFloat(lib.price));
-    }
-    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+    const c = prepRowCost(ing);
+    return `<div class="prep-ing-row" data-i="${i}" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
       <span style="flex:1;font-size:13px;">${ing.name}</span>
       <input type="number" value="${ing.qty}" step="0.1" min="0"
-        onchange="prepIngredients[${i}].qty=parseFloat(this.value)||0;renderPrepIngredients();updatePrepCost();"
+        oninput="prepIngredients[${i}].qty=parseFloat(this.value)||0;updatePrepRow(${i})"
         style="width:70px;padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-family:inherit;font-size:13px;text-align:right;">
-      <select onchange="prepIngredients[${i}].unit=this.value;renderPrepIngredients();updatePrepCost();"
+      <select onchange="prepIngredients[${i}].unit=this.value;updatePrepRow(${i})"
         style="padding:4px 6px;border:1px solid var(--border);border-radius:5px;font-family:inherit;font-size:13px;">
         ${['g','kg','ml','cl','l','unit'].map(u=>`<option ${u===ing.unit?'selected':''}>${u}</option>`).join('')}
       </select>
-      <span style="width:64px;text-align:right;font-size:12px;color:var(--muted);">${costStr}</span>
+      <span class="prep-row-cost" style="width:64px;text-align:right;font-size:12px;color:var(--muted);">${c != null ? fmt2c(c) : '—'}</span>
       <button onclick="prepIngredients.splice(${i},1);renderPrepIngredients();updatePrepCost();"
         style="background:none;border:none;cursor:pointer;color:var(--faint);font-size:16px;padding:0 4px;line-height:1;">✕</button>
     </div>`;
   }).join('');
+}
+// Mise à jour en place d'une ligne (sans re-render → le dropdown reste ouvrable)
+function updatePrepRow(i) {
+  const row = document.querySelector(`.prep-ing-row[data-i="${i}"]`);
+  if (row) {
+    const c = prepRowCost(prepIngredients[i]);
+    row.querySelector('.prep-row-cost').textContent = c != null ? fmt2c(c) : '—';
+  }
+  updatePrepCost();
 }
 
 function updatePrepCost() {
