@@ -225,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260722b"
+ASSET_VERSION = "20260722d"
 
 @app.context_processor
 def _inject_asset_version():
@@ -1564,16 +1564,39 @@ def _load_ingredients():
 def _load_recipes():
     rows = _supa_get("recipes")
     # Strip trailing/leading spaces from keys so Vendus title mismatches (e.g. "Croissant ") still match
-    return {r["product_title"].strip(): {"ingredients": r["ingredients"], "notes": r.get("notes", "")}
+    return {r["product_title"].strip(): {"ingredients": r["ingredients"],
+                                         "notes": r.get("notes", ""),
+                                         "waste_pct": r.get("waste_pct") or 0}
             for r in rows}
 
 def _save_ingredient(name, data):
+    # Historique des prix : trace un changement de prix avant l'upsert (best-effort,
+    # jamais bloquant). Table ingredient_price_history — voir /tmp/cogs_p3_setup.sql.
+    try:
+        new_price = data.get("price")
+        if new_price is not None:
+            existing = _supa_get("ingredients", {"name": f"eq.{name}", "select": "price,unit_ref"})
+            old = existing[0] if isinstance(existing, list) and existing else None
+            if not old or abs(float(old.get("price") or 0) - float(new_price)) > 1e-9:
+                _supa_upsert("ingredient_price_history", {
+                    "name": name, "price": round(float(new_price), 4),
+                    "unit_ref": data.get("unit_ref") or (old or {}).get("unit_ref") or "",
+                })
+    except Exception:
+        pass
     ok, _ = _supa_upsert("ingredients", {"name": name, **data})
     return ok
 
-def _save_recipe(title, ingredients, notes):
-    ok, _ = _supa_upsert("recipes", {"product_title": title,
-                                      "ingredients": ingredients, "notes": notes})
+def _save_recipe(title, ingredients, notes, waste_pct=0):
+    row = {"product_title": title, "ingredients": ingredients, "notes": notes,
+           "waste_pct": round(float(waste_pct or 0), 2)}
+    ok, err = _supa_upsert("recipes", row)
+    # Tolérance migration : si la colonne waste_pct n'existe pas encore côté
+    # Supabase (SQL non exécuté), on réessaie sans elle plutôt que de perdre la
+    # sauvegarde de la recette.
+    if not ok and err and "waste_pct" in str(err):
+        row.pop("waste_pct", None)
+        ok, _ = _supa_upsert("recipes", row)
     return ok
 
 # ── Cache daily_summary ───────────────────────────────────────────────────────
@@ -1792,11 +1815,15 @@ UNIT_CONVERSIONS = {
     ("unit", "unit"): 1.0,
 }
 
-def calc_recipe_cogs(ingredients, ingr_lib, prep_lib=None):
+def calc_recipe_cogs(ingredients, ingr_lib, prep_lib=None, waste_pct=0):
     """Calcule le COGS total d'une recette.
     Supporte les préparations (sous-recettes) : si un ingrédient n'est pas dans
     ingr_lib mais dans prep_lib, son coût est calculé en cascade depuis sa propre
     recette (1 niveau de profondeur — pas de nesting infini).
+
+    waste_pct : coulage/perte (%) appliqué au coût matière total (marc, mousse
+    jetée, chutes, casse). Le total renvoyé l'inclut ; le breakdown reste au
+    coût matière brut par ligne.
     """
     total = 0.0
     breakdown = []
@@ -1844,6 +1871,11 @@ def calc_recipe_cogs(ingredients, ingr_lib, prep_lib=None):
         # ── Cas 3 : inconnu ───────────────────────────────────────────────────
         breakdown.append({**ing, "cost": None, "error": "ingrédient inconnu"})
 
+    try:
+        w = float(waste_pct or 0)
+    except (TypeError, ValueError):
+        w = 0
+    total = total * (1 + w / 100.0)
     return round(total, 4), breakdown
 
 # Fallback si l'API Vendus est injoignable — ne pas utiliser comme source de
@@ -1923,8 +1955,10 @@ def api_cogs():
         has_recipe   = bool(recipe_data and recipe_data.get("ingredients"))
         recipe_total = None
         breakdown    = []
+        waste_pct    = (recipe_data or {}).get("waste_pct") or 0
         if has_recipe:
-            recipe_total, breakdown = calc_recipe_cogs(recipe_data["ingredients"], ingr_lib, prep_lib)
+            recipe_total, breakdown = calc_recipe_cogs(recipe_data["ingredients"], ingr_lib,
+                                                       prep_lib, waste_pct=waste_pct)
 
         effective_cogs = recipe_total if recipe_total is not None else supply
         marge_ht_eff   = round(price_ht - effective_cogs, 4) if price_ht else None
@@ -1944,6 +1978,7 @@ def api_cogs():
             "marge_pct":    marge_pct_eff,
             "recipe":       breakdown,
             "recipe_notes": (recipe_data or {}).get("notes", ""),
+            "waste_pct":    waste_pct,
             "has_recipe":   has_recipe,
         })
 
@@ -2042,6 +2077,13 @@ def api_ingredients_post():
     return jsonify({"ok": True, "ingredient": {name: ingr}})
 
 
+@app.route("/api/ingredients/<path:name>/history", methods=["GET"])
+def api_ingredient_history(name):
+    rows = _supa_get("ingredient_price_history",
+                     {"name": f"eq.{name}", "order": "changed_at.desc", "limit": "50"})
+    return jsonify(rows if isinstance(rows, list) else [])
+
+
 @app.route("/api/ingredients/<path:name>", methods=["DELETE"])
 def api_ingredients_delete(name):
     # Garde-fou : refuser si l'ingrédient est utilisé dans des recettes OU des
@@ -2071,13 +2113,16 @@ def api_recipe_get(product_id):
     title       = r.json().get("title", "").strip()
     recipes     = _load_recipes()
     ingr_lib    = _load_ingredients()
-    recipe_data = recipes.get(title, {"ingredients": [], "notes": ""})
-    total, breakdown = calc_recipe_cogs(recipe_data["ingredients"], ingr_lib, _load_preparations())
+    recipe_data = recipes.get(title, {"ingredients": [], "notes": "", "waste_pct": 0})
+    waste = recipe_data.get("waste_pct") or 0
+    total, breakdown = calc_recipe_cogs(recipe_data["ingredients"], ingr_lib,
+                                        _load_preparations(), waste_pct=waste)
     return jsonify({
         "ok": True, "title": title, "product_id": product_id,
         "ingredients": recipe_data["ingredients"],
         "breakdown":   breakdown,
         "notes":       recipe_data.get("notes", ""),
+        "waste_pct":   waste,
         "total_cogs":  total,
     })
 
@@ -2094,8 +2139,10 @@ def api_recipe_post(product_id):
     ingr_lib    = _load_ingredients()
     ingredients = data.get("ingredients", [])
     notes       = data.get("notes", "")
-    total, breakdown = calc_recipe_cogs(ingredients, ingr_lib, _load_preparations())
-    _save_recipe(title, ingredients, notes)
+    waste_pct   = data.get("waste_pct") or 0
+    total, breakdown = calc_recipe_cogs(ingredients, ingr_lib, _load_preparations(),
+                                        waste_pct=waste_pct)
+    _save_recipe(title, ingredients, notes, waste_pct)
     patch_r = req.patch(
         f"https://www.vendus.pt/ws/v1.1/products/{product_id}/",
         auth=(VENDUS_API_KEY, ""),
@@ -2141,7 +2188,8 @@ def api_recipe_recalculate_all():
         if not prod:
             results.append({"title": title, "status": "not_found_in_vendus"})
             continue
-        total, _ = calc_recipe_cogs(recipe_data["ingredients"], ingr_lib, _load_preparations())
+        total, _ = calc_recipe_cogs(recipe_data["ingredients"], ingr_lib, _load_preparations(),
+                                    waste_pct=recipe_data.get("waste_pct") or 0)
         pr = req.patch(f"{BASE}/products/{prod['id']}/", auth=(VENDUS_API_KEY, ""),
                        json={"supply_price": round(total, 4)})
         results.append({"title": title, "cogs": total, "status": "ok" if pr.ok else "error"})
@@ -2160,12 +2208,14 @@ def api_product_create():
     category_id = data.get("category_id")
     ingredients = data.get("ingredients", [])
     notes       = data.get("notes", "")
+    waste_pct   = data.get("waste_pct") or 0
 
     if not title or not price_ttc:
         return jsonify({"ok": False, "error": "title et price_ttc requis"}), 400
 
     ingr_lib          = _load_ingredients()
-    total, breakdown  = calc_recipe_cogs(ingredients, ingr_lib, _load_preparations())
+    total, breakdown  = calc_recipe_cogs(ingredients, ingr_lib, _load_preparations(),
+                                         waste_pct=waste_pct)
 
     # Créer dans Vendus
     payload = {
@@ -2187,7 +2237,7 @@ def api_product_create():
 
     # Sauvegarder recette dans Supabase
     if ingredients:
-        _save_recipe(title, ingredients, notes)
+        _save_recipe(title, ingredients, notes, waste_pct)
 
     return jsonify({
         "ok":        True,

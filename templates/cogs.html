@@ -203,6 +203,12 @@
 }
 .ing-row input:focus, .ing-row select:focus { border-color:var(--text); }
 .ing-row .cost-preview { font-size:12px; color:var(--muted); text-align:right; font-variant-numeric:tabular-nums; min-width:52px; }
+.waste-preset {
+  font-family:inherit; font-size:11px; padding:5px 9px; border:1px solid var(--border);
+  border-radius:20px; background:var(--bg-card); color:var(--muted); cursor:pointer;
+}
+.waste-preset:hover { color:var(--text); }
+.waste-preset.on { background:var(--text); color:var(--bg-card); border-color:var(--text); }
 .unit-cell select { width:100%; }
 .ac-wrap { position:relative; }
 .prep-flag {
@@ -558,9 +564,9 @@
     <div style="display:flex;gap:8px;align-items:center;">
       <span class="spin-badge" id="spin-badge"></span>
       <button class="btn-primary" onclick="openNewProdModal()">+ New product</button>
-      <button class="btn-secondary" id="btn-recalc" onclick="recalculateAll()" title="Recompute recipe COGS and push the cost prices to your Vendus POS">↺ Sync COGS → POS</button>
-      <button class="btn-secondary" id="btn-rebuild" onclick="rebuildHistory()" title="Recompute past days' margin, EBITDA and break-even on the dashboard using the CURRENT cost prices. Use after fixing a recipe/cost.">⟳ Recompute past margins</button>
-      <button class="btn-secondary" onclick="loadCogs()" title="Reload this page">⟲ Refresh</button>
+      <button class="btn-secondary" id="btn-recalc" onclick="recalculateAll()" title="Recompute recipe COGS and push the cost prices to your Vendus POS">⇪ Push costs → POS</button>
+      <button class="btn-secondary" id="btn-rebuild" onclick="rebuildHistory()" title="Recompute past days' margin, EBITDA and break-even on the dashboard using the CURRENT cost prices. Use after fixing a recipe/cost.">⟳ Recompute history</button>
+      <button class="btn-secondary" onclick="loadCogs()" title="Reload this page">↻</button>
       <a href="/logout" title="Log out" style="font-size:12px;color:var(--faint);text-decoration:none;padding:5px 8px;">⎋</a>
     </div>
   </div>
@@ -674,11 +680,26 @@
         </div>
         <div>
           <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:5px;">Reference unit</label>
-          <select id="new-unit" class="field-input" style="width:100%;">
+          <select id="new-unit" class="field-input" style="width:100%;" onchange="renderPackUnitOpts();computePackPrice()">
             <option value="kg">€ / kg</option>
             <option value="l">€ / litre</option>
             <option value="unit">€ / unit</option>
           </select>
+        </div>
+      </div>
+      <!-- Saisie naturelle : "j'ai payé X € pour Y g" → calcule le €/unité-ref -->
+      <div style="background:var(--bg-page);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
+        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:7px;">Don't know the unit price? Enter what you paid</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;">
+          <span>Paid</span>
+          <input id="pack-amount" type="number" step="0.01" min="0" placeholder="6.50" oninput="computePackPrice()"
+                 style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;text-align:right;">
+          <span>€ for</span>
+          <input id="pack-qty" type="number" step="any" min="0" placeholder="250" oninput="computePackPrice()"
+                 style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;text-align:right;">
+          <select id="pack-unit" onchange="computePackPrice()"
+                 style="padding:6px 6px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;"></select>
+          <span id="pack-result" style="color:var(--muted);font-size:12px;margin-left:auto;"></span>
         </div>
       </div>
       <div>
@@ -691,7 +712,7 @@
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:20px;">
-      <button class="btn-primary" style="flex:1;" id="btn-add-ingr" onclick="addIngredient()">Add</button>
+      <button class="btn-primary" style="flex:1;" id="btn-add-ingr" onclick="addIngredient()">Create ingredient</button>
       <button class="btn-secondary" onclick="closeIngrModal()">Cancel</button>
     </div>
   </div>
@@ -857,7 +878,25 @@
       <span></span>
     </div>
     <div class="ing-rows" id="ing-rows"></div>
-    <button class="btn-secondary" style="width:100%;margin-bottom:16px;" onclick="addIngRow()">+ Add ingredient</button>
+    <button class="btn-secondary" style="width:100%;margin-bottom:12px;" onclick="addIngRow()">+ Add ingredient</button>
+
+    <!-- Facteur de perte / coulage -->
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px;padding:10px 12px;background:var(--bg-page);border:1px solid var(--border);border-radius:8px;">
+      <div>
+        <div style="font-size:12px;font-weight:600;">Waste / spillage</div>
+        <div style="font-size:10.5px;color:var(--muted);">Spoilage, foam, breakage — added on top of material cost</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;gap:4px;">
+          <button type="button" class="waste-preset" onclick="setWaste(0)">0%</button>
+          <button type="button" class="waste-preset" onclick="setWaste(5)">5%</button>
+          <button type="button" class="waste-preset" onclick="setWaste(10)">10%</button>
+        </div>
+        <input id="d-waste" type="number" min="0" max="90" step="1" value="0"
+               oninput="updateLiveCogs()" style="width:56px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;text-align:right;">
+        <span style="font-size:13px;color:var(--muted);">%</span>
+      </div>
+    </div>
 
     <!-- Notes -->
     <div class="section-label" style="margin-bottom:6px;">Notes</div>
@@ -866,7 +905,7 @@
   <div class="drawer-footer">
     <button class="btn-primary" style="flex:1;" onclick="saveRecipe()">Save recipe</button>
     <button class="btn-secondary" onclick="closeDrawer()">Cancel</button>
-    <button class="btn-secondary" id="btn-delete-recipe" style="display:none;color:var(--red);border-color:var(--red);" onclick="deleteRecipe()">Delete</button>
+    <button class="btn-secondary" id="btn-delete-recipe" style="display:none;color:var(--red);border-color:var(--red);margin-left:auto;" onclick="deleteRecipe()">Delete recipe</button>
   </div>
 </div>
 
@@ -926,7 +965,7 @@
     <textarea id="prep-notes" class="drawer-notes" placeholder="Notes…" rows="2"></textarea>
   </div>
   <div class="drawer-footer">
-    <button class="btn-primary" style="flex:1;" onclick="savePrep()">Save</button>
+    <button class="btn-primary" style="flex:1;" onclick="savePrep()">Save preparation</button>
     <button class="btn-secondary" onclick="closePrepDrawer()">Cancel</button>
   </div>
 </div>
@@ -981,7 +1020,7 @@ function setLoading(on) {
 async function loadCogs(soft = false) {
   // soft=true : garde le contenu visible avec overlay, pour les reloads après save
   if (!soft) {
-    document.getElementById('content').innerHTML = '<div class="loading">Chargement…</div>';
+    document.getElementById('content').innerHTML = '<div class="loading">Loading…</div>';
   }
   setLoading(true);
   if (window.uiLoadStart) uiLoadStart();
@@ -1123,6 +1162,8 @@ function priceImpact(name, oldP, newP) {
       }
     }
     if (Math.abs(d) < 1e-9) continue;
+    // recipe_total inclut déjà le coulage → le Δ matière subit le même facteur
+    d = d * (1 + (parseFloat(p.waste_pct) || 0) / 100);
     const newCogs = (p.recipe_total || 0) + d;
     out.push({
       title: p.title, delta: d, oldPct: p.marge_pct,
@@ -1397,11 +1438,13 @@ async function openDrawer(id, title, priceHt, priceTtc, taxRate) {
   document.getElementById('d-price-ht').value       = priceHt ? priceHt.toFixed(2) + ' €' : '';
   document.getElementById('ing-rows').innerHTML = '<div class="loading" style="padding:16px;">Loading…</div>';
   document.getElementById('d-notes').value = '';
+  document.getElementById('d-waste').value = 0;
   openDrawerUI();
 
   const r = await fetch(`/api/recipe/${id}`);
   const d = await r.json();
   document.getElementById('d-notes').value = d.notes || '';
+  document.getElementById('d-waste').value = d.waste_pct || 0;
   renderIngRows(d.ingredients || []);
   updateLiveCogs();
   runSim();
@@ -1705,7 +1748,7 @@ function updateLiveCogs() {
   const htEl   = document.getElementById('d-price-ht');
   if (htEl) htEl.value = priceHt ? priceHt.toFixed(2) + ' €' : '';
 
-  let total = 0;
+  let material = 0;
   document.querySelectorAll('#ing-rows .ing-row').forEach(row => {
     const name = row.querySelector('.ing-name')?.value.trim();
     const qty  = parseFloat(row.querySelector('.ing-qty')?.value);
@@ -1713,18 +1756,36 @@ function updateLiveCogs() {
                  || row.querySelector('.ing-unit-fixed')?.dataset.unit;
     const prev = row.querySelector('.cost-preview');
     const cost = name ? calcIngCost(name, qty, unit) : null;
-    if (cost !== null) { total += cost; prev.textContent = fmt(cost); prev.style.color = ''; }
+    if (cost !== null) { material += cost; prev.textContent = fmt(cost); prev.style.color = ''; }
     else { prev.textContent = name ? '?' : '—'; prev.style.color = 'var(--faint)'; }
   });
 
-  document.getElementById('d-cogs-val').textContent = fmt(total);
+  const waste = Math.max(0, parseFloat(document.getElementById('d-waste')?.value) || 0);
+  const total = material * (1 + waste / 100);
+  syncWastePresets(waste);
+
+  const cogsEl = document.getElementById('d-cogs-val');
+  cogsEl.textContent = fmt(total);
+  cogsEl.title = waste > 0 ? `Material ${fmt(material)} + ${waste}% waste` : '';
   const margeEl = document.getElementById('d-margin-val');
   if (priceHt && total > 0) {
     const pct = ((priceHt - total) / priceHt * 100).toFixed(1);
     const cls = pct >= 75 ? 'green' : pct >= 55 ? 'amber' : 'red';
-    margeEl.innerHTML = `<span style="color:var(--${cls})">${pct} %</span> <span style="font-size:11px;color:var(--muted);">(${fmt(priceHt - total)} HT)</span>`;
+    const wasteNote = waste > 0 ? ` <span style="font-size:10px;color:var(--faint);">incl. ${waste}% waste</span>` : '';
+    margeEl.innerHTML = `<span style="color:var(--${cls})">${pct} %</span> <span style="font-size:11px;color:var(--muted);">(${fmt(priceHt - total)} HT)</span>${wasteNote}`;
   } else { margeEl.textContent = '—'; }
   runSim();
+}
+
+function setWaste(v) {
+  const el = document.getElementById('d-waste');
+  if (el) { el.value = v; updateLiveCogs(); }
+}
+function syncWastePresets(waste) {
+  document.querySelectorAll('.waste-preset').forEach(b => {
+    const on = parseFloat(b.textContent) === waste;
+    b.classList.toggle('on', on);
+  });
 }
 
 // ── Simulateur prix ─────────────────────────────────────────
@@ -1756,17 +1817,18 @@ async function saveRecipe() {
   if (!valid) { showToast('⚠ Check the ingredients'); return; }
 
   const notes    = document.getElementById('d-notes').value.trim();
+  const wastePct = Math.max(0, parseFloat(document.getElementById('d-waste')?.value) || 0);
   const newTitle = document.getElementById('d-prod-title').value.trim();
   const newTtc   = parseFloat(document.getElementById('d-price-ttc').value);
   const btn      = document.querySelector('.drawer-footer .btn-primary');
-  btn.textContent = 'Sauvegarde…'; btn.disabled = true;
+  btn.textContent = 'Saving…'; btn.disabled = true;
 
   try {
     // 1. Sauver recette + supply_price
     const r = await fetch(`/api/recipe/${drawerProd.id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ingredients, notes }),
+      body: JSON.stringify({ ingredients, notes, waste_pct: wastePct }),
     });
     const d = await r.json();
 
@@ -1795,7 +1857,7 @@ async function saveRecipe() {
   } catch(e) {
     showToast('Network error');
   } finally {
-    btn.textContent = 'Enregistrer la recette'; btn.disabled = false;
+    btn.textContent = 'Save recipe'; btn.disabled = false;
   }
 }
 
@@ -1830,8 +1892,9 @@ function renderIngrLib() {
       </td>
       <td style="color:var(--faint);font-size:12px;">${lib.note || ''}</td>
       <td style="display:flex;gap:4px;justify-content:flex-end;">
+        <button title="Price history" style="background:none;border:1px solid var(--border);color:var(--muted);padding:3px 7px;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit;" onclick="showPriceHistory('${esc}')">🕐</button>
         <button style="background:none;border:1px solid var(--border);color:var(--muted);padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit;" onclick="editIngr('${esc}')">Edit</button>
-        <button class="ingr-del" onclick="deleteIngr('${esc}')">✕</button>
+        <button class="ingr-del" title="Delete ingredient" onclick="deleteIngr('${esc}')">✕</button>
       </td>
     </tr>`;
   }).join('');
@@ -1857,6 +1920,61 @@ async function saveIngredient(name, data) {
   });
 }
 
+// ── Saisie prix naturelle (pack → €/unité-ref) ───────────────
+const PACK_OPTS = { kg: ['g','kg'], l: ['ml','cl','l'], unit: ['unit'] };
+function renderPackUnitOpts() {
+  const ref = document.getElementById('new-unit').value;
+  const sel = document.getElementById('pack-unit');
+  const opts = PACK_OPTS[ref] || ['unit'];
+  sel.innerHTML = opts.map(u => `<option value="${u}">${u}</option>`).join('');
+  // Défaut : sous-unité (g pour kg, ml pour l) — c'est ce qu'on lit sur l'étiquette
+  sel.value = opts[0];
+}
+function computePackPrice() {
+  const ref    = document.getElementById('new-unit').value;
+  const amount = parseFloat(document.getElementById('pack-amount').value);
+  const qty    = parseFloat(document.getElementById('pack-qty').value);
+  const pu     = document.getElementById('pack-unit').value;
+  const out    = document.getElementById('pack-result');
+  if (!amount || !qty) { out.textContent = ''; return; }
+  const f = convF(pu, ref);           // qty en unité-ref
+  if (f == null) { out.textContent = ''; return; }
+  const perRef = amount / (qty * f);
+  document.getElementById('new-price').value = Math.round(perRef * 10000) / 10000;
+  out.innerHTML = `= <strong style="color:var(--text)">${perRef.toFixed(perRef < 1 ? 4 : 2)} €/${ref}</strong>`;
+}
+
+async function showPriceHistory(name) {
+  openMiniModal(`🕐 ${name} — price history`, '<div style="color:var(--muted);">Loading…</div>');
+  let rows = [];
+  try {
+    const r = await fetch(`/api/ingredients/${encodeURIComponent(name)}/history`);
+    rows = await r.json();
+  } catch(e) {}
+  const cur = ingrLib[name];
+  const body = document.getElementById('mini-modal-body');
+  if (!Array.isArray(rows) || !rows.length) {
+    body.innerHTML = `<div style="color:var(--muted);">No recorded change yet.${cur ? ` Current price: <strong style="color:var(--text)">${cur.price} €/${cur.unit_ref}</strong>.` : ''}</div>
+      <div style="color:var(--faint);font-size:11.5px;margin-top:8px;">History starts recording from the next price change.</div>`;
+    return;
+  }
+  const fmtDate = iso => new Date(iso).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'});
+  const html = rows.map((h, i) => {
+    const prev = rows[i + 1];
+    let arrow = '';
+    if (prev) {
+      const d = h.price - prev.price;
+      const pct = prev.price ? Math.round(d / prev.price * 100) : null;
+      arrow = ` <span style="color:${d > 0 ? 'var(--red)' : 'var(--green)'};font-size:11px;">${d > 0 ? '▲' : '▼'} ${pct != null ? Math.abs(pct) + '%' : ''}</span>`;
+    }
+    return `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);">
+      <span style="color:var(--muted);">${fmtDate(h.changed_at)}</span>
+      <span style="font-variant-numeric:tabular-nums;"><strong>${(+h.price).toFixed(4)} €/${h.unit_ref || cur?.unit_ref || ''}</strong>${arrow}</span>
+    </div>`;
+  }).join('');
+  body.innerHTML = html;
+}
+
 let editingIngrName = null;
 
 function openIngrModal() {
@@ -1870,10 +1988,18 @@ function openIngrModal() {
   document.getElementById('new-price').value   = '';
   document.getElementById('new-note').value    = '';
   document.getElementById('new-unit').value    = 'kg';
-  document.getElementById('btn-add-ingr').textContent = 'Add';
+  document.getElementById('btn-add-ingr').textContent = 'Create ingredient';
+  resetPackHelper();
   document.getElementById('ingr-modal').style.display = '';
   document.getElementById('ingr-modal-overlay').style.display = '';
   setTimeout(() => document.getElementById('new-name').focus(), 50);
+}
+
+function resetPackHelper() {
+  document.getElementById('pack-amount').value = '';
+  document.getElementById('pack-qty').value    = '';
+  document.getElementById('pack-result').textContent = '';
+  renderPackUnitOpts();
 }
 
 function editIngr(name) {
@@ -1889,7 +2015,8 @@ function editIngr(name) {
   document.getElementById('new-price').value   = lib.price;
   document.getElementById('new-note').value    = lib.note || '';
   document.getElementById('new-unit').value    = lib.unit_ref;
-  document.getElementById('btn-add-ingr').textContent = 'Update';
+  document.getElementById('btn-add-ingr').textContent = 'Save changes';
+  resetPackHelper();
   document.getElementById('ingr-modal').style.display = '';
   document.getElementById('ingr-modal-overlay').style.display = '';
   setTimeout(() => document.getElementById('new-price').focus(), 50);
@@ -1952,7 +2079,7 @@ async function recalculateAll() {
   const withRecipe = allProducts.filter(p => p.has_recipe).length;
   if (!confirm(`Recompute COGS for ${withRecipe} products and update Vendus?\nThis overwrites the cost prices in your POS.`)) return;
   const btn = document.getElementById('btn-recalc');
-  btn.textContent = '↺ Computing…'; btn.disabled = true;
+  btn.textContent = '⇪ Pushing…'; btn.disabled = true;
   try {
     const r = await fetch('/api/recipe/recalculate-all', { method: 'POST' });
     const d = await r.json();
@@ -1963,7 +2090,7 @@ async function recalculateAll() {
   } catch(e) {
     showToast('Network error');
   } finally {
-    btn.textContent = '↺ Sync COGS → POS'; btn.disabled = false;
+    btn.textContent = '⇪ Push costs → POS'; btn.disabled = false;
   }
 }
 
@@ -1979,7 +2106,7 @@ async function rebuildHistory() {
   } catch(e) {
     showToast('Network error');
   } finally {
-    btn.textContent = '⟳ Recompute past margins'; btn.disabled = false;
+    btn.textContent = '⟳ Recompute history'; btn.disabled = false;
   }
 }
 
@@ -2166,8 +2293,8 @@ function renderPrepList() {
         </div>
         <div style="display:flex;gap:8px;">
           <button onclick="editPrep('${name.replace(/'/g,"\\'")}')"
-            style="font-size:12px;padding:5px 12px;border:1px solid var(--border);border-radius:5px;background:var(--bg-card);cursor:pointer;font-family:inherit;">Modifier</button>
-          <button onclick="deletePrep('${name.replace(/'/g,"\\'")}')"
+            style="font-size:12px;padding:5px 12px;border:1px solid var(--border);border-radius:5px;background:var(--bg-card);cursor:pointer;font-family:inherit;">Edit</button>
+          <button onclick="deletePrep('${name.replace(/'/g,"\\'")}')" title="Delete preparation"
             style="font-size:12px;padding:5px 12px;border:1px solid var(--border);border-radius:5px;background:var(--bg-card);cursor:pointer;font-family:inherit;color:var(--red);">✕</button>
         </div>
       </div>
