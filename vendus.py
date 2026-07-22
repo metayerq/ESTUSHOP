@@ -287,6 +287,26 @@ def get_categories():
     return _ttl_get("categories", 180, _fetch_categories)
 
 
+def create_category(title):
+    """Crée une catégorie produit dans Vendus, invalide le cache local et
+    retourne ({id, title}, None) — ou (None, message) en cas d'échec."""
+    import requests
+    title = (title or "").strip()
+    if not title:
+        return None, "titre vide"
+    r = requests.post(f"{BASE_URL}/products/categories/",
+                      auth=(API_KEY, ""), json={"title": title})
+    if not r.ok:
+        return None, r.text
+    _TTL_CACHE.pop("categories", None)
+    try:
+        data = r.json()
+    except Exception:
+        data = {}
+    cid = data.get("id")
+    return {"id": str(cid), "title": data.get("title") or title}, None
+
+
 def _fetch_categories():
     global LAST_CATEGORIES_ERROR
     LAST_CATEGORIES_ERROR = None

@@ -22,7 +22,7 @@ from vendus import (
     rush_detector, unsold_today, product_stats_from_docs,
     tva_breakdown, service_tempo, upsell_rate, category_mix, ticket_median,
     daily_economics, cumulative_curve, ticket_distribution,
-    daily_breakdown,
+    daily_breakdown, create_category,
 )
 
 # ── Cache des docs du jour : mémoire 45s + Supabase (rempli par le cron) ──────
@@ -225,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260722i"
+ASSET_VERSION = "20260722j"
 
 @app.context_processor
 def _inject_asset_version():
@@ -2273,6 +2273,8 @@ def api_product_update(product_id):
         payload["gross_price"] = str(round(float(data["gross_price"]), 2))
     if "title" in data:
         payload["title"] = data["title"].strip()
+    if data.get("category_id"):
+        payload["category_id"] = int(data["category_id"])
     if not payload:
         return jsonify({"ok": False, "error": "nothing to update"}), 400
     r = req.patch(f"https://www.vendus.pt/ws/v1.1/products/{product_id}/",
@@ -2280,6 +2282,19 @@ def api_product_update(product_id):
     if r.ok:
         return jsonify({"ok": True, "updated": payload})
     return jsonify({"ok": False, "error": r.text}), 502
+
+
+@app.route("/api/categories", methods=["POST"])
+def api_categories_create():
+    """Crée une catégorie produit dans Vendus (source de vérité)."""
+    data  = request.get_json() or {}
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"ok": False, "error": "title required"}), 400
+    cat, err = create_category(title)
+    if err:
+        return jsonify({"ok": False, "error": err}), 502
+    return jsonify({"ok": True, "category": cat})
 
 
 @app.route("/api/update_supply_price/<int:product_id>", methods=["POST"])

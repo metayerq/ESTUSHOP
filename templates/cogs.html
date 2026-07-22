@@ -939,6 +939,13 @@
         <label>Price excl. VAT</label>
         <input id="d-price-ht" type="text" readonly>
       </div>
+      <div class="drawer-field" style="grid-column:1/3;">
+        <label>Category <span style="color:var(--faint);font-weight:400;text-transform:none;letter-spacing:0;">· moves the product in Vendus</span></label>
+        <select id="d-category" onchange="onDrawerCategoryChange()">
+          <option value="">— Uncategorised —</option>
+        </select>
+        <input id="d-category-new" type="text" placeholder="New category name…" style="display:none;margin-top:6px;">
+      </div>
     </div>
 
     <!-- Live COGS -->
@@ -1558,13 +1565,35 @@ function showBestMargins() {
 // ══════════════════════════════════════════════════════════
 // DRAWER
 // ══════════════════════════════════════════════════════════
+function buildDrawerCategoryOptions(selectedId) {
+  const sel = document.getElementById('d-category');
+  const ids = [...categoryOrder];
+  // Inclure la catégorie courante même si absente de l'ordre connu
+  if (selectedId && !ids.includes(String(selectedId))) ids.push(String(selectedId));
+  sel.innerHTML = `<option value="">— Uncategorised —</option>`
+    + ids.filter(id => categoryNames[id]).map(id =>
+        `<option value="${id}">${categoryNames[id]}</option>`).join('')
+    + `<option value="__new__">+ New category…</option>`;
+  sel.value = selectedId ? String(selectedId) : '';
+  document.getElementById('d-category-new').style.display = 'none';
+  document.getElementById('d-category-new').value = '';
+}
+function onDrawerCategoryChange() {
+  const isNew = document.getElementById('d-category').value === '__new__';
+  const inp = document.getElementById('d-category-new');
+  inp.style.display = isNew ? '' : 'none';
+  if (isNew) setTimeout(() => inp.focus(), 30);
+}
+
 async function openDrawer(id, title, priceHt, priceTtc, taxRate) {
-  drawerProd = { id, title, priceHt, priceTtc, taxRate };
+  const prod = allProducts.find(p => p.id === id) || {};
+  drawerProd = { id, title, priceHt, priceTtc, taxRate, categoryId: prod.category_id || '' };
   document.getElementById('d-title').textContent    = title;
   document.getElementById('d-subtitle').textContent = `VAT ${taxRate}%`;
   document.getElementById('d-prod-title').value     = title;
   document.getElementById('d-price-ttc').value      = priceTtc || '';
   document.getElementById('d-price-ht').value       = priceHt ? priceHt.toFixed(2) + ' €' : '';
+  buildDrawerCategoryOptions(prod.category_id || '');
   document.getElementById('ing-rows').innerHTML = '<div class="loading" style="padding:16px;">Loading…</div>';
   document.getElementById('d-notes').value = '';
   document.getElementById('d-waste').value = 0;
@@ -1961,10 +1990,34 @@ async function saveRecipe() {
     });
     const d = await r.json();
 
-    // 2. Si nom ou prix TTC changés → PATCH Vendus séparément
+    // 2. Catégorie : résoudre (création si nouvelle) puis détecter un changement
+    let targetCatId = document.getElementById('d-category').value;
+    if (targetCatId === '__new__') {
+      const newCatName = document.getElementById('d-category-new').value.trim();
+      if (newCatName) {
+        const rc = await fetch('/api/categories', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: newCatName }),
+        });
+        const dc = await rc.json();
+        if (dc.ok) {
+          targetCatId = dc.category.id;
+          categoryNames[targetCatId] = dc.category.title;   // dispo immédiatement
+          if (!categoryOrder.includes(targetCatId)) categoryOrder.push(targetCatId);
+        } else {
+          showToast('⚠ Category not created: ' + (dc.error || ''));
+          targetCatId = drawerProd.categoryId || '';
+        }
+      } else {
+        targetCatId = drawerProd.categoryId || '';
+      }
+    }
+
+    // 3. Si nom, prix TTC ou catégorie changés → PATCH Vendus séparément
     const updates = {};
     if (newTitle && newTitle !== drawerProd.title) updates.title = newTitle;
     if (newTtc && Math.abs(newTtc - drawerProd.priceTtc) > 0.001) updates.gross_price = newTtc;
+    if (targetCatId && String(targetCatId) !== String(drawerProd.categoryId || '')) updates.category_id = targetCatId;
 
     if (Object.keys(updates).length) {
       const r2 = await fetch(`/api/product/${drawerProd.id}/update`, {
@@ -1973,7 +2026,8 @@ async function saveRecipe() {
         body: JSON.stringify(updates),
       });
       const d2 = await r2.json();
-      if (!d2.ok) showToast('⚠ Price/name not updated: ' + d2.error);
+      if (!d2.ok) showToast('⚠ Vendus update failed: ' + d2.error);
+      else if (updates.category_id) showToast(`✓ Moved to “${categoryNames[updates.category_id] || 'category'}” in Vendus`);
     }
 
     if (d.ok) {
