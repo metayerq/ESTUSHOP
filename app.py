@@ -225,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260721g"
+ASSET_VERSION = "20260721i"
 
 @app.context_processor
 def _inject_asset_version():
@@ -705,6 +705,80 @@ def api_data():
         # 6. Top movers : 7 derniers jours vs 7 précédents
         movers = _movers(merged_7d, _merge_products(prev))
 
+        # ── Médiane CA par jour de semaine (jours pleins, hors aujourd'hui) ──
+        # Référence "jour typique" : comparer ce lundi aux lundis passés, pas à
+        # dimanche. Médiane (pas moyenne) → robuste aux jours exceptionnels.
+        _wd_vals = {}
+        for r in wd_rows:
+            if r["day"] == today_iso or (r.get("nb") or 0) <= 0:
+                continue
+            _wd_vals.setdefault(date.fromisoformat(r["day"]).weekday(), []) \
+                    .append(float(r.get("ca_ttc") or 0))
+        med_by_wd = {}
+        for wd, vals in _wd_vals.items():
+            vals.sort()
+            mid = len(vals) // 2
+            med_by_wd[wd] = round(vals[mid] if len(vals) % 2 else
+                                  (vals[mid - 1] + vals[mid]) / 2, 2)
+
+        # ── Verdict du jour : la journée en une phrase ────────────────────────
+        # Heure de franchissement du break-even (cumul des tickets du jour)
+        seuil_time = None
+        if today_seuil and today_docs:
+            _cum = 0.0
+            for dd in sorted(today_docs, key=lambda x: x.get("local_time") or ""):
+                _cum += float(dd.get("amount_gross") or 0)
+                if _cum >= today_seuil:
+                    seuil_time = (dd.get("local_time") or "")[11:16]
+                    break
+        _typical = med_by_wd.get(today_real.weekday())
+        verdict = {
+            "ca": ts["ca"], "nb": ts["nb"],
+            "weekday": today_real.strftime("%A"),
+            "typical_ca": _typical,          # médiane des mêmes jours (journées PLEINES)
+            "pct_of_typical": round(ts["ca"] / _typical * 100) if _typical else None,
+            "seuil": today_seuil,
+            "seuil_time": seuil_time,        # None = pas encore atteint
+        }
+
+        # ── Projection CA fin de mois vs break-even mensuel ──────────────────
+        if month:
+            from config import count_open_days_raw as _odays
+            _mend   = date.fromisoformat(month["month_end"])
+            _mstart = today_real.replace(day=1)
+            ca_mtd  = round(sum(float(r.get("ca_ttc") or 0) for r in rows_month), 2)
+            _open_ca = [float(r.get("ca_ttc") or 0) for r in rows_month
+                        if (r.get("nb") or 0) > 0]
+            _avg7   = sum(_open_ca[-7:]) / len(_open_ca[-7:]) if _open_ca else 0
+            _remain = _odays(today_real + timedelta(1), _mend)
+            _sj     = eco.get("seuil_ca_ttc_jour")
+            month["ca_mtd"]        = ca_mtd
+            month["proj_ca_end"]   = round(ca_mtd + _avg7 * _remain, 2)
+            month["seuil_ca_month"] = (round(_sj * _odays(_mstart, _mend), 2)
+                                       if _sj else None)
+
+        # ── Alertes d'anomalie (dashboard actif, pas passif) ─────────────────
+        alerts = []
+        _yday = today_real - timedelta(1)
+        _yrow = next((r for r in rows_hist if r["day"] == _yday.isoformat()), None)
+        if _yrow and (_yrow.get("nb") or 0) > 0:
+            _ymed = med_by_wd.get(_yday.weekday())
+            _yca  = float(_yrow.get("ca_ttc") or 0)
+            if _ymed and _ymed >= 50 and _yca < 0.70 * _ymed:
+                alerts.append(
+                    f"Yesterday closed at {_yca:.0f}€ — only "
+                    f"{round(_yca / _ymed * 100)}% of a typical {_yday.strftime('%A')} "
+                    f"({_ymed:.0f}€ median)")
+        if month and month.get("proj_end") is not None and month["proj_end"] < 0:
+            alerts.append(
+                f"At current pace this month projects {month['proj_end']:.0f}€ EBITDA "
+                f"— below break-even")
+        for mv in (movers.get("down") or [])[:1]:
+            if mv.get("pct") is not None and mv["pct"] <= -30 and mv["prev"] >= 30:
+                alerts.append(
+                    f"{mv['name']} revenue down {abs(mv['pct'])}% week-over-week "
+                    f"({mv['prev']:.0f}€ → {mv['cur']:.0f}€)")
+
         # Articles par ticket + taux multi-articles (période sélectionnée)
         total_units = sum(p["qty"] for p in merged_products.values())
         total_tx    = sum(r.get("nb", 0) for r in period_rows)
@@ -731,6 +805,8 @@ def api_data():
             "movers":      movers,
             "basket":      basket,
             "seat":        seat,
+            "verdict":     verdict,
+            "alerts":      alerts,
         }
     except Exception as e:
         result["insights"] = None

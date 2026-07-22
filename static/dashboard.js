@@ -638,7 +638,44 @@ function renderInsights(d) {
   const ins = d.insights;
   const monthZone    = document.getElementById('month-zone');
   const patternsZone = document.getElementById('patterns-zone');
-  if (!ins) { monthZone.style.display = 'none'; patternsZone.style.display = 'none'; return; }
+  const verdictEl = document.getElementById('verdict-banner');
+  const alertsEl  = document.getElementById('alerts-banner');
+  if (!ins) {
+    monthZone.style.display = 'none'; patternsZone.style.display = 'none';
+    verdictEl.style.display = 'none'; alertsEl.style.display = 'none';
+    return;
+  }
+
+  // ── Verdict du jour : la journée en une phrase (vue Today uniquement) ──────
+  const v = ins.verdict;
+  if (d.is_today && v && v.nb > 0) {
+    const dayLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
+    let parts = [`<strong>${fmt(v.ca)}</strong> · ${v.nb} tickets`];
+    if (v.pct_of_typical != null) {
+      const good = v.pct_of_typical >= 100;
+      parts.push(`<span style="color:${good ? '#7ee2a8' : '#ffd27a'}">${v.pct_of_typical}%</span> of a typical ${v.weekday} (${fmt(v.typical_ca)} median, full day)`);
+    }
+    if (v.seuil != null) {
+      parts.push(v.seuil_time
+        ? `<span style="color:#7ee2a8">break-even reached at ${v.seuil_time}</span>`
+        : `<span style="color:#ffd27a">${fmt(Math.max(0, v.seuil - v.ca))} to break-even</span>`);
+    }
+    verdictEl.innerHTML = `✦ ${dayLabel} — ` + parts.join(' · ');
+    verdictEl.style.display = '';
+  } else {
+    verdictEl.style.display = 'none';
+  }
+
+  // ── Alertes d'anomalie (toutes vues) ───────────────────────────────────────
+  const al = ins.alerts || [];
+  if (al.length) {
+    alertsEl.innerHTML = al.map(a =>
+      `<div style="padding:9px 14px;margin-bottom:6px;border-radius:8px;background:#fdf0ee;border:1px solid #eccfcb;color:#8a3f38;font-size:12.5px;">⚠ ${a}</div>`
+    ).join('');
+    alertsEl.style.display = '';
+  } else {
+    alertsEl.style.display = 'none';
+  }
 
   // Zone 2 "This month" : masquée quand la période EST le mois en cours (doublon).
   const showMonthZone = currentPreset !== 'month' && ins.month && ins.month.days && ins.month.days.length;
@@ -707,7 +744,14 @@ function renderInsights(d) {
         MTD <strong style="color:${m.cum_now >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.cum_now)}</strong>
         · projected <strong style="color:${m.proj_end >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.proj_end)}</strong> by month end
         ${m.cross_date ? ` · crossed €0 on ${new Date(m.cross_date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short'})}` : ''}
-      </div>`;
+      </div>
+      ${m.proj_ca_end != null ? `
+      <div class="ins-sub" style="margin-top:4px;">
+        Revenue: MTD <strong>${fmt(m.ca_mtd)}</strong>
+        · projected <strong>${fmt(m.proj_ca_end)}</strong> by month end
+        ${m.seuil_ca_month != null ? ` vs <strong>${fmt(m.seuil_ca_month)}</strong> needed to break even
+          → <strong style="color:${m.proj_ca_end >= m.seuil_ca_month ? 'var(--green)' : 'var(--red)'}">${(m.proj_ca_end >= m.seuil_ca_month ? '+' : '') + fmt(m.proj_ca_end - m.seuil_ca_month)}</strong>` : ''}
+      </div>` : ''}`;
 
     const first = new Date(m.days[0].date + 'T12:00:00');
     const lead  = (first.getDay() + 6) % 7;
