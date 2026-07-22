@@ -834,8 +834,8 @@
       <div style="font-size:16px;font-weight:700;" id="ingr-modal-title">New ingredient</div>
       <button onclick="closeIngrModal()" style="background:none;border:1px solid var(--border);border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:14px;color:var(--muted);">✕</button>
     </div>
-    <div id="ingr-modal-rename-note" style="display:none;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:8px 12px;font-size:12px;color:#795548;margin-bottom:14px;">
-      ⚠ The name is the key — to rename, delete and recreate.
+    <div id="ingr-modal-rename-note" style="display:none;background:var(--bg-page);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:12px;color:var(--muted);margin-bottom:14px;">
+      ✎ Renaming also updates every recipe &amp; preparation that uses this ingredient.
     </div>
     <div style="display:flex;flex-direction:column;gap:12px;">
       <div>
@@ -2360,8 +2360,8 @@ function editIngr(name) {
   document.getElementById('ingr-modal-title').textContent = 'Edit ingredient';
   document.getElementById('ingr-modal-rename-note').style.display = '';
   document.getElementById('new-name').value    = name;
-  document.getElementById('new-name').readOnly = true;
-  document.getElementById('new-name').style.opacity = '.5';
+  document.getElementById('new-name').readOnly = false;
+  document.getElementById('new-name').style.opacity = '';
   document.getElementById('new-cat').value     = lib.category || '';
   document.getElementById('new-price').value   = lib.price;
   document.getElementById('new-note').value    = lib.note || '';
@@ -2389,7 +2389,33 @@ async function addIngredient() {
   const note  = document.getElementById('new-note').value.trim();
   const supplier = currentSupplier();
   if (!name || isNaN(price)) { showToast('Name and price required'); return; }
-  const wasEdit = !!editingIngrName;
+  const wasEdit  = !!editingIngrName;
+  const isRename = wasEdit && name !== editingIngrName;
+
+  // Renommage : cascade côté serveur (recettes + préparations), puis sauvegarde
+  // des autres champs sous le nouveau nom, puis reload complet.
+  if (isRename) {
+    if (ingrLib[name]) { showToast(`⚠ "${name}" already exists`); return; }
+    if (!confirm(`Rename "${editingIngrName}" → "${name}"?\nEvery recipe and preparation using it will be updated.`)) return;
+    const btn = document.getElementById('btn-add-ingr');
+    btn.disabled = true; btn.textContent = 'Renaming…';
+    try {
+      const r = await fetch(`/api/ingredients/${encodeURIComponent(editingIngrName)}/rename`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_name: name }),
+      });
+      const d = await r.json();
+      if (!d.ok) { showToast('Rename failed: ' + (d.error || '')); return; }
+      // Sauver les autres champs édités sous le nouveau nom
+      await saveIngredient(name, { price, unit_ref: unit, category: cat, note, supplier });
+      closeIngrModal();
+      showToast(`✓ Renamed → ${name} · ${d.recipes} recipe(s), ${d.preparations} prep(s) updated`);
+      await loadCogs(true);
+    } catch (e) { showToast('Network error'); }
+    finally { btn.disabled = false; btn.textContent = 'Save changes'; }
+    return;
+  }
+
   const doSave = async () => {
     await saveIngredient(name, { price, unit_ref: unit, category: cat, note, supplier });
     ingrLib[name] = { ...(ingrLib[name] || {}), price, unit_ref: unit, category: cat, note, supplier };

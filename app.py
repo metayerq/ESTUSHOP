@@ -225,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260722k"
+ASSET_VERSION = "20260722l"
 
 @app.context_processor
 def _inject_asset_version():
@@ -2233,6 +2233,63 @@ def api_ingredient_history(name):
     rows = _supa_get("ingredient_price_history",
                      {"name": f"eq.{name}", "order": "changed_at.desc", "limit": "50"})
     return jsonify(rows if isinstance(rows, list) else [])
+
+
+@app.route("/api/ingredients/<path:name>/rename", methods=["POST"])
+def api_ingredient_rename(name):
+    """Renomme un ingrédient en cascade : crée la nouvelle clé, met à jour
+    toutes les recettes et préparations qui le référencent, puis supprime
+    l'ancienne. Le nom est la clé partout — d'où la propagation."""
+    data     = request.get_json() or {}
+    new_name = (data.get("new_name") or "").strip()
+    if not new_name:
+        return jsonify({"ok": False, "error": "new_name required"}), 400
+    ingr = _load_ingredients()
+    if name not in ingr:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    if new_name == name:
+        return jsonify({"ok": True, "recipes": 0, "preparations": 0})
+    if new_name in ingr:
+        return jsonify({"ok": False, "error": "name_exists"}), 409
+
+    # 1. Nouvelle ligne ingrédient (mêmes données)
+    _save_ingredient(new_name, dict(ingr[name]))
+
+    # 2. Recettes qui le référencent
+    n_rec = 0
+    for title, r in _load_recipes().items():
+        ings = r.get("ingredients") or []
+        if any(i.get("name") == name for i in ings):
+            for i in ings:
+                if i.get("name") == name:
+                    i["name"] = new_name
+            _save_recipe(title, ings, r.get("notes", ""), r.get("waste_pct", 0))
+            n_rec += 1
+
+    # 3. Préparations qui le référencent
+    n_prep = 0
+    for pname, p in _load_preparations().items():
+        ings = p.get("ingredients") or []
+        if any(i.get("name") == name for i in ings):
+            for i in ings:
+                if i.get("name") == name:
+                    i["name"] = new_name
+            _save_preparation(pname, ings, p.get("yield_qty", 1),
+                              p.get("yield_unit", "portion"), p.get("notes", ""),
+                              p.get("category", ""))
+            n_prep += 1
+
+    # 4. Historique prix + achats (best-effort, jamais bloquant)
+    for tbl in ("ingredient_price_history", "inventory_purchases"):
+        try:
+            _req.patch(f"{SUPA_URL}/rest/v1/{tbl}", headers=_supa_headers(),
+                       params={"name": f"eq.{name}"}, json={"name": new_name})
+        except Exception:
+            pass
+
+    # 5. Supprimer l'ancienne clé
+    _supa_delete("ingredients", "name", name)
+    return jsonify({"ok": True, "recipes": n_rec, "preparations": n_prep})
 
 
 @app.route("/api/ingredients/<path:name>", methods=["DELETE"])
