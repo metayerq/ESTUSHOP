@@ -209,6 +209,37 @@
 }
 .waste-preset:hover { color:var(--text); }
 .waste-preset.on { background:var(--text); color:var(--bg-card); border-color:var(--text); }
+/* ── Liste compacte des préparations ── */
+.prep-group-head {
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--muted); margin:16px 0 6px; display:flex; align-items:center; gap:8px;
+}
+.prep-group-head:first-child { margin-top:0; }
+.prep-group-head span {
+  background:var(--bg-hover); color:var(--faint); border-radius:20px; padding:1px 8px; font-size:10px;
+}
+.prep-group { border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--bg-card); }
+.prep-line {
+  display:grid; grid-template-columns:1fr 130px 92px 60px; align-items:center; gap:12px;
+  padding:9px 14px; border-bottom:1px solid var(--border); font-size:13px;
+}
+.prep-line:last-child { border-bottom:none; }
+.prep-line:hover { background:var(--bg-hover); }
+.prep-line-name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.prep-line-yield { color:var(--faint); font-weight:400; font-size:11px; margin-left:8px; }
+.prep-line-cost { text-align:right; font-variant-numeric:tabular-nums; }
+.prep-line-used { text-align:right; font-size:12px; text-decoration:underline; }
+.prep-line-actions { display:flex; gap:4px; justify-content:flex-end; }
+.prep-line-actions button {
+  background:none; border:1px solid var(--border); border-radius:5px; width:26px; height:26px;
+  cursor:pointer; font-family:inherit; font-size:12px; color:var(--muted);
+}
+.prep-line-actions button:hover { color:var(--text); }
+@media (max-width:640px) {
+  .prep-line { grid-template-columns:1fr auto; row-gap:4px; }
+  .prep-line-used { grid-column:1; text-align:left; }
+  .prep-line-actions { grid-column:2; }
+}
 .unit-cell select { width:100%; }
 .ac-wrap { position:relative; }
 .prep-flag {
@@ -620,12 +651,21 @@
 
   <!-- Vue préparations -->
   <div id="view-preparations" style="display:none;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
       <div>
         <div class="section-label" style="margin:0;">House preparations</div>
         <div style="font-size:12px;color:var(--muted);margin-top:4px;">Breads, sauces, bases — usable in product recipes</div>
       </div>
       <button class="btn-add" onclick="openPrepDrawer()">+ New preparation</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <input id="prep-search" type="text" placeholder="🔍 Search a preparation…" oninput="renderPrepList()"
+        style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;background:var(--bg-card);color:var(--text);">
+      <select id="prep-cat-filter" onchange="renderPrepList()"
+        style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;background:var(--bg-card);color:var(--text);">
+        <option value="">All categories</option>
+      </select>
+      <span class="count-badge" id="prep-shown-count"></span>
     </div>
     <div id="prep-list"><div class="loading" style="padding:32px;">Loading…</div></div>
   </div>
@@ -928,10 +968,17 @@
     <button class="drawer-close" onclick="closePrepDrawer()">✕</button>
   </div>
   <div class="drawer-body">
-    <!-- Nom -->
-    <div style="margin-bottom:16px;">
-      <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:6px;">Preparation name</label>
-      <input id="prep-name" class="field-input" style="width:100%;font-size:14px;font-weight:600;" placeholder="e.g. Shokupan milk bread">
+    <!-- Nom + catégorie -->
+    <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:10px;margin-bottom:16px;">
+      <div>
+        <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:6px;">Preparation name</label>
+        <input id="prep-name" class="field-input" style="width:100%;font-size:14px;font-weight:600;" placeholder="e.g. Shokupan milk bread">
+      </div>
+      <div>
+        <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:6px;">Category</label>
+        <input id="prep-category" class="field-input" list="prep-cat-suggest" placeholder="Choose or type…" style="width:100%;">
+        <datalist id="prep-cat-suggest"></datalist>
+      </div>
     </div>
     <!-- Yield -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
@@ -2322,46 +2369,85 @@ async function createProduct() {
 const fmtP4 = v => v != null ? new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR',minimumFractionDigits:4,maximumFractionDigits:4}).format(v) : '—';
 const fmt2c = v => v != null ? new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR',minimumFractionDigits:2}).format(v) : '—';
 
+const PREP_CAT_PRESETS = ['Bread', 'Pastry', 'Sauce', 'Cream', 'Jam / Confit', 'Base', 'Savoury'];
+
+function buildPrepCatControls() {
+  // Datalist du modal + options du filtre : presets + catégories déjà utilisées
+  const used = new Set();
+  Object.values(prepLib).forEach(p => { const c = (p.category || '').trim(); if (c) used.add(c); });
+  const all = [...new Set([...PREP_CAT_PRESETS, ...used])].sort((a, b) => a.localeCompare(b));
+  const dl = document.getElementById('prep-cat-suggest');
+  if (dl) dl.innerHTML = all.map(c => `<option value="${c.replace(/"/g,'&quot;')}">`).join('');
+  const filt = document.getElementById('prep-cat-filter');
+  if (filt) {
+    const cur = filt.value;
+    const usedSorted = [...used].sort((a, b) => a.localeCompare(b));
+    filt.innerHTML = `<option value="">All categories</option>`
+      + usedSorted.map(c => `<option value="${c.replace(/"/g,'&quot;')}">${c}</option>`).join('')
+      + (Object.values(prepLib).some(p => !(p.category || '').trim()) ? `<option value="__none__">Uncategorised</option>` : '');
+    filt.value = cur;
+  }
+}
+
 function renderPrepList() {
   const el = document.getElementById('prep-list');
-  const entries = Object.entries(prepLib);
+  buildPrepCatControls();
+  const q      = (document.getElementById('prep-search')?.value || '').toLowerCase();
+  const catSel = document.getElementById('prep-cat-filter')?.value || '';
+
+  let entries = Object.entries(prepLib);
   if (!entries.length) {
     el.innerHTML = `<div style="text-align:center;color:var(--muted);padding:48px 0;">No preparation — click "+ New preparation"</div>`;
+    document.getElementById('prep-shown-count').textContent = '';
     return;
   }
-  el.innerHTML = entries.map(([name, p]) => {
-    const totalCost = (p.cost_per_unit || 0) * (p.yield_qty || 1);
+  entries = entries.filter(([name, p]) => {
+    const cat = (p.category || '').trim();
+    if (q && !name.toLowerCase().includes(q) && !cat.toLowerCase().includes(q)) return false;
+    if (catSel === '__none__') return !cat;
+    if (catSel && cat !== catSel) return false;
+    return true;
+  });
+  entries.sort((a, b) => a[0].localeCompare(b[0]));
+  document.getElementById('prep-shown-count').textContent =
+    `${entries.length} / ${Object.keys(prepLib).length}`;
+
+  if (!entries.length) {
+    el.innerHTML = `<div style="text-align:center;color:var(--muted);padding:40px 0;">No match</div>`;
+    return;
+  }
+
+  // Regroupement par catégorie
+  const groups = {};
+  for (const [name, p] of entries) {
+    const cat = (p.category || '').trim() || 'Uncategorised';
+    (groups[cat] = groups[cat] || []).push([name, p]);
+  }
+  const catOrder = Object.keys(groups).sort((a, b) => {
+    if (a === 'Uncategorised') return 1;
+    if (b === 'Uncategorised') return -1;
+    return a.localeCompare(b);
+  });
+
+  const rowHtml = (name, p) => {
     const usedIn = allProducts.filter(pr => pr.recipe && pr.recipe.some(r => r.name === name && r.type === 'preparation')).length;
-    return `<div style="border:1px solid var(--border);border-radius:8px;background:var(--bg-card);margin-bottom:12px;overflow:hidden;">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--bg-page);border-bottom:1px solid var(--border);">
-        <div>
-          <span style="font-size:15px;font-weight:600;">🍞 ${name}</span>
-          <span style="font-size:11px;color:var(--muted);margin-left:12px;">Yield: ${p.yield_qty} ${p.yield_unit}</span>
-        </div>
-        <div style="display:flex;gap:8px;">
-          <button onclick="editPrep('${name.replace(/'/g,"\\'")}')"
-            style="font-size:12px;padding:5px 12px;border:1px solid var(--border);border-radius:5px;background:var(--bg-card);cursor:pointer;font-family:inherit;">Edit</button>
-          <button onclick="deletePrep('${name.replace(/'/g,"\\'")}')" title="Delete preparation"
-            style="font-size:12px;padding:5px 12px;border:1px solid var(--border);border-radius:5px;background:var(--bg-card);cursor:pointer;font-family:inherit;color:var(--red);">✕</button>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;padding:14px 20px;gap:16px;">
-        <div>
-          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Total recipe cost</div>
-          <div style="font-size:15px;font-weight:600;">${fmt2c(totalCost)}</div>
-        </div>
-        <div>
-          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Cost / ${p.yield_unit}</div>
-          <div style="font-size:15px;font-weight:600;color:var(--green);">${fmtP4(p.cost_per_unit)}</div>
-        </div>
-        <div>
-          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Used in</div>
-          <a href="javascript:void(0)" onclick="showUsedIn('${name.replace(/'/g,"\\'")}','prep')"
-             style="font-size:13px;color:${usedIn ? 'var(--text)' : 'var(--muted)'};text-decoration:${usedIn ? 'underline' : 'none'};">${usedIn} recipe(s)</a>
-        </div>
+    const esc = name.replace(/'/g, "\\'");
+    return `<div class="prep-line">
+      <div class="prep-line-name">${name}<span class="prep-line-yield">${p.yield_qty} ${p.yield_unit}</span></div>
+      <div class="prep-line-cost"><strong style="color:var(--green);">${fmtP4(p.cost_per_unit)}</strong> <span style="color:var(--faint);">/ ${p.yield_unit}</span></div>
+      <a href="javascript:void(0)" class="prep-line-used" onclick="showUsedIn('${esc}','prep')"
+         style="color:${usedIn ? 'var(--text)' : 'var(--faint)'};">${usedIn} recipe${usedIn !== 1 ? 's' : ''}</a>
+      <div class="prep-line-actions">
+        <button onclick="editPrep('${esc}')" title="Edit">✎</button>
+        <button onclick="deletePrep('${esc}')" title="Delete" style="color:var(--red);">✕</button>
       </div>
     </div>`;
-  }).join('');
+  };
+
+  el.innerHTML = catOrder.map(cat => `
+    <div class="prep-group-head">${cat} <span>${groups[cat].length}</span></div>
+    <div class="prep-group">${groups[cat].map(([n, p]) => rowHtml(n, p)).join('')}</div>
+  `).join('');
 }
 
 async function editPrep(name) {
@@ -2378,6 +2464,8 @@ async function editPrep(name) {
   document.getElementById('prep-yield-qty').value = p.yield_qty || 1;
   document.getElementById('prep-yield-unit').value = p.yield_unit || '';
   document.getElementById('prep-notes').value = p.notes || '';
+  document.getElementById('prep-category').value = p.category || '';
+  buildPrepCatControls();
   renderPrepIngredients();
   updatePrepCost();
   document.getElementById('prep-drawer').style.display = 'flex';
@@ -2393,6 +2481,8 @@ function openPrepDrawer() {
   document.getElementById('prep-yield-qty').value = 1;
   document.getElementById('prep-yield-unit').value = '';
   document.getElementById('prep-notes').value = '';
+  document.getElementById('prep-category').value = '';
+  buildPrepCatControls();
   document.getElementById('prep-ingredients-list').innerHTML = '';
   document.getElementById('prep-cost-box').style.display = 'none';
   document.getElementById('prep-drawer').style.display = 'flex';
@@ -2523,9 +2613,10 @@ async function savePrep() {
   const yieldQty  = parseFloat(document.getElementById('prep-yield-qty').value) || 1;
   const yieldUnit = (document.getElementById('prep-yield-unit').value.trim()) || 'portion';
   const notes     = document.getElementById('prep-notes').value.trim();
+  const category  = document.getElementById('prep-category').value.trim();
   if (!name)                { showToast('Name required'); return; }
   if (!prepIngredients.length) { showToast('Add at least one ingredient'); return; }
-  const body = { name, ingredients: prepIngredients, yield_qty: yieldQty, yield_unit: yieldUnit, notes };
+  const body = { name, ingredients: prepIngredients, yield_qty: yieldQty, yield_unit: yieldUnit, notes, category };
   const r = await fetch('/api/preparations', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

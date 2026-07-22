@@ -225,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260722e"
+ASSET_VERSION = "20260722f"
 
 @app.context_processor
 def _inject_asset_version():
@@ -1800,11 +1800,17 @@ def _load_preparations():
     rows = _supa_get("preparations")
     return {r["name"]: r for r in rows}
 
-def _save_preparation(name, ingredients, yield_qty, yield_unit, notes):
-    ok, err = _supa_upsert("preparations", {
+def _save_preparation(name, ingredients, yield_qty, yield_unit, notes, category=""):
+    row = {
         "name": name, "ingredients": ingredients,
         "yield_qty": yield_qty, "yield_unit": yield_unit, "notes": notes,
-    })
+        "category": category,
+    }
+    ok, err = _supa_upsert("preparations", row)
+    # Tolérance migration : colonne 'category' pas encore créée → réessaie sans.
+    if not ok and err and "category" in str(err):
+        row.pop("category", None)
+        ok, err = _supa_upsert("preparations", row)
     return ok, err
 
 # ── Calcul COGS depuis une recette ────────────────────────────────────────────
@@ -2007,6 +2013,7 @@ def api_cogs():
             "yield_unit":  p.get("yield_unit", "portion"),
             "cost_per_unit": round(total / yq, 4) if yq else 0,
             "notes":       p.get("notes", ""),
+            "category":    p.get("category") or "",
         }
     return jsonify({"products": products, "category_order": category_order,
                     "category_names": category_names, "preparations": prep_summary})
@@ -2045,9 +2052,10 @@ def api_preparations_post():
     yield_qty   = float(data.get("yield_qty") or 1)
     yield_unit  = (data.get("yield_unit") or "portion").strip()
     notes       = (data.get("notes") or "").strip()
+    category    = (data.get("category") or "").strip()
     ingr_lib    = _load_ingredients()
     total, breakdown = calc_recipe_cogs(ingredients, ingr_lib)
-    ok, err = _save_preparation(name, ingredients, yield_qty, yield_unit, notes)
+    ok, err = _save_preparation(name, ingredients, yield_qty, yield_unit, notes, category)
     return jsonify({"ok": ok, "error": err, "total_cogs": total,
                     "cost_per_unit": round(total / yield_qty, 4) if yield_qty else None,
                     "breakdown": breakdown})
