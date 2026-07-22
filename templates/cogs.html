@@ -117,14 +117,12 @@
 .cogs-table td { padding:10px 14px; vertical-align:middle; }
 .cogs-table td.r { text-align:right; font-variant-numeric:tabular-nums; }
 
-/* ── Chips de recette ── */
-.recipe-wrap { display:flex; flex-wrap:wrap; gap:3px; margin-top:4px; }
-.ing-chip {
-  display:inline-flex; align-items:center; gap:3px;
-  font-size:11px; padding:2px 7px; border-radius:8px;
-  background:var(--bg-page); border:1px solid var(--border); color:var(--muted);
+/* ── Résumé recette compact (une ligne) ── */
+.recipe-line {
+  font-size:11.5px; color:var(--muted); margin-top:2px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:440px;
 }
-.ing-chip .c { color:var(--faint); font-size:10px; }
+.recipe-line-warn { color:var(--red); }
 .no-recipe { font-size:11px; color:var(--faint); font-style:italic; margin-top:3px; }
 
 /* ── Margin bar ── */
@@ -1350,7 +1348,7 @@ function applyFilters() {
     if (rf === 'no'  &&  p.has_recipe) return false;
     return true;
   });
-  document.getElementById('shown-count').textContent = `${filtered.length} produit${filtered.length !== 1 ? 's' : ''}`;
+  document.getElementById('shown-count').textContent = `${filtered.length} product${filtered.length !== 1 ? 's' : ''}`;
   buildSummary(filtered);
   renderProducts(filtered);
 }
@@ -1442,18 +1440,13 @@ function renderProducts(products) {
 }
 
 function rowHtml(p) {
-  // Recipe chips (limité à 3 visibles + badge "+N")
+  // Résumé recette sur UNE ligne (noms seulement, tronqué) — le détail chiffré
+  // reste accessible via le bouton Recipe. Préparations préfixées 🍞.
   let recipeHtml = '';
   if (p.has_recipe && p.recipe.length) {
-    const MAX_CHIPS = 3;
-    const visible = p.recipe.slice(0, MAX_CHIPS);
-    const hidden  = p.recipe.length - MAX_CHIPS;
-    const chips = visible.map(ing => {
-      const qty = ing.qty % 1 === 0 ? ing.qty : ing.qty.toFixed(1);
-      return `<span class="ing-chip">${ing.name} <span class="c">${qty}${ing.unit} · ${fmt(ing.cost)}</span></span>`;
-    }).join('');
-    const moreBadge = hidden > 0 ? `<span class="ing-chip" style="color:var(--faint);font-style:italic;">+${hidden}</span>` : '';
-    recipeHtml = `<div class="recipe-wrap">${chips}${moreBadge}</div>`;
+    const hasError = p.recipe.some(i => i.cost == null);
+    const names = p.recipe.map(i => `${i.type === 'preparation' ? '🍞' : ''}${i.name}`).join('  ·  ');
+    recipeHtml = `<div class="recipe-line${hasError ? ' recipe-line-warn' : ''}" title="${p.recipe.map(i => i.name).join(', ').replace(/"/g,'&quot;')}">${hasError ? '⚠ ' : ''}${names}</div>`;
   } else {
     recipeHtml = `<div class="no-recipe">No recipe — click to create</div>`;
   }
@@ -1473,7 +1466,7 @@ function rowHtml(p) {
     </td>
     <td class="r">
       <button class="edit-recipe-btn" onclick="openDrawer(${p.id}, '${p.title.replace(/'/g,"\\'")}', ${p.price_ht || 0}, ${p.price_ttc || 0}, ${p.tax_rate})">
-        ${p.has_recipe ? '✎ Recette' : '+ Recette'}
+        ${p.has_recipe ? '✎ Recipe' : '+ Recipe'}
       </button>
     </td>
   </tr>`;
