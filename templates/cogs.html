@@ -203,6 +203,13 @@
 }
 .ing-row input:focus, .ing-row select:focus { border-color:var(--text); }
 .ing-row .cost-preview { font-size:12px; color:var(--muted); text-align:right; font-variant-numeric:tabular-nums; min-width:52px; }
+.unit-cell select { width:100%; }
+.ing-unit-fixed {
+  display:inline-block; width:100%; box-sizing:border-box; padding:6px 4px;
+  font-size:11px; text-align:center; color:var(--muted); background:var(--bg-hover);
+  border:1px dashed var(--border); border-radius:5px; cursor:help;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
 .ing-del-btn {
   background:none; border:none; cursor:pointer; color:var(--faint);
   font-size:14px; padding:2px; line-height:1; transition:color .1s;
@@ -547,6 +554,9 @@
   </div>
 
   <!-- Onglets de vue -->
+  <!-- Recettes cassées (ingrédient/préparation supprimé ou renommé) -->
+  <div id="cogs-issues" style="display:none;margin:0 0 14px;padding:10px 14px;border-radius:8px;background:#fdf0ee;border:1px solid #eccfcb;color:#8a3f38;font-size:12.5px;line-height:1.6;"></div>
+
   <div class="view-tabs">
     <button class="view-tab active" id="tab-products" onclick="switchTab('products')">
       Products &amp; margins <span class="tab-badge" id="tab-badge-products">—</span>
@@ -965,6 +975,7 @@ async function loadCogs(soft = false) {
     renderIngrLib();
     renderPrepList();
     updateTabBadges();
+    renderIssuesBanner();
   } catch(e) {
     document.getElementById('content').innerHTML =
       '<div class="loading">Load failed — <a href="javascript:loadCogs()" style="color:var(--spec)">retry</a></div>';
@@ -972,6 +983,24 @@ async function loadCogs(soft = false) {
     setLoading(false);
     if (window.uiLoadEnd) uiLoadEnd();
   }
+}
+
+// ── Bandeau recettes cassées ─────────────────────────────────
+// Une ligne de recette dont l'ingrédient/la préparation n'existe plus (supprimé
+// ou renommé) a cost=null : le COGS affiché est sous-estimé en silence.
+function renderIssuesBanner() {
+  const el = document.getElementById('cogs-issues');
+  const broken = allProducts.filter(p =>
+    p.has_recipe && (p.recipe || []).some(i => i.cost === null || i.cost === undefined));
+  if (!broken.length) { el.style.display = 'none'; return; }
+  const links = broken.map(p => {
+    const missing = (p.recipe || []).filter(i => i.cost == null).map(i => i.name).join(', ');
+    return `<a href="javascript:void(0)"
+      onclick="openDrawer(${p.id}, '${p.title.replace(/'/g,"\\'")}', ${p.price_ht || 0}, ${p.price_ttc || 0}, ${p.tax_rate})"
+      style="color:inherit;font-weight:600;text-decoration:underline;" title="Missing: ${missing.replace(/"/g,'&quot;')}">${p.title}</a>`;
+  }).join(' · ');
+  el.innerHTML = `⚠ <strong>${broken.length} recipe${broken.length > 1 ? 's' : ''} with unknown ingredients</strong> — COGS underestimated (a component was deleted or renamed). Click to fix: ${links}`;
+  el.style.display = '';
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1239,25 +1268,44 @@ function addIngRow(ing = {}) {
   div.className   = 'ing-row';
   div.dataset.idx = idx;
 
-  const unitOpts = ['g','ml','cl','dl','l','kg','mg','unit'].map(u =>
-    `<option value="${u}" ${u === (ing.unit||'g') ? 'selected' : ''}>${u}</option>`
-  ).join('');
-
   div.innerHTML = `
     <div class="ac-wrap">
       <input type="text" class="ing-name" placeholder="Ingredient…" value="${ing.name||''}"
              oninput="showAC(this)" onblur="hideAC(this,200)" onfocus="showAC(this)"
-             onchange="updateLiveCogs()">
+             onchange="syncUnitCell(this.closest('.ing-row'));updateLiveCogs()">
       <div class="ac-dropdown"></div>
     </div>
     <input type="number" class="ing-qty" step="any" min="0" placeholder="Qty" value="${ing.qty||''}"
            oninput="updateLiveCogs()">
-    <select class="ing-unit" onchange="updateLiveCogs()">${unitOpts}</select>
+    <span class="unit-cell"></span>
     <div class="cost-preview" data-cost="">—</div>
     <button class="ing-del-btn" onclick="this.closest('.ing-row').remove();updateLiveCogs()">✕</button>
   `;
   container.appendChild(div);
+  syncUnitCell(div, ing.unit);
   updateLiveCogs();
+}
+
+// Unité de la ligne : dropdown libre pour un ingrédient, mais FIGÉE sur l'unité
+// de yield pour une préparation (le coût = qty × €/unité-de-yield ; laisser
+// choisir g/ml laissait croire à une conversion qui n'existe pas).
+function syncUnitCell(row, presetUnit) {
+  const cell = row.querySelector('.unit-cell');
+  if (!cell) return;
+  const name = row.querySelector('.ing-name')?.value.trim();
+  const prep = prepLib[name];
+  const handler = row.closest('#np-ing-rows') ? 'updateModalCogs()' : 'updateLiveCogs()';
+  const current = presetUnit || row.querySelector('.ing-unit')?.value
+                  || row.querySelector('.ing-unit-fixed')?.dataset.unit || 'g';
+  if (prep) {
+    const yu = prep.yield_unit || 'portion';
+    cell.innerHTML = `<span class="ing-unit-fixed" data-unit="${yu}"
+      title="Unit set by the preparation's yield (${prep.cost_per_unit != null ? prep.cost_per_unit.toFixed(4) + ' €/' + yu : '…'})">× ${yu}</span>`;
+  } else {
+    const unitOpts = ['g','ml','cl','dl','l','kg','mg','unit'].map(u =>
+      `<option value="${u}" ${u === current ? 'selected' : ''}>${u}</option>`).join('');
+    cell.innerHTML = `<select class="ing-unit" onchange="${handler}">${unitOpts}</select>`;
+  }
 }
 
 // ── Autocomplete ─────────────────────────────────────────────
@@ -1319,6 +1367,7 @@ function selectAC(e, name, isNew) {
 
   input.value = name;
   dd.classList.remove('open');
+  syncUnitCell(input.closest('.ing-row'));
   updateLiveCogs();
 }
 
@@ -1435,7 +1484,8 @@ function updateLiveCogs() {
   document.querySelectorAll('#ing-rows .ing-row').forEach(row => {
     const name = row.querySelector('.ing-name')?.value.trim();
     const qty  = parseFloat(row.querySelector('.ing-qty')?.value);
-    const unit = row.querySelector('.ing-unit')?.value;
+    const unit = row.querySelector('.ing-unit')?.value
+                 || row.querySelector('.ing-unit-fixed')?.dataset.unit;
     const prev = row.querySelector('.cost-preview');
     const cost = name ? calcIngCost(name, qty, unit) : null;
     if (cost !== null) { total += cost; prev.textContent = fmt(cost); prev.style.color = ''; }
@@ -1473,7 +1523,8 @@ async function saveRecipe() {
   document.querySelectorAll('#ing-rows .ing-row').forEach(row => {
     const name = row.querySelector('.ing-name')?.value.trim();
     const qty  = parseFloat(row.querySelector('.ing-qty')?.value);
-    const unit = row.querySelector('.ing-unit')?.value;
+    const unit = row.querySelector('.ing-unit')?.value
+                 || row.querySelector('.ing-unit-fixed')?.dataset.unit || 'unit';
     if (name && qty > 0) ingredients.push({ name, qty, unit });
     else if (name || qty) valid = false;
   });
@@ -1628,11 +1679,24 @@ async function addIngredient() {
 
 async function deleteIngr(name) {
   if (!confirm(`Delete "${name}" from the library?`)) return;
-  await fetch(`/api/ingredients/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  let r = await fetch(`/api/ingredients/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  let d = await r.json();
+  if (r.status === 409 && d.error === 'in_use') {
+    const recipes = d.used_in_recipes || [];
+    const preps   = d.used_in_preparations || [];
+    const lines = [];
+    if (recipes.length) lines.push(`${recipes.length} recipe(s): ${recipes.join(', ')}`);
+    if (preps.length)   lines.push(`${preps.length} preparation(s): ${preps.join(', ')}`);
+    if (!confirm(`⚠ "${name}" is used in:\n${lines.join('\n')}\n\nDelete anyway? These items will show "unknown ingredient" and their COGS will drop.`)) return;
+    r = await fetch(`/api/ingredients/${encodeURIComponent(name)}?force=1`, { method: 'DELETE' });
+    d = await r.json();
+  }
+  if (!d.ok) { showToast('Delete error: ' + (d.error || '')); return; }
   delete ingrLib[name];
   renderIngrLib();
   updateTabBadges();
   showToast(`✓ ${name} deleted`);
+  loadCogs(true);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1742,23 +1806,21 @@ function addNpIngRow(ing = {}) {
   const container = document.getElementById('np-ing-rows');
   const div = document.createElement('div');
   div.className = 'ing-row';
-  const unitOpts = ['g','ml','cl','dl','l','kg','mg','unit'].map(u =>
-    `<option value="${u}" ${u === (ing.unit||'g') ? 'selected':''}>${u}</option>`
-  ).join('');
   div.innerHTML = `
     <div class="ac-wrap">
       <input type="text" class="ing-name" placeholder="Ingredient…" value="${ing.name||''}"
              oninput="showAC(this)" onblur="hideAC(this,200)" onfocus="showAC(this)"
-             onchange="updateModalCogs()">
+             onchange="syncUnitCell(this.closest('.ing-row'));updateModalCogs()">
       <div class="ac-dropdown"></div>
     </div>
     <input type="number" class="ing-qty" step="any" min="0" placeholder="Qty" value="${ing.qty||''}"
            oninput="updateModalCogs()">
-    <select class="ing-unit" onchange="updateModalCogs()">${unitOpts}</select>
+    <span class="unit-cell"></span>
     <div class="cost-preview">—</div>
     <button class="ing-del-btn" onclick="this.closest('.ing-row').remove();updateModalCogs()">✕</button>
   `;
   container.appendChild(div);
+  syncUnitCell(div, ing.unit);
 }
 
 function updateModalCogs() {
@@ -1774,7 +1836,8 @@ function updateModalCogs() {
   document.querySelectorAll('#np-ing-rows .ing-row').forEach(row => {
     const name = row.querySelector('.ing-name')?.value.trim();
     const qty  = parseFloat(row.querySelector('.ing-qty')?.value);
-    const unit = row.querySelector('.ing-unit')?.value;
+    const unit = row.querySelector('.ing-unit')?.value
+                 || row.querySelector('.ing-unit-fixed')?.dataset.unit;
     const prev = row.querySelector('.cost-preview');
     const cost = name ? calcIngCost(name, qty, unit) : null;
     if (cost !== null) { total += cost; prev.textContent = fmt(cost); prev.style.color=''; }
@@ -1803,7 +1866,8 @@ async function createProduct() {
   document.querySelectorAll('#np-ing-rows .ing-row').forEach(row => {
     const name = row.querySelector('.ing-name')?.value.trim();
     const qty  = parseFloat(row.querySelector('.ing-qty')?.value);
-    const unit = row.querySelector('.ing-unit')?.value;
+    const unit = row.querySelector('.ing-unit')?.value
+                 || row.querySelector('.ing-unit-fixed')?.dataset.unit || 'unit';
     if (name && qty > 0) ingredients.push({ name, qty, unit });
   });
 

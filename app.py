@@ -225,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260721i"
+ASSET_VERSION = "20260722a"
 
 @app.context_processor
 def _inject_asset_version():
@@ -2044,6 +2044,17 @@ def api_ingredients_post():
 
 @app.route("/api/ingredients/<path:name>", methods=["DELETE"])
 def api_ingredients_delete(name):
+    # Garde-fou : refuser si l'ingrédient est utilisé dans des recettes OU des
+    # préparations (sauf ?force=1) — même mécanique que les préparations.
+    if request.args.get("force") != "1":
+        used_recipes = [title for title, r in _load_recipes().items()
+                        if any(i.get("name") == name for i in r.get("ingredients", []))]
+        used_preps   = [pname for pname, p in _load_preparations().items()
+                        if any(i.get("name") == name for i in p.get("ingredients", []))]
+        if used_recipes or used_preps:
+            return jsonify({"ok": False, "error": "in_use",
+                            "used_in_recipes": used_recipes,
+                            "used_in_preparations": used_preps}), 409
     ok = _supa_delete("ingredients", "name", name)
     if not ok:
         return jsonify({"ok": False, "error": "not found"}), 404
