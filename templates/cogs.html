@@ -240,6 +240,44 @@
   .prep-line-used { grid-column:1; text-align:left; }
   .prep-line-actions { grid-column:2; }
 }
+/* ── Liste compacte des ingrédients ── */
+.ingr-line {
+  display:grid; grid-template-columns:1fr 150px 70px 92px; align-items:center; gap:12px;
+  padding:8px 14px; border-bottom:1px solid var(--border); font-size:13px;
+}
+.ingr-line:last-child { border-bottom:none; }
+.prep-group .ingr-line:hover { background:var(--bg-hover); }
+.ingr-line-head {
+  border:none; padding:0 14px 6px; font-family:var(--mono); font-size:10px;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--faint);
+}
+.ingr-line-head:hover { background:none; }
+.ingr-line-name { font-weight:600; overflow:hidden; }
+.ingr-line-name { display:flex; flex-direction:column; min-width:0; }
+.ingr-line-name > span, .ingr-line-sub { }
+.ingr-line-sub { font-size:11px; font-weight:400; color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ingr-line-price { display:flex; align-items:center; gap:6px; justify-content:flex-end; }
+.ingr-line-price .ingr-inline {
+  width:70px; padding:4px 6px; border:1px solid transparent; border-radius:5px;
+  font-family:inherit; font-size:13px; text-align:right; background:transparent; color:var(--text);
+  font-variant-numeric:tabular-nums;
+}
+.ingr-line-price .ingr-inline:hover { border-color:var(--border); }
+.ingr-line-price .ingr-inline:focus { border-color:var(--text); outline:none; background:var(--bg-card); }
+.ingr-line-unit { color:var(--faint); font-size:11px; white-space:nowrap; min-width:38px; }
+.ingr-line-used { text-align:right; }
+.ingr-line-actions { display:flex; gap:4px; justify-content:flex-end; }
+.ingr-line-actions button {
+  background:none; border:1px solid var(--border); border-radius:5px; width:26px; height:26px;
+  cursor:pointer; font-family:inherit; font-size:12px; color:var(--muted);
+}
+.ingr-line-actions button:hover { color:var(--text); }
+@media (max-width:640px) {
+  .ingr-line { grid-template-columns:1fr auto; row-gap:6px; }
+  .ingr-line-head { display:none; }
+  .ingr-line-used { grid-column:1; text-align:left; }
+  .ingr-line-actions { grid-column:2; }
+}
 .unit-cell select { width:100%; }
 .ac-wrap { position:relative; }
 .prep-flag {
@@ -673,28 +711,24 @@
   <!-- Vue ingrédients -->
   <div id="view-ingredients" style="display:none;">
   <div id="ingr-section" style="margin-top:0;">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
       <input id="ingr-search" type="text" placeholder="🔍 Search an ingredient…"
         oninput="renderIngrLib()"
         style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;background:var(--bg-card);color:var(--text);">
+      <select id="ingr-cat-filter" onchange="renderIngrLib()"
+        style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;background:var(--bg-card);color:var(--text);">
+        <option value="">All categories</option>
+      </select>
+      <span class="count-badge" id="ingr-shown-count"></span>
       <button class="btn-add" onclick="openIngrModal()">+ New ingredient</button>
     </div>
-    <div class="table-wrap">
-      <table class="ingr-table">
-        <thead>
-          <tr>
-            <th>Ingredient</th>
-            <th>Category</th>
-            <th class="r">Price</th>
-            <th>Ref. unit</th>
-            <th class="r">Used in</th>
-            <th>Note</th>
-            <th style="width:80px;"></th>
-          </tr>
-        </thead>
-        <tbody id="ingr-body"><tr><td colspan="7" class="loading" style="padding:24px;">Loading…</td></tr></tbody>
-      </table>
+    <div class="ingr-line ingr-line-head">
+      <div>Ingredient</div>
+      <div style="text-align:right;">Price</div>
+      <div style="text-align:right;">Used in</div>
+      <div></div>
     </div>
+    <div id="ingr-body"><div class="loading" style="padding:24px;">Loading…</div></div>
   </div><!-- /ingr-section -->
   </div><!-- /view-ingredients -->
 
@@ -1919,40 +1953,88 @@ async function saveRecipe() {
 // ══════════════════════════════════════════════════════════
 // BIBLIOTHÈQUE INGRÉDIENTS
 // ══════════════════════════════════════════════════════════
+// Clé de regroupement : casse/espaces normalisés (fusionne "Épicerie"/"épicerie")
+const catKey = c => (c || '').trim().toLowerCase();
+const catLabel = c => { const t = (c || '').trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1) : 'Uncategorised'; };
+
+function buildIngrCatFilter() {
+  const filt = document.getElementById('ingr-cat-filter');
+  if (!filt) return;
+  // Un label par clé normalisée (garde la 1re orthographe rencontrée)
+  const byKey = {};
+  Object.values(ingrLib).forEach(l => {
+    const k = catKey(l.category);
+    if (k && !(k in byKey)) byKey[k] = catLabel(l.category);
+  });
+  const cur = filt.value;
+  const keys = Object.keys(byKey).sort((a, b) => byKey[a].localeCompare(byKey[b]));
+  filt.innerHTML = `<option value="">All categories</option>`
+    + keys.map(k => `<option value="${k}">${byKey[k]}</option>`).join('')
+    + (Object.values(ingrLib).some(l => !catKey(l.category)) ? `<option value="__none__">Uncategorised</option>` : '');
+  filt.value = cur;
+}
+
 function renderIngrLib() {
-  const body  = document.getElementById('ingr-body');
-  const q     = (document.getElementById('ingr-search')?.value || '').toLowerCase();
-  let items = Object.entries(ingrLib).sort((a,b) => a[0].localeCompare(b[0]));
-  if (q) items = items.filter(([name, lib]) =>
-    name.toLowerCase().includes(q) || (lib.category||'').toLowerCase().includes(q));
-  if (!items.length) { body.innerHTML = '<tr><td colspan="7" style="padding:20px;color:var(--muted);text-align:center;">No results</td></tr>'; return; }
-  body.innerHTML = items.map(([name, lib]) => {
+  const body   = document.getElementById('ingr-body');
+  const q      = (document.getElementById('ingr-search')?.value || '').toLowerCase();
+  const catSel = document.getElementById('ingr-cat-filter')?.value || '';
+  buildIngrCatFilter();
+
+  let items = Object.entries(ingrLib).filter(([name, lib]) => {
+    if (q && !name.toLowerCase().includes(q) && !(lib.category||'').toLowerCase().includes(q)
+         && !(lib.supplier||'').toLowerCase().includes(q)) return false;
+    const k = catKey(lib.category);
+    if (catSel === '__none__') return !k;
+    if (catSel && k !== catSel) return false;
+    return true;
+  });
+  document.getElementById('ingr-shown-count').textContent = `${items.length} / ${Object.keys(ingrLib).length}`;
+
+  if (!items.length) { body.innerHTML = '<div style="padding:28px;color:var(--muted);text-align:center;">No results</div>'; return; }
+
+  // Regroupement par catégorie normalisée
+  const groups = {};
+  for (const [name, lib] of items) {
+    const k = catKey(lib.category);
+    const label = k ? catLabel(lib.category) : 'Uncategorised';
+    (groups[label] = groups[label] || []).push([name, lib]);
+  }
+  const order = Object.keys(groups).sort((a, b) => {
+    if (a === 'Uncategorised') return 1;
+    if (b === 'Uncategorised') return -1;
+    return a.localeCompare(b);
+  });
+
+  const rowHtml = (name, lib) => {
     const u = usageOf(name);
     const nUse = u.direct.length + u.viaPrep.length;
     const esc  = name.replace(/'/g, "\\'");
-    return `
-    <tr data-ingr="${encodeURIComponent(name)}">
-      <td style="font-weight:500;">${name}</td>
-      <td style="color:var(--muted);">${lib.category || '—'}${lib.supplier ? `<div style="font-size:11px;color:var(--faint);">🏭 ${lib.supplier}</div>` : ''}</td>
-      <td class="r">
-        <input class="ingr-inline" type="number" step="0.01" min="0"
-               value="${lib.price}" onblur="updateIngrPrice('${esc}', this.value, this)">
-      </td>
-      <td style="color:var(--muted);">€ / ${lib.unit_ref}</td>
-      <td class="r">
+    const sub = [lib.supplier ? `🏭 ${lib.supplier}` : '', lib.note || ''].filter(Boolean).join(' · ');
+    return `<div class="ingr-line">
+      <div class="ingr-line-name">${name}${sub ? `<span class="ingr-line-sub">${sub}</span>` : ''}</div>
+      <div class="ingr-line-price">
+        <input class="ingr-inline" type="number" step="0.01" min="0" value="${lib.price}"
+               onblur="updateIngrPrice('${esc}', this.value, this)">
+        <span class="ingr-line-unit">€/${lib.unit_ref}</span>
+      </div>
+      <div class="ingr-line-used">
         <button onclick="showUsedIn('${esc}')" title="See which products and preparations use this ingredient"
-          style="background:none;border:1px solid var(--border);border-radius:20px;padding:2px 10px;font-size:11px;font-family:inherit;cursor:pointer;color:${nUse ? 'var(--text)' : 'var(--faint)'};">
-          ${nUse} product${nUse !== 1 ? 's' : ''}${u.inPreps.length ? ` · ${u.inPreps.length} 🍞` : ''}
+          style="background:none;border:1px solid var(--border);border-radius:20px;padding:2px 10px;font-size:11px;font-family:inherit;cursor:pointer;color:${nUse ? 'var(--text)' : 'var(--faint)'};white-space:nowrap;">
+          ${nUse}${u.inPreps.length ? ` · ${u.inPreps.length}🍞` : ''}
         </button>
-      </td>
-      <td style="color:var(--faint);font-size:12px;">${lib.note || ''}</td>
-      <td style="display:flex;gap:4px;justify-content:flex-end;">
-        <button title="Price history" style="background:none;border:1px solid var(--border);color:var(--muted);padding:3px 7px;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit;" onclick="showPriceHistory('${esc}')">🕐</button>
-        <button style="background:none;border:1px solid var(--border);color:var(--muted);padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit;" onclick="editIngr('${esc}')">Edit</button>
-        <button class="ingr-del" title="Delete ingredient" onclick="deleteIngr('${esc}')">✕</button>
-      </td>
-    </tr>`;
-  }).join('');
+      </div>
+      <div class="ingr-line-actions">
+        <button title="Price history" onclick="showPriceHistory('${esc}')">🕐</button>
+        <button title="Edit" onclick="editIngr('${esc}')">✎</button>
+        <button title="Delete" style="color:var(--red);" onclick="deleteIngr('${esc}')">✕</button>
+      </div>
+    </div>`;
+  };
+
+  body.innerHTML = order.map(label => `
+    <div class="prep-group-head">${label} <span>${groups[label].length}</span></div>
+    <div class="prep-group">${groups[label].map(([n, l]) => rowHtml(n, l)).join('')}</div>
+  `).join('');
 }
 
 async function updateIngrPrice(name, val, inputEl) {
