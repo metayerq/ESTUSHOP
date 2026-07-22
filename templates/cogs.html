@@ -204,6 +204,18 @@
 .ing-row input:focus, .ing-row select:focus { border-color:var(--text); }
 .ing-row .cost-preview { font-size:12px; color:var(--muted); text-align:right; font-variant-numeric:tabular-nums; min-width:52px; }
 .unit-cell select { width:100%; }
+.ac-wrap { position:relative; }
+.prep-flag {
+  position:absolute; right:6px; top:50%; transform:translateY(-50%);
+  background:var(--bg-hover); border:none; border-radius:10px; padding:2px 7px;
+  font-size:10px; cursor:pointer; color:var(--muted); font-family:inherit; line-height:1.4;
+}
+.prep-flag:hover { color:var(--text); }
+.ing-row.is-prep .ing-name { padding-right:52px; }
+.prep-bd {
+  margin:-4px 0 2px 12px; padding:8px 12px; font-size:11.5px;
+  background:var(--bg-page); border-left:2px solid var(--border); border-radius:0 6px 6px 0;
+}
 .ing-unit-fixed {
   display:inline-block; width:100%; box-sizing:border-box; padding:6px 4px;
   font-size:11px; text-align:center; color:var(--muted); background:var(--bg-hover);
@@ -629,11 +641,12 @@
             <th>Category</th>
             <th class="r">Price</th>
             <th>Ref. unit</th>
+            <th class="r">Used in</th>
             <th>Note</th>
             <th style="width:80px;"></th>
           </tr>
         </thead>
-        <tbody id="ingr-body"><tr><td colspan="6" class="loading" style="padding:24px;">Loading…</td></tr></tbody>
+        <tbody id="ingr-body"><tr><td colspan="7" class="loading" style="padding:24px;">Loading…</td></tr></tbody>
       </table>
     </div>
   </div><!-- /ingr-section -->
@@ -681,6 +694,17 @@
       <button class="btn-primary" style="flex:1;" id="btn-add-ingr" onclick="addIngredient()">Add</button>
       <button class="btn-secondary" onclick="closeIngrModal()">Cancel</button>
     </div>
+  </div>
+
+  <!-- Mini-modal générique : "Utilisé dans" + aperçu d'impact prix -->
+  <div id="mini-modal-overlay" onclick="closeMiniModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:220;"></div>
+  <div id="mini-modal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:520px;max-width:92vw;max-height:80vh;background:var(--bg-card);border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.18);z-index:221;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--border);">
+      <div style="font-size:15px;font-weight:700;" id="mini-modal-title"></div>
+      <button onclick="closeMiniModal()" style="background:none;border:1px solid var(--border);border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:14px;color:var(--muted);">✕</button>
+    </div>
+    <div id="mini-modal-body" style="padding:18px 24px;overflow-y:auto;flex:1;font-size:13px;"></div>
+    <div id="mini-modal-btns" style="display:none;padding:14px 24px;border-top:1px solid var(--border);gap:10px;"></div>
   </div>
 
 </div><!-- /page -->
@@ -919,6 +943,7 @@ let categoryOrder = [];
 let categoryNames = {};
 let ingrLib       = {};          // {name: {price, unit_ref, category, note}}
 let prepLib       = {};          // {name: {yield_qty, yield_unit, cost_per_unit, ...}}
+let prepFull      = {};          // /api/preparations : ingrédients + breakdown complets
 let prepIngredients = [];        // ingrédients en cours d'édition dans le drawer prépa
 let editingPrepName = null;      // null = nouvelle prépa, sinon nom existant
 let drawerProd    = null;        // produit en cours d'édition
@@ -961,11 +986,12 @@ async function loadCogs(soft = false) {
   setLoading(true);
   if (window.uiLoadStart) uiLoadStart();
   try {
-    const [cogsRes, ingrRes] = await Promise.all([
-      fetch('/api/cogs'), fetch('/api/ingredients')
+    const [cogsRes, ingrRes, prepRes] = await Promise.all([
+      fetch('/api/cogs'), fetch('/api/ingredients'), fetch('/api/preparations')
     ]);
     const d   = await cogsRes.json();
     ingrLib   = await ingrRes.json();
+    prepFull  = await prepRes.json();
     allProducts   = d.products;
     categoryOrder = d.category_order;
     categoryNames = d.category_names;
@@ -983,6 +1009,151 @@ async function loadCogs(soft = false) {
     setLoading(false);
     if (window.uiLoadEnd) uiLoadEnd();
   }
+}
+
+// ══════════════════════════════════════════════════════════
+// UTILISÉ DANS + IMPACT PRIX (P2)
+// ══════════════════════════════════════════════════════════
+const CONVU = {g:{kg:0.001},mg:{kg:0.000001},kg:{kg:1},ml:{l:0.001},cl:{l:0.01},dl:{l:0.1},l:{l:1},unit:{unit:1}};
+const convF = (u, ref) => (CONVU[u] || {})[ref];
+
+function openMiniModal(title, bodyHtml, buttons) {
+  document.getElementById('mini-modal-title').textContent = title;
+  document.getElementById('mini-modal-body').innerHTML = bodyHtml;
+  const btns = document.getElementById('mini-modal-btns');
+  if (buttons) { btns.innerHTML = buttons; btns.style.display = 'flex'; }
+  else { btns.style.display = 'none'; }
+  document.getElementById('mini-modal').style.display = 'flex';
+  document.getElementById('mini-modal-overlay').style.display = '';
+}
+function closeMiniModal() {
+  document.getElementById('mini-modal').style.display = 'none';
+  document.getElementById('mini-modal-overlay').style.display = 'none';
+}
+
+// Où un composant est utilisé : préparations qui le contiennent, produits en
+// direct, produits via une préparation.
+function usageOf(name) {
+  const inPreps = Object.entries(prepFull)
+    .filter(([, p]) => (p.ingredients || []).some(i => i.name === name))
+    .map(([pn]) => pn);
+  const direct = allProducts.filter(p =>
+    p.has_recipe && (p.recipe || []).some(i => i.name === name));
+  const viaPrep = allProducts.filter(p =>
+    p.has_recipe && !direct.includes(p) &&
+    (p.recipe || []).some(i => i.type === 'preparation' && inPreps.includes(i.name)))
+    .map(p => ({ p, via: (p.recipe || []).filter(i => i.type === 'preparation' && inPreps.includes(i.name)).map(i => i.name).join(', ') }));
+  return { inPreps, direct, viaPrep };
+}
+
+const prodLink = p => `<a href="javascript:void(0)"
+  onclick="closeMiniModal();openDrawer(${p.id}, '${p.title.replace(/'/g,"\\'")}', ${p.price_ht || 0}, ${p.price_ttc || 0}, ${p.tax_rate})"
+  style="color:var(--text);font-weight:600;text-decoration:underline;">${p.title}</a>`;
+
+function showUsedIn(name, kind) {
+  let html = '';
+  if (kind === 'prep') {
+    const used = allProducts.filter(p =>
+      p.has_recipe && (p.recipe || []).some(i => i.name === name && i.type === 'preparation'));
+    html = used.length
+      ? used.map(p => {
+          const entry = (p.recipe || []).find(i => i.name === name && i.type === 'preparation');
+          return `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);">
+            <span>${prodLink(p)} <span style="color:var(--muted);">· ${entry.qty} × ${entry.yield_unit || ''}</span></span>
+            <span style="color:var(--muted);font-variant-numeric:tabular-nums;">${entry.cost != null ? fmt(entry.cost) + ' of COGS' : '—'} · margin ${p.marge_pct != null ? p.marge_pct + '%' : '—'}</span>
+          </div>`;
+        }).join('')
+      : '<div style="color:var(--muted);">Not used in any recipe.</div>';
+    openMiniModal(`🍞 ${name} — used in ${used.length} recipe(s)`, html);
+    return;
+  }
+  const u = usageOf(name);
+  const section = (label, inner) => inner
+    ? `<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px;">${label}</div>${inner}` : '';
+  const directHtml = u.direct.map(p => {
+    const entry = (p.recipe || []).find(i => i.name === name);
+    return `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);">
+      <span>${prodLink(p)} <span style="color:var(--muted);">· ${entry.qty} ${entry.unit}</span></span>
+      <span style="color:var(--muted);font-variant-numeric:tabular-nums;">${entry.cost != null ? fmt(entry.cost) + ' of COGS' : '⚠ no cost'} · margin ${p.marge_pct != null ? p.marge_pct + '%' : '—'}</span>
+    </div>`;
+  }).join('');
+  const prepHtml = u.inPreps.map(pn =>
+    `<div style="padding:7px 0;border-bottom:1px solid var(--border);">
+      <a href="javascript:void(0)" onclick="closeMiniModal();switchTab('preparations');editPrep('${pn.replace(/'/g,"\\'")}')"
+         style="color:var(--text);font-weight:600;text-decoration:underline;">🍞 ${pn}</a>
+    </div>`).join('');
+  const viaHtml = u.viaPrep.map(({ p, via }) =>
+    `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);">
+      <span>${prodLink(p)} <span style="color:var(--muted);">via 🍞 ${via}</span></span>
+      <span style="color:var(--muted);">margin ${p.marge_pct != null ? p.marge_pct + '%' : '—'}</span>
+    </div>`).join('');
+  const total = u.direct.length + u.viaPrep.length;
+  html = section(`Directly in ${u.direct.length} product(s)`, directHtml)
+       + section(`In ${u.inPreps.length} preparation(s)`, prepHtml)
+       + section(`Via preparations — ${u.viaPrep.length} product(s)`, viaHtml)
+       || '<div style="color:var(--muted);">Not used anywhere.</div>';
+  openMiniModal(`${name} — impacts ${total} product(s)`, html);
+}
+
+// Impact d'un changement de prix : Δ COGS et nouvelle marge par produit
+// (usage direct + propagation via les préparations).
+function priceImpact(name, oldP, newP) {
+  const lib = ingrLib[name];
+  if (!lib) return [];
+  const ref = lib.unit_ref, dP = newP - oldP;
+  const prepDelta = {};
+  for (const [pn, p] of Object.entries(prepFull)) {
+    let d = 0;
+    for (const i of (p.ingredients || [])) {
+      if (i.name !== name) continue;
+      const f = convF(i.unit, ref);
+      if (f != null) d += i.qty * f * dP;
+    }
+    if (d) prepDelta[pn] = d / (parseFloat(p.yield_qty) || 1);
+  }
+  const out = [];
+  for (const p of allProducts) {
+    if (!p.has_recipe) continue;
+    let d = 0;
+    for (const i of (p.recipe || [])) {
+      if (i.type === 'preparation') { if (prepDelta[i.name]) d += i.qty * prepDelta[i.name]; }
+      else if (i.name === name) {
+        const f = convF(i.unit, ref);
+        if (f != null) d += i.qty * f * dP;
+      }
+    }
+    if (Math.abs(d) < 1e-9) continue;
+    const newCogs = (p.recipe_total || 0) + d;
+    out.push({
+      title: p.title, delta: d, oldPct: p.marge_pct,
+      newPct: p.price_ht ? Math.round((p.price_ht - newCogs) / p.price_ht * 1000) / 10 : null,
+    });
+  }
+  return out.sort((a, b) => b.delta - a.delta);
+}
+
+// Aperçu avant sauvegarde d'un prix : "ce changement affecte N produits".
+let _pendingPriceApply = null;
+function confirmPriceChange(name, oldP, newP, onApply, onCancel) {
+  const imp = priceImpact(name, oldP, newP);
+  if (!imp.length) { onApply(); return; }
+  _pendingPriceApply = { onApply, onCancel };
+  const up = newP > oldP;
+  const rows = imp.slice(0, 10).map(r => `
+    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);">
+      <span>${r.title}</span>
+      <span style="font-variant-numeric:tabular-nums;">
+        <span style="color:var(--muted);">COGS ${r.delta > 0 ? '+' : ''}${r.delta.toFixed(3)} €</span>
+        · margin ${r.oldPct != null ? r.oldPct + '%' : '—'} →
+        <strong style="color:${r.newPct != null && r.oldPct != null && r.newPct < r.oldPct ? 'var(--red)' : 'var(--green)'}">${r.newPct != null ? r.newPct + '%' : '—'}</strong>
+      </span>
+    </div>`).join('');
+  openMiniModal(
+    `${name} : ${oldP} € → ${newP} € /${ingrLib[name].unit_ref}`,
+    `<div style="margin-bottom:6px;color:var(--muted);">This ${up ? 'increase' : 'decrease'} affects <strong style="color:var(--text)">${imp.length} product(s)</strong>${imp.length > 10 ? ' (top 10 shown)' : ''} :</div>${rows}`,
+    `<button class="btn-primary" style="flex:1;" onclick="_pendingPriceApply.onApply();closeMiniModal();">Apply new price</button>
+     <button class="btn-secondary" onclick="if(_pendingPriceApply.onCancel)_pendingPriceApply.onCancel();closeMiniModal();">Cancel</button>`
+  );
 }
 
 // ── Bandeau recettes cassées ─────────────────────────────────
@@ -1279,11 +1450,19 @@ function addIngRow(ing = {}) {
            oninput="updateLiveCogs()">
     <span class="unit-cell"></span>
     <div class="cost-preview" data-cost="">—</div>
-    <button class="ing-del-btn" onclick="this.closest('.ing-row').remove();updateLiveCogs()">✕</button>
+    <button class="ing-del-btn" onclick="removeIngRow(this);updateLiveCogs()">✕</button>
   `;
   container.appendChild(div);
   syncUnitCell(div, ing.unit);
   updateLiveCogs();
+}
+
+// Supprime la ligne ET son breakdown de préparation déplié le cas échéant
+function removeIngRow(btn) {
+  const row = btn.closest('.ing-row');
+  const bd  = row.nextElementSibling;
+  if (bd && bd.classList?.contains('prep-bd')) bd.remove();
+  row.remove();
 }
 
 // Unité de la ligne : dropdown libre pour un ingrédient, mais FIGÉE sur l'unité
@@ -1306,6 +1485,52 @@ function syncUnitCell(row, presetUnit) {
       `<option value="${u}" ${u === current ? 'selected' : ''}>${u}</option>`).join('');
     cell.innerHTML = `<select class="ing-unit" onchange="${handler}">${unitOpts}</select>`;
   }
+
+  // Badge 🍞 prep dans le champ nom + breakdown dépliable (drawer recette)
+  row.classList.toggle('is-prep', !!prep);
+  const wrap = row.querySelector('.ac-wrap');
+  let flag = wrap.querySelector('.prep-flag');
+  const bd = row.nextElementSibling && row.nextElementSibling.classList?.contains('prep-bd')
+             ? row.nextElementSibling : null;
+  if (prep) {
+    if (!flag) {
+      flag = document.createElement('button');
+      flag.className = 'prep-flag';
+      flag.type = 'button';
+      flag.onclick = () => togglePrepBreakdown(row);
+      wrap.appendChild(flag);
+    }
+    flag.textContent = '🍞 ▾';
+    flag.title = 'Preparation — click to see its ingredients';
+  } else {
+    if (flag) flag.remove();
+    if (bd) bd.remove();
+  }
+}
+
+function togglePrepBreakdown(row) {
+  const existing = row.nextElementSibling && row.nextElementSibling.classList?.contains('prep-bd')
+                   ? row.nextElementSibling : null;
+  if (existing) { existing.remove(); return; }
+  const name = row.querySelector('.ing-name')?.value.trim();
+  const full = prepFull[name];
+  const div  = document.createElement('div');
+  div.className = 'prep-bd';
+  if (!full || !(full.breakdown || []).length) {
+    div.innerHTML = `<div style="color:var(--faint);">No detail available.</div>`;
+  } else {
+    const yq = parseFloat(full.yield_qty) || 1;
+    div.innerHTML = (full.breakdown || []).map(i =>
+      `<div style="display:flex;justify-content:space-between;padding:2px 0;">
+        <span>${i.name} <span style="color:var(--faint);">${i.qty} ${i.unit}</span></span>
+        <span style="font-variant-numeric:tabular-nums;color:var(--muted);">${i.cost != null ? fmt(i.cost) : '⚠'}</span>
+      </div>`).join('')
+      + `<div style="margin-top:4px;padding-top:4px;border-top:1px dashed var(--border);display:flex;justify-content:space-between;color:var(--muted);">
+          <span>Batch of ${full.yield_qty} ${full.yield_unit}</span>
+          <span style="font-variant-numeric:tabular-nums;">${full.total_cogs != null ? fmt(full.total_cogs) : '—'} → ${full.cost_per_unit != null ? full.cost_per_unit.toFixed(4) : '—'} €/${full.yield_unit}</span>
+        </div>`;
+  }
+  row.after(div);
 }
 
 // ── Autocomplete ─────────────────────────────────────────────
@@ -1583,30 +1808,45 @@ function renderIngrLib() {
   let items = Object.entries(ingrLib).sort((a,b) => a[0].localeCompare(b[0]));
   if (q) items = items.filter(([name, lib]) =>
     name.toLowerCase().includes(q) || (lib.category||'').toLowerCase().includes(q));
-  if (!items.length) { body.innerHTML = '<tr><td colspan="6" style="padding:20px;color:var(--muted);text-align:center;">No results</td></tr>'; return; }
-  body.innerHTML = items.map(([name, lib]) => `
+  if (!items.length) { body.innerHTML = '<tr><td colspan="7" style="padding:20px;color:var(--muted);text-align:center;">No results</td></tr>'; return; }
+  body.innerHTML = items.map(([name, lib]) => {
+    const u = usageOf(name);
+    const nUse = u.direct.length + u.viaPrep.length;
+    const esc  = name.replace(/'/g, "\\'");
+    return `
     <tr data-ingr="${encodeURIComponent(name)}">
       <td style="font-weight:500;">${name}</td>
       <td style="color:var(--muted);">${lib.category || '—'}</td>
       <td class="r">
         <input class="ingr-inline" type="number" step="0.01" min="0"
-               value="${lib.price}" onblur="updateIngrPrice('${name.replace(/'/g,"\\'")}', this.value)">
+               value="${lib.price}" onblur="updateIngrPrice('${esc}', this.value, this)">
       </td>
       <td style="color:var(--muted);">€ / ${lib.unit_ref}</td>
+      <td class="r">
+        <button onclick="showUsedIn('${esc}')" title="See which products and preparations use this ingredient"
+          style="background:none;border:1px solid var(--border);border-radius:20px;padding:2px 10px;font-size:11px;font-family:inherit;cursor:pointer;color:${nUse ? 'var(--text)' : 'var(--faint)'};">
+          ${nUse} product${nUse !== 1 ? 's' : ''}${u.inPreps.length ? ` · ${u.inPreps.length} 🍞` : ''}
+        </button>
+      </td>
       <td style="color:var(--faint);font-size:12px;">${lib.note || ''}</td>
       <td style="display:flex;gap:4px;justify-content:flex-end;">
-        <button style="background:none;border:1px solid var(--border);color:var(--muted);padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit;" onclick="editIngr('${name.replace(/'/g,"\\'")}')">Modifier</button>
-        <button class="ingr-del" onclick="deleteIngr('${name.replace(/'/g,"\\'")}')">✕</button>
+        <button style="background:none;border:1px solid var(--border);color:var(--muted);padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit;" onclick="editIngr('${esc}')">Edit</button>
+        <button class="ingr-del" onclick="deleteIngr('${esc}')">✕</button>
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
-async function updateIngrPrice(name, val) {
+async function updateIngrPrice(name, val, inputEl) {
   const price = parseFloat(val);
-  if (isNaN(price) || price < 0) return;
-  ingrLib[name].price = price;
-  await saveIngredient(name, ingrLib[name]);
-  showToast(`✓ ${name} → ${price} €/${ingrLib[name].unit_ref}`);
+  const old   = parseFloat(ingrLib[name].price);
+  if (isNaN(price) || price < 0 || price === old) { if (inputEl) inputEl.value = old; return; }
+  confirmPriceChange(name, old, price, async () => {
+    ingrLib[name].price = price;
+    await saveIngredient(name, ingrLib[name]);
+    showToast(`✓ ${name} → ${price} €/${ingrLib[name].unit_ref}`);
+    loadCogs(true);   // recharge les marges produits impactées
+  }, () => { if (inputEl) inputEl.value = old; });
 }
 
 async function saveIngredient(name, data) {
@@ -1669,12 +1909,18 @@ async function addIngredient() {
   const note  = document.getElementById('new-note').value.trim();
   if (!name || isNaN(price)) { showToast('Name and price required'); return; }
   const wasEdit = !!editingIngrName;
-  await saveIngredient(name, { price, unit_ref: unit, category: cat, note });
-  ingrLib[name] = { ...(ingrLib[name] || {}), price, unit_ref: unit, category: cat, note };
-  closeIngrModal();
-  renderIngrLib();
-  updateTabBadges();
-  showToast(wasEdit ? `✓ ${name} updated` : `✓ ${name} added`);
+  const doSave = async () => {
+    await saveIngredient(name, { price, unit_ref: unit, category: cat, note });
+    ingrLib[name] = { ...(ingrLib[name] || {}), price, unit_ref: unit, category: cat, note };
+    closeIngrModal();
+    renderIngrLib();
+    updateTabBadges();
+    showToast(wasEdit ? `✓ ${name} updated` : `✓ ${name} added`);
+    if (wasEdit) loadCogs(true);
+  };
+  const oldPrice = wasEdit ? parseFloat(ingrLib[name]?.price) : null;
+  if (wasEdit && oldPrice !== price) confirmPriceChange(name, oldPrice, price, doSave);
+  else doSave();
 }
 
 async function deleteIngr(name) {
@@ -1817,7 +2063,7 @@ function addNpIngRow(ing = {}) {
            oninput="updateModalCogs()">
     <span class="unit-cell"></span>
     <div class="cost-preview">—</div>
-    <button class="ing-del-btn" onclick="this.closest('.ing-row').remove();updateModalCogs()">✕</button>
+    <button class="ing-del-btn" onclick="removeIngRow(this);updateModalCogs()">✕</button>
   `;
   container.appendChild(div);
   syncUnitCell(div, ing.unit);
@@ -1936,7 +2182,8 @@ function renderPrepList() {
         </div>
         <div>
           <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Used in</div>
-          <div style="font-size:13px;color:var(--muted);">${usedIn} recipe(s)</div>
+          <a href="javascript:void(0)" onclick="showUsedIn('${name.replace(/'/g,"\\'")}','prep')"
+             style="font-size:13px;color:${usedIn ? 'var(--text)' : 'var(--muted)'};text-decoration:${usedIn ? 'underline' : 'none'};">${usedIn} recipe(s)</a>
         </div>
       </div>
     </div>`;
