@@ -225,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260722j"
+ASSET_VERSION = "20260722k"
 
 @app.context_processor
 def _inject_asset_version():
@@ -1932,6 +1932,143 @@ def api_debug_categories():
             for cid, name in sorted(cats.items(), key=lambda x: x[1])]
     return jsonify({"count": len(rows), "categories": rows,
                      "fetch_error": _v.LAST_CATEGORIES_ERROR})
+
+
+# ── Usage & variance : consommation théorique d'ingrédients vs achats réels ──
+# Théorique = ventes (daily_summary, zéro appel Vendus pour le passé) × recettes
+# (préparations développées, coulage inclus). Réel = achats saisis à la main.
+# L'écart = sur-dosage / casse / offert / vol — le "theoretical vs actual" F&B.
+
+@app.route("/api/inventory/usage")
+def api_inventory_usage():
+    today = date.today()
+    try:
+        from_date = date.fromisoformat(request.args.get("from", ""))
+        to_date   = date.fromisoformat(request.args.get("to", ""))
+    except ValueError:
+        from_date, to_date = today.replace(day=1), today
+    if from_date > to_date:
+        from_date, to_date = to_date, from_date
+    to_date = min(to_date, today)
+
+    catalog = get_catalog() or {}
+    past_to = min(to_date, today - timedelta(1))
+    rows = _ensure_summaries(from_date, past_to, catalog) if from_date <= past_to else []
+    if from_date <= today <= to_date:
+        today_docs = _get_today_docs_cached()
+        if today_docs:
+            rows = rows + [{"day": today.isoformat(), **_summarize_docs_items(today_docs, catalog)}]
+
+    sold = {}
+    for r in rows:
+        for name, p in (r.get("products") or {}).items():
+            sold[name] = sold.get(name, 0) + float(p.get("qty") or 0)
+
+    recipes  = _load_recipes()
+    preps    = _load_preparations()
+    ingr_lib = _load_ingredients()
+
+    usage      = {}   # name → {qty (unit_ref), cost, sources {product: qty_ref}}
+    issues     = []   # lignes non converties / composants inconnus
+    uncovered  = []   # produits vendus sans recette
+
+    def _add(ing_name, qty_ref, src_title):
+        lib = ingr_lib[ing_name]
+        u = usage.setdefault(ing_name, {"unit_ref": lib["unit_ref"], "qty": 0.0,
+                                        "cost": 0.0, "sources": {}})
+        u["qty"]  += qty_ref
+        u["cost"] += qty_ref * float(lib["price"])
+        u["sources"][src_title] = u["sources"].get(src_title, 0.0) + qty_ref
+
+    def _expand(line, mult, src_title):
+        """mult = nombre de fois que cette ligne est consommée."""
+        name = line.get("name"); unit = line.get("unit")
+        try:
+            lqty = float(line.get("qty") or 0)
+        except (TypeError, ValueError):
+            return
+        if not name or lqty <= 0:
+            return
+        if name in ingr_lib:
+            f = UNIT_CONVERSIONS.get((unit, ingr_lib[name]["unit_ref"]))
+            if f is None:
+                issues.append(f"{src_title}: {name} — conversion {unit}→{ingr_lib[name]['unit_ref']} inconnue")
+                return
+            _add(name, lqty * f * mult, src_title)
+        elif name in preps:
+            p = preps[name]
+            yq = float(p.get("yield_qty") or 1) or 1
+            batch_frac = (lqty * mult) / yq     # fraction de batch consommée
+            for l2 in (p.get("ingredients") or []):
+                _expand(l2, batch_frac, src_title)
+        else:
+            issues.append(f"{src_title}: {name} — composant inconnu")
+
+    for title, q in sold.items():
+        rec = recipes.get(title)
+        if not rec or not rec.get("ingredients"):
+            uncovered.append({"title": title, "qty": q})
+            continue
+        waste_f = 1 + float(rec.get("waste_pct") or 0) / 100.0
+        for line in rec["ingredients"]:
+            _expand(line, q * waste_f, title)
+
+    out = []
+    for name, u in usage.items():
+        top = sorted(u["sources"].items(), key=lambda kv: -kv[1])[:5]
+        out.append({
+            "name": name, "unit_ref": u["unit_ref"],
+            "qty":  round(u["qty"], 3), "cost": round(u["cost"], 2),
+            "top_sources": [{"title": t, "qty": round(v, 3)} for t, v in top],
+        })
+    out.sort(key=lambda x: -x["cost"])
+    uncovered.sort(key=lambda x: -x["qty"])
+    return jsonify({
+        "from": from_date.isoformat(), "to": to_date.isoformat(),
+        "ingredients": out,
+        "uncovered": uncovered[:20],
+        "issues": sorted(set(issues))[:20],
+    })
+
+
+@app.route("/api/inventory/purchases", methods=["GET"])
+def api_purchases_get():
+    params = {"order": "date.desc,id.desc"}
+    if request.args.get("from"):
+        params["date"] = f"gte.{request.args['from']}"
+    rows = _supa_get("inventory_purchases", params)
+    rows = rows if isinstance(rows, list) else []
+    if request.args.get("to"):
+        rows = [r for r in rows if (r.get("date") or "") <= request.args["to"]]
+    return jsonify(rows)
+
+
+@app.route("/api/inventory/purchases", methods=["POST"])
+def api_purchases_post():
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip()
+    try:
+        qty = float(data.get("qty") or 0)
+    except (TypeError, ValueError):
+        qty = 0
+    if not name or qty <= 0:
+        return jsonify({"ok": False, "error": "name and qty required"}), 400
+    row = {
+        "name": name, "qty": qty,
+        "unit": (data.get("unit") or "unit").strip(),
+        "date": data.get("date") or date.today().isoformat(),
+        "cost": round(float(data.get("cost") or 0), 2) or None,
+        "note": (data.get("note") or "").strip(),
+    }
+    ok, err = _supa_upsert("inventory_purchases", row)
+    return (jsonify({"ok": True}) if ok
+            else (jsonify({"ok": False, "error": err}), 502))
+
+
+@app.route("/api/inventory/purchases/<int:pid>", methods=["DELETE"])
+def api_purchases_delete(pid):
+    ok = _supa_delete("inventory_purchases", "id", str(pid))
+    return jsonify({"ok": ok})
 
 
 @app.route("/api/cogs")
