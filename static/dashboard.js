@@ -546,6 +546,8 @@ function render(d) {
       '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Item detail not available for this period.</td></tr>';
   } else if (d.products) {
     const maxQty = d.products.length ? d.products[0].qty : 1;
+    const cntEl = document.getElementById('products-count');
+    if (cntEl) cntEl.textContent = d.products.length ? `· ${d.products.length}` : '';
     if (!d.products.length) {
       document.getElementById('products-body').innerHTML =
         '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">No products sold.</td></tr>';

@@ -225,7 +225,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260722l"
+ASSET_VERSION = "20260722m"
 
 @app.context_processor
 def _inject_asset_version():
@@ -813,7 +813,7 @@ def api_data():
         warnings.append(f"Insights unavailable ({type(e).__name__})")
 
     # ── Produits et mix — depuis les agrégats fusionnés ───────────────────────
-    result["products"] = _products_list(merged_products, catalog, n=10)
+    result["products"] = _products_list(merged_products, catalog, n=None)
     result["mix"]      = _mix_from_merged(merged_products, catalog)
 
     # ── Sections disponibles uniquement pour un jour unique ───────────────────

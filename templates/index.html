@@ -109,6 +109,14 @@
 .app-nav-item.active { color:var(--text); background:var(--bg-card); border-color:var(--border); font-weight:600; }
 @media (max-width:760px) { .app-nav { overflow-x:auto; } .app-nav-item span { display:none; } .app-nav-item { padding:11px 13px; } }
 
+/* Liste "Products sold" scrollable avec en-tête collant */
+.products-scroll thead th {
+  position:sticky; top:0; z-index:2;
+  background:var(--bg-card); box-shadow:inset 0 -1px 0 var(--border);
+}
+.products-scroll::-webkit-scrollbar { width:8px; }
+.products-scroll::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
+
 </style>
 </head>
 <body>
@@ -366,8 +374,8 @@
 
   <!-- Produits — suit la période sélectionnée -->
   <div id="top-products-section">
-    <div class="section-label" id="products-section-label">Products sold</div>
-    <div class="table-wrap" style="margin-bottom:32px;">
+    <div class="section-label" id="products-section-label">Products sold <span id="products-count" style="color:var(--faint);font-weight:400;"></span></div>
+    <div class="table-wrap products-scroll" style="margin-bottom:32px;max-height:440px;overflow-y:auto;">
       <table>
         <thead>
           <tr>
