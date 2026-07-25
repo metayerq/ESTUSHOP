@@ -82,10 +82,14 @@ function renderTodayStrip(d) {
 
   const wk = d.week;
   const today = wk[wk.length - 1];                     // dernier point = aujourd'hui
-  const prev  = [...wk.slice(0, -1)].reverse().find(x => x.nb > 0) || null;  // jour ouvré précédent
+  // Comparaison au MÊME JOUR DE LA SEMAINE précédente (samedi vs samedi), à
+  // heure égale — pas au jour précédent, qui n'a pas la même saisonnalité.
+  const prev = d.today_lastweek
+    || [...wk.slice(0, -1)].reverse().find(x => x.nb > 0)   // repli si indisponible
+    || null;
   const tTicket = today.nb ? today.ca / today.nb : 0;
   const pTicket = prev && prev.nb ? prev.ca / prev.nb : 0;
-  const vs = prev ? `vs ${dayShort(prev.date)} · ` : '';
+  const vs = prev ? `vs ${dayShort(prev.date)}${d.today_lastweek ? ' same time' : ''} · ` : '';
 
   document.getElementById('ts-ca').textContent      = fmt(today.ca);
   document.getElementById('ts-ca-badge').innerHTML  = prev ? deltaBadge(today.ca, prev.ca) : '';

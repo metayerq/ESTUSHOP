@@ -276,7 +276,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260725b"
+ASSET_VERSION = "20260725c"
 
 @app.context_processor
 def _inject_asset_version():
@@ -525,13 +525,31 @@ def api_data():
     def _load_heatmap_payload():
         return _heatmap_payload_cached(today_real)
 
+    # Bandeau "Today" des vues multi-jours : il se compare au MÊME JOUR DE LA
+    # SEMAINE précédente (un samedi se compare à un samedi), à heure égale —
+    # comme la zone période. Appel léger d'une journée, en parallèle.
+    strip_needs_comp = (not is_single) and to_date == today_real
+
+    def _load_today_lastweek():
+        if not strip_needs_comp:
+            return None
+        prev = today_real - timedelta(7)
+        try:
+            docs = get_documents(prev.isoformat(), prev.isoformat()) or []
+        except Exception:
+            return None
+        now_hms = datetime.now().strftime("%H:%M:%S")
+        docs = [d for d in docs if (d.get("local_time", "") or "")[11:19] <= now_hms]
+        return {"date": prev.isoformat(), **calc_stats(docs)}
+
     # Appels indépendants en parallèle avec le fetch principal
-    with ThreadPoolExecutor(max_workers=5) as pool:
+    with ThreadPoolExecutor(max_workers=6) as pool:
         fut_docs    = pool.submit(_load_docs_main)
         fut_today   = pool.submit(_load_today_docs)
         fut_comp    = pool.submit(_load_comp)
         fut_catalog = pool.submit(get_catalog)
         fut_hm      = pool.submit(_load_heatmap_payload)
+        fut_tlw     = pool.submit(_load_today_lastweek)
 
         try:
             docs_main = fut_docs.result(timeout=55)
@@ -562,6 +580,11 @@ def api_data():
         catalog = fut_catalog.result(timeout=10) or {}
         if not catalog:
             warnings.append("Product catalog unavailable — margins and COGS not computed")
+
+        try:
+            today_lastweek = fut_tlw.result(timeout=15)
+        except Exception:
+            today_lastweek = None
 
         try:
             heatmap_payload = fut_hm.result(timeout=15)
@@ -676,6 +699,9 @@ def api_data():
         "tva":           tva_breakdown(docs_main),
         # Tendance (résultats pré-calculés en parallèle)
         "week":          week_data,
+        # Comparaison du bandeau "Today" : même jour de la semaine, semaine
+        # précédente, filtré à l'heure courante (None hors vues multi-jours).
+        "today_lastweek": today_lastweek,
         "wow":           wow_data,
         "weekdays":      weekday_data,
         # Perf commerciale
