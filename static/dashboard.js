@@ -214,6 +214,32 @@ function render(d) {
   } else {
     driversEl.innerHTML = '';
   }
+  // Moyenne par jour ouvert — seulement en multi-jours (sur un jour unique, la
+  // moyenne EST le total). Le CA/jour est confronté au point mort/jour : c'est
+  // la lecture qui dit d'un coup d'œil si la période tient la route.
+  const openDays  = d.economics?.open_days || 0;
+  const perDayEl  = document.getElementById('kpi-ca-perday');
+  const nbPerDayEl = document.getElementById('kpi-nb-perday');
+  if (!d.is_single_day && openDays > 1) {
+    const caDay    = d.today.ca / openDays;
+    const seuilDay = d.economics?.seuil_ca_ttc_jour;
+    let verdict = '';
+    if (seuilDay > 0) {
+      const above = caDay >= seuilDay;
+      const gap   = Math.round(Math.abs(caDay - seuilDay));
+      verdict = ` <span style="color:${above ? 'var(--green)' : 'var(--red)'};font-weight:500">`
+              + `${above ? '▲' : '▼'} ${fmt(gap)}</span>`
+              + `<span style="color:var(--faint);font-size:11px;"> vs break-even</span>`;
+    }
+    perDayEl.innerHTML = `<strong style="color:var(--text)">${fmt(caDay)}</strong>`
+      + `<span style="color:var(--faint);font-size:11px;"> / open day</span>${verdict}`;
+    nbPerDayEl.innerHTML = `<strong style="color:var(--text)">${Math.round(d.today.nb / openDays)}</strong>`
+      + `<span style="color:var(--faint);font-size:11px;"> tickets / open day</span>`;
+  } else {
+    perDayEl.innerHTML = '';
+    nbPerDayEl.innerHTML = '';
+  }
+
   document.getElementById('kpi-nb').textContent         = d.today.nb;
   document.getElementById('kpi-nb-delta').innerHTML     = delta(d.today.nb, d.yesterday.nb, compLabel)
     || `<span style="color:var(--muted)">tickets (refunds deducted)</span>`;
