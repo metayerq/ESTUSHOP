@@ -96,9 +96,8 @@ def get_documents(since: str, until: str, detailed: bool = False):
     detailed=True → view=detailed : la liste inclut alors les payments
     (non documenté officiellement mais vérifié) — utilisé par la réconciliation."""
     PER_PAGE = 200
-    all_raw  = []
-    page     = 1
-    while True:
+
+    def _page(page):
         params = {
             "since":    since,
             "until":    until,
@@ -109,13 +108,34 @@ def get_documents(since: str, until: str, detailed: bool = False):
             params["view"] = "detailed"
         batch = vendus("/documents/", params)
         if isinstance(batch, list):
-            raw = batch
-        else:
-            raw = batch.get("docs", batch.get("data", []))
-        all_raw.extend(raw)
-        if len(raw) < PER_PAGE:
-            break   # dernière page
-        page += 1
+            return batch
+        return batch.get("docs", batch.get("data", []))
+
+    # Page 1 d'abord (souvent la seule). Si elle est pleine, les suivantes sont
+    # récupérées PAR VAGUES PARALLÈLES : chaque page coûte ~3 s côté Vendus, la
+    # pagination séquentielle dominait le temps de chargement du dashboard
+    # (28 jours = 4 pages = ~11 s → ~3,5 s en parallèle).
+    first = _page(1)
+    all_raw = list(first)
+    if len(first) == PER_PAGE:
+        from concurrent.futures import ThreadPoolExecutor
+        next_page = 2
+        WAVE = 4
+        while True:
+            pages = list(range(next_page, next_page + WAVE))
+            with ThreadPoolExecutor(max_workers=WAVE) as pool:
+                results = list(pool.map(_page, pages))
+            got_full = False
+            for raw in results:
+                all_raw.extend(raw)
+                if len(raw) == PER_PAGE:
+                    got_full = True
+                else:
+                    got_full = False
+                    break        # page incomplète → fin des données
+            if not got_full:
+                break
+            next_page += WAVE
     out = []
     for d in all_raw:
         t = d.get("type")

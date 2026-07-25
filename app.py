@@ -15,7 +15,7 @@ import hashlib
 from datetime import date, timedelta, datetime
 from concurrent.futures import ThreadPoolExecutor
 
-from flask import Flask, jsonify, render_template, request, redirect, make_response
+from flask import Flask, jsonify, render_template, request, redirect, make_response, g
 from vendus import (
     get_documents, get_documents_with_items, get_catalog, get_categories,
     calc_stats, hourly_breakdown, payment_breakdown, top_products, recent_docs,
@@ -82,6 +82,57 @@ def _get_today_docs_cached(force=False):
     return _refresh_today_cache()
 
 SEUIL_TRANSACTIONS = 40
+OPENING_DAY = "2026-05-27"     # ouverture du café — borne basse des historiques
+
+
+# ── Cache heatmap 28 jours (Supabase + mémoire) ──────────────────────────────
+# C'était l'appel Vendus le plus lourd du dashboard (~6 s) pour un widget quasi
+# statique. On persiste le RÉSULTAT CALCULÉ (quelques Ko) dans Supabase — pas
+# les ~650 documents bruts — pour que les cold starts serverless (mémoire vide)
+# le lisent en ~50 ms. Le cron le réchauffe pour qu'il ne soit jamais froid.
+HEATMAP_TTL = 3600
+
+def _heatmap_build(today_real):
+    docs = get_documents((today_real - timedelta(27)).isoformat(),
+                         today_real.isoformat())
+    return {"heatmap": _heatmap_from_docs(docs),
+            "rush":    _rush_concentration(docs)}
+
+def _heatmap_payload_cached(today_real, force=False):
+    from vendus import _ttl_get
+    key = f"heatmap28:{today_real.isoformat()}"
+
+    def _build():
+        if not force:
+            try:
+                rows = _supa_get("kv_cache", {"key": f"eq.{key}", "limit": "1"})
+                if rows and _iso_age_seconds(rows[0].get("updated_at")) < HEATMAP_TTL:
+                    return rows[0].get("value")
+            except Exception:
+                pass
+        try:
+            payload = _heatmap_build(today_real)
+        except Exception:
+            return None
+        try:
+            _supa_upsert("kv_cache", {
+                "key": key, "value": payload,
+                "updated_at": datetime.utcnow().isoformat() + "Z",
+            })
+        except Exception:
+            pass   # l'écriture cache ne doit jamais casser la requête
+        return payload
+
+    if force:
+        _TTL_CACHE_KEY = ("heatmap28p", today_real.isoformat())
+        from vendus import _TTL_CACHE
+        _TTL_CACHE.pop(_TTL_CACHE_KEY, None)
+    return _ttl_get(("heatmap28p", today_real.isoformat()), HEATMAP_TTL, _build,
+                    cacheable=lambda v: v is not None)
+
+def _warm_heatmap_cache():
+    """Appelé par le cron : recalcule et persiste la heatmap du jour."""
+    return _heatmap_payload_cached(date.today(), force=True) is not None
 
 
 # ── Insights helpers (visuels dashboard) ─────────────────────────────────────
@@ -471,19 +522,8 @@ def api_data():
         except Exception:
             return None   # échec ≠ zéro vente
 
-    def _load_heatmap_docs():
-        """28 derniers jours, document-level — pour la heatmap horaire.
-        Cache TTL 1h : c'est l'appel Vendus le plus lourd de la page pour un
-        widget quasi statique. Clé datée → rollover automatique à minuit."""
-        from vendus import _ttl_get
-        def _fetch():
-            try:
-                return get_documents((today_real - timedelta(27)).isoformat(),
-                                     today_real.isoformat())
-            except Exception:
-                return None
-        return _ttl_get(("heatmap28", today_real.isoformat()), 3600, _fetch,
-                        cacheable=lambda v: v is not None)
+    def _load_heatmap_payload():
+        return _heatmap_payload_cached(today_real)
 
     # Appels indépendants en parallèle avec le fetch principal
     with ThreadPoolExecutor(max_workers=5) as pool:
@@ -491,7 +531,7 @@ def api_data():
         fut_today   = pool.submit(_load_today_docs)
         fut_comp    = pool.submit(_load_comp)
         fut_catalog = pool.submit(get_catalog)
-        fut_hm      = pool.submit(_load_heatmap_docs)
+        fut_hm      = pool.submit(_load_heatmap_payload)
 
         try:
             docs_main = fut_docs.result(timeout=55)
@@ -524,9 +564,9 @@ def api_data():
             warnings.append("Product catalog unavailable — margins and COGS not computed")
 
         try:
-            heatmap_docs = fut_hm.result(timeout=15)
+            heatmap_payload = fut_hm.result(timeout=15)
         except Exception:
-            heatmap_docs = None
+            heatmap_payload = None
 
     today_iso = today_real.isoformat()
     today_sum = _summarize_docs_items(today_docs or [], catalog)
@@ -592,7 +632,7 @@ def api_data():
             if (today_real - timedelta(13)).isoformat() <= r["day"] < iso_7]
 
     # Meilleur jour de la semaine — historique complet depuis le cache
-    older = _get_summaries("2026-05-27", (today_real - timedelta(15)).isoformat())
+    older = _get_summaries(OPENING_DAY, (today_real - timedelta(15)).isoformat())
     wd_rows = (older if isinstance(older, list) else []) + rows_hist
     if ts["nb"]:
         wd_rows = wd_rows + [{"day": today_iso, "ca_ttc": ts["ca"], "nb": ts["nb"]}]
@@ -799,8 +839,8 @@ def api_data():
 
         result["insights"] = {
             "today_gauge": {"ca": ts["ca"], "seuil": today_seuil},
-            "heatmap":     _heatmap_from_docs(heatmap_docs) if heatmap_docs else None,
-            "rush":        _rush_concentration(heatmap_docs) if heatmap_docs else None,
+            "heatmap":     (heatmap_payload or {}).get("heatmap"),
+            "rush":        (heatmap_payload or {}).get("rush"),
             "month":       month,
             "movers":      movers,
             "basket":      basket,
@@ -846,13 +886,20 @@ def api_cron_refresh():
             return jsonify({"error": "unauthorized"}), 401
     try:
         docs = _refresh_today_cache()
-        # Réchauffe aussi le catalogue et la heatmap (autres appels Vendus lourds).
+        # Réchauffe aussi le catalogue et la heatmap (autres appels Vendus lourds),
+        # pour qu'aucune requête utilisateur ne paie leur recalcul.
         try:
             get_catalog()
         except Exception:
             pass
+        hm_warm = False
+        try:
+            hm_warm = _warm_heatmap_cache()
+        except Exception:
+            pass
         return jsonify({"ok": True, "day": date.today().isoformat(),
-                        "docs_cached": len(docs), "at": datetime.utcnow().isoformat() + "Z"})
+                        "docs_cached": len(docs), "heatmap_warm": hm_warm,
+                        "at": datetime.utcnow().isoformat() + "Z"})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -863,7 +910,7 @@ def api_summary_rebuild():
     Body optionnel : {"from": "YYYY-MM-DD", "to": "YYYY-MM-DD"} — défaut : tout l'historique."""
     from vendus import get_documents_with_items, get_catalog as _gc
     data      = request.get_json(silent=True) or {}
-    from_iso  = data.get("from", "2026-05-27")
+    from_iso  = data.get("from", OPENING_DAY)
     to_iso    = data.get("to", (date.today() - timedelta(1)).isoformat())
     catalog   = _gc()
     if not catalog:
@@ -1609,11 +1656,39 @@ def _save_recipe(title, ingredients, notes, waste_pct=0):
 # produits, upsell) sont calculés une fois et stockés dans Supabase.
 # Seul aujourd'hui est recalculé en live.
 
-def _get_summaries(from_iso, to_iso):
+def _fetch_summaries(from_iso, to_iso):
     rows = _req.get(f"{SUPA_URL}/rest/v1/daily_summary", headers=_supa_headers(),
                     params=[("day", f"gte.{from_iso}"), ("day", f"lte.{to_iso}"),
                             ("order", "day.asc")])
     return rows.json() if rows.ok else []
+
+def _get_summaries(from_iso, to_iso):
+    """Lecture du cache journalier, mutualisée sur la durée de la requête HTTP.
+
+    /api/data lit daily_summary 5 fois sur des plages qui se recoupent (période,
+    14 jours, mois, comparaison, historique). Comme tout l'historique tient en
+    quelques dizaines de lignes, on le charge UNE fois par requête puis on
+    découpe en mémoire — 5 allers-retours Supabase séquentiels → 1.
+    """
+    try:
+        store = g._summaries_all
+    except (AttributeError, RuntimeError):
+        store = None
+        try:
+            store = {r["day"]: r for r in _fetch_summaries(OPENING_DAY, date.today().isoformat())}
+            g._summaries_all = store
+        except RuntimeError:
+            pass          # hors contexte de requête (cron, script) → pas de mémo
+    if store is None:
+        return _fetch_summaries(from_iso, to_iso)
+    return [store[d] for d in sorted(store) if from_iso <= d <= to_iso]
+
+def _summaries_cache_put(day_iso, row):
+    """Garde le mémo de requête cohérent après construction d'un jour manquant."""
+    try:
+        g._summaries_all[day_iso] = row
+    except (AttributeError, RuntimeError):
+        pass
 
 def _summarize_docs_items(docs, catalog):
     """Agrégats item-level d'une liste de docs avec items (1 journée)."""
@@ -1675,7 +1750,9 @@ def _ensure_summaries(from_date, to_date, catalog):
         for day in missing:
             s = _summarize_docs_items(by_day.get(day, []), catalog)
             _upsert_summary(day, s)
-            rows.append({"day": day, **s})
+            row = {"day": day, **s}
+            rows.append(row)
+            _summaries_cache_put(day, row)   # cohérence du mémo de requête
     rows.sort(key=lambda r: r["day"])
     return rows
 
