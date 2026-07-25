@@ -276,7 +276,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260725a"
+ASSET_VERSION = "20260725b"
 
 @app.context_processor
 def _inject_asset_version():
@@ -797,28 +797,6 @@ def api_data():
             month["seuil_ca_month"] = (round(_sj * _odays(_mstart, _mend), 2)
                                        if _sj else None)
 
-        # ── Alertes d'anomalie (dashboard actif, pas passif) ─────────────────
-        alerts = []
-        _yday = today_real - timedelta(1)
-        _yrow = next((r for r in rows_hist if r["day"] == _yday.isoformat()), None)
-        if _yrow and (_yrow.get("nb") or 0) > 0:
-            _ymed = med_by_wd.get(_yday.weekday())
-            _yca  = float(_yrow.get("ca_ttc") or 0)
-            if _ymed and _ymed >= 50 and _yca < 0.70 * _ymed:
-                alerts.append(
-                    f"Yesterday closed at {_yca:.0f}€ — only "
-                    f"{round(_yca / _ymed * 100)}% of a typical {_yday.strftime('%A')} "
-                    f"({_ymed:.0f}€ median)")
-        if month and month.get("proj_end") is not None and month["proj_end"] < 0:
-            alerts.append(
-                f"At current pace this month projects {month['proj_end']:.0f}€ EBITDA "
-                f"— below break-even")
-        for mv in (movers.get("down") or [])[:1]:
-            if mv.get("pct") is not None and mv["pct"] <= -30 and mv["prev"] >= 30:
-                alerts.append(
-                    f"{mv['name']} revenue down {abs(mv['pct'])}% week-over-week "
-                    f"({mv['prev']:.0f}€ → {mv['cur']:.0f}€)")
-
         # Articles par ticket + taux multi-articles (période sélectionnée)
         total_units = sum(p["qty"] for p in merged_products.values())
         total_tx    = sum(r.get("nb", 0) for r in period_rows)
@@ -846,7 +824,6 @@ def api_data():
             "basket":      basket,
             "seat":        seat,
             "verdict":     verdict,
-            "alerts":      alerts,
         }
     except Exception as e:
         result["insights"] = None

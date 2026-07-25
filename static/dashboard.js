@@ -667,10 +667,9 @@ function renderInsights(d) {
   const monthZone    = document.getElementById('month-zone');
   const patternsZone = document.getElementById('patterns-zone');
   const verdictEl = document.getElementById('verdict-banner');
-  const alertsEl  = document.getElementById('alerts-banner');
   if (!ins) {
     monthZone.style.display = 'none'; patternsZone.style.display = 'none';
-    verdictEl.style.display = 'none'; alertsEl.style.display = 'none';
+    verdictEl.style.display = 'none';
     return;
   }
 
@@ -694,16 +693,6 @@ function renderInsights(d) {
     verdictEl.style.display = 'none';
   }
 
-  // ── Alertes d'anomalie (toutes vues) ───────────────────────────────────────
-  const al = ins.alerts || [];
-  if (al.length) {
-    alertsEl.innerHTML = al.map(a =>
-      `<div style="padding:9px 14px;margin-bottom:6px;border-radius:8px;background:#fdf0ee;border:1px solid #eccfcb;color:#8a3f38;font-size:12.5px;">⚠ ${a}</div>`
-    ).join('');
-    alertsEl.style.display = '';
-  } else {
-    alertsEl.style.display = 'none';
-  }
 
   // Zone 2 "This month" : masquée quand la période EST le mois en cours (doublon).
   const showMonthZone = currentPreset !== 'month' && ins.month && ins.month.days && ins.month.days.length;
