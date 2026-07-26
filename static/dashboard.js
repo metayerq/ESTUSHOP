@@ -434,11 +434,13 @@ function render(d) {
     hourlySub.textContent = '';
     dailyCanvas.style.display = '';
     timeLabel.textContent = 'Revenue by day';
+    hideHourlySwitch();
     renderDailyChart(d.daily);
   } else {
     hourlyBars.style.display = 'none';
     hourlySub.textContent = '';
     dailyCanvas.style.display = 'none';
+    hideHourlySwitch();
   }
 
   // ── Paiements compacts (remplace le donut) ───────────────────────────────
@@ -853,21 +855,96 @@ function renderInsights(d) {
   }
 }
 
-// ── Graphe horaire — barres div façon Mesa (pic plein, creuses en rouge) ────
+// ── Graphe horaire : deux vues exclusives ───────────────────────────────────
+// 'abs'   → CA par heure (vue par défaut, inchangée)
+// 'delta' → écart par heure vs le même jour la semaine passée, autour de zéro.
+// Une seule information à la fois : rien n'est superposé aux barres.
+let _hourlyMode = 'abs';
+let _hourlyData = null;
+
+function hideHourlySwitch() {
+  const sw = document.getElementById('hourly-switch');
+  if (sw) sw.style.display = 'none';
+  _hourlyData = null;
+}
+
+function setHourlyMode(mode) {
+  _hourlyMode = mode;
+  document.getElementById('hsw-abs').classList.toggle('active', mode === 'abs');
+  document.getElementById('hsw-delta').classList.toggle('active', mode === 'delta');
+  if (_hourlyData) renderHourlyBars(_hourlyData.h, _hourlyData.prev, _hourlyData.prevLabel);
+}
+
+// Vue "écarts" : barres vertes vers le haut (mieux que la semaine passée),
+// rouges vers le bas, de part et d'autre d'une ligne de zéro.
+function renderHourlyDelta(hours, vals, prevByHour, prevLabel, h) {
+  const diffs = hours.map((hr, i) => (vals[i] || 0) - (prevByHour[hr] || 0));
+  const maxAbs = Math.max(...diffs.map(Math.abs), 0) || 1;
+  const ref = prevLabel || 'last week';
+
+  document.getElementById('hourly-bars').innerHTML =
+    `<div class="dbar-row"><div class="dbar-zero"></div>` + hours.map((hr, i) => {
+      const dv  = diffs[i];
+      const now = vals[i] || 0, pv = prevByHour[hr] || 0;
+      const px  = Math.round(Math.abs(dv) / maxAbs * 58);
+      const pct = pv > 0 ? Math.round(dv / pv * 100) : null;
+      const tip = (now || pv)
+        ? `${hr}h · ${fmt(now)} vs ${fmt(pv)} — ${dv >= 0 ? '+' : ''}${fmt(dv)}`
+          + (pct !== null ? ` (${dv >= 0 ? '+' : ''}${pct}%)` : '')
+        : `${hr}h · no sales`;
+      const bar = px > 0
+        ? `<div class="dfill ${dv >= 0 ? 'pos' : 'neg'}" style="height:${Math.max(px, 3)}px;"></div>`
+        : '';
+      return `<div class="dbar" data-tip="${tip}">
+        <div class="up-half">${dv > 0 ? bar : ''}</div>
+        <div class="down-half">${dv < 0 ? bar : ''}</div>
+        <span class="dhr">${hr}</span>
+      </div>`;
+    }).join('') + `</div>`;
+
+  // Sous-titre : les créneaux qui expliquent le plus l'écart
+  const ranked = hours.map((hr, i) => ({ hr, d: diffs[i] })).filter(x => Math.abs(x.d) > 0.5);
+  const best  = ranked.filter(x => x.d > 0).sort((a, b) => b.d - a.d).slice(0, 2);
+  const worst = ranked.filter(x => x.d < 0).sort((a, b) => a.d - b.d).slice(0, 2);
+  const totalDiff = diffs.reduce((s, v) => s + v, 0);
+  const line = (label, arr, col) => arr.length
+    ? ` · <span style="color:var(--faint)">${label}</span> `
+      + arr.map(x => `<span style="color:${col};font-weight:500">${x.hr}h ${x.d >= 0 ? '+' : ''}${fmt(x.d)}</span>`).join(' ')
+    : '';
+  document.getElementById('hourly-sub').innerHTML =
+    `<span style="color:var(--faint)">vs ${ref}:</span> `
+    + `<b style="color:${totalDiff >= 0 ? 'var(--green)' : 'var(--red)'}">${totalDiff >= 0 ? '+' : ''}${fmt(totalDiff)}</b>`
+    + line('gained', best, 'var(--green)')
+    + line('lost', worst, 'var(--red)');
+}
+
 // hourly.labels = ["7h","8h",…] · values/nb/avg_ticket/avg_gap alignés.
 function renderHourlyBars(h, prev, prevLabel) {
+  // Mémorise les données pour pouvoir basculer entre les deux vues sans
+  // recharger (la bascule ne fait que re-rendre).
+  _hourlyData = { h, prev, prevLabel };
+
   const hours = h.labels.map(l => parseInt(l, 10));
   const vals  = h.values;
-  // Repère "même jour la semaine passée" : aligné par heure, pas par index
-  // (les deux journées peuvent ne pas couvrir les mêmes créneaux).
+  // Comparaison "même jour la semaine passée" : jamais superposée aux barres.
+  // Elle vit dans le sous-titre, les tooltips, et la vue "vs last week".
   const prevByHour = {};
   if (prev && Array.isArray(prev.labels)) {
     prev.labels.forEach((l, i) => { prevByHour[parseInt(l, 10)] = prev.values[i] || 0; });
   }
   const hasPrev = Object.values(prevByHour).some(v => v > 0);
-  // L'échelle doit englober les deux séries, sinon un repère plus haut que le
-  // pic du jour sortirait du graphe.
-  const maxV = Math.max(...vals, ...(hasPrev ? Object.values(prevByHour) : []), 0) || 1;
+
+  // Bascule visible seulement s'il y a une référence à comparer
+  const sw = document.getElementById('hourly-switch');
+  if (sw) sw.style.display = hasPrev ? '' : 'none';
+  if (!hasPrev) _hourlyMode = 'abs';
+
+  if (_hourlyMode === 'delta' && hasPrev) {
+    renderHourlyDelta(hours, vals, prevByHour, prevLabel, h);
+    return;
+  }
+
+  const maxV = Math.max(...vals, 0) || 1;
   const peakIdx = vals.reduce((mi, v, i, a) => v > a[mi] ? i : mi, 0);
   const peakHour = hours[peakIdx];
 
@@ -884,9 +961,6 @@ function renderHourlyBars(h, prev, prevLabel) {
       const isPeak = i === peakIdx && vals[i] > 0;
       const hpx = Math.round(vals[i] / maxV * 118);
       const pv  = prevByHour[hr] || 0;
-      // Repère de référence : trait horizontal à la hauteur de la semaine passée
-      const mark = (hasPrev && pv > 0)
-        ? `<div class="hmark" style="bottom:${Math.round(pv / maxV * 118) + 18}px;"></div>` : '';
       let tip = `${hr}h · ${fmt(vals[i])} · ${h.nb[i]} tx`;
       if (hasPrev && (pv > 0 || vals[i] > 0)) {
         const diff = vals[i] - pv;
@@ -895,7 +969,6 @@ function renderHourlyBars(h, prev, prevLabel) {
              + (pct !== null ? ` (${diff >= 0 ? '+' : ''}${pct}%)` : '');
       }
       return `<div class="hbar" data-tip="${tip}">
-        ${mark}
         <div class="fill ${isPeak ? 'peak' : 'norm'}" style="height:${hpx}px;${vals[i] > 0 ? 'min-height:3px;' : 'border:none;'}"></div>
         <span class="hr ${deadSet.has(hr) ? 'dead' : ''}">${hr}</span>
       </div>`;
@@ -904,19 +977,12 @@ function renderHourlyBars(h, prev, prevLabel) {
   // Sous-titre : pic du jour + total vs référence + légende du repère
   const totalNow  = vals.reduce((s, v) => s + v, 0);
   const totalPrev = hasPrev ? Object.values(prevByHour).reduce((s, v) => s + v, 0) : 0;
-  // La légende du repère est intégrée à la phrase (le trait précède le nom),
-  // pour ne pas répéter deux fois "last Sat".
   let cmp = '';
-  if (hasPrev) {
-    const name = `<span class="hmark-legend">${prevLabel || 'last week'}</span>`;
-    if (totalPrev > 0) {
-      const pct = Math.round((totalNow - totalPrev) / totalPrev * 100);
-      const up  = pct >= 0;
-      cmp = ` · <span style="color:${up ? 'var(--green)' : 'var(--red)'};font-weight:500">${up ? '▲ +' : '▼ '}${pct}%</span>`
-          + ` <span style="color:var(--faint)">vs</span>${name}`;
-    } else {
-      cmp = ` · <span style="color:var(--faint)">vs</span>${name}`;
-    }
+  if (hasPrev && totalPrev > 0) {
+    const pct = Math.round((totalNow - totalPrev) / totalPrev * 100);
+    const up  = pct >= 0;
+    cmp = ` · <span style="color:${up ? 'var(--green)' : 'var(--red)'};font-weight:500">${up ? '▲ +' : '▼ '}${pct}%</span>`
+        + ` <span style="color:var(--faint)">vs ${prevLabel || 'last week'}</span>`;
   }
   document.getElementById('hourly-sub').innerHTML =
     `Peak at <b style="color:var(--text)">${peakHour}h</b> · ${fmt(maxV === 1 && vals[peakIdx] === 0 ? 0 : vals[peakIdx])}`

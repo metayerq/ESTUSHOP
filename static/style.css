@@ -205,27 +205,51 @@ body {
 
 /* ── Revenue by hour — barres div façon Mesa ── */
 .hbar-row { display: flex; align-items: flex-end; gap: 6px; height: 140px; min-width: 520px; }
-.hbar { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; }
-/* Repère "même jour la semaine passée" — trait fin en travers de la barre */
-.hbar .hmark {
-  position: absolute; left: 0; right: 0; height: 0;
-  border-top: 2px solid var(--muted); border-radius: 1px;
-  /* Liseré blanc : garde le repère lisible aussi bien sur la barre claire que
-     sur la barre du pic (bleu foncé). */
-  filter: drop-shadow(0 1.5px 0 rgba(255, 255, 255, .85));
-  pointer-events: none; z-index: 2;
-}
-.hmark-legend { color: var(--muted); white-space: nowrap; }
-.hmark-legend::before {
-  content: ''; display: inline-block; width: 13px; height: 0;
-  border-top: 2px solid var(--muted); opacity: .55;
-  vertical-align: middle; margin: 0 5px;
-}
+.hbar { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .hbar .fill { width: 100%; border-radius: 3px; transition: height .4s ease; }
 .hbar .fill.peak { background: var(--spec); }
 .hbar .fill.norm { background: var(--spec-soft); border-top: 2px solid var(--spec); }
 .hbar .hr { font-family: var(--mono); font-size: 10px; color: var(--faint); }
 .hbar .hr.dead { color: var(--red); }
+
+/* ── Bascule Revenue / vs last week ── */
+.hswitch {
+  display: flex; border: 1px solid var(--border); border-radius: 20px;
+  overflow: hidden; background: var(--bg-card);
+}
+.hswitch-btn {
+  font-family: inherit; font-size: 11px; font-weight: 500;
+  padding: 4px 12px; border: none; background: transparent;
+  color: var(--muted); cursor: pointer; white-space: nowrap;
+  transition: background .12s, color .12s;
+}
+.hswitch-btn:hover { color: var(--text); }
+.hswitch-btn.active { background: var(--text); color: var(--bg-card); }
+
+/* ── Vue "écarts" : barres partant d'une ligne de zéro centrale ──
+   Géométrie fixe (63 + 63 + 14 = 140px) pour que la ligne de zéro tombe
+   exactement entre les deux moitiés. */
+.dbar-row {
+  display: flex; align-items: stretch; gap: 6px; height: 140px;
+  min-width: 520px; position: relative;
+}
+.dbar { flex: 1; display: flex; flex-direction: column; align-items: center; }
+.dbar .up-half, .dbar .down-half {
+  height: 63px; width: 100%; display: flex; justify-content: center;
+}
+.dbar .up-half   { align-items: flex-end; }
+.dbar .down-half { align-items: flex-start; }
+.dbar .dfill { width: 100%; border-radius: 3px; transition: height .4s ease; }
+.dbar .dfill.pos { background: rgba(68,131,97,.78); }
+.dbar .dfill.neg { background: rgba(196,85,77,.72); }
+.dbar-zero {
+  position: absolute; left: 0; right: 0; top: 63px;
+  border-top: 1px solid var(--border); pointer-events: none; z-index: 1;
+}
+.dbar .dhr {
+  font-family: var(--mono); font-size: 10px; line-height: 14px;
+  height: 14px; color: var(--faint);
+}
 
 /* ── Progress ── */
 .progress-wrap  { margin-top: 10px; }
