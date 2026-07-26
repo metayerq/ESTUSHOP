@@ -426,7 +426,9 @@ function render(d) {
     hourlyBars.style.display = '';
     dailyCanvas.style.display = 'none';
     timeLabel.textContent = 'Revenue by hour';
-    renderHourlyBars(d.hourly);
+    // Libellé court de la référence : "vs last Sat same time" → "last Sat"
+    const prevLbl = (d.comp_label || '').replace(/^vs\s+/, '').replace(/\s+same time$/, '');
+    renderHourlyBars(d.hourly, d.hourly_prev, prevLbl);
   } else if (d.daily && d.daily.length) {
     hourlyBars.style.display = 'none';
     hourlySub.textContent = '';
@@ -517,28 +519,59 @@ function render(d) {
     curveSection.style.display = '';
     const cCtx = document.getElementById('chart-curve').getContext('2d');
     if (chartCurve) chartCurve.destroy();
+    // Référence semaine passée : rééchantillonnée sur les heures d'aujourd'hui
+    // (chaque journée a ses propres horaires de transaction) → courbe en escalier.
+    const cPrev = d.curve_prev;
+    let prevSeries = null;
+    if (cPrev && cPrev.length > 1) {
+      let j = 0, last = 0;
+      prevSeries = d.curve.map(p => {
+        while (j < cPrev.length && cPrev[j].time <= p.time) { last = cPrev[j].ca_cum; j++; }
+        return last;
+      });
+    }
+    const prevLblCurve = (d.comp_label || '').replace(/^vs\s+/, '').replace(/\s+same time$/, '') || 'last week';
+
     chartCurve = new Chart(cCtx, {
       type: 'line',
       data: {
         labels: d.curve.map(p => p.time),
         datasets: [{
+          label: 'Today',
           data: d.curve.map(p => p.ca_cum),
           borderColor: BAR_ACTIVE,
           backgroundColor: 'rgba(37,84,199,0.06)',
           borderWidth: 2, fill: true, tension: 0.3,
           pointRadius: d.curve.map((_, i) => i === 0 ? 0 : 4),
           pointBackgroundColor: BAR_ACTIVE, pointBorderColor: '#fff', pointBorderWidth: 2,
-        }]
+        }].concat(prevSeries ? [{
+          label: prevLblCurve,
+          data: prevSeries,
+          borderColor: 'rgba(120,119,111,0.55)',
+          borderWidth: 1.5, borderDash: [5, 4],
+          fill: false, tension: 0.3, pointRadius: 0,
+        }] : [])
       },
       options: {
         plugins: {
-          legend: { display: false },
+          legend: prevSeries ? {
+            display: true, position: 'top', align: 'end',
+            labels: { boxWidth: 18, boxHeight: 2, font: { size: 11 },
+                      color: 'rgba(120,119,111,1)', usePointStyle: false }
+          } : { display: false },
           tooltip: {
             callbacks: {
               title: ctx => ctx[0].label,
               label: ctx => {
+                if (ctx.datasetIndex === 1) return ` ${prevLblCurve} : ${fmt(ctx.raw)}`;
                 const pt = d.curve[ctx.dataIndex];
-                return [` Cumul : ${fmt(ctx.raw)}`, pt.ca_tx ? ` + ${fmt(pt.ca_tx)}  (${pt.nb})` : ''].filter(Boolean);
+                const lines = [` Cumul : ${fmt(ctx.raw)}`];
+                if (pt.ca_tx) lines.push(` + ${fmt(pt.ca_tx)}  (${pt.nb})`);
+                if (prevSeries) {
+                  const diff = ctx.raw - prevSeries[ctx.dataIndex];
+                  lines.push(` ${diff >= 0 ? '+' : ''}${fmt(diff)} vs ${prevLblCurve}`);
+                }
+                return lines;
               }
             }
           }
@@ -822,10 +855,19 @@ function renderInsights(d) {
 
 // ── Graphe horaire — barres div façon Mesa (pic plein, creuses en rouge) ────
 // hourly.labels = ["7h","8h",…] · values/nb/avg_ticket/avg_gap alignés.
-function renderHourlyBars(h) {
+function renderHourlyBars(h, prev, prevLabel) {
   const hours = h.labels.map(l => parseInt(l, 10));
   const vals  = h.values;
-  const maxV  = Math.max(...vals, 0) || 1;
+  // Repère "même jour la semaine passée" : aligné par heure, pas par index
+  // (les deux journées peuvent ne pas couvrir les mêmes créneaux).
+  const prevByHour = {};
+  if (prev && Array.isArray(prev.labels)) {
+    prev.labels.forEach((l, i) => { prevByHour[parseInt(l, 10)] = prev.values[i] || 0; });
+  }
+  const hasPrev = Object.values(prevByHour).some(v => v > 0);
+  // L'échelle doit englober les deux séries, sinon un repère plus haut que le
+  // pic du jour sortirait du graphe.
+  const maxV = Math.max(...vals, ...(hasPrev ? Object.values(prevByHour) : []), 0) || 1;
   const peakIdx = vals.reduce((mi, v, i, a) => v > a[mi] ? i : mi, 0);
   const peakHour = hours[peakIdx];
 
@@ -841,16 +883,45 @@ function renderHourlyBars(h) {
     `<div class="hbar-row">` + hours.map((hr, i) => {
       const isPeak = i === peakIdx && vals[i] > 0;
       const hpx = Math.round(vals[i] / maxV * 118);
-      const tip = `${hr}h · ${fmt(vals[i])} · ${h.nb[i]} tx`;
+      const pv  = prevByHour[hr] || 0;
+      // Repère de référence : trait horizontal à la hauteur de la semaine passée
+      const mark = (hasPrev && pv > 0)
+        ? `<div class="hmark" style="bottom:${Math.round(pv / maxV * 118) + 18}px;"></div>` : '';
+      let tip = `${hr}h · ${fmt(vals[i])} · ${h.nb[i]} tx`;
+      if (hasPrev && (pv > 0 || vals[i] > 0)) {
+        const diff = vals[i] - pv;
+        const pct  = pv > 0 ? Math.round(diff / pv * 100) : null;
+        tip += ` — ${prevLabel || 'last week'}: ${fmt(pv)}`
+             + (pct !== null ? ` (${diff >= 0 ? '+' : ''}${pct}%)` : '');
+      }
       return `<div class="hbar" data-tip="${tip}">
+        ${mark}
         <div class="fill ${isPeak ? 'peak' : 'norm'}" style="height:${hpx}px;${vals[i] > 0 ? 'min-height:3px;' : 'border:none;'}"></div>
         <span class="hr ${deadSet.has(hr) ? 'dead' : ''}">${hr}</span>
       </div>`;
     }).join('') + `</div>`;
 
+  // Sous-titre : pic du jour + total vs référence + légende du repère
+  const totalNow  = vals.reduce((s, v) => s + v, 0);
+  const totalPrev = hasPrev ? Object.values(prevByHour).reduce((s, v) => s + v, 0) : 0;
+  // La légende du repère est intégrée à la phrase (le trait précède le nom),
+  // pour ne pas répéter deux fois "last Sat".
+  let cmp = '';
+  if (hasPrev) {
+    const name = `<span class="hmark-legend">${prevLabel || 'last week'}</span>`;
+    if (totalPrev > 0) {
+      const pct = Math.round((totalNow - totalPrev) / totalPrev * 100);
+      const up  = pct >= 0;
+      cmp = ` · <span style="color:${up ? 'var(--green)' : 'var(--red)'};font-weight:500">${up ? '▲ +' : '▼ '}${pct}%</span>`
+          + ` <span style="color:var(--faint)">vs</span>${name}`;
+    } else {
+      cmp = ` · <span style="color:var(--faint)">vs</span>${name}`;
+    }
+  }
   document.getElementById('hourly-sub').innerHTML =
     `Peak at <b style="color:var(--text)">${peakHour}h</b> · ${fmt(maxV === 1 && vals[peakIdx] === 0 ? 0 : vals[peakIdx])}`
-    + (dead.length ? ` · dead hours: <b style="color:var(--text)">${dead.map(x => x + 'h').join(', ')}</b>` : '');
+    + (dead.length ? ` · dead hours: <b style="color:var(--text)">${dead.map(x => x + 'h').join(', ')}</b>` : '')
+    + cmp;
 }
 
 // ── Graphe journalier (multi-jours) ───────────────────────────────────────

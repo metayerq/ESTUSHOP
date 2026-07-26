@@ -205,7 +205,22 @@ body {
 
 /* ── Revenue by hour — barres div façon Mesa ── */
 .hbar-row { display: flex; align-items: flex-end; gap: 6px; height: 140px; min-width: 520px; }
-.hbar { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.hbar { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; }
+/* Repère "même jour la semaine passée" — trait fin en travers de la barre */
+.hbar .hmark {
+  position: absolute; left: 0; right: 0; height: 0;
+  border-top: 2px solid var(--muted); border-radius: 1px;
+  /* Liseré blanc : garde le repère lisible aussi bien sur la barre claire que
+     sur la barre du pic (bleu foncé). */
+  filter: drop-shadow(0 1.5px 0 rgba(255, 255, 255, .85));
+  pointer-events: none; z-index: 2;
+}
+.hmark-legend { color: var(--muted); white-space: nowrap; }
+.hmark-legend::before {
+  content: ''; display: inline-block; width: 13px; height: 0;
+  border-top: 2px solid var(--muted); opacity: .55;
+  vertical-align: middle; margin: 0 5px;
+}
 .hbar .fill { width: 100%; border-radius: 3px; transition: height .4s ease; }
 .hbar .fill.peak { background: var(--spec); }
 .hbar .fill.norm { background: var(--spec-soft); border-top: 2px solid var(--spec); }

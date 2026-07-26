@@ -276,7 +276,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260725c"
+ASSET_VERSION = "20260725f"
 
 @app.context_processor
 def _inject_asset_version():
@@ -866,9 +866,16 @@ def api_data():
         result["rush"]   = rush_detector(docs_main)
         result["tempo"]  = service_tempo(docs_main)
         result["unsold"] = unsold_today(docs_main, catalog)
+        # Référence : même jour de la semaine précédente (docs_comp est déjà
+        # aligné dessus, et filtré à l'heure courante sur la vue "aujourd'hui").
+        # Sert de repère sur les barres horaires et de courbe fantôme sur le cumul.
+        result["hourly_prev"] = hourly_breakdown(docs_comp) if docs_comp else None
+        result["curve_prev"]  = cumulative_curve(docs_comp) if docs_comp else None
     else:
         result["hourly"] = None
         result["curve"]  = None
+        result["hourly_prev"] = None
+        result["curve_prev"]  = None
         result["rush"]   = []
         result["tempo"]  = None
         result["unsold"] = []
