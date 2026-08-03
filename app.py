@@ -168,6 +168,27 @@ def _day_margin(row, fallback_rate):
     return ca_ht * fallback_rate
 
 
+def _month_fallback_rate(rows_month):
+    """
+    Taux de marge à appliquer aux jours du mois dont les lignes ne sont pas chiffrées.
+
+    ⚠️ IL SE MESURE SUR LE MOIS, JAMAIS SUR LA PÉRIODE AFFICHÉE. L'appelant passait
+    auparavant `eco["marge_brute_ht_pct"]`, l'économie du preset sélectionné — alors que le
+    bloc s'annonce « indépendant du preset ». Changer le filtre au-dessus déplaçait donc le
+    cumul et la projection du mois, des chiffres qui ne parlent que du mois.
+
+    Le même défaut existait dans Mesa, où il a été mesuré : ~510 € d'écart (8 %) sur le point
+    mort mensuel selon le filtre choisi. Ici, 150 € contre 200 € de cumul sur le même mois.
+
+    Sans couverture (aucune ligne chiffrée), on retombe sur l'hypothèse du BP — assumée comme
+    telle, et elle aussi indépendante du filtre.
+    """
+    from config import MARGE_BP_GLOBALE
+    covered = sum(float(r.get("covered_ht") or 0) for r in rows_month)
+    cogs    = sum(float(r.get("cogs_ht")    or 0) for r in rows_month)
+    return ((covered - cogs) / covered) if covered > 0 else MARGE_BP_GLOBALE
+
+
 def _month_series(rows_month, cout_jour, fallback_rate, today_real):
     """Série EBITDA/jour du mois + cumul + projection fin de mois."""
     import calendar as _cal
@@ -746,8 +767,10 @@ def api_data():
     # Jamais bloquant : une erreur ici ne doit pas casser le dashboard.
     try:
         eco = result["economics"]
-        fallback_rate = (eco.get("marge_brute_ht_pct") or 70) / 100.0
-        cout_jour     = eco.get("cout_jour") or 0
+        # `cout_jour` reste tiré d'`eco` à dessein : c'est charges Supabase ÷ JOURS_OUVERTS_MOIS
+        # (vendus.py:699), sans lien avec la période affichée. L'autre entrée du bloc, elle,
+        # descendait bien du preset — voir plus bas.
+        cout_jour = eco.get("cout_jour") or 0
 
         # 1. Jauge du jour vs seuil
         if is_today_single:
@@ -765,7 +788,21 @@ def api_data():
                       if month_start < today_real else []
         if ts["nb"]:
             rows_month = rows_month + [{"day": today_iso, **today_sum}]
-        month = _month_series(rows_month, cout_jour, fallback_rate, today_real) \
+
+        # ⚠️ Le taux de repli vient du MOIS, pas de la période sélectionnée.
+        #
+        # Ce bloc s'annonce « indépendant du preset sélectionné » (voir plus haut) et ne l'était
+        # pas : `fallback_rate` dérivait de `eco["marge_brute_ht_pct"]`, l'économie de la période
+        # affichée. Changer le filtre au-dessus déplaçait donc le cumul et la projection du mois
+        # — des chiffres qui ne parlent que du mois. Mesuré : 150 € contre 200 € de cumul sur le
+        # même mois selon le filtre, et ~510 € d'écart sur le point mort mensuel côté Mesa, où le
+        # même défaut a été trouvé puis corrigé (tests/test_month_series.py).
+        #
+        # Le taux du mois se mesure sur ses propres lignes : marge réelle si la couverture le
+        # permet, sinon l'hypothèse du BP. Les deux entrées sont indépendantes du filtre, donc la
+        # zone répond la même chose quel que soit le preset.
+        month = _month_series(rows_month, cout_jour,
+                              _month_fallback_rate(rows_month), today_real) \
                 if cout_jour else None
 
         # 6. Top movers : 7 derniers jours vs 7 précédents
