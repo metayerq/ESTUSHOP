@@ -3026,6 +3026,35 @@ function purchasedByIngredient() {
   return agg;
 }
 
+// ── L'ordre des écarts ────────────────────────────── testé : tests/test_usage_ranking.js ──
+//
+// Le serveur trie par COÛT THÉORIQUE (app.py). Un ingrédient cher dont l'écart est de +2 %
+// passait donc devant un écart de +180 % sur un ingrédient modeste : la ligne à regarder se
+// retrouvait sous les lignes de fond.
+//
+// Le classement se fait sur l'écart en EUROS, pas en pourcentage. +200 % sur un ingrédient à
+// 0,30 € est du bruit ; +12 % sur le lait ne l'est pas. Le pourcentage reste affiché — c'est
+// lui qui se lit — mais ce n'est pas lui qui ordonne.
+//
+// ⚠️ UNE LIGNE SANS ACHAT SAISI N'EST PAS CLASSABLE. Son écart n'est pas nul, il est INCONNU.
+// Dans Mesa elles étaient comptées à −100 % et remontaient en tête, noyant les vrais signaux
+// (5 achats saisis pour 53 ingrédients consommés). Elles sont mises à part, jamais mêlées au
+// classement, et le plafond qui les tronque dit combien il en cache : une coupe muette se
+// lirait « voilà tout ce qui est consommé ».
+function rankUsageRows(rows, bought, cap) {
+  const unitCost = r => (r.qty > 0 ? r.cost / r.qty : 0);
+  const gapEur   = (r, b) => Math.abs(b.qty - r.qty) * unitCost(r);
+
+  const reconciled = [], unlogged = [];
+  for (const r of (rows || [])) {
+    const b = bought[r.name];
+    (b && r.qty > 0 ? reconciled : unlogged).push(r);
+  }
+  reconciled.sort((x, y) => gapEur(y, bought[y.name]) - gapEur(x, bought[x.name]));
+  // `unlogged` garde l'ordre du serveur : coût théorique décroissant, faute de mieux.
+  return { reconciled, unlogged, hidden: Math.max(0, unlogged.length - cap) };
+}
+
 function renderUsage() {
   const body = document.getElementById('usage-body');
   const warn = document.getElementById('usage-warnings');
@@ -3058,7 +3087,25 @@ function renderUsage() {
     return `${Math.round(q * 100) / 100} ${u}`;
   };
 
-  body.innerHTML = `<div class="prep-group">` + rows.map(r => {
+  // ── L'ordre : le signal d'abord ─────────────────────────────────────────────
+  //
+  // Le serveur trie par COÛT THÉORIQUE (app.py). Un ingrédient cher dont l'écart est de +2 %
+  // passait donc devant un écart de +180 % sur un ingrédient modeste : la ligne à regarder se
+  // retrouvait sous les lignes de fond.
+  //
+  // Le classement se fait sur l'écart en EUROS, pas en pourcentage. +200 % sur un ingrédient
+  // à 0,30 € est du bruit ; +12 % sur le lait ne l'est pas. Le pourcentage reste affiché,
+  // c'est lui qui se lit — mais ce n'est pas lui qui ordonne.
+  //
+  // ⚠️ UNE LIGNE SANS ACHAT SAISI N'EST PAS CLASSABLE. Son écart n'est pas nul, il est
+  // inconnu. Dans Mesa ces lignes étaient comptées à −100 % et remontaient en tête, noyant
+  // les vrais signaux — 5 achats saisis pour 53 ingrédients consommés. Elles vont dans leur
+  // propre groupe, en dessous, et ne se mêlent jamais au classement.
+  // Le plafond du groupe sans achat ANNONCE ce qu'il cache (voir rankUsageRows).
+  const UNLOGGED_CAP = 10;
+  const { reconciled, unlogged, hidden } = rankUsageRows(rows, bought, UNLOGGED_CAP);
+
+  const lineHtml = r => {
     const b = bought[r.name];
     let varHtml = '<span style="color:var(--faint);">—</span>';
     if (b && r.qty > 0) {
@@ -3082,9 +3129,32 @@ function renderUsage() {
           style="background:none;border:1px solid var(--border);border-radius:5px;width:26px;height:26px;cursor:pointer;font-family:inherit;font-size:12px;color:var(--muted);">▸</button>
       </div>
     </div>`;
-  }).join('') + `</div>
-  <div style="font-size:11px;color:var(--faint);margin-top:10px;">
-    Theoretical = sales × recipes (incl. waste %) · sorted by cost · Variance = purchased vs theoretical (+ means you bought more than sales explain).
+  };
+
+  const groupLabel = txt => `<div style="font-size:10px;font-weight:600;text-transform:uppercase;
+    letter-spacing:.06em;color:var(--muted);padding:14px 0 6px;">${txt}</div>`;
+
+  let html = '';
+  if (reconciled.length) {
+    html += groupLabel(`Variance · ${reconciled.length} ingredient(s) with purchases logged`)
+          + `<div class="prep-group">` + reconciled.map(lineHtml).join('') + `</div>`;
+  }
+  if (unlogged.length) {
+    html += groupLabel(`No purchase logged · ${unlogged.length} ingredient(s) — variance unknown, not zero`)
+          + `<div class="prep-group">` + unlogged.slice(0, UNLOGGED_CAP).map(lineHtml).join('') + `</div>`;
+    if (hidden) {
+      html += `<div style="font-size:11px;color:var(--muted);padding:8px 2px;">
+        + ${hidden} more consumed ingredient(s) with no purchase logged, hidden here.</div>`;
+    }
+  }
+
+  body.innerHTML = html + `
+  <div style="font-size:11px;color:var(--faint);margin-top:10px;line-height:1.5;">
+    Theoretical = sales × recipes (incl. waste %). Variance = purchased vs theoretical
+    (+ means you bought more than sales explain), ranked by the size of the gap in euros —
+    a big % on a cheap ingredient is noise.<br>
+    These are <strong>purchases, not stock</strong>: with no opening and closing count, a gap
+    can simply be timing — a crate bought on the 30th is served next month.
   </div>`;
 }
 
