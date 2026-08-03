@@ -264,9 +264,14 @@ function render(d) {
   if (ecoTop && ecoTop.ebitda_ht != null) {
     ebitdaEl.textContent = fmt(ecoTop.ebitda_ht);
     ebitdaEl.style.color = ecoTop.ebitda_ht > 0 ? 'var(--green)' : ecoTop.ebitda_ht < 0 ? 'var(--red)' : 'var(--text)';
-    ebitdaSub.innerHTML = ecoTop.ebitda_ht >= 0
-      ? `<span style="color:var(--green)">Profitable ✓</span>`
-      : `<span style="color:var(--red)">Loss</span>`;
+    // L'EBITDA descend de la marge brute, donc du taux mesuré sur la partie couverte du CA.
+    // Si ce taux est extrapolé, « Profitable ✓ » affirme plus que ce qu'on sait — la coche
+    // se lit comme un fait vérifié. Le verdict est alors donné au conditionnel.
+    const ebitdaEst = ecoTop.marge_is_estimated === true;
+    ebitdaSub.innerHTML = (ecoTop.ebitda_ht >= 0
+      ? `<span style="color:var(--green)">Profitable${ebitdaEst ? '' : ' ✓'}</span>`
+      : `<span style="color:var(--red)">Loss</span>`)
+      + (ebitdaEst ? ` <span style="color:#b07d00">on an extrapolated margin</span>` : '');
   } else {
     ebitdaEl.textContent = '—'; ebitdaEl.style.color = 'var(--text)';
     ebitdaSub.innerHTML = '<span style="color:var(--muted)">not measurable</span>';
@@ -300,13 +305,24 @@ function render(d) {
     // Marge brute — 100% COGS réel, avec taux de couverture
     document.getElementById('eco-marge').textContent = eco.marge_brute_ht != null ? fmt(eco.marge_brute_ht) : '—';
     if (eco.marge_brute_ht != null) {
+      // ⚠️ LE SEUIL EST CELUI DU MOTEUR, PAS UN SECOND SEUIL ÉCRIT ICI.
+      //
+      // Le JS re-décidait son propre palier (vert ≥ 90, ambre ≥ 60). Le moteur, lui, marque
+      // la marge comme extrapolée en dessous de 95 (vendus.py:769). Entre les deux, à 92 % de
+      // couverture, l'écran affichait du VERT sur un chiffre que le moteur tenait pour estimé.
+      // `marge_is_estimated` était calculé, renvoyé, et lu par personne.
       const cov = eco.cogs_coverage_pct;
-      const covColor = cov >= 90 ? 'var(--green)' : cov >= 60 ? '#b07d00' : 'var(--red)';
-      const covStr = cov != null
-        ? `<span style="color:${covColor}">COGS coverage ${cov}%</span>`
-        : '';
+      const est = eco.marge_is_estimated === true;
+      const covColor = est ? (cov != null && cov >= 60 ? '#b07d00' : 'var(--red)') : 'var(--green)';
+      // Sous le seuil, la marge n'est plus mesurée : elle est mesurée sur une PARTIE des ventes
+      // puis appliquée au reste. Le dire, plutôt que d'afficher un pourcentage de couverture que
+      // le lecteur doit interpréter lui-même.
+      const covStr = cov == null ? ''
+        : est ? `<span style="color:${covColor}">measured on ${cov}% of sales, applied to the rest</span>`
+              : `<span style="color:${covColor}">COGS coverage ${cov}%</span>`;
       document.getElementById('eco-marge-pct').innerHTML =
-        `${eco.marge_brute_ht_pct}% <span style="color:var(--faint)">· COGS ${fmt(eco.cogs_ht)} · </span>${covStr}`;
+        `${eco.marge_brute_ht_pct}%${est ? ' <span style="color:#b07d00">est.</span>' : ''}` +
+        ` <span style="color:var(--faint)">· COGS ${fmt(eco.cogs_ht)} · </span>${covStr}`;
     } else {
       document.getElementById('eco-marge-pct').innerHTML =
         '<span style="color:var(--muted)">no COGS set — complete your recipe sheets</span>';
@@ -345,13 +361,18 @@ function render(d) {
     const seuilSub = document.getElementById('eco-seuil-sub');
     if (eco.seuil_ca_ttc != null) {
       document.getElementById('eco-seuil').textContent = fmt(eco.seuil_ca_ttc);
-      const margeNote = eco.seuil_margin_pct != null
-        ? ` <span style="color:var(--faint)">· real margin ${eco.seuil_margin_pct}%</span>`
-        : '';
+      // Le seuil vaut charges ÷ marge réelle (vendus.py:745) : il repose sur le MÊME taux que
+      // la marge brute. Sous le seuil de couverture, l'appeler « real margin » le fait passer
+      // pour mesuré alors qu'il est extrapolé — et le seuil se déplace avec lui.
+      const seuilEst = eco.marge_is_estimated === true;
+      const margeNote = eco.seuil_margin_pct == null ? ''
+        : seuilEst
+          ? ` <span style="color:#b07d00">· on an extrapolated ${eco.seuil_margin_pct}% margin</span>`
+          : ` <span style="color:var(--faint)">· real margin ${eco.seuil_margin_pct}%</span>`;
       if (eco.manque_seuil > 0) {
         seuilSub.innerHTML = `<span style="color:var(--red)">${fmt(eco.manque_seuil)} short (incl. VAT)</span>` + margeNote;
       } else {
-        seuilSub.innerHTML = `<span style="color:var(--green)">Break-even reached ✓</span>` + margeNote;
+        seuilSub.innerHTML = `<span style="color:var(--green)">Break-even reached${seuilEst ? '' : ' ✓'}</span>` + margeNote;
       }
       document.getElementById('eco-seuil-bar').style.width = Math.min(100, eco.pct_seuil) + '%';
     } else {
