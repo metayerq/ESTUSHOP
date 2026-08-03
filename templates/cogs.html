@@ -692,6 +692,9 @@
     <div class="sum-item clickable" title="View best margins" onclick="showBestMargins()"><div class="sum-label">Max margin</div><div class="sum-val" id="s-max">—</div></div>
   </div>
 
+  <!-- Marge négative : une perte à chaque vente, elle doit trouver le lecteur -->
+  <div id="negative-margin-alert"></div>
+
   <!-- Filters -->
   <div class="filter-bar">
     <input id="search" type="text" placeholder="Search…" oninput="applyFilters()">
@@ -1233,6 +1236,9 @@ async function loadCogs(soft = false) {
     renderPrepList();
     updateTabBadges();
     renderIssuesBanner();
+    // Sur allProducts, pas sur la liste filtrée : une perte ne cesse pas d'exister
+    // parce qu'on a tapé un mot dans la recherche.
+    renderNegativeMarginAlert(allProducts);
   } catch(e) {
     document.getElementById('content').innerHTML =
       '<div class="loading">Load failed — <a href="javascript:loadCogs()" style="color:var(--spec)">retry</a></div>';
@@ -1542,6 +1548,76 @@ function toggleCatGroup(head) {
   head.classList.toggle('collapsed', !willOpen);
   catInit[tab] = true;
   if (willOpen) catOpen[tab].add(key); else catOpen[tab].delete(key);
+}
+
+// ── Produits vendus sous leur coût ────────────── testé : tests/test_negative_margin.js ──
+//
+// « Min margin » mène déjà aux pires marges, mais il faut savoir cliquer. Une perte encaissée
+// à chaque vente doit trouver le lecteur, pas attendre d'être cherchée.
+//
+// LA COMPARAISON SE FAIT EN HT DES DEUX CÔTÉS. Le catalogue (vendus.py:_fetch_catalog) calcule
+// sa marge avec (gross_price − supply_price) / gross_price : un prix de vente TTC face à un
+// coût HT. Cette marge-là est structurellement surévaluée. Ici on part de `price_ht` et du coût
+// effectif — recette si elle existe, prix d'achat sinon — que le serveur calcule déjà.
+//
+// ⚠️ UN COÛT INCONNU N'EST PAS UNE PERTE. Sans prix d'achat ni recette, le produit sort de
+// l'alerte : l'y mettre à 100 % de marge ou à −100 % inventerait une information.
+//
+// ⚠️ ET UNE PERTE N'EST PAS TOUJOURS UNE PERTE. Quand le coût saisi vaut EXACTEMENT le prix de
+// vente TTC, c'est presque à coup sûr le prix de vente tapé dans le champ « coût » — trois des
+// quatre produits concernés ici sont dans ce cas au centime près. Le dire évite d'envoyer
+// quelqu'un renégocier avec un fournisseur pour une faute de frappe.
+function negativeMarginProducts(products) {
+  const out = [];
+  for (const p of (products || [])) {
+    const priceHt = Number(p.price_ht) || 0;
+    const cost = p.has_recipe && p.recipe_total != null
+      ? Number(p.recipe_total)
+      : Number(p.supply_price) || 0;
+    if (priceHt <= 0 || !(cost > 0)) continue;   // coût inconnu → pas d'avis
+    if (cost <= priceHt) continue;
+    out.push({
+      title: p.title,
+      priceHt, cost,
+      loss: cost - priceHt,
+      fromRecipe: !!(p.has_recipe && p.recipe_total != null),
+      // Tolérance au centime : les prix Vendus portent 2 décimales.
+      costLooksLikeSalePrice: Math.abs(cost - (Number(p.price_ttc) || 0)) < 0.005,
+    });
+  }
+  // Classé par la perte en EUROS, comme les écarts de consommation : −24 % sur un article à
+  // 2 € pèse moins qu'une perte de 2,95 € par sachet.
+  return out.sort((a, b) => b.loss - a.loss);
+}
+
+function renderNegativeMarginAlert(products) {
+  const el = document.getElementById('negative-margin-alert');
+  if (!el) return;
+  const bad = negativeMarginProducts(products);
+  if (!bad.length) { el.innerHTML = ''; return; }
+
+  const suspects = bad.filter(b => b.costLooksLikeSalePrice).length;
+  const lines = bad.map(b => `
+    <div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;
+                border-top:1px solid #f0d6d2;font-variant-numeric:tabular-nums;">
+      <span>${b.title}${b.costLooksLikeSalePrice
+        ? ` <span style="color:#8a3f38;opacity:.75;">· cost equals the VAT-inclusive sale price</span>` : ''}</span>
+      <span style="white-space:nowrap;">
+        sells ${fmt(b.priceHt)} HT · ${b.fromRecipe ? 'recipe' : 'purchase'} ${fmt(b.cost)}
+        <strong style="color:var(--red);">−${fmt(b.loss)}</strong>
+      </span>
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div style="padding:11px 14px;margin-bottom:12px;border-radius:8px;
+                background:#fdf0ee;border:1px solid #eccfcb;color:#8a3f38;font-size:12px;">
+      <strong>${bad.length} product(s) sold below cost</strong> — a loss on every sale.
+      ${lines}
+      ${suspects ? `<div style="margin-top:8px;opacity:.85;">
+        ${suspects} of them have a cost equal to their sale price including VAT, which usually
+        means the sale price was typed into the cost field — check those before renegotiating
+        anything.</div>` : ''}
+    </div>`;
 }
 
 function renderProducts(products) {
