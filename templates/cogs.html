@@ -1248,6 +1248,24 @@ async function loadCogs(soft = false) {
 const CONVU = {g:{kg:0.001},mg:{kg:0.000001},kg:{kg:1},ml:{l:0.001},cl:{l:0.01},dl:{l:0.1},l:{l:1},unit:{unit:1}};
 const convF = (u, ref) => (CONVU[u] || {})[ref];
 
+// Ligne de recette → RENDEMENT d'une préparation. Miroir de prep_yield_factor (app.py).
+// CONVU ci-dessus ne ramène une ligne que vers l'unité de RÉFÉRENCE d'un ingrédient (kg/l/unit) ;
+// elle ne sait pas dire combien de « 1 l » valent « 200 ml ». L'aperçu d'impact prix divisait
+// donc par yield_qty sans conversion, comme le serveur le faisait — d'accord avec lui, et faux
+// avec lui. Unités non comparables : facteur 1 conservé, jamais deviné.
+const UNIT_BASE = {mg:['masse',0.001],g:['masse',1],kg:['masse',1000],
+                   ml:['volume',1],cl:['volume',10],dl:['volume',100],l:['volume',1000],
+                   unit:['compte',1],portion:['compte',1]};
+function prepYieldFactor(lineUnit, yieldUnit) {
+  const lu = (lineUnit || '').trim().toLowerCase();
+  const yu = (yieldUnit || '').trim().toLowerCase();
+  if (lu && lu === yu) return 1;
+  const a = UNIT_BASE[lu], b = UNIT_BASE[yu];
+  // a et b testés séparément : deux unités inconnues ne sont pas « de même dimension ».
+  if (a && b && a[0] === b[0]) return a[1] / b[1];
+  return 1;
+}
+
 function openMiniModal(title, bodyHtml, buttons) {
   document.getElementById('mini-modal-title').textContent = title;
   document.getElementById('mini-modal-body').innerHTML = bodyHtml;
@@ -1340,14 +1358,19 @@ function priceImpact(name, oldP, newP) {
       const f = convF(i.unit, ref);
       if (f != null) d += i.qty * f * dP;
     }
-    if (d) prepDelta[pn] = d / (parseFloat(p.yield_qty) || 1);
+    // Δ par unité de RENDEMENT (pas par unité de ligne) : la conversion se fait au point
+    // d'usage ci-dessous, où l'unité de la ligne appelante est connue.
+    if (d) prepDelta[pn] = { perYield: d / (parseFloat(p.yield_qty) || 1), unit: p.yield_unit };
   }
   const out = [];
   for (const p of allProducts) {
     if (!p.has_recipe) continue;
     let d = 0;
     for (const i of (p.recipe || [])) {
-      if (i.type === 'preparation') { if (prepDelta[i.name]) d += i.qty * prepDelta[i.name]; }
+      if (i.type === 'preparation') {
+        const pd = prepDelta[i.name];
+        if (pd) d += i.qty * prepYieldFactor(i.unit, pd.unit) * pd.perYield;
+      }
       else if (i.name === name) {
         const f = convF(i.unit, ref);
         if (f != null) d += i.qty * f * dP;
@@ -1964,11 +1987,14 @@ function calcIngCost(name, qty, unit) {
     if (f === undefined) return null;
     return Math.round(qty * f * lib.price * 100000) / 100000;
   }
-  // Préparation (sous-recette) — unit doit être "unit"
+  // Préparation (sous-recette). L'éditeur FORCE l'unité de la ligne à celle du rendement
+  // (ing-unit-fixed, pas de menu), donc le facteur vaut 1 dans le cours normal des choses.
+  // Il ne vaut plus 1 quand une ligne existante garde l'ancienne unité après un changement de
+  // rendement de la préparation — la ligne stockée en base n'est pas réécrite.
   const prep = prepLib[name];
   if (prep && prep.cost_per_unit != null) {
-    // qty = nombre de portions/tranches
-    return Math.round(qty * prep.cost_per_unit * 100000) / 100000;
+    // qty = nombre d'unités de rendement (portions, tranches, litres…)
+    return Math.round(qty * prepYieldFactor(unit, prep.yield_unit) * prep.cost_per_unit * 100000) / 100000;
   }
   return null;
 }
