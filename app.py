@@ -168,6 +168,27 @@ def _day_margin(row, fallback_rate):
     return ca_ht * fallback_rate
 
 
+def _month_fallback_rate(rows_month):
+    """
+    Taux de marge à appliquer aux jours du mois dont les lignes ne sont pas chiffrées.
+
+    ⚠️ IL SE MESURE SUR LE MOIS, JAMAIS SUR LA PÉRIODE AFFICHÉE. L'appelant passait
+    auparavant `eco["marge_brute_ht_pct"]`, l'économie du preset sélectionné — alors que le
+    bloc s'annonce « indépendant du preset ». Changer le filtre au-dessus déplaçait donc le
+    cumul et la projection du mois, des chiffres qui ne parlent que du mois.
+
+    Le même défaut existait dans Mesa, où il a été mesuré : ~510 € d'écart (8 %) sur le point
+    mort mensuel selon le filtre choisi. Ici, 150 € contre 200 € de cumul sur le même mois.
+
+    Sans couverture (aucune ligne chiffrée), on retombe sur l'hypothèse du BP — assumée comme
+    telle, et elle aussi indépendante du filtre.
+    """
+    from config import MARGE_BP_GLOBALE
+    covered = sum(float(r.get("covered_ht") or 0) for r in rows_month)
+    cogs    = sum(float(r.get("cogs_ht")    or 0) for r in rows_month)
+    return ((covered - cogs) / covered) if covered > 0 else MARGE_BP_GLOBALE
+
+
 def _month_series(rows_month, cout_jour, fallback_rate, today_real):
     """Série EBITDA/jour du mois + cumul + projection fin de mois."""
     import calendar as _cal
@@ -746,8 +767,10 @@ def api_data():
     # Jamais bloquant : une erreur ici ne doit pas casser le dashboard.
     try:
         eco = result["economics"]
-        fallback_rate = (eco.get("marge_brute_ht_pct") or 70) / 100.0
-        cout_jour     = eco.get("cout_jour") or 0
+        # `cout_jour` reste tiré d'`eco` à dessein : c'est charges Supabase ÷ JOURS_OUVERTS_MOIS
+        # (vendus.py:699), sans lien avec la période affichée. L'autre entrée du bloc, elle,
+        # descendait bien du preset — voir plus bas.
+        cout_jour = eco.get("cout_jour") or 0
 
         # 1. Jauge du jour vs seuil
         if is_today_single:
@@ -765,7 +788,21 @@ def api_data():
                       if month_start < today_real else []
         if ts["nb"]:
             rows_month = rows_month + [{"day": today_iso, **today_sum}]
-        month = _month_series(rows_month, cout_jour, fallback_rate, today_real) \
+
+        # ⚠️ Le taux de repli vient du MOIS, pas de la période sélectionnée.
+        #
+        # Ce bloc s'annonce « indépendant du preset sélectionné » (voir plus haut) et ne l'était
+        # pas : `fallback_rate` dérivait de `eco["marge_brute_ht_pct"]`, l'économie de la période
+        # affichée. Changer le filtre au-dessus déplaçait donc le cumul et la projection du mois
+        # — des chiffres qui ne parlent que du mois. Mesuré : 150 € contre 200 € de cumul sur le
+        # même mois selon le filtre, et ~510 € d'écart sur le point mort mensuel côté Mesa, où le
+        # même défaut a été trouvé puis corrigé (tests/test_month_series.py).
+        #
+        # Le taux du mois se mesure sur ses propres lignes : marge réelle si la couverture le
+        # permet, sinon l'hypothèse du BP. Les deux entrées sont indépendantes du filtre, donc la
+        # zone répond la même chose quel que soit le preset.
+        month = _month_series(rows_month, cout_jour,
+                              _month_fallback_rate(rows_month), today_real) \
                 if cout_jour else None
 
         # 6. Top movers : 7 derniers jours vs 7 précédents
@@ -1913,6 +1950,48 @@ UNIT_CONVERSIONS = {
     ("unit", "unit"): 1.0,
 }
 
+# ── Ligne de recette → RENDEMENT d'une préparation ────────────────────────────
+#
+# UNIT_CONVERSIONS ci-dessus ne sert qu'à ramener une ligne vers l'unité de RÉFÉRENCE d'un
+# ingrédient (kg / l / unit). Elle ne connaît ni ml→ml, ni g→g, et n'était de toute façon
+# jamais consultée quand la ligne désigne une PRÉPARATION : la quantité était divisée telle
+# quelle par yield_qty. Une recette consommant « 200 ml » d'une préparation qui rend « 1 l »
+# donnait donc 200 batches au lieu de 0,2 — un facteur 1000 sur le coût.
+#
+# Le même défaut existait aux trois endroits qui divisent par un rendement : le moteur de coût
+# ci-dessous, la consommation théorique (/api/inventory/usage) et l'aperçu d'impact prix côté
+# client. Ils étaient donc d'accord entre eux, et faux ensemble.
+#
+# ⚠️ ON NE DEVINE PAS. Quand les deux unités ne sont pas comparables (« portion » face à
+# « ml »), le comportement historique est CONSERVÉ — facteur 1 — et signalé. Deviner ferait
+# bouger des coûts que personne n'a demandé à voir bouger ; se taire laisserait le nombre
+# passer pour exact.
+_UNIT_BASE = {
+    "mg": ("masse",  0.001), "g":  ("masse",  1.0), "kg": ("masse", 1000.0),
+    "ml": ("volume", 1.0),   "cl": ("volume", 10.0),
+    "dl": ("volume", 100.0), "l":  ("volume", 1000.0),
+    "unit": ("compte", 1.0), "portion": ("compte", 1.0),
+}
+
+def prep_yield_factor(line_unit, yield_unit):
+    """
+    Combien d'unités de rendement vaut UNE unité de ligne. Renvoie (facteur, alerte|None).
+
+    ⚠️ Les deux `.get` sont testés séparément. Dans Mesa, la même fonction comparait les
+    dimensions de deux unités inconnues, trouvait `undefined == undefined`, et produisait des
+    NaN qui se sont affichés comme coûts sur des recettes réelles.
+    """
+    lu = (line_unit  or "").strip().lower()
+    yu = (yield_unit or "").strip().lower()
+    if lu and lu == yu:
+        return 1.0, None
+    a, b = _UNIT_BASE.get(lu), _UNIT_BASE.get(yu)
+    if a is not None and b is not None and a[0] == b[0]:
+        return a[1] / b[1], None
+    return 1.0, (f"conversion {line_unit or '?'} → {yield_unit or '?'} inconnue "
+                 f"— quantité prise telle quelle")
+
+
 def calc_recipe_cogs(ingredients, ingr_lib, prep_lib=None, waste_pct=0):
     """Calcule le COGS total d'une recette.
     Supporte les préparations (sous-recettes) : si un ingrédient n'est pas dans
@@ -1951,16 +2030,22 @@ def calc_recipe_cogs(ingredients, ingr_lib, prep_lib=None, waste_pct=0):
         if prep:
             prep_total, prep_bd = calc_recipe_cogs(
                 prep["ingredients"], ingr_lib, prep_lib=None)  # pas de nesting infini
-            yield_qty = float(prep.get("yield_qty") or 1)
+            yield_qty  = float(prep.get("yield_qty") or 1)
+            yield_unit = prep.get("yield_unit", "portion")
+            # La ligne peut être libellée dans une autre unité que le rendement (200 ml d'une
+            # préparation qui rend 1 l). Sans ce facteur, on payait 1000 fois trop.
+            yf, yf_warn = prep_yield_factor(unit, yield_unit)
             cost_per_unit = prep_total / yield_qty if yield_qty else 0
-            cost = round(qty * cost_per_unit, 5)
+            cost = round(qty * yf * cost_per_unit, 5)
             total += cost
             breakdown.append({
                 "name": name, "qty": qty, "unit": unit,
                 "cost": round(cost, 4), "type": "preparation",
+                "yield_factor": yf,
+                **({"warning": yf_warn} if yf_warn else {}),
                 "prep_total": round(prep_total, 4),
                 "yield_qty": yield_qty,
-                "yield_unit": prep.get("yield_unit", "portion"),
+                "yield_unit": yield_unit,
                 "cost_per_unit": round(cost_per_unit, 4),
                 "prep_breakdown": prep_bd,
             })
@@ -2085,7 +2170,13 @@ def api_inventory_usage():
         elif name in preps:
             p = preps[name]
             yq = float(p.get("yield_qty") or 1) or 1
-            batch_frac = (lqty * mult) / yq     # fraction de batch consommée
+            # Même conversion que dans le moteur de coût : la ligne peut être libellée dans une
+            # autre unité que le rendement. Sans elle, « 200 ml » d'une prep rendant « 1 l »
+            # consommait 200 batches d'ingrédients au lieu de 0,2.
+            yf, yf_warn = prep_yield_factor(unit, p.get("yield_unit"))
+            if yf_warn:
+                issues.append(f"{src_title}: {name} — {yf_warn}")
+            batch_frac = (lqty * yf * mult) / yq     # fraction de batch consommée
             for l2 in (p.get("ingredients") or []):
                 _expand(l2, batch_frac, src_title)
         else:

@@ -388,7 +388,12 @@ def _fetch_catalog():
                 continue
             gross  = float(p.get("gross_price", 0))
             supply = float(p.get("supply_price", 0))
-            margin_pct = round((gross - supply) / gross * 100, 1) if gross and supply else None
+            # HT des deux côtés. `gross_price` est TTC et `supply_price` est HT : les comparer
+            # surévaluait la marge d'un plein taux de TVA. Ce champ n'a aujourd'hui aucun
+            # lecteur — les marges affichées viennent de (rev_ht − cost_ht) / rev_ht — mais il
+            # était prêt à en tromper un.
+            net = float(p.get("price_without_tax") or 0)
+            margin_pct = round((net - supply) / net * 100, 1) if net and supply else None
             cat_id = p.get("category_id")
             result[p["title"].strip()] = {
                 "id":            p["id"],
