@@ -198,6 +198,10 @@
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
       <div class="updated" id="updated-at" style="display:none;"></div>
+      <!-- Flux introduit un mode sombre. Il suit l'OS par défaut, mais ce bouton en fait un
+           choix : basculer d'identité sans laisser la main serait une décision imposée. -->
+      <button class="btn-refresh" id="theme-toggle" onclick="cycleTheme()"
+              title="Thème : système / clair / sombre">◐</button>
       <button class="btn-refresh" onclick="loadData(true)" title="Refresh (bypass cache)">↻</button>
       <a href="/logout" title="Log out" style="font-size:12px;color:var(--faint);text-decoration:none;padding:5px 8px;">⎋</a>
     </div>
@@ -233,6 +237,10 @@
     <input type="date" id="custom-end" style="padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px;">
     <button class="pill" onclick="applyCustomRange()" style="background:var(--accent,#37352f); color:#fff;">Apply</button>
   </div>
+
+  <!-- Le trajet — ce que devient l'argent encaissé sur la période sélectionnée.
+       Placé en tête : il explique le résultat, les blocs suivants le détaillent. -->
+  <div class="flux" id="flux"></div>
 
   <!-- Strip "Today" — visible seulement sur période multi-jours incluant aujourd'hui -->
   <div id="today-strip" style="display:none; margin-bottom:32px;">

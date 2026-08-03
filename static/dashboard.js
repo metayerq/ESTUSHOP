@@ -144,6 +144,139 @@ async function loadData(force = false) {
 }
 
 // ── Rendu principal ───────────────────────────────────────────────────────────
+// ══ LE TRAJET ══════════════════════════════════ testé : tests/test_flux.js ══
+//
+// L'écran n'énonce pas un résultat, il le montre se construire : ce qui entre, ce qui sort,
+// ce qui reste. Chaque poste part du niveau atteint par le précédent — la cascade rend le
+// décalage visible là où quatre KPI côte à côte le laissaient à reconstituer de tête.
+//
+// ⚠️ LA MATIÈRE N'EST PAS `cogs_ht`. `cogs_ht` est le coût mesuré sur la seule part des ventes
+// dont on connaît le prix d'achat. Ce qui est réellement retranché du CA HT pour arriver à la
+// marge brute, c'est `ca_ht − marge_brute_ht` : le taux mesuré, appliqué à tout le CA. Les deux
+// coïncident quand la couverture est de 100 % et divergent sinon — soustraire `cogs_ht` ferait
+// atterrir la cascade ailleurs que sur l'EBITDA affiché juste à côté.
+//
+// La cascade est donc construite pour tomber SUR `ebitda_ht` par construction, et non sur une
+// somme recalculée qui pourrait dériver du chiffre du serveur.
+//
+// ⚠️ ET ELLE NE S'AFFICHE PAS À MOITIÉ. Sans marge mesurable ou sans charges connues, il n'y a
+// pas de trajet : on dit lequel manque. Une cascade avec un segment à zéro se lirait « ce poste
+// ne coûte rien ».
+
+function fluxSteps(eco) {
+  const num = v => (typeof v === 'number' && isFinite(v)) ? v : null;
+  const e = eco || {};
+  const caTtc = num(e.ca_ttc), caHt = num(e.ca_ht);
+  const marge = num(e.marge_brute_ht), ebitda = num(e.ebitda_ht);
+  const fixe  = num(e.cout_fixe_periode)  ?? num(e.cout_fixe_jour);
+  const perso = num(e.cout_perso_periode) ?? num(e.cout_perso_jour);
+
+  if (!caTtc || caTtc <= 0)  return { ok: false, reason: 'no-sales' };
+  if (caHt === null)         return { ok: false, reason: 'no-net' };
+  if (marge === null)        return { ok: false, reason: 'no-margin' };
+  if (fixe === null || perso === null || (fixe + perso) <= 0)
+                             return { ok: false, reason: 'no-costs' };
+  if (ebitda === null)       return { ok: false, reason: 'no-ebitda' };
+
+  const est = e.marge_is_estimated === true;
+  const steps = [
+    { key: 'revenue',  label: 'CA TTC',      amount: caTtc,        after: caTtc, kind: 'in'  },
+    { key: 'vat',      label: '− TVA',       amount: caTtc - caHt, after: caHt,  kind: 'tax' },
+    { key: 'cogs',     label: '− matière',   amount: caHt - marge, after: marge, kind: 'out', estimated: est },
+    { key: 'fixed',    label: '− charges',   amount: fixe,         after: marge - fixe,        kind: 'out' },
+    { key: 'staff',    label: '− personnel', amount: perso,        after: marge - fixe - perso, kind: 'out' },
+  ];
+
+  // Le dernier palier DOIT être l'EBITDA du serveur. S'il ne l'est pas, un poste manque au
+  // modèle : mieux vaut ne rien dessiner que dessiner une cascade qui ment d'un écart muet.
+  if (Math.abs(steps[steps.length - 1].after - ebitda) > 0.02)
+    return { ok: false, reason: 'mismatch', drift: steps[steps.length - 1].after - ebitda };
+
+  const top = caTtc, bottom = Math.min(0, ebitda), span = (top - bottom) || 1;
+  const pct = v => (v / span) * 100;
+  const laid = steps.map((s, i) => {
+    const from = i === 0 ? 0 : steps[i - 1].after;
+    const to   = s.after;
+    return { ...s,
+      left:  i === 0 ? 0 : pct(top - from),
+      width: i === 0 ? pct(s.amount) : pct(from - to) };
+  });
+
+  return { ok: true, steps: laid, ebitda, estimated: est,
+           zeroPct: pct(top), coverage: num(e.cogs_coverage_pct) };
+}
+
+function renderFlux(d) {
+  const el = document.getElementById('flux');
+  if (!el) return;
+  const f = fluxSteps(d && d.economics);
+  const scope = d && d.period_label ? d.period_label : '';
+
+  if (!f.ok) {
+    const why = {
+      'no-sales':  'aucune vente sur la période.',
+      'no-net':    'le CA hors taxes est indisponible.',
+      'no-margin': 'le coût matière n’est pas mesurable — complète les fiches recettes.',
+      'no-costs':  'les charges sont indisponibles — vérifie l’onglet Costs.',
+      'no-ebitda': 'le résultat n’est pas calculable.',
+      'mismatch':  'les postes ne se recomposent pas en EBITDA — un coût manque au modèle.',
+    }[f.reason] || 'données insuffisantes.';
+    el.innerHTML = `<div class="flux-head"><span class="flux-title">Le trajet</span>
+        <span class="flux-scope">${scope}</span></div>
+      <div class="flux-empty">Pas de trajet à tracer : ${why}</div>`;
+    return;
+  }
+
+  const colour = { in: 'var(--flux-keep)', tax: 'var(--flux-tax)', out: 'var(--flux-leave)' };
+  const rows = f.steps.map(s => `
+    <div class="flux-row">
+      <span class="flux-label">${s.label}</span>
+      <span class="flux-track">
+        <span class="flux-seg${s.estimated ? ' is-estimated' : ''}"
+              style="left:${s.left}%;width:${s.width}%;background:${colour[s.kind]}"></span>
+      </span>
+      <span class="flux-amount${s.kind === 'in' ? '' : ' dim'}">${s.kind === 'in' ? '' : '−'}${fmt(s.amount)}</span>
+    </div>`).join('');
+
+  const neg = f.ebitda < 0;
+  const ebW = Math.abs((f.ebitda / (f.steps[0].amount - Math.min(0, f.ebitda))) * 100);
+  const ebLeft = neg ? f.zeroPct : f.zeroPct - ebW;
+  const total = `
+    <div class="flux-row is-total">
+      <span class="flux-label">= EBITDA</span>
+      <span class="flux-track"><span class="flux-zero" style="left:${f.zeroPct}%"></span>
+        <span class="flux-seg" style="left:${ebLeft}%;width:${ebW}%;
+              background:${neg ? 'var(--flux-neg)' : 'var(--flux-keep)'}"></span></span>
+      <span class="flux-amount${neg ? ' neg' : ''}">${fmt(f.ebitda)}</span>
+    </div>`;
+
+  // La lecture, écrite. Le graphique montre le décalage ; la phrase nomme le poste qui pèse.
+  const matiere = f.steps.find(s => s.key === 'cogs');
+  const charges = f.steps.filter(s => s.kind === 'out' && s.key !== 'cogs')
+                         .reduce((a, s) => a + s.amount, 0);
+  const verdict = neg
+    ? `Il manque <b>${fmt(-f.ebitda)}</b> pour couvrir la période.`
+    : `La période dégage <b>${fmt(f.ebitda)}</b>.`;
+  const poids = matiere.amount < charges
+    ? `La matière pèse <b>${fmt(matiere.amount)}</b>, les charges <b>${fmt(charges)}</b>.`
+    : `La matière pèse <b>${fmt(matiere.amount)}</b>, plus que les <b>${fmt(charges)}</b> de charges.`;
+  const reserve = f.estimated
+    ? ` <span class="est">La matière est extrapolée : le coût n’est connu que sur ${f.coverage}% des ventes.</span>`
+    : '';
+
+  el.innerHTML = `
+    <div class="flux-head"><span class="flux-title">Le trajet</span>
+      <span class="flux-scope">${scope}</span></div>
+    <div class="flux-rows">${rows}${total}</div>
+    <div class="flux-note">${poids} ${verdict}${reserve}</div>
+    <div class="flux-legend">
+      <span><i style="background:var(--flux-keep)"></i>ce qui reste</span>
+      <span><i style="background:var(--flux-leave)"></i>ce qui sort</span>
+      <span><i style="background:var(--flux-tax)"></i>TVA</span>
+      ${f.estimated ? '<span><i class="flux-seg is-estimated" style="background:var(--flux-leave)"></i>extrapolé</span>' : ''}
+    </div>`;
+}
+
 function render(d) {
   // Bandeau warnings — sources de données en échec
   const warnBanner = document.getElementById('warn-banner');
@@ -282,6 +415,7 @@ function render(d) {
   // de d.week (7 derniers jours) : dernier point = aujourd'hui, jour ouvré
   // précédent = dernier point antérieur avec des ventes.
   renderTodayStrip(d);
+  renderFlux(d);
 
   // (Barre "Break-even N tx/day" supprimée : constante BP statique, redondante
   //  et parfois contradictoire avec le seuil CA réel affiché dans Economics.)
