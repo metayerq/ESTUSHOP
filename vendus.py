@@ -652,18 +652,25 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
     """
     from config import (
         TVA_MOYENNE_BLENDED, AMORTISSEMENT_MOIS,
-        JOURS_OUVERTS_MOIS, count_open_days,
+        JOURS_OUVERTS_MOIS, count_open_days_raw,
     )
 
     # Jours d'ouverture effectifs dans la période.
     # Priorité au réel observé (jours avec ventes, passé par l'appelant) —
     # robuste aux changements d'horaires ; fallback calendrier théorique.
+    # ⚠️ UNE PÉRIODE SANS AUCUN JOUR OUVRÉ N'EN COMPTE PAS UN.
+    # `count_open_days` plafonne à ≥ 1 pour éviter les divisions par zéro, ce qui transformait
+    # « aucune ouverture » en « une journée » : un custom mardi→mercredi (café fermé les deux
+    # jours) affichait 197 € de charges, un EBITDA de −197 € et un point mort de 318 € pour une
+    # période où rien n'a ouvert. Un garde anti-division devenait une affirmation fausse.
+    # On garde donc le compte RÉEL, qui peut valoir 0, et l'appelant sait alors ne rien afficher.
     if open_days_override is not None:
-        open_days = max(1, open_days_override)
+        open_days = max(0, open_days_override)
     elif from_date is not None and to_date is not None:
-        open_days = count_open_days(from_date, to_date)
+        open_days = count_open_days_raw(from_date, to_date)
     else:
-        open_days = max(1, round(n_days * 5 / 7))
+        open_days = max(0, round(n_days * 5 / 7))
+    no_open_days = open_days == 0
 
     # ── Charges live depuis Supabase ─────────────────────────────────────────
     # Appel léger (~15ms) — résultat utilisé pour les 4 KPIs économie
@@ -745,12 +752,26 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
     # Marge réelle mesurée sur la partie couverte du CA.
     marge_rate_real = (covered_ht - cogs_ht) / covered_ht if covered_ht > 0 else None
 
+    # ── Taux de TVA du passage HT → TTC ──────────────────────────────────────
+    # ⚠️ MESURÉ SUR LA PÉRIODE, PAS SUPPOSÉ. Le seuil était converti en TTC avec
+    # TVA_MOYENNE_BLENDED (13 %), une hypothèse du business plan, puis comparé à un CA TTC
+    # RÉEL : un ratio qui mélange mesure et hypothèse sans le dire. Avec des livres à 6 %, le
+    # taux effectif tombe vers 10 % — un seuil HT de 900 € s'affichait alors à 1 017 € au lieu
+    # de 990 €, soit 27 €/jour de « manque » inventé et un pourcentage d'atteinte sous-estimé
+    # de trois points.
+    # Le taux effectif est déjà dans les données : ca_ttc / ca_ht. On ne retombe sur
+    # l'hypothèse que si la période n'a pas de CA HT — et `tva_src` le dit à l'écran.
+    if ca_ht > 0:
+        tva_factor, tva_src = ca_ttc / ca_ht, "mesure"
+    else:
+        tva_factor, tva_src = 1 + TVA_MOYENNE_BLENDED, "hypothese"
+
     # Seuil calculable seulement si marge réelle mesurable ET charges connues
     if marge_rate_real is not None and 0 < marge_rate_real < 1 and cout_jour > 0:
         seuil_margin_rate = marge_rate_real
         seuil_margin_src  = "reelle"
         seuil_ca_jour     = cout_jour / seuil_margin_rate
-        seuil_ca_jour_ttc = seuil_ca_jour * (1 + TVA_MOYENNE_BLENDED)
+        seuil_ca_jour_ttc = seuil_ca_jour * tva_factor
     else:
         # Pas de COGS mesurable ou charges absentes → pas de seuil affichable
         seuil_margin_rate = None
@@ -759,12 +780,18 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         seuil_ca_jour_ttc = None
 
     # Charges × jours_ouvrés_réels (live Supabase)
-    cout_total   = round(cout_jour       * open_days, 2)
-    cout_fixe    = round(cout_fixe_jour  * open_days, 2)
-    cout_perso   = round(cout_perso_jour * open_days, 2)
-    amort        = round(amort_jour      * open_days, 2)
-    seuil_ca     = round(seuil_ca_jour     * open_days, 2) if seuil_ca_jour     is not None else None  # HT
-    seuil_ca_ttc = round(seuil_ca_jour_ttc * open_days, 2) if seuil_ca_jour_ttc is not None else None  # TTC
+    # Aucun jour ouvré → aucun coût de période à annoncer. `None`, pas 0 : un 0 se lirait
+    # « la période n'a rien coûté », alors qu'il n'y a simplement rien à répartir.
+    if no_open_days:
+        cout_total = cout_fixe = cout_perso = amort = None
+        seuil_ca = seuil_ca_ttc = None
+    else:
+        cout_total   = round(cout_jour       * open_days, 2)
+        cout_fixe    = round(cout_fixe_jour  * open_days, 2)
+        cout_perso   = round(cout_perso_jour * open_days, 2)
+        amort        = round(amort_jour      * open_days, 2)
+        seuil_ca     = round(seuil_ca_jour     * open_days, 2) if seuil_ca_jour     is not None else None  # HT
+        seuil_ca_ttc = round(seuil_ca_jour_ttc * open_days, 2) if seuil_ca_jour_ttc is not None else None  # TTC
 
     # Marge brute HT — 100 % basée sur le COGS réel mesuré.
     # Taux réel mesuré sur le CA couvert, extrapolé au CA total.
@@ -778,7 +805,11 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         marge_ht = marge_ht_pct = None
 
     # EBITDA HT = marge brute HT − charges totales HT de la période
-    ebitda_ht = round(marge_ht - cout_total, 2) if marge_ht is not None else None
+    # cout_total vaut None quand la période n'a aucun jour ouvré : pas de charges à imputer,
+    # donc pas d'EBITDA. Le soustraire produirait un TypeError ; le remplacer par 0 dirait
+    # « la période a dégagé sa marge sans rien coûter ».
+    ebitda_ht = (round(marge_ht - cout_total, 2)
+                 if marge_ht is not None and cout_total is not None else None)
 
     # Seuil rentabilité — comparaison TTC vs TTC (ce que tu vois en caisse)
     if seuil_ca_ttc is not None:
@@ -822,6 +853,8 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         # Fiabilité du COGS
         "cogs_coverage_pct": cogs_coverage_pct,   # % du CA avec coût connu
         "seuil_margin_src":  seuil_margin_src,    # "reelle" ou "bp"
+        "seuil_tva_src":     tva_src,             # "mesure" (ca_ttc/ca_ht) ou "hypothese" (BP)
+        "seuil_tva_pct":     round((tva_factor - 1) * 100, 1),
         "seuil_margin_pct":  round(seuil_margin_rate * 100, 1) if seuil_margin_rate else None,
     }
 

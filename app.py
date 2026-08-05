@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 # « Aujourd'hui » et « maintenant » au sens du café (Europe/Lisbon), jamais
 # l'horloge UTC du serveur Vercel. Voir config.py pour le pourquoi.
-from config import today_lisbon, now_lisbon
+from config import today_lisbon, now_lisbon, TVA_MOYENNE_BLENDED
 
 from flask import Flask, jsonify, render_template, request, redirect, make_response, g
 from vendus import (
@@ -883,7 +883,19 @@ def api_data():
                         if (r.get("nb") or 0) > 0]
             _avg7   = sum(_open_ca[-7:]) / len(_open_ca[-7:]) if _open_ca else 0
             _remain = _odays(today_real + timedelta(1), _mend)
-            _sj     = eco.get("seuil_ca_ttc_jour")
+            # ⚠️ LE SEUIL DU MOIS SE MESURE SUR LE MOIS, PAS SUR LE FILTRE AFFICHÉ.
+            # `eco["seuil_ca_ttc_jour"]` descend de la marge de la PÉRIODE SÉLECTIONNÉE. Cette
+            # zone s'annonce pourtant « indépendante du preset », et le correctif posé plus haut
+            # pour `_month_fallback_rate` avait laissé ce chemin-là intact : avec une marge
+            # mesurée à 70 % sur la semaine contre 65 % depuis l'ouverture, le point mort du
+            # mois se déplaçait d'environ 640 € selon le filtre choisi.
+            # On le recalcule à partir du taux du mois, et de la TVA effective du mois.
+            _mrate = _month_fallback_rate(rows_month)
+            _mcout = eco.get("cout_jour") or 0
+            _mca_ht  = sum(float(r.get("ca_ht")  or 0) for r in rows_month)
+            _mca_ttc = sum(float(r.get("ca_ttc") or 0) for r in rows_month)
+            _mtva    = (_mca_ttc / _mca_ht) if _mca_ht > 0 else (1 + TVA_MOYENNE_BLENDED)
+            _sj = (_mcout / _mrate * _mtva) if (_mrate and _mcout) else None
             month["ca_mtd"]        = ca_mtd
             month["proj_ca_end"]   = round(ca_mtd + _avg7 * _remain, 2)
             month["seuil_ca_month"] = (round(_sj * _odays(_mstart, _mend), 2)
@@ -901,10 +913,14 @@ def api_data():
 
         # CA par place assise (période) — 16 places (10 terrasse + 6 intérieur)
         ca_ttc_p  = eco.get("ca_ttc") or 0
-        open_days = eco.get("open_days") or 1
+        # `or 1` transformait « aucun jour ouvré » en « un jour » et faisait passer le CA de
+        # toute la période pour un chiffre journalier. Sans jour ouvré, il n'y a pas de
+        # « par jour » à calculer — on ne l'invente pas.
+        open_days = eco.get("open_days") or 0
         seat = {
             "seats": SEATS_TOTAL, "terrace": SEATS_TERRACE, "inside": SEATS_INSIDE,
-            "per_seat_day": round(ca_ttc_p / SEATS_TOTAL / open_days, 2) if ca_ttc_p else None,
+            "per_seat_day": (round(ca_ttc_p / SEATS_TOTAL / open_days, 2)
+                             if ca_ttc_p and open_days else None),
             "per_seat_period": round(ca_ttc_p / SEATS_TOTAL, 2) if ca_ttc_p else None,
         }
 

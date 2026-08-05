@@ -446,7 +446,10 @@ function render(d) {
   document.getElementById('eco-marge-label').textContent   = 'Gross margin';
 
   const eco = d.economics;
-  if (eco) {
+  // Bloc économie isolé dans une fonction immédiate : le cas « aucun jour ouvré »
+  // sort par un `return`, qui ne doit interrompre QUE cette zone — pas le rendu des
+  // produits et des transactions qui suit.
+  if (eco) (() => {
     // Marge brute — 100% COGS réel, avec taux de couverture
     document.getElementById('eco-marge').textContent = eco.marge_brute_ht != null ? fmt(eco.marge_brute_ht) : '—';
     if (eco.marge_brute_ht != null) {
@@ -474,7 +477,25 @@ function render(d) {
     }
 
     // Charges — utilise les totaux période et open_days (pas n_days calendaires)
-    document.getElementById('eco-charges').textContent = fmt(eco.cout_total_periode ?? eco.cout_total_jour);
+    // ⚠️ `?? cout_total_jour` REFERAIT LE BUG. Le serveur renvoie désormais `null` quand la
+    // période ne contient aucun jour ouvré — un mardi-mercredi, café fermé. Le repli sur le
+    // coût JOURNALIER y réafficherait les ~197 € que la correction serveur venait justement
+    // de retirer. Sans jour ouvré, il n'y a rien à imputer : on le dit.
+    const chargesEl = document.getElementById('eco-charges');
+    if (eco.open_days === 0) {
+      chargesEl.textContent = '—';
+      document.getElementById('eco-charges-sub').innerHTML =
+        '<span style="color:var(--muted)">aucun jour d\'ouverture sur la période</span>';
+      document.getElementById('eco-prime').textContent = '—';
+      document.getElementById('eco-prime-sub').innerHTML =
+        '<span style="color:var(--muted)">—</span>';
+      document.getElementById('eco-prime-bar').innerHTML = '';
+      document.getElementById('eco-seuil').textContent = '—';
+      document.getElementById('eco-seuil-sub').innerHTML =
+        '<span style="color:var(--muted)">pas de point mort sans jour ouvré</span>';
+      return;
+    }
+    chargesEl.textContent = fmt(eco.cout_total_periode ?? eco.cout_total_jour);
     const openDays = eco.open_days || d.n_days;
     const chargesSub = d.is_single_day
       ? `Fixed ${fmt(eco.cout_fixe_periode ?? eco.cout_fixe_jour)} · Staff ${fmt(eco.cout_perso_periode ?? eco.cout_perso_jour)}`
@@ -486,16 +507,30 @@ function render(d) {
     const primeEl = document.getElementById('eco-prime');
     const primeSub = document.getElementById('eco-prime-sub');
     const primeBar = document.getElementById('eco-prime-bar');
-    if (eco.ca_ht > 0 && eco.cogs_ht != null && primePerso != null) {
-      const prime = (eco.cogs_ht + primePerso) / eco.ca_ht * 100;
-      const cogsPct = eco.marge_brute_ht_pct != null ? (100 - eco.marge_brute_ht_pct) : (eco.cogs_ht / eco.ca_ht * 100);
+    // ⚠️ LE TITRE ET SON SOUS-TEXTE PARLAIENT DE DEUX COGS DIFFÉRENTS.
+    //
+    // Le chiffre utilisait `cogs_ht`, mesuré sur la seule part des ventes dont le coût est
+    // connu ; le sous-texte affichait `100 − marge_brute_ht_pct`, le taux extrapolé à tout le
+    // CA. À 60 % de couverture, le titre annonçait 48 % en vert pendant que sa propre ligne du
+    // dessous additionnait 30 + 30 = 60 %, au-delà de la cible. Le prime cost était sous-estimé
+    // exactement du déficit de couverture, et jamais marqué comme estimé.
+    //
+    // On prend maintenant la matière extrapolée des deux côtés — la même que la cascade Flux :
+    // ca_ht − marge_brute_ht. Les deux lignes disent enfin le même nombre.
+    const primeMatiere = (eco.marge_brute_ht != null) ? (eco.ca_ht - eco.marge_brute_ht) : null;
+    if (eco.ca_ht > 0 && primeMatiere != null && primePerso != null) {
+      const prime   = (primeMatiere + primePerso) / eco.ca_ht * 100;
+      const cogsPct = primeMatiere / eco.ca_ht * 100;
       const labPct  = primePerso / eco.ca_ht * 100;
+      const est     = eco.marge_is_estimated === true;
       primeEl.textContent = prime.toFixed(1) + '%';
-      primeEl.style.color = prime <= 67 ? 'var(--green)' : prime <= 75 ? '#b07d00' : 'var(--red)';
-      primeSub.innerHTML = `COGS ${cogsPct.toFixed(0)}% · Labour ${labPct.toFixed(0)}% <span style="color:var(--faint)">· target &lt;65%</span>`;
+      primeEl.style.color = prime <= 67 ? 'var(--green)' : prime <= 75 ? 'var(--amber)' : 'var(--red)';
+      primeSub.innerHTML = `COGS ${cogsPct.toFixed(0)}% · Labour ${labPct.toFixed(0)}%`
+        + (est ? ` <span style="color:var(--amber)">· matière extrapolée sur ${eco.cogs_coverage_pct}% des ventes</span>` : '')
+        + ` <span style="color:var(--faint)">· target &lt;65%</span>`;
       primeBar.innerHTML =
-        `<div style="width:${Math.min(100,cogsPct)}%;background:#2554C7;"></div>` +
-        `<div style="width:${Math.min(100,labPct)}%;background:rgba(37,84,199,.35);"></div>`;
+        `<div style="width:${Math.min(100,cogsPct)}%;background:var(--flux-leave);"></div>` +
+        `<div style="width:${Math.min(100,labPct)}%;background:var(--flux-tax);"></div>`;
     } else {
       primeEl.textContent = '—'; primeEl.style.color = 'var(--text)';
       primeSub.innerHTML = '<span style="color:var(--muted)">not measurable</span>';
@@ -547,7 +582,7 @@ function render(d) {
     } else {
       avgEl.innerHTML = '';
     }
-  }
+  })();
 
   // ── Insights visuels ──────────────────────────────────────────────────────
   try { renderInsights(d); } catch(e) { console.error('insights', e); }
