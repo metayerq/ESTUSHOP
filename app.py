@@ -997,13 +997,13 @@ def api_summary_audit():
     """
     from vendus import get_documents
     from_iso = request.args.get("from", OPENING_DAY)
-    to_iso   = request.args.get("to", (date.today() - timedelta(1)).isoformat())
+    to_iso   = request.args.get("to", (today_lisbon() - timedelta(1)).isoformat())
     try:
         from_date, to_date = date.fromisoformat(from_iso), date.fromisoformat(to_iso)
     except ValueError:
         return jsonify({"ok": False, "error": "dates attendues au format YYYY-MM-DD"}), 400
     # Jamais le jour courant : il est partiel par nature, l'y inclure signalerait un faux écart.
-    to_date = min(to_date, date.today() - timedelta(1))
+    to_date = min(to_date, today_lisbon() - timedelta(1))
     if from_date > to_date:
         return jsonify({"ok": False, "error": "aucun jour plein dans la plage"}), 400
 
@@ -1070,7 +1070,7 @@ def api_cashflow():
     (Expenses, données bancaires réelles) — depuis l'ouverture. N'utilise
     jamais les charges théoriques de la page Costs (évite le double compte)."""
     OPEN_DATE = date(2026, 5, 27)
-    to_date   = date.today()
+    to_date   = today_lisbon()
 
     catalog = get_catalog() or {}
     rows    = _ensure_summaries(OPEN_DATE, to_date, catalog)
@@ -1081,7 +1081,7 @@ def api_cashflow():
     # justement de ne pas laisser un chiffre partiel passer pour définitif.
     today_docs = _get_today_docs_cached()
     if today_docs:
-        rows = rows + [{"day": date.today().isoformat(),
+        rows = rows + [{"day": today_lisbon().isoformat(),
                         **_summarize_docs_items(today_docs, catalog)}]
 
     rev_by_month = {}
@@ -1985,7 +1985,7 @@ def _ensure_summaries(from_date, to_date, catalog):
     Les appelants qui ont besoin du jour courant l'ajoutent en mémoire, sans l'écrire.
     """
     from vendus import get_documents_with_items
-    to_date = min(to_date, date.today() - timedelta(1))
+    to_date = min(to_date, today_lisbon() - timedelta(1))
     if from_date > to_date:
         return []
     from_iso, to_iso = from_date.isoformat(), to_date.isoformat()

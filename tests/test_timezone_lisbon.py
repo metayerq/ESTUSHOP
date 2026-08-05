@@ -20,6 +20,7 @@ LISANT le source (app.py/vendus.py), comme test_month_series.py : exercer /api/d
 Vendus et Supabase. Le fuseau réel du runtime Vercel, lui, n'est vérifiable par aucun test
 d'ici — c'est précisément pourquoi le code ne le suppose plus.
 """
+import ast
 import inspect
 import re
 import sys
@@ -180,21 +181,48 @@ _NU = re.compile(r"(?<![\w.])(date\.today\(\)|datetime\.now\(\)|datetime\.utcnow
 # Seul rescapé toléré : la route api_cashflow est modifiée en parallèle par quelqu'un d'autre,
 # on n'y touche pas pour ne pas créer de conflit. Elle agrège par MOIS, donc l'heure de bascule
 # ne peut décaler qu'un jour de bord, jamais une semaine. À reprendre après la fusion.
-_EXCEPTIONS_CONNUES = {("app.py", "api_cashflow")}
+# Plus aucune exception : api_cashflow était laissée de côté par l'agent fuseau pour ne pas
+# entrer en conflit avec la garde posée en parallèle sur _ensure_summaries. Les deux ont
+# fusionné, la route est convertie, l'exception n'a plus de raison d'être. Une liste
+# d'exceptions qu'on ne vide jamais devient une liste qu'on ne lit plus.
+_EXCEPTIONS_CONNUES = set()
 
 
 def _appels_nus(module):
-    """Les appels d'horloge sans fuseau restants, par fonction porteuse."""
+    """
+    Les appels d'horloge sans fuseau restants, par fonction porteuse.
+
+    ⚠️ ANALYSE L'ARBRE SYNTAXIQUE, PAS LE TEXTE. La première version balayait les lignes à
+    l'expression régulière : elle signalait donc une docstring qui CITE `date.today()` pour
+    expliquer pourquoi on ne l'utilise plus. Un garde qui interdit de nommer ce qu'il interdit
+    pousse à réécrire les commentaires pour lui plaire — c'est le commentaire qui perd.
+
+    Un appel réel se reconnaît à sa forme : `date.today()`, ou `datetime.now()` / `utcnow()`
+    sans argument de fuseau.
+    """
     fichier = module.__file__.split("/")[-1]
-    src = inspect.getsource(module).splitlines()
-    porteuse, trouves = "<module>", []
-    for ligne in src:
-        m = re.match(r"\s*def\s+(\w+)", ligne)
-        if m and not ligne.startswith(" " * 4):
-            porteuse = m.group(1)
-        if _NU.search(ligne) and "timezone.utc" not in ligne:
-            trouves.append((fichier, porteuse))
-    return set(trouves)
+    arbre = ast.parse(inspect.getsource(module))
+
+    porteuse_par_noeud = {}
+    for noeud in ast.walk(arbre):
+        if isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for enfant in ast.walk(noeud):
+                porteuse_par_noeud.setdefault(enfant, noeud.name)
+
+    trouves = set()
+    for noeud in ast.walk(arbre):
+        if not isinstance(noeud, ast.Call) or not isinstance(noeud.func, ast.Attribute):
+            continue
+        cible = noeud.func
+        racine = cible.value.id if isinstance(cible.value, ast.Name) else None
+        nu = (
+            (racine == "date" and cible.attr == "today")
+            or (racine == "datetime" and cible.attr == "utcnow")
+            or (racine == "datetime" and cible.attr == "now" and not noeud.args and not noeud.keywords)
+        )
+        if nu:
+            trouves.add((fichier, porteuse_par_noeud.get(noeud, "<module>")))
+    return trouves
 
 
 @pytest.mark.parametrize("module", [app, vendus], ids=["app.py", "vendus.py"])
