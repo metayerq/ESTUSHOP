@@ -982,24 +982,32 @@ function renderInsights(d) {
   if (m && m.days && m.days.length) {
     const opens = m.days.filter(x => x.open);
     const pts   = opens.map(x => x.cum);
-    const allVals = pts.concat([m.proj_end, 0]);
+    // ⚠️ `proj_end` peut valoir null : aucun jour PLEIN dans le mois, donc rien pour asseoir
+    // une moyenne. fmt(null) rendrait « €0.00 projected by month end » — une prévision
+    // fabriquée, exactement ce que le serveur refuse désormais d'affirmer.
+    const hasProj = m.proj_end != null;
+    const allVals = pts.concat(hasProj ? [m.proj_end, 0] : [0]);
     const lo = Math.min(...allVals), hi = Math.max(...allVals);
     const W = 600, H = 100, span = (hi - lo) || 1;
     const y = v => 8 + (H - 16) * (1 - (v - lo) / span);
     const n = opens.length;
     const x = i => n > 1 ? (i / (n - 1)) * (W * 0.72) : 0;
     const path = pts.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-    const projPath = `M${x(n - 1).toFixed(1)},${y(pts[n - 1]).toFixed(1)} L${W - 4},${y(m.proj_end).toFixed(1)}`;
+    const projPath = hasProj
+      ? `M${x(n - 1).toFixed(1)},${y(pts[n - 1]).toFixed(1)} L${W - 4},${y(m.proj_end).toFixed(1)}`
+      : '';
     document.getElementById('ins-month').innerHTML = `
       <div class="ins-label">Month EBITDA — cumulative + projection</div>
       <svg class="ins-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
         <line x1="0" y1="${y(0).toFixed(1)}" x2="${W}" y2="${y(0).toFixed(1)}" stroke="var(--border)" stroke-width="1.5"/>
-        <path d="${path}" fill="none" stroke="#2554C7" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-        <path d="${projPath}" fill="none" stroke="rgba(37,84,199,.45)" stroke-width="2.5" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>
+        <path d="${path}" fill="none" stroke="var(--flux-keep)" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+        ${hasProj ? `<path d="${projPath}" fill="none" stroke="var(--flux-leave)" stroke-width="2.5" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>` : ''}
       </svg>
       <div class="ins-sub">
         MTD <strong style="color:${m.cum_now >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.cum_now)}</strong>
-        · projected <strong style="color:${m.proj_end >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.proj_end)}</strong> by month end
+        · ${hasProj
+            ? `projected <strong style="color:${m.proj_end >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.proj_end)}</strong> by month end`
+            : `<span style="color:var(--muted)">pas encore de jour plein ce mois-ci — aucune projection</span>`}
         ${m.cross_date ? ` · crossed €0 on ${new Date(m.cross_date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short'})}` : ''}
       </div>
       ${m.proj_ca_end != null ? `

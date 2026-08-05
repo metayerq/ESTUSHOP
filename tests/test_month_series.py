@@ -77,3 +77,56 @@ def test_le_jour_de_bascule_n_est_nomme_que_s_il_y_a_eu_bascule():
     s = app._month_series(rows, cout_jour=100.0, fallback_rate=0.70, today_real=date(2026, 7, 2))
     assert s["cum_now"] > 0
     assert s["cross_date"] is None
+
+
+# ── La projection ne doit pas dériver au fil de la journée ────────────────────
+
+def test_la_projection_ne_bouge_pas_quand_la_journee_en_cours_avance():
+    """
+    Le défaut : `avg7` moyennait les 7 derniers jours ouvrés EN Y INCLUANT aujourd'hui, dont
+    l'EBITDA vaut une marge partielle moins les charges d'une journée entière. À 10 h le jour
+    pesait fortement négatif, la projection chutait, puis remontait toute seule au fil des
+    heures — une prévision qui bouge sans qu'aucun fait nouveau ne survienne.
+
+    Ici le même mois est calculé deux fois : la journée en cours à 40 € puis à 400 €. La
+    projection doit être IDENTIQUE — seul le constat (`cum_now`) a le droit de changer.
+    """
+    base = {"2026-07-02": (400.0, 40), "2026-07-03": (400.0, 40), "2026-07-06": (400.0, 40)}
+    today = date(2026, 7, 9)          # jeudi, jour ouvré
+
+    tot = _rows({**base, "2026-07-09": (40.0, 4)})
+    fin = _rows({**base, "2026-07-09": (400.0, 40)})
+    a = app._month_series(tot, cout_jour=100.0, fallback_rate=0.70, today_real=today)
+    b = app._month_series(fin, cout_jour=100.0, fallback_rate=0.70, today_real=today)
+
+    assert a["proj_end"] == b["proj_end"], (
+        f"la projection dérive avec l'avancement du jour : {a['proj_end']} vs {b['proj_end']}")
+    assert a["cum_now"] != b["cum_now"], "le cumul, lui, DOIT suivre la journée réelle"
+
+
+def test_la_journee_en_cours_est_projetee_et_non_prise_pour_reference():
+    """
+    Tous les jours ouvrés écoulés sont renseignés à 400 € de CA — sans quoi les jours ouverts
+    au calendrier mais absents des données compteraient à −100 € de charges chacun et
+    fausseraient l'attendu (c'est ce qui a piégé la première version de ce test).
+
+    Marge 70 %, charges 100 € → 180 € d'EBITDA par jour plein. Aujourd'hui jeudi 9 juillet
+    n'est pas fini : il doit compter parmi les jours RESTANTS, pas parmi les références.
+    """
+    rows = _rows({"2026-07-02": (400.0, 40), "2026-07-03": (400.0, 40),
+                  "2026-07-04": (400.0, 40), "2026-07-05": (400.0, 40),
+                  "2026-07-06": (400.0, 40), "2026-07-09": (40.0, 4)})
+    s = app._month_series(rows, cout_jour=100.0, fallback_rate=0.70, today_real=date(2026, 7, 9))
+    from config import count_open_days_raw
+    restants = count_open_days_raw(date(2026, 7, 9), date(2026, 7, 31))
+    assert s["proj_end"] == round(5 * 180.0 + 180.0 * restants, 2), s["proj_end"]
+
+
+def test_sans_aucun_jour_plein_il_n_y_a_pas_de_projection():
+    """
+    Premier jour du mois, encore en cours : rien pour asseoir une moyenne. `None`, pas 0 —
+    un 0 se lirait « le mois finira à l'équilibre », c'est-à-dire une prévision.
+    """
+    s = app._month_series(_rows({"2026-07-01": (40.0, 4)}), cout_jour=100.0,
+                          fallback_rate=0.70, today_real=date(2026, 7, 1))
+    assert s["proj_end"] is None

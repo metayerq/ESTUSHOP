@@ -430,18 +430,6 @@ RETAIL_CAT_IDS       = {343071668, 343077316}   # Livres, Papeterie
 EXTRA_CAT_IDS        = set()   # fusionné dans Food (conservé pour compat imports)
 
 
-def upsell_rate(docs):
-    """% de tickets avec 2+ articles distincts (boissons+food = upsell réel)."""
-    if not docs:
-        return {"rate": 0, "multi": 0, "single": 0, "total": 0}
-    multi  = sum(1 for d in docs if len(d.get("items", [])) >= 2)
-    single = len(docs) - multi
-    return {
-        "rate":   round(multi / len(docs) * 100) if docs else 0,
-        "multi":  multi,
-        "single": single,
-        "total":  len(docs),
-    }
 
 
 def category_mix(docs, catalog):
@@ -478,92 +466,8 @@ def ticket_median(docs):
     return round(amounts[mid] if n % 2 else (amounts[mid-1] + amounts[mid]) / 2, 2)
 
 
-def best_weekday():
-    """Meilleur jour de la semaine sur tout l'historique disponible (90j)."""
-    from datetime import timedelta
-    from config import today_lisbon
-    today = today_lisbon()
-    since = (today - timedelta(days=90)).isoformat()
-    try:
-        raw = vendus("/documents/", {"since": since, "until": today.isoformat(), "status": "N"})
-        if not isinstance(raw, list):
-            raw = raw.get("docs", raw.get("data", []))
-    except Exception:
-        return None
-
-    from collections import defaultdict
-    import datetime as dt
-    by_weekday = defaultdict(lambda: {"ca": 0.0, "days": set()})
-    for d in raw:
-        if d.get("type") not in SALE_TYPES:
-            continue
-        day_str = d.get("date", "")
-        try:
-            day_obj = dt.date.fromisoformat(day_str)
-            wd = day_obj.strftime("%A")  # Monday, Tuesday…
-            by_weekday[wd]["ca"]   += float(d.get("amount_gross", 0))
-            by_weekday[wd]["days"].add(day_str)
-        except ValueError:
-            pass
-
-    if not by_weekday:
-        return None
-
-    WD_FR = {"Monday":"Lundi","Tuesday":"Mardi","Wednesday":"Mercredi",
-              "Thursday":"Jeudi","Friday":"Vendredi","Saturday":"Samedi","Sunday":"Dimanche"}
-    result = []
-    for wd, stats in by_weekday.items():
-        n = len(stats["days"])
-        result.append({
-            "day":     WD_FR.get(wd, wd),
-            "avg_ca":  round(stats["ca"] / n, 2) if n else 0,
-            "n_days":  n,
-        })
-    result.sort(key=lambda x: x["avg_ca"], reverse=True)
-    return result
 
 
-def wow_growth():
-    """Croissance semaine en cours vs semaine précédente (même 7 jours)."""
-    from datetime import timedelta
-    from config import today_lisbon
-    today = today_lisbon()
-    # Semaine en cours : 7 derniers jours
-    since_cur  = (today - timedelta(days=6)).isoformat()
-    # Semaine précédente : les 7 jours avant ça
-    since_prev = (today - timedelta(days=13)).isoformat()
-    until_prev = (today - timedelta(days=7)).isoformat()
-    try:
-        raw = vendus("/documents/", {
-            "since": since_prev, "until": today.isoformat(), "status": "N"
-        })
-        if not isinstance(raw, list):
-            raw = raw.get("docs", raw.get("data", []))
-    except Exception:
-        return None
-
-    cur_ca = prev_ca = 0.0
-    cur_nb = prev_nb = 0
-    for d in raw:
-        if d.get("type") not in SALE_TYPES:
-            continue
-        day = d.get("date", "")
-        ca  = float(d.get("amount_gross", 0))
-        if day >= since_cur:
-            cur_ca += ca; cur_nb += 1
-        elif day <= until_prev:
-            prev_ca += ca; prev_nb += 1
-
-    growth_ca = round((cur_ca - prev_ca) / prev_ca * 100) if prev_ca else None
-    growth_nb = round((cur_nb - prev_nb) / prev_nb * 100) if prev_nb else None
-    return {
-        "cur_ca":   round(cur_ca, 2),
-        "prev_ca":  round(prev_ca, 2),
-        "cur_nb":   cur_nb,
-        "prev_nb":  prev_nb,
-        "growth_ca": growth_ca,
-        "growth_nb": growth_nb,
-    }
 
 
 def ticket_distribution(docs):
@@ -988,93 +892,8 @@ def product_stats_from_docs(docs_with_items, catalog):
     return sorted(result, key=lambda x: x["revenue"], reverse=True)
 
 
-def product_stats_7d(since: str, until: str):
-    """CA total et nb jours vendus par produit sur la période (fallback avec appels API)."""
-    try:
-        raw = vendus("/documents/", {"since": since, "until": until, "status": "N"})
-        if not isinstance(raw, list):
-            raw = raw.get("docs", raw.get("data", []))
-        ft_ids = [d["id"] for d in raw if d.get("type") in SALE_TYPES]
-    except Exception:
-        return []
-
-    by_product = defaultdict(lambda: {"rev_ttc": 0.0, "rev_ht": 0.0, "qty": 0, "days": set()})
-
-    def fetch(doc_id):
-        try:
-            return vendus(f"/documents/{doc_id}/")
-        except Exception:
-            return None
-
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        details = list(pool.map(fetch, ft_ids))
-
-    for detail in details:
-        if not detail:
-            continue
-        day = detail.get("date", "")
-        for item in detail.get("items", []):
-            name    = item.get("title", "—").strip()
-            qty     = float(item.get("qty", 0))
-            amounts = item.get("amounts", {})
-            by_product[name]["rev_ttc"] += float(amounts.get("gross_total", 0))
-            by_product[name]["rev_ht"]  += float(amounts.get("net_total",   0))
-            by_product[name]["qty"]     += qty
-            by_product[name]["days"].add(day)
-
-    catalog = get_catalog()
-    result = []
-    for name, stats in by_product.items():
-        days_sold = len(stats["days"])
-        rev_ttc   = round(stats["rev_ttc"], 2)
-        rev_ht    = round(stats["rev_ht"],  2)
-        cat_info  = catalog.get(name)
-        cost_ht   = round(cat_info["cost"] * stats["qty"], 2) if cat_info and cat_info.get("cost") else None
-        margin    = round((rev_ht - cost_ht) / rev_ht * 100, 1) if rev_ht and cost_ht else None
-        result.append({
-            "name":       name,
-            "revenue":    rev_ttc,
-            "rev_ht":     rev_ht,
-            "qty":        int(stats["qty"]),
-            "days_sold":  days_sold,
-            "avg_day":    round(rev_ttc / days_sold, 2) if days_sold else 0,
-            "cost_ht":    cost_ht,
-            "margin_pct": margin,
-        })
-    return sorted(result, key=lambda x: x["revenue"], reverse=True)
 
 
-def weekly_sparkline(days=7):
-    """CA et nb transactions par jour sur les `days` derniers jours."""
-    from datetime import timedelta
-    from config import today_lisbon
-    today = today_lisbon()
-    since = (today - timedelta(days=days - 1)).isoformat()
-    until = today.isoformat()
-    try:
-        raw = vendus("/documents/", {"since": since, "until": until, "status": "N"})
-        if not isinstance(raw, list):
-            raw = raw.get("docs", raw.get("data", []))
-    except Exception:
-        return None   # échec API ≠ zéro vente — le front affiche un warning
-
-    by_day = defaultdict(lambda: {"ca": 0.0, "nb": 0})
-    for d in raw:
-        if d.get("type") in SALE_TYPES:
-            day = d.get("date", "")
-            by_day[day]["ca"] += float(d.get("amount_gross", 0))
-            by_day[day]["nb"] += 1
-
-    result = []
-    for i in range(days):
-        day = (today - timedelta(days=days - 1 - i)).isoformat()
-        result.append({
-            "date": day,
-            "label": (today - timedelta(days=days - 1 - i)).strftime("%a"),
-            "ca": round(by_day[day]["ca"], 2),
-            "nb": by_day[day]["nb"],
-        })
-    return result
 
 
 def top_products(docs, catalog=None, n=10):

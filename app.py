@@ -24,7 +24,7 @@ from vendus import (
     get_documents, get_documents_with_items, get_catalog, get_categories,
     calc_stats, hourly_breakdown, payment_breakdown, top_products, recent_docs,
     rush_detector, unsold_today, product_stats_from_docs,
-    tva_breakdown, service_tempo, upsell_rate, category_mix, ticket_median,
+    tva_breakdown, service_tempo, category_mix, ticket_median,
     daily_economics, cumulative_curve, ticket_distribution,
     daily_breakdown, create_category,
 )
@@ -231,11 +231,25 @@ def _month_series(rows_month, cout_jour, fallback_rate, today_real):
             ebitda = None
         days.append({"date": iso, "ebitda": ebitda, "cum": round(cum, 2), "open": is_open})
         cur += timedelta(1)
-    # Projection : moyenne des 7 derniers jours ouvrés × jours ouvrés restants
-    opened = [d["ebitda"] for d in days if d["ebitda"] is not None]
-    avg7   = sum(opened[-7:]) / len(opened[-7:]) if opened else 0
-    remaining = count_open_days_raw(today_real + timedelta(1), month_end)
-    proj = round(cum + avg7 * remaining, 2)
+    # ── Projection ───────────────────────────────────────────────────────────
+    # ⚠️ LA JOURNÉE EN COURS NE SERT PAS DE RÉFÉRENCE, ELLE EST PROJETÉE.
+    #
+    # `avg7` moyennait les 7 derniers jours ouvrés en y incluant aujourd'hui — dont l'EBITDA
+    # vaut une marge PARTIELLE moins les charges d'une journée ENTIÈRE. À 10 h, ce jour pesait
+    # environ −140 € dans la moyenne et faisait chuter la projection de plusieurs centaines
+    # d'euros, qui remontaient ensuite toutes seules au fil des heures. Une projection qui
+    # dérive sans qu'aucun fait nouveau ne survienne n'informe personne.
+    #
+    # La base ne retient donc que les jours PLEINS, et aujourd'hui bascule du côté des jours à
+    # projeter — c'est ce qu'il est réellement : une journée pas encore finie.
+    # `cum_now` garde aujourd'hui : c'est un constat, pas une prévision.
+    iso_today = today_real.isoformat()
+    full_days = [d for d in days if d["date"] != iso_today]
+    opened    = [d["ebitda"] for d in full_days if d["ebitda"] is not None]
+    avg7      = sum(opened[-7:]) / len(opened[-7:]) if opened else 0
+    cum_full  = round(sum(opened), 2)
+    remaining = count_open_days_raw(today_real, month_end)
+    proj = round(cum_full + avg7 * remaining, 2) if opened else None
     return {"days": days, "cum_now": round(cum, 2), "proj_end": proj,
             "cross_date": cross, "month_end": month_end.isoformat()}
 
@@ -878,11 +892,18 @@ def api_data():
             from config import count_open_days_raw as _odays
             _mend   = date.fromisoformat(month["month_end"])
             _mstart = today_real.replace(day=1)
+            # `ca_mtd` inclut aujourd'hui : c'est un CONSTAT, ce qui est déjà encaissé.
             ca_mtd  = round(sum(float(r.get("ca_ttc") or 0) for r in rows_month), 2)
-            _open_ca = [float(r.get("ca_ttc") or 0) for r in rows_month
-                        if (r.get("nb") or 0) > 0]
+            # La projection, elle, ne se règle QUE sur des jours pleins — même raison que dans
+            # _month_series : une journée en cours moyennée avec des journées finies tire la
+            # référence vers le bas puis la laisse remonter d'elle-même. Aujourd'hui rejoint
+            # donc les jours à projeter, pas ceux qui servent d'étalon.
+            _iso_today = today_real.isoformat()
+            _full    = [r for r in rows_month if r.get("day") != _iso_today]
+            _open_ca = [float(r.get("ca_ttc") or 0) for r in _full if (r.get("nb") or 0) > 0]
             _avg7   = sum(_open_ca[-7:]) / len(_open_ca[-7:]) if _open_ca else 0
-            _remain = _odays(today_real + timedelta(1), _mend)
+            _ca_full = round(sum(float(r.get("ca_ttc") or 0) for r in _full), 2)
+            _remain = _odays(today_real, _mend)
             # ⚠️ LE SEUIL DU MOIS SE MESURE SUR LE MOIS, PAS SUR LE FILTRE AFFICHÉ.
             # `eco["seuil_ca_ttc_jour"]` descend de la marge de la PÉRIODE SÉLECTIONNÉE. Cette
             # zone s'annonce pourtant « indépendante du preset », et le correctif posé plus haut
@@ -897,7 +918,8 @@ def api_data():
             _mtva    = (_mca_ttc / _mca_ht) if _mca_ht > 0 else (1 + TVA_MOYENNE_BLENDED)
             _sj = (_mcout / _mrate * _mtva) if (_mrate and _mcout) else None
             month["ca_mtd"]        = ca_mtd
-            month["proj_ca_end"]   = round(ca_mtd + _avg7 * _remain, 2)
+            month["proj_ca_end"]   = (round(_ca_full + _avg7 * _remain, 2)
+                                      if _open_ca else None)
             month["seuil_ca_month"] = (round(_sj * _odays(_mstart, _mend), 2)
                                        if _sj else None)
 
