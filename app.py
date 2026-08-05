@@ -961,6 +961,64 @@ def api_cron_refresh():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/summary/audit")
+def api_summary_audit():
+    """
+    Rapproche le cache `daily_summary` et Vendus, jour par jour. LECTURE SEULE — n'écrit rien.
+
+    Sert à retrouver les journées figées à mi-parcours par l'ancien défaut de /api/cashflow.
+    À ouvrir dans le navigateur ; la liste `days_to_rebuild` se recolle telle quelle dans
+    /api/summary/rebuild.
+
+    On interroge Vendus en vue LISTE (2 pages depuis l'ouverture) et non en vue détaillée
+    (~1250 appels) : le rapprochement porte sur `ca_ttc` et `nb`, qui suffisent à démasquer un
+    jour partiel, et que la vue liste donne déjà avec la bonne sémantique — `get_documents`
+    négative les avoirs.
+    """
+    from vendus import get_documents
+    from_iso = request.args.get("from", OPENING_DAY)
+    to_iso   = request.args.get("to", (date.today() - timedelta(1)).isoformat())
+    try:
+        from_date, to_date = date.fromisoformat(from_iso), date.fromisoformat(to_iso)
+    except ValueError:
+        return jsonify({"ok": False, "error": "dates attendues au format YYYY-MM-DD"}), 400
+    # Jamais le jour courant : il est partiel par nature, l'y inclure signalerait un faux écart.
+    to_date = min(to_date, date.today() - timedelta(1))
+    if from_date > to_date:
+        return jsonify({"ok": False, "error": "aucun jour plein dans la plage"}), 400
+
+    try:
+        docs = get_documents(from_date.isoformat(), to_date.isoformat())
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Vendus indisponible : {e}"}), 502
+
+    vendus_by_day = {}
+    for d in docs:
+        day = (d.get("date") or d.get("local_time", ""))[:10]
+        if not day:
+            continue
+        v = vendus_by_day.setdefault(day, {"ca_ttc": 0.0, "nb": 0})
+        v["ca_ttc"] += float(d.get("amount_gross") or 0)
+        if not d.get("_refund"):
+            v["nb"] += 1
+
+    cache_rows = _get_summaries(from_date.isoformat(), to_date.isoformat())
+    ecarts = _audit_summaries(cache_rows, vendus_by_day, from_date, to_date)
+
+    manque = round(sum(e["ecart_ca"] for e in ecarts if e["ecart_ca"] > 0), 2)
+    return jsonify({
+        "ok": True,
+        "from": from_date.isoformat(), "to": to_date.isoformat(),
+        "jours_controles": (to_date - from_date).days + 1,
+        "jours_en_ecart": len(ecarts),
+        "ca_manquant_dans_le_cache": manque,
+        "par_verdict": {v: sum(1 for e in ecarts if e["verdict"] == v)
+                        for v in ("partiel", "excedentaire", "manquant", "fantome")},
+        "days_to_rebuild": [e["day"] for e in ecarts],
+        "ecarts": ecarts,
+    })
+
+
 @app.route("/api/summary/rebuild", methods=["POST"])
 def api_summary_rebuild():
     """Recalcule le cache daily_summary (après changement de prix d'achat/recettes).
@@ -1794,6 +1852,56 @@ def _summarize_docs_items(docs, catalog):
 
 def _upsert_summary(day_iso, summary):
     _supa_upsert("daily_summary", {"day": day_iso, **summary})
+
+def _audit_summaries(cache_rows, vendus_by_day, from_date, to_date, tol=0.01):
+    """
+    Rapproche le cache `daily_summary` et Vendus, jour par jour. NE MODIFIE RIEN.
+
+    Sert à retrouver les journées figées à mi-parcours par l'ancien défaut de `/api/cashflow`,
+    qui écrivait le jour courant dans le cache — définitivement, puisqu'on ne reconstruit que
+    les jours manquants.
+
+    `vendus_by_day` : {jour_iso: {"ca_ttc": float, "nb": int}}, calculé avec EXACTEMENT la même
+    sémantique que `_summarize_docs_items` — les avoirs sont négativés dans le CA et exclus du
+    compte de tickets. Sans quoi le rapprochement signalerait des écarts qui n'en sont pas.
+
+    Quatre verdicts, parce que quatre causes distinctes :
+      · `partiel`      cache < Vendus — la signature du jour figé en cours de journée ;
+      · `excedentaire` cache > Vendus — un avoir émis après coup, ou une reconstruction ratée ;
+      · `manquant`     Vendus a des ventes, le cache n'a pas de ligne ;
+      · `fantome`      le cache a des ventes, Vendus n'en a aucune.
+    Un jour sans vente des deux côtés n'est pas un écart et n'apparaît pas.
+    """
+    by_day = {r["day"]: r for r in cache_rows if r.get("day")}
+    ecarts = []
+    cur = from_date
+    while cur <= to_date:
+        iso = cur.isoformat()
+        cur += timedelta(1)
+        v = vendus_by_day.get(iso)
+        c = by_day.get(iso)
+        v_ca, v_nb = (float(v["ca_ttc"]), int(v["nb"])) if v else (0.0, 0)
+        if c is None:
+            if v_nb or abs(v_ca) > tol:
+                ecarts.append({"day": iso, "verdict": "manquant", "cache_ca_ttc": None,
+                               "vendus_ca_ttc": round(v_ca, 2), "ecart_ca": round(v_ca, 2),
+                               "cache_nb": None, "vendus_nb": v_nb})
+            continue
+        c_ca, c_nb = float(c.get("ca_ttc") or 0), int(c.get("nb") or 0)
+        d_ca = round(v_ca - c_ca, 2)
+        if abs(d_ca) <= tol and c_nb == v_nb:
+            continue
+        if c_nb == 0 and abs(c_ca) <= tol:
+            verdict = "manquant"
+        elif v_nb == 0 and abs(v_ca) <= tol:
+            verdict = "fantome"
+        else:
+            verdict = "partiel" if d_ca > 0 else "excedentaire"
+        ecarts.append({"day": iso, "verdict": verdict,
+                       "cache_ca_ttc": round(c_ca, 2), "vendus_ca_ttc": round(v_ca, 2),
+                       "ecart_ca": d_ca, "cache_nb": c_nb, "vendus_nb": v_nb})
+    return ecarts
+
 
 def _tx_per_open_day(period_rows, from_date, to_date, today_real):
     """
