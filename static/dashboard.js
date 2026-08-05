@@ -144,6 +144,139 @@ async function loadData(force = false) {
 }
 
 // ── Rendu principal ───────────────────────────────────────────────────────────
+// ══ LE TRAJET ══════════════════════════════════ testé : tests/test_flux.js ══
+//
+// L'écran n'énonce pas un résultat, il le montre se construire : ce qui entre, ce qui sort,
+// ce qui reste. Chaque poste part du niveau atteint par le précédent — la cascade rend le
+// décalage visible là où quatre KPI côte à côte le laissaient à reconstituer de tête.
+//
+// ⚠️ LA MATIÈRE N'EST PAS `cogs_ht`. `cogs_ht` est le coût mesuré sur la seule part des ventes
+// dont on connaît le prix d'achat. Ce qui est réellement retranché du CA HT pour arriver à la
+// marge brute, c'est `ca_ht − marge_brute_ht` : le taux mesuré, appliqué à tout le CA. Les deux
+// coïncident quand la couverture est de 100 % et divergent sinon — soustraire `cogs_ht` ferait
+// atterrir la cascade ailleurs que sur l'EBITDA affiché juste à côté.
+//
+// La cascade est donc construite pour tomber SUR `ebitda_ht` par construction, et non sur une
+// somme recalculée qui pourrait dériver du chiffre du serveur.
+//
+// ⚠️ ET ELLE NE S'AFFICHE PAS À MOITIÉ. Sans marge mesurable ou sans charges connues, il n'y a
+// pas de trajet : on dit lequel manque. Une cascade avec un segment à zéro se lirait « ce poste
+// ne coûte rien ».
+
+function fluxSteps(eco) {
+  const num = v => (typeof v === 'number' && isFinite(v)) ? v : null;
+  const e = eco || {};
+  const caTtc = num(e.ca_ttc), caHt = num(e.ca_ht);
+  const marge = num(e.marge_brute_ht), ebitda = num(e.ebitda_ht);
+  const fixe  = num(e.cout_fixe_periode)  ?? num(e.cout_fixe_jour);
+  const perso = num(e.cout_perso_periode) ?? num(e.cout_perso_jour);
+
+  if (!caTtc || caTtc <= 0)  return { ok: false, reason: 'no-sales' };
+  if (caHt === null)         return { ok: false, reason: 'no-net' };
+  if (marge === null)        return { ok: false, reason: 'no-margin' };
+  if (fixe === null || perso === null || (fixe + perso) <= 0)
+                             return { ok: false, reason: 'no-costs' };
+  if (ebitda === null)       return { ok: false, reason: 'no-ebitda' };
+
+  const est = e.marge_is_estimated === true;
+  const steps = [
+    { key: 'revenue',  label: 'CA TTC',      amount: caTtc,        after: caTtc, kind: 'in'  },
+    { key: 'vat',      label: '− TVA',       amount: caTtc - caHt, after: caHt,  kind: 'tax' },
+    { key: 'cogs',     label: '− matière',   amount: caHt - marge, after: marge, kind: 'out', estimated: est },
+    { key: 'fixed',    label: '− charges',   amount: fixe,         after: marge - fixe,        kind: 'out' },
+    { key: 'staff',    label: '− personnel', amount: perso,        after: marge - fixe - perso, kind: 'out' },
+  ];
+
+  // Le dernier palier DOIT être l'EBITDA du serveur. S'il ne l'est pas, un poste manque au
+  // modèle : mieux vaut ne rien dessiner que dessiner une cascade qui ment d'un écart muet.
+  if (Math.abs(steps[steps.length - 1].after - ebitda) > 0.02)
+    return { ok: false, reason: 'mismatch', drift: steps[steps.length - 1].after - ebitda };
+
+  const top = caTtc, bottom = Math.min(0, ebitda), span = (top - bottom) || 1;
+  const pct = v => (v / span) * 100;
+  const laid = steps.map((s, i) => {
+    const from = i === 0 ? 0 : steps[i - 1].after;
+    const to   = s.after;
+    return { ...s,
+      left:  i === 0 ? 0 : pct(top - from),
+      width: i === 0 ? pct(s.amount) : pct(from - to) };
+  });
+
+  return { ok: true, steps: laid, ebitda, estimated: est,
+           zeroPct: pct(top), coverage: num(e.cogs_coverage_pct) };
+}
+
+function renderFlux(d) {
+  const el = document.getElementById('flux');
+  if (!el) return;
+  const f = fluxSteps(d && d.economics);
+  const scope = d && d.period_label ? d.period_label : '';
+
+  if (!f.ok) {
+    const why = {
+      'no-sales':  'aucune vente sur la période.',
+      'no-net':    'le CA hors taxes est indisponible.',
+      'no-margin': 'le coût matière n’est pas mesurable — complète les fiches recettes.',
+      'no-costs':  'les charges sont indisponibles — vérifie l’onglet Costs.',
+      'no-ebitda': 'le résultat n’est pas calculable.',
+      'mismatch':  'les postes ne se recomposent pas en EBITDA — un coût manque au modèle.',
+    }[f.reason] || 'données insuffisantes.';
+    el.innerHTML = `<div class="flux-head"><span class="flux-title">Le trajet</span>
+        <span class="flux-scope">${scope}</span></div>
+      <div class="flux-empty">Pas de trajet à tracer : ${why}</div>`;
+    return;
+  }
+
+  const colour = { in: 'var(--flux-keep)', tax: 'var(--flux-tax)', out: 'var(--flux-leave)' };
+  const rows = f.steps.map(s => `
+    <div class="flux-row">
+      <span class="flux-label">${s.label}</span>
+      <span class="flux-track">
+        <span class="flux-seg${s.estimated ? ' is-estimated' : ''}"
+              style="left:${s.left}%;width:${s.width}%;background:${colour[s.kind]}"></span>
+      </span>
+      <span class="flux-amount${s.kind === 'in' ? '' : ' dim'}">${s.kind === 'in' ? '' : '−'}${fmt(s.amount)}</span>
+    </div>`).join('');
+
+  const neg = f.ebitda < 0;
+  const ebW = Math.abs((f.ebitda / (f.steps[0].amount - Math.min(0, f.ebitda))) * 100);
+  const ebLeft = neg ? f.zeroPct : f.zeroPct - ebW;
+  const total = `
+    <div class="flux-row is-total">
+      <span class="flux-label">= EBITDA</span>
+      <span class="flux-track"><span class="flux-zero" style="left:${f.zeroPct}%"></span>
+        <span class="flux-seg" style="left:${ebLeft}%;width:${ebW}%;
+              background:${neg ? 'var(--flux-neg)' : 'var(--flux-keep)'}"></span></span>
+      <span class="flux-amount${neg ? ' neg' : ''}">${fmt(f.ebitda)}</span>
+    </div>`;
+
+  // La lecture, écrite. Le graphique montre le décalage ; la phrase nomme le poste qui pèse.
+  const matiere = f.steps.find(s => s.key === 'cogs');
+  const charges = f.steps.filter(s => s.kind === 'out' && s.key !== 'cogs')
+                         .reduce((a, s) => a + s.amount, 0);
+  const verdict = neg
+    ? `Il manque <b>${fmt(-f.ebitda)}</b> pour couvrir la période.`
+    : `La période dégage <b>${fmt(f.ebitda)}</b>.`;
+  const poids = matiere.amount < charges
+    ? `La matière pèse <b>${fmt(matiere.amount)}</b>, les charges <b>${fmt(charges)}</b>.`
+    : `La matière pèse <b>${fmt(matiere.amount)}</b>, plus que les <b>${fmt(charges)}</b> de charges.`;
+  const reserve = f.estimated
+    ? ` <span class="est">La matière est extrapolée : le coût n’est connu que sur ${f.coverage}% des ventes.</span>`
+    : '';
+
+  el.innerHTML = `
+    <div class="flux-head"><span class="flux-title">Le trajet</span>
+      <span class="flux-scope">${scope}</span></div>
+    <div class="flux-rows">${rows}${total}</div>
+    <div class="flux-note">${poids} ${verdict}${reserve}</div>
+    <div class="flux-legend">
+      <span><i style="background:var(--flux-keep)"></i>ce qui reste</span>
+      <span><i style="background:var(--flux-leave)"></i>ce qui sort</span>
+      <span><i style="background:var(--flux-tax)"></i>TVA</span>
+      ${f.estimated ? '<span><i class="flux-seg is-estimated" style="background:var(--flux-leave)"></i>extrapolé</span>' : ''}
+    </div>`;
+}
+
 function render(d) {
   // Bandeau warnings — sources de données en échec
   const warnBanner = document.getElementById('warn-banner');
@@ -237,8 +370,19 @@ function render(d) {
     }
     perDayEl.innerHTML = `<strong style="color:var(--text)">${fmt(caDay)}</strong>`
       + `<span style="color:var(--faint);font-size:11px;"> / open day</span>${verdict}`;
-    nbPerDayEl.innerHTML = `<strong style="color:var(--text)">${Math.round(d.today.nb / openDays)}</strong>`
-      + `<span style="color:var(--faint);font-size:11px;"> tickets / open day</span>`;
+    // ⚠️ Calculé par le serveur (_tx_per_open_day), plus ici. La division faite à cet endroit
+    // comptait la journée EN COURS des deux côtés : un vendredi matin, trois tickets face à un
+    // jour ouvré entier faisaient chuter la moyenne d'un tiers, qui remontait ensuite toute
+    // seule au fil des heures. Le serveur ne retient que les jours pleins et sait répondre
+    // « on ne sait pas » quand il n'y en a aucun — un 0 se lirait « aucune transaction ».
+    const tx = d.basket && d.basket.tx_per_open_day;
+    nbPerDayEl.innerHTML = tx != null
+      ? `<strong style="color:var(--text)">${tx}</strong>`
+        + `<span style="color:var(--faint);font-size:11px;"> tickets / open day`
+        + ` · ${d.basket.tx_basis_days} j pleins</span>`
+      : `<span style="color:var(--muted)">—</span>`
+        + `<span style="color:var(--faint);font-size:11px;"> tickets / open day`
+        + ` · ${(d.basket && d.basket.tx_basis_reason) || 'indisponible'}</span>`;
   } else {
     perDayEl.innerHTML = '';
     nbPerDayEl.innerHTML = '';
@@ -282,6 +426,7 @@ function render(d) {
   // de d.week (7 derniers jours) : dernier point = aujourd'hui, jour ouvré
   // précédent = dernier point antérieur avec des ventes.
   renderTodayStrip(d);
+  renderFlux(d);
 
   // (Barre "Break-even N tx/day" supprimée : constante BP statique, redondante
   //  et parfois contradictoire avec le seuil CA réel affiché dans Economics.)
@@ -301,7 +446,10 @@ function render(d) {
   document.getElementById('eco-marge-label').textContent   = 'Gross margin';
 
   const eco = d.economics;
-  if (eco) {
+  // Bloc économie isolé dans une fonction immédiate : le cas « aucun jour ouvré »
+  // sort par un `return`, qui ne doit interrompre QUE cette zone — pas le rendu des
+  // produits et des transactions qui suit.
+  if (eco) (() => {
     // Marge brute — 100% COGS réel, avec taux de couverture
     document.getElementById('eco-marge').textContent = eco.marge_brute_ht != null ? fmt(eco.marge_brute_ht) : '—';
     if (eco.marge_brute_ht != null) {
@@ -329,7 +477,25 @@ function render(d) {
     }
 
     // Charges — utilise les totaux période et open_days (pas n_days calendaires)
-    document.getElementById('eco-charges').textContent = fmt(eco.cout_total_periode ?? eco.cout_total_jour);
+    // ⚠️ `?? cout_total_jour` REFERAIT LE BUG. Le serveur renvoie désormais `null` quand la
+    // période ne contient aucun jour ouvré — un mardi-mercredi, café fermé. Le repli sur le
+    // coût JOURNALIER y réafficherait les ~197 € que la correction serveur venait justement
+    // de retirer. Sans jour ouvré, il n'y a rien à imputer : on le dit.
+    const chargesEl = document.getElementById('eco-charges');
+    if (eco.open_days === 0) {
+      chargesEl.textContent = '—';
+      document.getElementById('eco-charges-sub').innerHTML =
+        '<span style="color:var(--muted)">aucun jour d\'ouverture sur la période</span>';
+      document.getElementById('eco-prime').textContent = '—';
+      document.getElementById('eco-prime-sub').innerHTML =
+        '<span style="color:var(--muted)">—</span>';
+      document.getElementById('eco-prime-bar').innerHTML = '';
+      document.getElementById('eco-seuil').textContent = '—';
+      document.getElementById('eco-seuil-sub').innerHTML =
+        '<span style="color:var(--muted)">pas de point mort sans jour ouvré</span>';
+      return;
+    }
+    chargesEl.textContent = fmt(eco.cout_total_periode ?? eco.cout_total_jour);
     const openDays = eco.open_days || d.n_days;
     const chargesSub = d.is_single_day
       ? `Fixed ${fmt(eco.cout_fixe_periode ?? eco.cout_fixe_jour)} · Staff ${fmt(eco.cout_perso_periode ?? eco.cout_perso_jour)}`
@@ -341,16 +507,30 @@ function render(d) {
     const primeEl = document.getElementById('eco-prime');
     const primeSub = document.getElementById('eco-prime-sub');
     const primeBar = document.getElementById('eco-prime-bar');
-    if (eco.ca_ht > 0 && eco.cogs_ht != null && primePerso != null) {
-      const prime = (eco.cogs_ht + primePerso) / eco.ca_ht * 100;
-      const cogsPct = eco.marge_brute_ht_pct != null ? (100 - eco.marge_brute_ht_pct) : (eco.cogs_ht / eco.ca_ht * 100);
+    // ⚠️ LE TITRE ET SON SOUS-TEXTE PARLAIENT DE DEUX COGS DIFFÉRENTS.
+    //
+    // Le chiffre utilisait `cogs_ht`, mesuré sur la seule part des ventes dont le coût est
+    // connu ; le sous-texte affichait `100 − marge_brute_ht_pct`, le taux extrapolé à tout le
+    // CA. À 60 % de couverture, le titre annonçait 48 % en vert pendant que sa propre ligne du
+    // dessous additionnait 30 + 30 = 60 %, au-delà de la cible. Le prime cost était sous-estimé
+    // exactement du déficit de couverture, et jamais marqué comme estimé.
+    //
+    // On prend maintenant la matière extrapolée des deux côtés — la même que la cascade Flux :
+    // ca_ht − marge_brute_ht. Les deux lignes disent enfin le même nombre.
+    const primeMatiere = (eco.marge_brute_ht != null) ? (eco.ca_ht - eco.marge_brute_ht) : null;
+    if (eco.ca_ht > 0 && primeMatiere != null && primePerso != null) {
+      const prime   = (primeMatiere + primePerso) / eco.ca_ht * 100;
+      const cogsPct = primeMatiere / eco.ca_ht * 100;
       const labPct  = primePerso / eco.ca_ht * 100;
+      const est     = eco.marge_is_estimated === true;
       primeEl.textContent = prime.toFixed(1) + '%';
-      primeEl.style.color = prime <= 67 ? 'var(--green)' : prime <= 75 ? '#b07d00' : 'var(--red)';
-      primeSub.innerHTML = `COGS ${cogsPct.toFixed(0)}% · Labour ${labPct.toFixed(0)}% <span style="color:var(--faint)">· target &lt;65%</span>`;
+      primeEl.style.color = prime <= 67 ? 'var(--green)' : prime <= 75 ? 'var(--amber)' : 'var(--red)';
+      primeSub.innerHTML = `COGS ${cogsPct.toFixed(0)}% · Labour ${labPct.toFixed(0)}%`
+        + (est ? ` <span style="color:var(--amber)">· matière extrapolée sur ${eco.cogs_coverage_pct}% des ventes</span>` : '')
+        + ` <span style="color:var(--faint)">· target &lt;65%</span>`;
       primeBar.innerHTML =
-        `<div style="width:${Math.min(100,cogsPct)}%;background:#2554C7;"></div>` +
-        `<div style="width:${Math.min(100,labPct)}%;background:rgba(37,84,199,.35);"></div>`;
+        `<div style="width:${Math.min(100,cogsPct)}%;background:var(--flux-leave);"></div>` +
+        `<div style="width:${Math.min(100,labPct)}%;background:var(--flux-tax);"></div>`;
     } else {
       primeEl.textContent = '—'; primeEl.style.color = 'var(--text)';
       primeSub.innerHTML = '<span style="color:var(--muted)">not measurable</span>';
@@ -402,7 +582,7 @@ function render(d) {
     } else {
       avgEl.innerHTML = '';
     }
-  }
+  })();
 
   // ── Insights visuels ──────────────────────────────────────────────────────
   try { renderInsights(d); } catch(e) { console.error('insights', e); }
@@ -802,24 +982,32 @@ function renderInsights(d) {
   if (m && m.days && m.days.length) {
     const opens = m.days.filter(x => x.open);
     const pts   = opens.map(x => x.cum);
-    const allVals = pts.concat([m.proj_end, 0]);
+    // ⚠️ `proj_end` peut valoir null : aucun jour PLEIN dans le mois, donc rien pour asseoir
+    // une moyenne. fmt(null) rendrait « €0.00 projected by month end » — une prévision
+    // fabriquée, exactement ce que le serveur refuse désormais d'affirmer.
+    const hasProj = m.proj_end != null;
+    const allVals = pts.concat(hasProj ? [m.proj_end, 0] : [0]);
     const lo = Math.min(...allVals), hi = Math.max(...allVals);
     const W = 600, H = 100, span = (hi - lo) || 1;
     const y = v => 8 + (H - 16) * (1 - (v - lo) / span);
     const n = opens.length;
     const x = i => n > 1 ? (i / (n - 1)) * (W * 0.72) : 0;
     const path = pts.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-    const projPath = `M${x(n - 1).toFixed(1)},${y(pts[n - 1]).toFixed(1)} L${W - 4},${y(m.proj_end).toFixed(1)}`;
+    const projPath = hasProj
+      ? `M${x(n - 1).toFixed(1)},${y(pts[n - 1]).toFixed(1)} L${W - 4},${y(m.proj_end).toFixed(1)}`
+      : '';
     document.getElementById('ins-month').innerHTML = `
       <div class="ins-label">Month EBITDA — cumulative + projection</div>
       <svg class="ins-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
         <line x1="0" y1="${y(0).toFixed(1)}" x2="${W}" y2="${y(0).toFixed(1)}" stroke="var(--border)" stroke-width="1.5"/>
-        <path d="${path}" fill="none" stroke="#2554C7" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-        <path d="${projPath}" fill="none" stroke="rgba(37,84,199,.45)" stroke-width="2.5" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>
+        <path d="${path}" fill="none" stroke="var(--flux-keep)" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+        ${hasProj ? `<path d="${projPath}" fill="none" stroke="var(--flux-leave)" stroke-width="2.5" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>` : ''}
       </svg>
       <div class="ins-sub">
         MTD <strong style="color:${m.cum_now >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.cum_now)}</strong>
-        · projected <strong style="color:${m.proj_end >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.proj_end)}</strong> by month end
+        · ${hasProj
+            ? `projected <strong style="color:${m.proj_end >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.proj_end)}</strong> by month end`
+            : `<span style="color:var(--muted)">pas encore de jour plein ce mois-ci — aucune projection</span>`}
         ${m.cross_date ? ` · crossed €0 on ${new Date(m.cross_date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short'})}` : ''}
       </div>
       ${m.proj_ca_end != null ? `

@@ -85,7 +85,12 @@
 .overlay { position:fixed; inset:0; background:rgba(20,18,14,.34); z-index:100; opacity:0; pointer-events:none;
   transition:opacity .18s; }
 .overlay.show { opacity:1; pointer-events:auto; }
-.modal { position:fixed; z-index:101; top:50%; left:50%; transform:translate(-50%,-48%); width:min(520px,94vw);
+/* ⚠️ 102, AU-DESSUS DU TIROIR (101). Les deux étaient à 101 : à égalité de z-index, c'est
+   l'ordre du DOM qui tranche, et le tiroir est déclaré après le modal. Il passait donc
+   par-dessus. Sur téléphone le tiroir fait 96vw : le modal d'édition s'ouvrait intégralement
+   derrière lui et le bouton « Éditer » semblait ne rien faire. Le handler ferme désormais le
+   tiroir avant d'ouvrir le modal ; cet écart de z-index est la ceinture. */
+.modal { position:fixed; z-index:102; top:50%; left:50%; transform:translate(-50%,-48%); width:min(520px,94vw);
   max-height:90vh; overflow:auto; background:var(--bg-card); border:1px solid var(--border); border-radius:14px;
   padding:22px 24px; opacity:0; pointer-events:none; transition:all .18s; }
 .modal.show { opacity:1; pointer-events:auto; transform:translate(-50%,-50%); }
@@ -712,7 +717,15 @@ $('m-cancel').onclick = closeModal;
 $('m-save').onclick = saveEvent;
 $('m-delete').onclick = ()=> deleteEvent($('m-id').value);
 $('d-close').onclick = closeDrawer;
-$('d-edit').onclick = ()=>{ const e=events.find(x=>x.id===selectedId); if(e) openModal(e); };
+// L'événement est capturé AVANT closeDrawer() : celui-ci remet selectedId à null, donc
+// chercher après ne trouverait plus rien. Fermer le tiroir est nécessaire, pas cosmétique —
+// il recouvrait le modal (voir la note sur les z-index plus haut).
+$('d-edit').onclick = ()=>{
+  const e = events.find(x=>x.id===selectedId);
+  if(!e) return;
+  closeDrawer();
+  openModal(e);
+};
 $('d-delete').onclick = ()=>{ if(selectedId) deleteEvent(selectedId); };
 $('d-delete-series').onclick = ()=>{ if(selectedId) deleteSeries(selectedId); };
 $('d-task-add').onclick = addTask;

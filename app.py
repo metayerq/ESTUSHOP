@@ -12,15 +12,19 @@ import json
 import hmac
 import time
 import hashlib
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta, datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
+
+# « Aujourd'hui » et « maintenant » au sens du café (Europe/Lisbon), jamais
+# l'horloge UTC du serveur Vercel. Voir config.py pour le pourquoi.
+from config import today_lisbon, now_lisbon, TVA_MOYENNE_BLENDED
 
 from flask import Flask, jsonify, render_template, request, redirect, make_response, g
 from vendus import (
     get_documents, get_documents_with_items, get_catalog, get_categories,
     calc_stats, hourly_breakdown, payment_breakdown, top_products, recent_docs,
     rush_detector, unsold_today, product_stats_from_docs,
-    tva_breakdown, service_tempo, upsell_rate, category_mix, ticket_median,
+    tva_breakdown, service_tempo, category_mix, ticket_median,
     daily_economics, cumulative_curve, ticket_distribution,
     daily_breakdown, create_category,
 )
@@ -34,6 +38,17 @@ _TODAY_DOCS_CACHE = {"ts": 0.0, "day": None, "docs": None}
 _TODAY_TTL      = 45      # mémoire (même instance lambda)
 _SUPA_CACHE_MAX = 600     # fraîcheur acceptée de la ligne Supabase (10 min)
 
+def _utc_iso():
+    """Horodatage TECHNIQUE : l'instant courant en UTC explicite, suffixe Z.
+
+    Réservé à ce qui est écrit en base pour mesurer une ancienneté ou ordonner
+    (fraîcheur d'un cache, `updated_at`, `done_at`). Ces valeurs ne sont pas des
+    dates métier : les convertir en heure locale les rendrait ambiguës deux fois
+    par an, à la bascule d'heure. Tout ce qui répond à « quel jour est-on ? » ou
+    « quelle heure affiche-t-on ? » passe au contraire par today_lisbon/now_lisbon.
+    """
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
 def _iso_age_seconds(iso):
     """Âge en secondes d'un timestamp ISO Supabase ; +inf si illisible."""
     if not iso:
@@ -41,8 +56,11 @@ def _iso_age_seconds(iso):
     try:
         s = iso.replace("Z", "+00:00")
         dt = datetime.fromisoformat(s)
-        from datetime import timezone
-        now = datetime.now(timezone.utc) if dt.tzinfo else datetime.now()
+        # Timestamp sans fuseau : il vient forcément d'une écriture UTC (c'est
+        # l'invariant de _utc_iso), donc on le compare à une horloge UTC — pas
+        # à l'horloge locale du process, qui n'est UTC que par accident.
+        now = (datetime.now(timezone.utc) if dt.tzinfo
+               else datetime.now(timezone.utc).replace(tzinfo=None))
         return (now - dt).total_seconds()
     except Exception:
         return float("inf")
@@ -50,19 +68,19 @@ def _iso_age_seconds(iso):
 def _refresh_today_cache():
     """Fetch live des docs du jour + écriture mémoire ET Supabase. Appelé par
     le cron et en dernier recours par une requête si le cache est périmé."""
-    today_iso = date.today().isoformat()
+    today_iso = today_lisbon().isoformat()
     docs = get_documents_with_items(today_iso, today_iso)
     _TODAY_DOCS_CACHE.update(ts=time.time(), day=today_iso, docs=docs)
     try:
         _supa_upsert("live_docs_cache", {
-            "day": today_iso, "docs": docs, "updated_at": datetime.utcnow().isoformat() + "Z",
+            "day": today_iso, "docs": docs, "updated_at": _utc_iso(),
         })
     except Exception:
         pass   # l'écriture cache ne doit jamais casser la requête
     return docs
 
 def _get_today_docs_cached(force=False):
-    today_iso = date.today().isoformat()
+    today_iso = today_lisbon().isoformat()
     c = _TODAY_DOCS_CACHE
     # 1) mémoire fraîche (même instance)
     if (not force and c["docs"] is not None and c["day"] == today_iso
@@ -117,7 +135,7 @@ def _heatmap_payload_cached(today_real, force=False):
         try:
             _supa_upsert("kv_cache", {
                 "key": key, "value": payload,
-                "updated_at": datetime.utcnow().isoformat() + "Z",
+                "updated_at": _utc_iso(),
             })
         except Exception:
             pass   # l'écriture cache ne doit jamais casser la requête
@@ -132,7 +150,7 @@ def _heatmap_payload_cached(today_real, force=False):
 
 def _warm_heatmap_cache():
     """Appelé par le cron : recalcule et persiste la heatmap du jour."""
-    return _heatmap_payload_cached(date.today(), force=True) is not None
+    return _heatmap_payload_cached(today_lisbon(), force=True) is not None
 
 
 # ── Insights helpers (visuels dashboard) ─────────────────────────────────────
@@ -213,11 +231,25 @@ def _month_series(rows_month, cout_jour, fallback_rate, today_real):
             ebitda = None
         days.append({"date": iso, "ebitda": ebitda, "cum": round(cum, 2), "open": is_open})
         cur += timedelta(1)
-    # Projection : moyenne des 7 derniers jours ouvrés × jours ouvrés restants
-    opened = [d["ebitda"] for d in days if d["ebitda"] is not None]
-    avg7   = sum(opened[-7:]) / len(opened[-7:]) if opened else 0
-    remaining = count_open_days_raw(today_real + timedelta(1), month_end)
-    proj = round(cum + avg7 * remaining, 2)
+    # ── Projection ───────────────────────────────────────────────────────────
+    # ⚠️ LA JOURNÉE EN COURS NE SERT PAS DE RÉFÉRENCE, ELLE EST PROJETÉE.
+    #
+    # `avg7` moyennait les 7 derniers jours ouvrés en y incluant aujourd'hui — dont l'EBITDA
+    # vaut une marge PARTIELLE moins les charges d'une journée ENTIÈRE. À 10 h, ce jour pesait
+    # environ −140 € dans la moyenne et faisait chuter la projection de plusieurs centaines
+    # d'euros, qui remontaient ensuite toutes seules au fil des heures. Une projection qui
+    # dérive sans qu'aucun fait nouveau ne survienne n'informe personne.
+    #
+    # La base ne retient donc que les jours PLEINS, et aujourd'hui bascule du côté des jours à
+    # projeter — c'est ce qu'il est réellement : une journée pas encore finie.
+    # `cum_now` garde aujourd'hui : c'est un constat, pas une prévision.
+    iso_today = today_real.isoformat()
+    full_days = [d for d in days if d["date"] != iso_today]
+    opened    = [d["ebitda"] for d in full_days if d["ebitda"] is not None]
+    avg7      = sum(opened[-7:]) / len(opened[-7:]) if opened else 0
+    cum_full  = round(sum(opened), 2)
+    remaining = count_open_days_raw(today_real, month_end)
+    proj = round(cum_full + avg7 * remaining, 2) if opened else None
     return {"days": days, "cum_now": round(cum, 2), "proj_end": proj,
             "cross_date": cross, "month_end": month_end.isoformat()}
 
@@ -463,7 +495,7 @@ def api_data():
     start_arg = request.args.get("start_date", "")
     end_arg   = request.args.get("end_date", "")
 
-    today_real = date.today()
+    today_real = today_lisbon()
 
     from_date = to_date = None
     if preset == "custom" and start_arg and end_arg:
@@ -509,10 +541,19 @@ def api_data():
         comp_from, comp_to = from_date - timedelta(7), to_date - timedelta(7)
         comp_label = "vs same days last week"
     elif preset == "month":
-        prev_last = from_date - timedelta(1)               # dernier jour du mois précédent
-        comp_from = prev_last.replace(day=1)
-        comp_to   = comp_from + timedelta(min(n_days, prev_last.day) - 1)
-        comp_label = "vs same days last month"
+        # ⚠️ ALIGNÉ SUR LES JOURS DE SEMAINE, PAS SUR LE QUANTIÈME.
+        #
+        # L'ancienne version comparait le 1er-5 août au 1er-5 juillet. Or le café ouvre lundi,
+        # jeudi, vendredi, samedi, dimanche : au 5 août 2026 cela opposait sam/dim/lun (3 jours
+        # ouvrés) à mer/jeu/ven/sam/dim (4 jours ouvrés). Ni les mêmes jours, ni le même nombre.
+        # Le commentaire juste au-dessus affirme pourtant que ces fenêtres sont « alignées sur
+        # la saisonnalité hebdo » — c'était vrai des autres branches, pas de celle-ci.
+        #
+        # Reculer de 4 semaines pleines préserve exactement le jour de semaine de chaque date,
+        # et retombe dans le mois précédent dans tous les cas utiles. On ne recule PAS d'un mois
+        # calendaire : c'est ce décalage-là qui produisait la comparaison bancale.
+        comp_from, comp_to = from_date - timedelta(28), to_date - timedelta(28)
+        comp_label = "vs same weekdays, 4 weeks earlier"
     else:
         comp_label = f"vs previous {n_days} days"
 
@@ -559,7 +600,9 @@ def api_data():
             docs = get_documents(prev.isoformat(), prev.isoformat()) or []
         except Exception:
             return None
-        now_hms = datetime.now().strftime("%H:%M:%S")
+        # `local_time` Vendus est en heure de Lisbonne : couper à une heure UTC
+        # offrirait une heure de ventes en plus au jour de comparaison.
+        now_hms = now_lisbon().strftime("%H:%M:%S")
         docs = [d for d in docs if (d.get("local_time", "") or "")[11:19] <= now_hms]
         return {"date": prev.isoformat(), **calc_stats(docs)}
 
@@ -594,7 +637,7 @@ def api_data():
         # Vue "aujourd'hui" : ne garder du jour de comparaison que ce qui a été
         # vendu avant l'heure courante → comparaison à périmètre horaire égal.
         if comp_is_sofar and docs_comp:
-            now_hms = datetime.now().strftime("%H:%M:%S")
+            now_hms = now_lisbon().strftime("%H:%M:%S")   # cf. local_time Vendus
             docs_comp = [d for d in docs_comp
                          if (d.get("local_time", "") or "")[11:19] <= now_hms]
 
@@ -677,21 +720,15 @@ def api_data():
 
     # Meilleur jour de la semaine — historique complet depuis le cache
     older = _get_summaries(OPENING_DAY, (today_real - timedelta(15)).isoformat())
+    # ⚠️ AUJOURD'HUI N'ENTRE PAS DANS LA MOYENNE PAR JOUR DE SEMAINE.
+    # Il y était ajouté dès qu'il portait un ticket : un lundi consulté à 10 h avec 80 € au
+    # compteur comptait comme un lundi COMPLET. Avec neuf lundis pleins à 400 € de moyenne, le
+    # dixième partiel affichait 368 € — et la moyenne remontait d'elle-même dans la journée.
+    # C'est le même défaut que les projections, et la médiane par jour de semaine (plus bas)
+    # excluait déjà aujourd'hui : les deux indicateurs se contredisaient sur les mêmes données.
     wd_rows = (older if isinstance(older, list) else []) + rows_hist
-    if ts["nb"]:
-        wd_rows = wd_rows + [{"day": today_iso, "ca_ttc": ts["ca"], "nb": ts["nb"]}]
-    by_wd = {}
-    for r in wd_rows:
-        if (r.get("nb") or 0) <= 0:
-            continue
-        wd  = date.fromisoformat(r["day"]).strftime("%A")
-        acc = by_wd.setdefault(wd, {"ca": 0.0, "n": 0})
-        acc["ca"] += float(r.get("ca_ttc") or 0)
-        acc["n"]  += 1
-    weekday_data = sorted(
-        [{"day": wd, "avg_ca": round(v["ca"] / v["n"], 2), "n_days": v["n"]}
-         for wd, v in by_wd.items()],
-        key=lambda x: -x["avg_ca"]) or None
+    wd_rows = [r for r in wd_rows if r.get("day") != today_iso]
+    weekday_data = _weekday_averages(wd_rows, today_iso)
 
     result = {
         # Méta
@@ -704,7 +741,7 @@ def api_data():
         "is_single_day": is_single,
         "has_items":     True,
         "date":          to_date.isoformat(),
-        "updated_at":    datetime.now().strftime("%H:%M"),
+        "updated_at":    now_lisbon().strftime("%H:%M"),   # lu par un humain à Lisbonne
         "is_today":      (preset == "today"),
         # Comparaison : libellé + mode "à la même heure" (vue aujourd'hui live)
         "comp_label":    comp_label,
@@ -849,14 +886,34 @@ def api_data():
             from config import count_open_days_raw as _odays
             _mend   = date.fromisoformat(month["month_end"])
             _mstart = today_real.replace(day=1)
+            # `ca_mtd` inclut aujourd'hui : c'est un CONSTAT, ce qui est déjà encaissé.
             ca_mtd  = round(sum(float(r.get("ca_ttc") or 0) for r in rows_month), 2)
-            _open_ca = [float(r.get("ca_ttc") or 0) for r in rows_month
-                        if (r.get("nb") or 0) > 0]
+            # La projection, elle, ne se règle QUE sur des jours pleins — même raison que dans
+            # _month_series : une journée en cours moyennée avec des journées finies tire la
+            # référence vers le bas puis la laisse remonter d'elle-même. Aujourd'hui rejoint
+            # donc les jours à projeter, pas ceux qui servent d'étalon.
+            _iso_today = today_real.isoformat()
+            _full    = [r for r in rows_month if r.get("day") != _iso_today]
+            _open_ca = [float(r.get("ca_ttc") or 0) for r in _full if (r.get("nb") or 0) > 0]
             _avg7   = sum(_open_ca[-7:]) / len(_open_ca[-7:]) if _open_ca else 0
-            _remain = _odays(today_real + timedelta(1), _mend)
-            _sj     = eco.get("seuil_ca_ttc_jour")
+            _ca_full = round(sum(float(r.get("ca_ttc") or 0) for r in _full), 2)
+            _remain = _odays(today_real, _mend)
+            # ⚠️ LE SEUIL DU MOIS SE MESURE SUR LE MOIS, PAS SUR LE FILTRE AFFICHÉ.
+            # `eco["seuil_ca_ttc_jour"]` descend de la marge de la PÉRIODE SÉLECTIONNÉE. Cette
+            # zone s'annonce pourtant « indépendante du preset », et le correctif posé plus haut
+            # pour `_month_fallback_rate` avait laissé ce chemin-là intact : avec une marge
+            # mesurée à 70 % sur la semaine contre 65 % depuis l'ouverture, le point mort du
+            # mois se déplaçait d'environ 640 € selon le filtre choisi.
+            # On le recalcule à partir du taux du mois, et de la TVA effective du mois.
+            _mrate = _month_fallback_rate(rows_month)
+            _mcout = eco.get("cout_jour") or 0
+            _mca_ht  = sum(float(r.get("ca_ht")  or 0) for r in rows_month)
+            _mca_ttc = sum(float(r.get("ca_ttc") or 0) for r in rows_month)
+            _mtva    = (_mca_ttc / _mca_ht) if _mca_ht > 0 else (1 + TVA_MOYENNE_BLENDED)
+            _sj = (_mcout / _mrate * _mtva) if (_mrate and _mcout) else None
             month["ca_mtd"]        = ca_mtd
-            month["proj_ca_end"]   = round(ca_mtd + _avg7 * _remain, 2)
+            month["proj_ca_end"]   = (round(_ca_full + _avg7 * _remain, 2)
+                                      if _open_ca else None)
             month["seuil_ca_month"] = (round(_sj * _odays(_mstart, _mend), 2)
                                        if _sj else None)
 
@@ -867,14 +924,19 @@ def api_data():
         basket = {
             "items_per_ticket": round(total_units / total_tx, 2) if total_tx else None,
             "attach_pct":       up["rate"],
+            **_tx_per_open_day(period_rows, from_date, to_date, today_real),
         }
 
         # CA par place assise (période) — 16 places (10 terrasse + 6 intérieur)
         ca_ttc_p  = eco.get("ca_ttc") or 0
-        open_days = eco.get("open_days") or 1
+        # `or 1` transformait « aucun jour ouvré » en « un jour » et faisait passer le CA de
+        # toute la période pour un chiffre journalier. Sans jour ouvré, il n'y a pas de
+        # « par jour » à calculer — on ne l'invente pas.
+        open_days = eco.get("open_days") or 0
         seat = {
             "seats": SEATS_TOTAL, "terrace": SEATS_TERRACE, "inside": SEATS_INSIDE,
-            "per_seat_day": round(ca_ttc_p / SEATS_TOTAL / open_days, 2) if ca_ttc_p else None,
+            "per_seat_day": (round(ca_ttc_p / SEATS_TOTAL / open_days, 2)
+                             if ca_ttc_p and open_days else None),
             "per_seat_period": round(ca_ttc_p / SEATS_TOTAL, 2) if ca_ttc_p else None,
         }
 
@@ -944,11 +1006,69 @@ def api_cron_refresh():
             hm_warm = _warm_heatmap_cache()
         except Exception:
             pass
-        return jsonify({"ok": True, "day": date.today().isoformat(),
+        return jsonify({"ok": True, "day": today_lisbon().isoformat(),
                         "docs_cached": len(docs), "heatmap_warm": hm_warm,
-                        "at": datetime.utcnow().isoformat() + "Z"})
+                        "at": _utc_iso()})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/summary/audit")
+def api_summary_audit():
+    """
+    Rapproche le cache `daily_summary` et Vendus, jour par jour. LECTURE SEULE — n'écrit rien.
+
+    Sert à retrouver les journées figées à mi-parcours par l'ancien défaut de /api/cashflow.
+    À ouvrir dans le navigateur ; la liste `days_to_rebuild` se recolle telle quelle dans
+    /api/summary/rebuild.
+
+    On interroge Vendus en vue LISTE (2 pages depuis l'ouverture) et non en vue détaillée
+    (~1250 appels) : le rapprochement porte sur `ca_ttc` et `nb`, qui suffisent à démasquer un
+    jour partiel, et que la vue liste donne déjà avec la bonne sémantique — `get_documents`
+    négative les avoirs.
+    """
+    from vendus import get_documents
+    from_iso = request.args.get("from", OPENING_DAY)
+    to_iso   = request.args.get("to", (today_lisbon() - timedelta(1)).isoformat())
+    try:
+        from_date, to_date = date.fromisoformat(from_iso), date.fromisoformat(to_iso)
+    except ValueError:
+        return jsonify({"ok": False, "error": "dates attendues au format YYYY-MM-DD"}), 400
+    # Jamais le jour courant : il est partiel par nature, l'y inclure signalerait un faux écart.
+    to_date = min(to_date, today_lisbon() - timedelta(1))
+    if from_date > to_date:
+        return jsonify({"ok": False, "error": "aucun jour plein dans la plage"}), 400
+
+    try:
+        docs = get_documents(from_date.isoformat(), to_date.isoformat())
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Vendus indisponible : {e}"}), 502
+
+    vendus_by_day = {}
+    for d in docs:
+        day = (d.get("date") or d.get("local_time", ""))[:10]
+        if not day:
+            continue
+        v = vendus_by_day.setdefault(day, {"ca_ttc": 0.0, "nb": 0})
+        v["ca_ttc"] += float(d.get("amount_gross") or 0)
+        if not d.get("_refund"):
+            v["nb"] += 1
+
+    cache_rows = _get_summaries(from_date.isoformat(), to_date.isoformat())
+    ecarts = _audit_summaries(cache_rows, vendus_by_day, from_date, to_date)
+
+    manque = round(sum(e["ecart_ca"] for e in ecarts if e["ecart_ca"] > 0), 2)
+    return jsonify({
+        "ok": True,
+        "from": from_date.isoformat(), "to": to_date.isoformat(),
+        "jours_controles": (to_date - from_date).days + 1,
+        "jours_en_ecart": len(ecarts),
+        "ca_manquant_dans_le_cache": manque,
+        "par_verdict": {v: sum(1 for e in ecarts if e["verdict"] == v)
+                        for v in ("partiel", "excedentaire", "manquant", "fantome")},
+        "days_to_rebuild": [e["day"] for e in ecarts],
+        "ecarts": ecarts,
+    })
 
 
 @app.route("/api/summary/rebuild", methods=["POST"])
@@ -958,7 +1078,7 @@ def api_summary_rebuild():
     from vendus import get_documents_with_items, get_catalog as _gc
     data      = request.get_json(silent=True) or {}
     from_iso  = data.get("from", OPENING_DAY)
-    to_iso    = data.get("to", (date.today() - timedelta(1)).isoformat())
+    to_iso    = data.get("to", (today_lisbon() - timedelta(1)).isoformat())
     catalog   = _gc()
     if not catalog:
         return jsonify({"ok": False, "error": "catalogue Vendus indisponible"}), 502
@@ -982,10 +1102,19 @@ def api_cashflow():
     (Expenses, données bancaires réelles) — depuis l'ouverture. N'utilise
     jamais les charges théoriques de la page Costs (évite le double compte)."""
     OPEN_DATE = date(2026, 5, 27)
-    to_date   = date.today()
+    to_date   = today_lisbon()
 
     catalog = get_catalog() or {}
     rows    = _ensure_summaries(OPEN_DATE, to_date, catalog)
+
+    # Le jour courant est ajouté EN MÉMOIRE, jamais écrit : _ensure_summaries refuse désormais
+    # de le figer (voir sa docstring). Sans cet ajout, la trésorerie du mois en cours perdrait
+    # la journée d'aujourd'hui — un manque silencieux, alors que le but de la garde est
+    # justement de ne pas laisser un chiffre partiel passer pour définitif.
+    today_docs = _get_today_docs_cached()
+    if today_docs:
+        rows = rows + [{"day": today_lisbon().isoformat(),
+                        **_summarize_docs_items(today_docs, catalog)}]
 
     rev_by_month = {}
     for r in rows:
@@ -1079,7 +1208,7 @@ def api_supplies_post():
 @app.route("/api/supplies/<string:sid>", methods=["PATCH"])
 def api_supplies_patch(sid):
     data = request.get_json() or {}
-    data["updated_at"] = datetime.now().isoformat()
+    data["updated_at"] = _utc_iso()
     r = _req.patch(f"{SUPA_URL}/rest/v1/supplies", json=data,
                    headers=_supa_headers(), params={"id": f"eq.{sid}"})
     return jsonify({"ok": r.ok})
@@ -1145,7 +1274,7 @@ def api_supplies_restock_all():
         if r.get("status") in ("low", "out") or r.get("alert"):
             _req.patch(f"{SUPA_URL}/rest/v1/supplies",
                        json={"status": "ok", "alert": False,
-                             "updated_at": datetime.now().isoformat()},
+                             "updated_at": _utc_iso()},
                        headers=_supa_headers(), params={"id": f"eq.{r['id']}"})
             n += 1
     return jsonify({"ok": True, "reset": n})
@@ -1346,7 +1475,7 @@ def api_sop_tasks_delete(task_id):
 @app.route("/api/sop/log", methods=["GET"])
 def api_sop_log_get():
     # ?since=YYYY-MM-DD (défaut : 30 derniers jours) pour l'historique/export
-    since = request.args.get("since") or (date.today() - timedelta(30)).isoformat()
+    since = request.args.get("since") or (today_lisbon() - timedelta(30)).isoformat()
     rows = _supa_get("sop_log", {"date": f"gte.{since}", "order": "done_at.desc"})
     return jsonify(rows if isinstance(rows, list) else [])
 
@@ -1358,10 +1487,10 @@ def api_sop_log_post():
         return jsonify({"ok": False, "error": "task_id required"}), 400
     row = {
         "task_id": task_id,
-        "date":    data.get("date") or date.today().isoformat(),
+        "date":    data.get("date") or today_lisbon().isoformat(),
         "done_by": (data.get("done_by") or "").strip(),
         "value":   data.get("value"),
-        "done_at": datetime.now().isoformat(),
+        "done_at": _utc_iso(),
         "active":  True,
     }
     if data.get("id"):
@@ -1408,7 +1537,7 @@ def api_events_post():
         "color":       (data.get("color") or "#2554C7").strip(),
         "series_id":   data.get("series_id"),
         "active":      data.get("active", True),
-        "updated_at":  datetime.now().isoformat(),
+        "updated_at":  _utc_iso(),
     }
     if "notes" in data:
         row["notes"] = data["notes"]
@@ -1420,7 +1549,7 @@ def api_events_post():
 @app.route("/api/events/<string:event_id>", methods=["PATCH"])
 def api_events_patch(event_id):
     data = request.get_json() or {}
-    data["updated_at"] = datetime.now().isoformat()
+    data["updated_at"] = _utc_iso()
     r = _req.patch(f"{SUPA_URL}/rest/v1/events", json=data,
                    headers=_supa_headers(), params={"id": f"eq.{event_id}"})
     return jsonify({"ok": r.ok})
@@ -1487,8 +1616,8 @@ def api_reconciliation():
     except Exception:
         return jsonify({"error": "month must be YYYY-MM"}), 400
     last = (date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)) - timedelta(1)
-    to_d = min(last, date.today())
-    if from_d > date.today():
+    to_d = min(last, today_lisbon())
+    if from_d > today_lisbon():
         return jsonify({"month": month, "days": [], "payment_titles": []})
 
     # Relevés Revolut pré-injectés (historique figé mai→juillet) — évite de
@@ -1525,7 +1654,7 @@ def api_cash():
     """Espèces (Dinheiro) facturées dans Vendus, par jour depuis l'ouverture.
     = cash théorique en caisse, avant sorties/dépôts (que Vendus ne voit pas)."""
     OPEN_DATE = date(2026, 5, 27)
-    docs = get_documents(OPEN_DATE.isoformat(), date.today().isoformat(), detailed=True)
+    docs = get_documents(OPEN_DATE.isoformat(), today_lisbon().isoformat(), detailed=True)
     days = {}
     for d in docs:
         day = (d.get("date") or d.get("local_time", ""))[:10]
@@ -1722,7 +1851,7 @@ def _get_summaries(from_iso, to_iso):
     except (AttributeError, RuntimeError):
         store = None
         try:
-            store = {r["day"]: r for r in _fetch_summaries(OPENING_DAY, date.today().isoformat())}
+            store = {r["day"]: r for r in _fetch_summaries(OPENING_DAY, today_lisbon().isoformat())}
             g._summaries_all = store
         except RuntimeError:
             pass          # hors contexte de requête (cron, script) → pas de mémo
@@ -1776,9 +1905,149 @@ def _summarize_docs_items(docs, catalog):
 def _upsert_summary(day_iso, summary):
     _supa_upsert("daily_summary", {"day": day_iso, **summary})
 
+def _weekday_averages(rows, today_iso):
+    """
+    CA moyen par jour de semaine, sur les jours PLEINS uniquement.
+
+    ⚠️ AUJOURD'HUI EST EXCLU. Il était compté dès qu'il portait un ticket : un lundi consulté à
+    10 h avec 80 € au compteur pesait autant qu'un lundi complet. Avec neuf lundis pleins à
+    400 € de moyenne, le dixième partiel ramenait l'affichage à 368 € — puis la moyenne
+    remontait d'elle-même au fil de la journée.
+
+    La médiane par jour de semaine, elle, excluait déjà aujourd'hui. Les deux indicateurs se
+    contredisaient donc sur les mêmes données : le filtre vit désormais ici, pour les deux.
+
+    Un jour sans ticket n'est pas une journée à 0 € : il est absent des données, pas nul.
+    """
+    by_wd = {}
+    for r in rows:
+        if r.get("day") == today_iso or (r.get("nb") or 0) <= 0:
+            continue
+        wd  = date.fromisoformat(r["day"]).strftime("%A")
+        acc = by_wd.setdefault(wd, {"ca": 0.0, "n": 0})
+        acc["ca"] += float(r.get("ca_ttc") or 0)
+        acc["n"]  += 1
+    return sorted(
+        [{"day": wd, "avg_ca": round(v["ca"] / v["n"], 2), "n_days": v["n"]}
+         for wd, v in by_wd.items()],
+        key=lambda x: -x["avg_ca"]) or None
+
+
+def _audit_summaries(cache_rows, vendus_by_day, from_date, to_date, tol=0.01):
+    """
+    Rapproche le cache `daily_summary` et Vendus, jour par jour. NE MODIFIE RIEN.
+
+    Sert à retrouver les journées figées à mi-parcours par l'ancien défaut de `/api/cashflow`,
+    qui écrivait le jour courant dans le cache — définitivement, puisqu'on ne reconstruit que
+    les jours manquants.
+
+    `vendus_by_day` : {jour_iso: {"ca_ttc": float, "nb": int}}, calculé avec EXACTEMENT la même
+    sémantique que `_summarize_docs_items` — les avoirs sont négativés dans le CA et exclus du
+    compte de tickets. Sans quoi le rapprochement signalerait des écarts qui n'en sont pas.
+
+    Quatre verdicts, parce que quatre causes distinctes :
+      · `partiel`      cache < Vendus — la signature du jour figé en cours de journée ;
+      · `excedentaire` cache > Vendus — un avoir émis après coup, ou une reconstruction ratée ;
+      · `manquant`     Vendus a des ventes, le cache n'a pas de ligne ;
+      · `fantome`      le cache a des ventes, Vendus n'en a aucune.
+    Un jour sans vente des deux côtés n'est pas un écart et n'apparaît pas.
+    """
+    by_day = {r["day"]: r for r in cache_rows if r.get("day")}
+    ecarts = []
+    cur = from_date
+    while cur <= to_date:
+        iso = cur.isoformat()
+        cur += timedelta(1)
+        v = vendus_by_day.get(iso)
+        c = by_day.get(iso)
+        v_ca, v_nb = (float(v["ca_ttc"]), int(v["nb"])) if v else (0.0, 0)
+        if c is None:
+            if v_nb or abs(v_ca) > tol:
+                ecarts.append({"day": iso, "verdict": "manquant", "cache_ca_ttc": None,
+                               "vendus_ca_ttc": round(v_ca, 2), "ecart_ca": round(v_ca, 2),
+                               "cache_nb": None, "vendus_nb": v_nb})
+            continue
+        c_ca, c_nb = float(c.get("ca_ttc") or 0), int(c.get("nb") or 0)
+        d_ca = round(v_ca - c_ca, 2)
+        if abs(d_ca) <= tol and c_nb == v_nb:
+            continue
+        if c_nb == 0 and abs(c_ca) <= tol:
+            verdict = "manquant"
+        elif v_nb == 0 and abs(v_ca) <= tol:
+            verdict = "fantome"
+        else:
+            verdict = "partiel" if d_ca > 0 else "excedentaire"
+        ecarts.append({"day": iso, "verdict": verdict,
+                       "cache_ca_ttc": round(c_ca, 2), "vendus_ca_ttc": round(v_ca, 2),
+                       "ecart_ca": d_ca, "cache_nb": c_nb, "vendus_nb": v_nb})
+    return ecarts
+
+
+def _tx_per_open_day(period_rows, from_date, to_date, today_real):
+    """
+    Tickets par JOUR OUVRÉ sur la période — sur les jours PLEINS uniquement.
+
+    ⚠️ LE JOUR COURANT EST EXCLU DES DEUX CÔTÉS. La version précédente (côté client) divisait
+    un total incluant aujourd'hui par un nombre de jours ouvrés incluant aussi aujourd'hui.
+    Consulté un vendredi matin sur « cette semaine », le dénominateur comptait un jour entier
+    face à trois tickets : la moyenne tombait d'environ un tiers, et remontait toute seule au
+    fil de la journée. Un chiffre qui bouge sans que rien ne se passe n'est pas une moyenne.
+
+    ⚠️ ON N'UTILISE PAS `economics.open_days`. Celui-là inclut aujourd'hui et surtout il est
+    plafonné à ≥ 1 (`count_open_days`, config.py) pour éviter les divisions par zéro — ce qui
+    transformerait « aucun jour ouvré plein » en « un jour ». Ici on veut pouvoir répondre
+    « on ne sait pas » : `count_open_days_raw` peut rendre 0, et on renvoie alors None.
+
+    Les jours ouverts hors calendrier (un mardi d'événement privé) sont comptés au dénominateur
+    dès qu'ils portent des tickets : sinon leur chiffre d'affaires gonflerait le numérateur sans
+    que personne ne les compte comme journée travaillée.
+    """
+    from config import count_open_days_raw, OPEN_WEEKDAYS
+
+    full_end = min(to_date, today_real - timedelta(1))
+    if from_date > full_end:
+        return {"tx_per_open_day": None, "tx_basis_days": 0,
+                "tx_basis_reason": "aucun jour plein dans la période"}
+
+    today_iso = today_real.isoformat()
+    full_rows = [r for r in period_rows
+                 if r.get("day") and r["day"] != today_iso and r["day"] <= full_end.isoformat()]
+
+    basis = count_open_days_raw(from_date, full_end)
+    for r in full_rows:
+        d = date.fromisoformat(r["day"])
+        if float(r.get("nb") or 0) > 0 and d.weekday() not in OPEN_WEEKDAYS:
+            basis += 1                      # journée travaillée hors calendrier
+
+    if basis <= 0:
+        return {"tx_per_open_day": None, "tx_basis_days": 0,
+                "tx_basis_reason": "aucun jour ouvré plein dans la période"}
+
+    total = sum(float(r.get("nb") or 0) for r in full_rows)
+    return {"tx_per_open_day": round(total / basis, 1),
+            "tx_basis_days": basis, "tx_basis_reason": None}
+
+
 def _ensure_summaries(from_date, to_date, catalog):
-    """Retourne les summaries [from..to] (jours passés), en construisant les manquants."""
+    """
+    Retourne les summaries [from..to] (JOURS PASSÉS), en construisant les manquants.
+
+    ⚠️ NE FIGE JAMAIS LE JOUR COURANT. La docstring l'a toujours dit, rien ne le garantissait :
+    seul `/api/data` se bornait lui-même à hier. `/api/cashflow` passait `date.today()`, si bien
+    qu'ouvrir l'onglet Trésorerie à 9h30 écrivait une ligne `daily_summary` figée à 9h30 — et
+    comme on ne reconstruit que les jours MANQUANTS, elle n'était plus jamais corrigée.
+
+    Un tel jour partiel contamine ensuite tout ce qui lit le cache : comparaison hebdomadaire,
+    sparkline, série EBITDA du mois, meilleur jour de la semaine. La garde vit ici, au niveau
+    de l'écriture, et pas chez les appelants — c'est la seule place où elle ne peut pas être
+    oubliée par le prochain.
+
+    Les appelants qui ont besoin du jour courant l'ajoutent en mémoire, sans l'écrire.
+    """
     from vendus import get_documents_with_items
+    to_date = min(to_date, today_lisbon() - timedelta(1))
+    if from_date > to_date:
+        return []
     from_iso, to_iso = from_date.isoformat(), to_date.isoformat()
     rows = _get_summaries(from_iso, to_iso)
     have = {r["day"] for r in rows}
@@ -2113,7 +2382,7 @@ def api_debug_categories():
 
 @app.route("/api/inventory/usage")
 def api_inventory_usage():
-    today = date.today()
+    today = today_lisbon()
     try:
         from_date = date.fromisoformat(request.args.get("from", ""))
         to_date   = date.fromisoformat(request.args.get("to", ""))
@@ -2234,7 +2503,7 @@ def api_purchases_post():
     row = {
         "name": name, "qty": qty,
         "unit": (data.get("unit") or "unit").strip(),
-        "date": data.get("date") or date.today().isoformat(),
+        "date": data.get("date") or today_lisbon().isoformat(),
         "cost": round(float(data.get("cost") or 0), 2) or None,
         "note": (data.get("note") or "").strip(),
     }

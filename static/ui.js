@@ -39,3 +39,41 @@
     skeletonize();
   }
 })();
+
+/* ── Thème ─────────────────────────────────────────────────────────────────────
+   Flux apporte un mode sombre là où il n'y en avait aucun. Trois états, dans cet
+   ordre : `system` (la préférence de l'OS, valeur par défaut), `light`, `dark`.
+
+   ⚠️ APPLIQUÉ TOUT DE SUITE, PAS AU DOMContentLoaded. Attendre laisserait la page
+   peindre en clair puis basculer — un flash blanc à chaque navigation, le matin
+   comme le soir. ui.js est chargé avant le script de page, donc <html> existe déjà.
+
+   Vit ici et non dans dashboard.js : les neuf écrans partagent style.css, le choix
+   doit valoir partout. */
+(function () {
+  var KEY = 'estu-theme', ORDER = ['system', 'light', 'dark'];
+
+  function read() {
+    try { var v = localStorage.getItem(KEY); return ORDER.indexOf(v) >= 0 ? v : 'system'; }
+    catch (e) { return 'system'; }   // stockage refusé (navigation privée) → système
+  }
+  function apply(mode) {
+    var el = document.documentElement;
+    if (mode === 'system') el.removeAttribute('data-theme');
+    else el.setAttribute('data-theme', mode);
+    var btn = document.getElementById('theme-toggle');
+    if (btn) {
+      btn.textContent = mode === 'light' ? '☀' : mode === 'dark' ? '☾' : '◐';
+      btn.title = 'Thème : ' + (mode === 'system' ? 'système' : mode === 'light' ? 'clair' : 'sombre');
+    }
+  }
+  window.cycleTheme = function () {
+    var next = ORDER[(ORDER.indexOf(read()) + 1) % ORDER.length];
+    try { localStorage.setItem(KEY, next); } catch (e) {}
+    apply(next);
+  };
+  apply(read());
+  // Le bouton n'existe pas encore au moment du premier apply : on repasse dessus
+  // une fois le DOM prêt, pour que son icône reflète l'état réel.
+  document.addEventListener('DOMContentLoaded', function () { apply(read()); });
+})();

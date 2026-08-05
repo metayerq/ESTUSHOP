@@ -87,6 +87,17 @@ def _negate_refund(d):
     for p in d.get("payments", []):
         if p.get("amount") is not None:
             p["amount"] = -abs(float(p["amount"]))
+    # ⚠️ LE BLOC `taxes` AUSSI. Il était le seul oublié, et Vendus le renvoie POSITIF sur un
+    # avoir exactement comme sur une vente — vérifié sur l'avoir 362109040 :
+    # {'total': '10.50', 'base': '9.29', 'amount': '1.21', 'rate': 13}.
+    # `tva_breakdown` les additionnait donc au lieu de les soustraire : une vente de 100 € TTC
+    # annulée le même jour affichait un CA de 0 € (juste) mais une ventilation TVA de 200 € de
+    # total et 23 € de TVA collectée (faux). Ce champ n'est plus rendu par le dashboard, mais
+    # il reste servi par l'API — et c'est celui qu'on relit pour une déclaration.
+    for t in d.get("taxes", []):
+        for k in ("base", "amount", "total"):
+            if t.get(k) is not None:
+                t[k] = -abs(float(t[k]))
     return d
 
 
@@ -430,18 +441,6 @@ RETAIL_CAT_IDS       = {343071668, 343077316}   # Livres, Papeterie
 EXTRA_CAT_IDS        = set()   # fusionné dans Food (conservé pour compat imports)
 
 
-def upsell_rate(docs):
-    """% de tickets avec 2+ articles distincts (boissons+food = upsell réel)."""
-    if not docs:
-        return {"rate": 0, "multi": 0, "single": 0, "total": 0}
-    multi  = sum(1 for d in docs if len(d.get("items", [])) >= 2)
-    single = len(docs) - multi
-    return {
-        "rate":   round(multi / len(docs) * 100) if docs else 0,
-        "multi":  multi,
-        "single": single,
-        "total":  len(docs),
-    }
 
 
 def category_mix(docs, catalog):
@@ -478,90 +477,8 @@ def ticket_median(docs):
     return round(amounts[mid] if n % 2 else (amounts[mid-1] + amounts[mid]) / 2, 2)
 
 
-def best_weekday():
-    """Meilleur jour de la semaine sur tout l'historique disponible (90j)."""
-    from datetime import date, timedelta
-    today = date.today()
-    since = (today - timedelta(days=90)).isoformat()
-    try:
-        raw = vendus("/documents/", {"since": since, "until": today.isoformat(), "status": "N"})
-        if not isinstance(raw, list):
-            raw = raw.get("docs", raw.get("data", []))
-    except Exception:
-        return None
-
-    from collections import defaultdict
-    import datetime as dt
-    by_weekday = defaultdict(lambda: {"ca": 0.0, "days": set()})
-    for d in raw:
-        if d.get("type") not in SALE_TYPES:
-            continue
-        day_str = d.get("date", "")
-        try:
-            day_obj = dt.date.fromisoformat(day_str)
-            wd = day_obj.strftime("%A")  # Monday, Tuesday…
-            by_weekday[wd]["ca"]   += float(d.get("amount_gross", 0))
-            by_weekday[wd]["days"].add(day_str)
-        except ValueError:
-            pass
-
-    if not by_weekday:
-        return None
-
-    WD_FR = {"Monday":"Lundi","Tuesday":"Mardi","Wednesday":"Mercredi",
-              "Thursday":"Jeudi","Friday":"Vendredi","Saturday":"Samedi","Sunday":"Dimanche"}
-    result = []
-    for wd, stats in by_weekday.items():
-        n = len(stats["days"])
-        result.append({
-            "day":     WD_FR.get(wd, wd),
-            "avg_ca":  round(stats["ca"] / n, 2) if n else 0,
-            "n_days":  n,
-        })
-    result.sort(key=lambda x: x["avg_ca"], reverse=True)
-    return result
 
 
-def wow_growth():
-    """Croissance semaine en cours vs semaine précédente (même 7 jours)."""
-    from datetime import date, timedelta
-    today = date.today()
-    # Semaine en cours : 7 derniers jours
-    since_cur  = (today - timedelta(days=6)).isoformat()
-    # Semaine précédente : les 7 jours avant ça
-    since_prev = (today - timedelta(days=13)).isoformat()
-    until_prev = (today - timedelta(days=7)).isoformat()
-    try:
-        raw = vendus("/documents/", {
-            "since": since_prev, "until": today.isoformat(), "status": "N"
-        })
-        if not isinstance(raw, list):
-            raw = raw.get("docs", raw.get("data", []))
-    except Exception:
-        return None
-
-    cur_ca = prev_ca = 0.0
-    cur_nb = prev_nb = 0
-    for d in raw:
-        if d.get("type") not in SALE_TYPES:
-            continue
-        day = d.get("date", "")
-        ca  = float(d.get("amount_gross", 0))
-        if day >= since_cur:
-            cur_ca += ca; cur_nb += 1
-        elif day <= until_prev:
-            prev_ca += ca; prev_nb += 1
-
-    growth_ca = round((cur_ca - prev_ca) / prev_ca * 100) if prev_ca else None
-    growth_nb = round((cur_nb - prev_nb) / prev_nb * 100) if prev_nb else None
-    return {
-        "cur_ca":   round(cur_ca, 2),
-        "prev_ca":  round(prev_ca, 2),
-        "cur_nb":   cur_nb,
-        "prev_nb":  prev_nb,
-        "growth_ca": growth_ca,
-        "growth_nb": growth_nb,
-    }
 
 
 def ticket_distribution(docs):
@@ -650,18 +567,25 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
     """
     from config import (
         TVA_MOYENNE_BLENDED, AMORTISSEMENT_MOIS,
-        JOURS_OUVERTS_MOIS, count_open_days,
+        JOURS_OUVERTS_MOIS, count_open_days_raw,
     )
 
     # Jours d'ouverture effectifs dans la période.
     # Priorité au réel observé (jours avec ventes, passé par l'appelant) —
     # robuste aux changements d'horaires ; fallback calendrier théorique.
+    # ⚠️ UNE PÉRIODE SANS AUCUN JOUR OUVRÉ N'EN COMPTE PAS UN.
+    # `count_open_days` plafonne à ≥ 1 pour éviter les divisions par zéro, ce qui transformait
+    # « aucune ouverture » en « une journée » : un custom mardi→mercredi (café fermé les deux
+    # jours) affichait 197 € de charges, un EBITDA de −197 € et un point mort de 318 € pour une
+    # période où rien n'a ouvert. Un garde anti-division devenait une affirmation fausse.
+    # On garde donc le compte RÉEL, qui peut valoir 0, et l'appelant sait alors ne rien afficher.
     if open_days_override is not None:
-        open_days = max(1, open_days_override)
+        open_days = max(0, open_days_override)
     elif from_date is not None and to_date is not None:
-        open_days = count_open_days(from_date, to_date)
+        open_days = count_open_days_raw(from_date, to_date)
     else:
-        open_days = max(1, round(n_days * 5 / 7))
+        open_days = max(0, round(n_days * 5 / 7))
+    no_open_days = open_days == 0
 
     # ── Charges live depuis Supabase ─────────────────────────────────────────
     # Appel léger (~15ms) — résultat utilisé pour les 4 KPIs économie
@@ -743,12 +667,26 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
     # Marge réelle mesurée sur la partie couverte du CA.
     marge_rate_real = (covered_ht - cogs_ht) / covered_ht if covered_ht > 0 else None
 
+    # ── Taux de TVA du passage HT → TTC ──────────────────────────────────────
+    # ⚠️ MESURÉ SUR LA PÉRIODE, PAS SUPPOSÉ. Le seuil était converti en TTC avec
+    # TVA_MOYENNE_BLENDED (13 %), une hypothèse du business plan, puis comparé à un CA TTC
+    # RÉEL : un ratio qui mélange mesure et hypothèse sans le dire. Avec des livres à 6 %, le
+    # taux effectif tombe vers 10 % — un seuil HT de 900 € s'affichait alors à 1 017 € au lieu
+    # de 990 €, soit 27 €/jour de « manque » inventé et un pourcentage d'atteinte sous-estimé
+    # de trois points.
+    # Le taux effectif est déjà dans les données : ca_ttc / ca_ht. On ne retombe sur
+    # l'hypothèse que si la période n'a pas de CA HT — et `tva_src` le dit à l'écran.
+    if ca_ht > 0:
+        tva_factor, tva_src = ca_ttc / ca_ht, "mesure"
+    else:
+        tva_factor, tva_src = 1 + TVA_MOYENNE_BLENDED, "hypothese"
+
     # Seuil calculable seulement si marge réelle mesurable ET charges connues
     if marge_rate_real is not None and 0 < marge_rate_real < 1 and cout_jour > 0:
         seuil_margin_rate = marge_rate_real
         seuil_margin_src  = "reelle"
         seuil_ca_jour     = cout_jour / seuil_margin_rate
-        seuil_ca_jour_ttc = seuil_ca_jour * (1 + TVA_MOYENNE_BLENDED)
+        seuil_ca_jour_ttc = seuil_ca_jour * tva_factor
     else:
         # Pas de COGS mesurable ou charges absentes → pas de seuil affichable
         seuil_margin_rate = None
@@ -757,12 +695,18 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         seuil_ca_jour_ttc = None
 
     # Charges × jours_ouvrés_réels (live Supabase)
-    cout_total   = round(cout_jour       * open_days, 2)
-    cout_fixe    = round(cout_fixe_jour  * open_days, 2)
-    cout_perso   = round(cout_perso_jour * open_days, 2)
-    amort        = round(amort_jour      * open_days, 2)
-    seuil_ca     = round(seuil_ca_jour     * open_days, 2) if seuil_ca_jour     is not None else None  # HT
-    seuil_ca_ttc = round(seuil_ca_jour_ttc * open_days, 2) if seuil_ca_jour_ttc is not None else None  # TTC
+    # Aucun jour ouvré → aucun coût de période à annoncer. `None`, pas 0 : un 0 se lirait
+    # « la période n'a rien coûté », alors qu'il n'y a simplement rien à répartir.
+    if no_open_days:
+        cout_total = cout_fixe = cout_perso = amort = None
+        seuil_ca = seuil_ca_ttc = None
+    else:
+        cout_total   = round(cout_jour       * open_days, 2)
+        cout_fixe    = round(cout_fixe_jour  * open_days, 2)
+        cout_perso   = round(cout_perso_jour * open_days, 2)
+        amort        = round(amort_jour      * open_days, 2)
+        seuil_ca     = round(seuil_ca_jour     * open_days, 2) if seuil_ca_jour     is not None else None  # HT
+        seuil_ca_ttc = round(seuil_ca_jour_ttc * open_days, 2) if seuil_ca_jour_ttc is not None else None  # TTC
 
     # Marge brute HT — 100 % basée sur le COGS réel mesuré.
     # Taux réel mesuré sur le CA couvert, extrapolé au CA total.
@@ -776,7 +720,11 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         marge_ht = marge_ht_pct = None
 
     # EBITDA HT = marge brute HT − charges totales HT de la période
-    ebitda_ht = round(marge_ht - cout_total, 2) if marge_ht is not None else None
+    # cout_total vaut None quand la période n'a aucun jour ouvré : pas de charges à imputer,
+    # donc pas d'EBITDA. Le soustraire produirait un TypeError ; le remplacer par 0 dirait
+    # « la période a dégagé sa marge sans rien coûter ».
+    ebitda_ht = (round(marge_ht - cout_total, 2)
+                 if marge_ht is not None and cout_total is not None else None)
 
     # Seuil rentabilité — comparaison TTC vs TTC (ce que tu vois en caisse)
     if seuil_ca_ttc is not None:
@@ -820,6 +768,8 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         # Fiabilité du COGS
         "cogs_coverage_pct": cogs_coverage_pct,   # % du CA avec coût connu
         "seuil_margin_src":  seuil_margin_src,    # "reelle" ou "bp"
+        "seuil_tva_src":     tva_src,             # "mesure" (ca_ttc/ca_ht) ou "hypothese" (BP)
+        "seuil_tva_pct":     round((tva_factor - 1) * 100, 1),
         "seuil_margin_pct":  round(seuil_margin_rate * 100, 1) if seuil_margin_rate else None,
     }
 
@@ -953,92 +903,8 @@ def product_stats_from_docs(docs_with_items, catalog):
     return sorted(result, key=lambda x: x["revenue"], reverse=True)
 
 
-def product_stats_7d(since: str, until: str):
-    """CA total et nb jours vendus par produit sur la période (fallback avec appels API)."""
-    try:
-        raw = vendus("/documents/", {"since": since, "until": until, "status": "N"})
-        if not isinstance(raw, list):
-            raw = raw.get("docs", raw.get("data", []))
-        ft_ids = [d["id"] for d in raw if d.get("type") in SALE_TYPES]
-    except Exception:
-        return []
-
-    by_product = defaultdict(lambda: {"rev_ttc": 0.0, "rev_ht": 0.0, "qty": 0, "days": set()})
-
-    def fetch(doc_id):
-        try:
-            return vendus(f"/documents/{doc_id}/")
-        except Exception:
-            return None
-
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        details = list(pool.map(fetch, ft_ids))
-
-    for detail in details:
-        if not detail:
-            continue
-        day = detail.get("date", "")
-        for item in detail.get("items", []):
-            name    = item.get("title", "—").strip()
-            qty     = float(item.get("qty", 0))
-            amounts = item.get("amounts", {})
-            by_product[name]["rev_ttc"] += float(amounts.get("gross_total", 0))
-            by_product[name]["rev_ht"]  += float(amounts.get("net_total",   0))
-            by_product[name]["qty"]     += qty
-            by_product[name]["days"].add(day)
-
-    catalog = get_catalog()
-    result = []
-    for name, stats in by_product.items():
-        days_sold = len(stats["days"])
-        rev_ttc   = round(stats["rev_ttc"], 2)
-        rev_ht    = round(stats["rev_ht"],  2)
-        cat_info  = catalog.get(name)
-        cost_ht   = round(cat_info["cost"] * stats["qty"], 2) if cat_info and cat_info.get("cost") else None
-        margin    = round((rev_ht - cost_ht) / rev_ht * 100, 1) if rev_ht and cost_ht else None
-        result.append({
-            "name":       name,
-            "revenue":    rev_ttc,
-            "rev_ht":     rev_ht,
-            "qty":        int(stats["qty"]),
-            "days_sold":  days_sold,
-            "avg_day":    round(rev_ttc / days_sold, 2) if days_sold else 0,
-            "cost_ht":    cost_ht,
-            "margin_pct": margin,
-        })
-    return sorted(result, key=lambda x: x["revenue"], reverse=True)
 
 
-def weekly_sparkline(days=7):
-    """CA et nb transactions par jour sur les `days` derniers jours."""
-    from datetime import date, timedelta
-    today = date.today()
-    since = (today - timedelta(days=days - 1)).isoformat()
-    until = today.isoformat()
-    try:
-        raw = vendus("/documents/", {"since": since, "until": until, "status": "N"})
-        if not isinstance(raw, list):
-            raw = raw.get("docs", raw.get("data", []))
-    except Exception:
-        return None   # échec API ≠ zéro vente — le front affiche un warning
-
-    by_day = defaultdict(lambda: {"ca": 0.0, "nb": 0})
-    for d in raw:
-        if d.get("type") in SALE_TYPES:
-            day = d.get("date", "")
-            by_day[day]["ca"] += float(d.get("amount_gross", 0))
-            by_day[day]["nb"] += 1
-
-    result = []
-    for i in range(days):
-        day = (today - timedelta(days=days - 1 - i)).isoformat()
-        result.append({
-            "date": day,
-            "label": (today - timedelta(days=days - 1 - i)).strftime("%a"),
-            "ca": round(by_day[day]["ca"], 2),
-            "nb": by_day[day]["nb"],
-        })
-    return result
 
 
 def top_products(docs, catalog=None, n=10):
