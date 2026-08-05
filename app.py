@@ -12,8 +12,12 @@ import json
 import hmac
 import time
 import hashlib
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta, datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
+
+# « Aujourd'hui » et « maintenant » au sens du café (Europe/Lisbon), jamais
+# l'horloge UTC du serveur Vercel. Voir config.py pour le pourquoi.
+from config import today_lisbon, now_lisbon
 
 from flask import Flask, jsonify, render_template, request, redirect, make_response, g
 from vendus import (
@@ -34,6 +38,17 @@ _TODAY_DOCS_CACHE = {"ts": 0.0, "day": None, "docs": None}
 _TODAY_TTL      = 45      # mémoire (même instance lambda)
 _SUPA_CACHE_MAX = 600     # fraîcheur acceptée de la ligne Supabase (10 min)
 
+def _utc_iso():
+    """Horodatage TECHNIQUE : l'instant courant en UTC explicite, suffixe Z.
+
+    Réservé à ce qui est écrit en base pour mesurer une ancienneté ou ordonner
+    (fraîcheur d'un cache, `updated_at`, `done_at`). Ces valeurs ne sont pas des
+    dates métier : les convertir en heure locale les rendrait ambiguës deux fois
+    par an, à la bascule d'heure. Tout ce qui répond à « quel jour est-on ? » ou
+    « quelle heure affiche-t-on ? » passe au contraire par today_lisbon/now_lisbon.
+    """
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
 def _iso_age_seconds(iso):
     """Âge en secondes d'un timestamp ISO Supabase ; +inf si illisible."""
     if not iso:
@@ -41,8 +56,11 @@ def _iso_age_seconds(iso):
     try:
         s = iso.replace("Z", "+00:00")
         dt = datetime.fromisoformat(s)
-        from datetime import timezone
-        now = datetime.now(timezone.utc) if dt.tzinfo else datetime.now()
+        # Timestamp sans fuseau : il vient forcément d'une écriture UTC (c'est
+        # l'invariant de _utc_iso), donc on le compare à une horloge UTC — pas
+        # à l'horloge locale du process, qui n'est UTC que par accident.
+        now = (datetime.now(timezone.utc) if dt.tzinfo
+               else datetime.now(timezone.utc).replace(tzinfo=None))
         return (now - dt).total_seconds()
     except Exception:
         return float("inf")
@@ -50,19 +68,19 @@ def _iso_age_seconds(iso):
 def _refresh_today_cache():
     """Fetch live des docs du jour + écriture mémoire ET Supabase. Appelé par
     le cron et en dernier recours par une requête si le cache est périmé."""
-    today_iso = date.today().isoformat()
+    today_iso = today_lisbon().isoformat()
     docs = get_documents_with_items(today_iso, today_iso)
     _TODAY_DOCS_CACHE.update(ts=time.time(), day=today_iso, docs=docs)
     try:
         _supa_upsert("live_docs_cache", {
-            "day": today_iso, "docs": docs, "updated_at": datetime.utcnow().isoformat() + "Z",
+            "day": today_iso, "docs": docs, "updated_at": _utc_iso(),
         })
     except Exception:
         pass   # l'écriture cache ne doit jamais casser la requête
     return docs
 
 def _get_today_docs_cached(force=False):
-    today_iso = date.today().isoformat()
+    today_iso = today_lisbon().isoformat()
     c = _TODAY_DOCS_CACHE
     # 1) mémoire fraîche (même instance)
     if (not force and c["docs"] is not None and c["day"] == today_iso
@@ -117,7 +135,7 @@ def _heatmap_payload_cached(today_real, force=False):
         try:
             _supa_upsert("kv_cache", {
                 "key": key, "value": payload,
-                "updated_at": datetime.utcnow().isoformat() + "Z",
+                "updated_at": _utc_iso(),
             })
         except Exception:
             pass   # l'écriture cache ne doit jamais casser la requête
@@ -132,7 +150,7 @@ def _heatmap_payload_cached(today_real, force=False):
 
 def _warm_heatmap_cache():
     """Appelé par le cron : recalcule et persiste la heatmap du jour."""
-    return _heatmap_payload_cached(date.today(), force=True) is not None
+    return _heatmap_payload_cached(today_lisbon(), force=True) is not None
 
 
 # ── Insights helpers (visuels dashboard) ─────────────────────────────────────
@@ -463,7 +481,7 @@ def api_data():
     start_arg = request.args.get("start_date", "")
     end_arg   = request.args.get("end_date", "")
 
-    today_real = date.today()
+    today_real = today_lisbon()
 
     from_date = to_date = None
     if preset == "custom" and start_arg and end_arg:
@@ -568,7 +586,9 @@ def api_data():
             docs = get_documents(prev.isoformat(), prev.isoformat()) or []
         except Exception:
             return None
-        now_hms = datetime.now().strftime("%H:%M:%S")
+        # `local_time` Vendus est en heure de Lisbonne : couper à une heure UTC
+        # offrirait une heure de ventes en plus au jour de comparaison.
+        now_hms = now_lisbon().strftime("%H:%M:%S")
         docs = [d for d in docs if (d.get("local_time", "") or "")[11:19] <= now_hms]
         return {"date": prev.isoformat(), **calc_stats(docs)}
 
@@ -603,7 +623,7 @@ def api_data():
         # Vue "aujourd'hui" : ne garder du jour de comparaison que ce qui a été
         # vendu avant l'heure courante → comparaison à périmètre horaire égal.
         if comp_is_sofar and docs_comp:
-            now_hms = datetime.now().strftime("%H:%M:%S")
+            now_hms = now_lisbon().strftime("%H:%M:%S")   # cf. local_time Vendus
             docs_comp = [d for d in docs_comp
                          if (d.get("local_time", "") or "")[11:19] <= now_hms]
 
@@ -713,7 +733,7 @@ def api_data():
         "is_single_day": is_single,
         "has_items":     True,
         "date":          to_date.isoformat(),
-        "updated_at":    datetime.now().strftime("%H:%M"),
+        "updated_at":    now_lisbon().strftime("%H:%M"),   # lu par un humain à Lisbonne
         "is_today":      (preset == "today"),
         # Comparaison : libellé + mode "à la même heure" (vue aujourd'hui live)
         "comp_label":    comp_label,
@@ -954,9 +974,9 @@ def api_cron_refresh():
             hm_warm = _warm_heatmap_cache()
         except Exception:
             pass
-        return jsonify({"ok": True, "day": date.today().isoformat(),
+        return jsonify({"ok": True, "day": today_lisbon().isoformat(),
                         "docs_cached": len(docs), "heatmap_warm": hm_warm,
-                        "at": datetime.utcnow().isoformat() + "Z"})
+                        "at": _utc_iso()})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -1026,7 +1046,7 @@ def api_summary_rebuild():
     from vendus import get_documents_with_items, get_catalog as _gc
     data      = request.get_json(silent=True) or {}
     from_iso  = data.get("from", OPENING_DAY)
-    to_iso    = data.get("to", (date.today() - timedelta(1)).isoformat())
+    to_iso    = data.get("to", (today_lisbon() - timedelta(1)).isoformat())
     catalog   = _gc()
     if not catalog:
         return jsonify({"ok": False, "error": "catalogue Vendus indisponible"}), 502
@@ -1156,7 +1176,7 @@ def api_supplies_post():
 @app.route("/api/supplies/<string:sid>", methods=["PATCH"])
 def api_supplies_patch(sid):
     data = request.get_json() or {}
-    data["updated_at"] = datetime.now().isoformat()
+    data["updated_at"] = _utc_iso()
     r = _req.patch(f"{SUPA_URL}/rest/v1/supplies", json=data,
                    headers=_supa_headers(), params={"id": f"eq.{sid}"})
     return jsonify({"ok": r.ok})
@@ -1222,7 +1242,7 @@ def api_supplies_restock_all():
         if r.get("status") in ("low", "out") or r.get("alert"):
             _req.patch(f"{SUPA_URL}/rest/v1/supplies",
                        json={"status": "ok", "alert": False,
-                             "updated_at": datetime.now().isoformat()},
+                             "updated_at": _utc_iso()},
                        headers=_supa_headers(), params={"id": f"eq.{r['id']}"})
             n += 1
     return jsonify({"ok": True, "reset": n})
@@ -1423,7 +1443,7 @@ def api_sop_tasks_delete(task_id):
 @app.route("/api/sop/log", methods=["GET"])
 def api_sop_log_get():
     # ?since=YYYY-MM-DD (défaut : 30 derniers jours) pour l'historique/export
-    since = request.args.get("since") or (date.today() - timedelta(30)).isoformat()
+    since = request.args.get("since") or (today_lisbon() - timedelta(30)).isoformat()
     rows = _supa_get("sop_log", {"date": f"gte.{since}", "order": "done_at.desc"})
     return jsonify(rows if isinstance(rows, list) else [])
 
@@ -1435,10 +1455,10 @@ def api_sop_log_post():
         return jsonify({"ok": False, "error": "task_id required"}), 400
     row = {
         "task_id": task_id,
-        "date":    data.get("date") or date.today().isoformat(),
+        "date":    data.get("date") or today_lisbon().isoformat(),
         "done_by": (data.get("done_by") or "").strip(),
         "value":   data.get("value"),
-        "done_at": datetime.now().isoformat(),
+        "done_at": _utc_iso(),
         "active":  True,
     }
     if data.get("id"):
@@ -1485,7 +1505,7 @@ def api_events_post():
         "color":       (data.get("color") or "#2554C7").strip(),
         "series_id":   data.get("series_id"),
         "active":      data.get("active", True),
-        "updated_at":  datetime.now().isoformat(),
+        "updated_at":  _utc_iso(),
     }
     if "notes" in data:
         row["notes"] = data["notes"]
@@ -1497,7 +1517,7 @@ def api_events_post():
 @app.route("/api/events/<string:event_id>", methods=["PATCH"])
 def api_events_patch(event_id):
     data = request.get_json() or {}
-    data["updated_at"] = datetime.now().isoformat()
+    data["updated_at"] = _utc_iso()
     r = _req.patch(f"{SUPA_URL}/rest/v1/events", json=data,
                    headers=_supa_headers(), params={"id": f"eq.{event_id}"})
     return jsonify({"ok": r.ok})
@@ -1564,8 +1584,8 @@ def api_reconciliation():
     except Exception:
         return jsonify({"error": "month must be YYYY-MM"}), 400
     last = (date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)) - timedelta(1)
-    to_d = min(last, date.today())
-    if from_d > date.today():
+    to_d = min(last, today_lisbon())
+    if from_d > today_lisbon():
         return jsonify({"month": month, "days": [], "payment_titles": []})
 
     # Relevés Revolut pré-injectés (historique figé mai→juillet) — évite de
@@ -1602,7 +1622,7 @@ def api_cash():
     """Espèces (Dinheiro) facturées dans Vendus, par jour depuis l'ouverture.
     = cash théorique en caisse, avant sorties/dépôts (que Vendus ne voit pas)."""
     OPEN_DATE = date(2026, 5, 27)
-    docs = get_documents(OPEN_DATE.isoformat(), date.today().isoformat(), detailed=True)
+    docs = get_documents(OPEN_DATE.isoformat(), today_lisbon().isoformat(), detailed=True)
     days = {}
     for d in docs:
         day = (d.get("date") or d.get("local_time", ""))[:10]
@@ -1799,7 +1819,7 @@ def _get_summaries(from_iso, to_iso):
     except (AttributeError, RuntimeError):
         store = None
         try:
-            store = {r["day"]: r for r in _fetch_summaries(OPENING_DAY, date.today().isoformat())}
+            store = {r["day"]: r for r in _fetch_summaries(OPENING_DAY, today_lisbon().isoformat())}
             g._summaries_all = store
         except RuntimeError:
             pass          # hors contexte de requête (cron, script) → pas de mémo
@@ -2302,7 +2322,7 @@ def api_debug_categories():
 
 @app.route("/api/inventory/usage")
 def api_inventory_usage():
-    today = date.today()
+    today = today_lisbon()
     try:
         from_date = date.fromisoformat(request.args.get("from", ""))
         to_date   = date.fromisoformat(request.args.get("to", ""))
@@ -2423,7 +2443,7 @@ def api_purchases_post():
     row = {
         "name": name, "qty": qty,
         "unit": (data.get("unit") or "unit").strip(),
-        "date": data.get("date") or date.today().isoformat(),
+        "date": data.get("date") or today_lisbon().isoformat(),
         "cost": round(float(data.get("cost") or 0), 2) or None,
         "note": (data.get("note") or "").strip(),
     }
