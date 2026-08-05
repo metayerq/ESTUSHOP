@@ -509,10 +509,19 @@ def api_data():
         comp_from, comp_to = from_date - timedelta(7), to_date - timedelta(7)
         comp_label = "vs same days last week"
     elif preset == "month":
-        prev_last = from_date - timedelta(1)               # dernier jour du mois précédent
-        comp_from = prev_last.replace(day=1)
-        comp_to   = comp_from + timedelta(min(n_days, prev_last.day) - 1)
-        comp_label = "vs same days last month"
+        # ⚠️ ALIGNÉ SUR LES JOURS DE SEMAINE, PAS SUR LE QUANTIÈME.
+        #
+        # L'ancienne version comparait le 1er-5 août au 1er-5 juillet. Or le café ouvre lundi,
+        # jeudi, vendredi, samedi, dimanche : au 5 août 2026 cela opposait sam/dim/lun (3 jours
+        # ouvrés) à mer/jeu/ven/sam/dim (4 jours ouvrés). Ni les mêmes jours, ni le même nombre.
+        # Le commentaire juste au-dessus affirme pourtant que ces fenêtres sont « alignées sur
+        # la saisonnalité hebdo » — c'était vrai des autres branches, pas de celle-ci.
+        #
+        # Reculer de 4 semaines pleines préserve exactement le jour de semaine de chaque date,
+        # et retombe dans le mois précédent dans tous les cas utiles. On ne recule PAS d'un mois
+        # calendaire : c'est ce décalage-là qui produisait la comparaison bancale.
+        comp_from, comp_to = from_date - timedelta(28), to_date - timedelta(28)
+        comp_label = "vs same weekdays, 4 weeks earlier"
     else:
         comp_label = f"vs previous {n_days} days"
 
@@ -867,6 +876,7 @@ def api_data():
         basket = {
             "items_per_ticket": round(total_units / total_tx, 2) if total_tx else None,
             "attach_pct":       up["rate"],
+            **_tx_per_open_day(period_rows, from_date, to_date, today_real),
         }
 
         # CA par place assise (période) — 16 places (10 terrasse + 6 intérieur)
@@ -986,6 +996,15 @@ def api_cashflow():
 
     catalog = get_catalog() or {}
     rows    = _ensure_summaries(OPEN_DATE, to_date, catalog)
+
+    # Le jour courant est ajouté EN MÉMOIRE, jamais écrit : _ensure_summaries refuse désormais
+    # de le figer (voir sa docstring). Sans cet ajout, la trésorerie du mois en cours perdrait
+    # la journée d'aujourd'hui — un manque silencieux, alors que le but de la garde est
+    # justement de ne pas laisser un chiffre partiel passer pour définitif.
+    today_docs = _get_today_docs_cached()
+    if today_docs:
+        rows = rows + [{"day": date.today().isoformat(),
+                        **_summarize_docs_items(today_docs, catalog)}]
 
     rev_by_month = {}
     for r in rows:
@@ -1776,9 +1795,71 @@ def _summarize_docs_items(docs, catalog):
 def _upsert_summary(day_iso, summary):
     _supa_upsert("daily_summary", {"day": day_iso, **summary})
 
+def _tx_per_open_day(period_rows, from_date, to_date, today_real):
+    """
+    Tickets par JOUR OUVRÉ sur la période — sur les jours PLEINS uniquement.
+
+    ⚠️ LE JOUR COURANT EST EXCLU DES DEUX CÔTÉS. La version précédente (côté client) divisait
+    un total incluant aujourd'hui par un nombre de jours ouvrés incluant aussi aujourd'hui.
+    Consulté un vendredi matin sur « cette semaine », le dénominateur comptait un jour entier
+    face à trois tickets : la moyenne tombait d'environ un tiers, et remontait toute seule au
+    fil de la journée. Un chiffre qui bouge sans que rien ne se passe n'est pas une moyenne.
+
+    ⚠️ ON N'UTILISE PAS `economics.open_days`. Celui-là inclut aujourd'hui et surtout il est
+    plafonné à ≥ 1 (`count_open_days`, config.py) pour éviter les divisions par zéro — ce qui
+    transformerait « aucun jour ouvré plein » en « un jour ». Ici on veut pouvoir répondre
+    « on ne sait pas » : `count_open_days_raw` peut rendre 0, et on renvoie alors None.
+
+    Les jours ouverts hors calendrier (un mardi d'événement privé) sont comptés au dénominateur
+    dès qu'ils portent des tickets : sinon leur chiffre d'affaires gonflerait le numérateur sans
+    que personne ne les compte comme journée travaillée.
+    """
+    from config import count_open_days_raw, OPEN_WEEKDAYS
+
+    full_end = min(to_date, today_real - timedelta(1))
+    if from_date > full_end:
+        return {"tx_per_open_day": None, "tx_basis_days": 0,
+                "tx_basis_reason": "aucun jour plein dans la période"}
+
+    today_iso = today_real.isoformat()
+    full_rows = [r for r in period_rows
+                 if r.get("day") and r["day"] != today_iso and r["day"] <= full_end.isoformat()]
+
+    basis = count_open_days_raw(from_date, full_end)
+    for r in full_rows:
+        d = date.fromisoformat(r["day"])
+        if float(r.get("nb") or 0) > 0 and d.weekday() not in OPEN_WEEKDAYS:
+            basis += 1                      # journée travaillée hors calendrier
+
+    if basis <= 0:
+        return {"tx_per_open_day": None, "tx_basis_days": 0,
+                "tx_basis_reason": "aucun jour ouvré plein dans la période"}
+
+    total = sum(float(r.get("nb") or 0) for r in full_rows)
+    return {"tx_per_open_day": round(total / basis, 1),
+            "tx_basis_days": basis, "tx_basis_reason": None}
+
+
 def _ensure_summaries(from_date, to_date, catalog):
-    """Retourne les summaries [from..to] (jours passés), en construisant les manquants."""
+    """
+    Retourne les summaries [from..to] (JOURS PASSÉS), en construisant les manquants.
+
+    ⚠️ NE FIGE JAMAIS LE JOUR COURANT. La docstring l'a toujours dit, rien ne le garantissait :
+    seul `/api/data` se bornait lui-même à hier. `/api/cashflow` passait `date.today()`, si bien
+    qu'ouvrir l'onglet Trésorerie à 9h30 écrivait une ligne `daily_summary` figée à 9h30 — et
+    comme on ne reconstruit que les jours MANQUANTS, elle n'était plus jamais corrigée.
+
+    Un tel jour partiel contamine ensuite tout ce qui lit le cache : comparaison hebdomadaire,
+    sparkline, série EBITDA du mois, meilleur jour de la semaine. La garde vit ici, au niveau
+    de l'écriture, et pas chez les appelants — c'est la seule place où elle ne peut pas être
+    oubliée par le prochain.
+
+    Les appelants qui ont besoin du jour courant l'ajoutent en mémoire, sans l'écrire.
+    """
     from vendus import get_documents_with_items
+    to_date = min(to_date, date.today() - timedelta(1))
+    if from_date > to_date:
+        return []
     from_iso, to_iso = from_date.isoformat(), to_date.isoformat()
     rows = _get_summaries(from_iso, to_iso)
     have = {r["day"] for r in rows}

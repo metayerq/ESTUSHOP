@@ -370,8 +370,19 @@ function render(d) {
     }
     perDayEl.innerHTML = `<strong style="color:var(--text)">${fmt(caDay)}</strong>`
       + `<span style="color:var(--faint);font-size:11px;"> / open day</span>${verdict}`;
-    nbPerDayEl.innerHTML = `<strong style="color:var(--text)">${Math.round(d.today.nb / openDays)}</strong>`
-      + `<span style="color:var(--faint);font-size:11px;"> tickets / open day</span>`;
+    // ⚠️ Calculé par le serveur (_tx_per_open_day), plus ici. La division faite à cet endroit
+    // comptait la journée EN COURS des deux côtés : un vendredi matin, trois tickets face à un
+    // jour ouvré entier faisaient chuter la moyenne d'un tiers, qui remontait ensuite toute
+    // seule au fil des heures. Le serveur ne retient que les jours pleins et sait répondre
+    // « on ne sait pas » quand il n'y en a aucun — un 0 se lirait « aucune transaction ».
+    const tx = d.basket && d.basket.tx_per_open_day;
+    nbPerDayEl.innerHTML = tx != null
+      ? `<strong style="color:var(--text)">${tx}</strong>`
+        + `<span style="color:var(--faint);font-size:11px;"> tickets / open day`
+        + ` · ${d.basket.tx_basis_days} j pleins</span>`
+      : `<span style="color:var(--muted)">—</span>`
+        + `<span style="color:var(--faint);font-size:11px;"> tickets / open day`
+        + ` · ${(d.basket && d.basket.tx_basis_reason) || 'indisponible'}</span>`;
   } else {
     perDayEl.innerHTML = '';
     nbPerDayEl.innerHTML = '';
