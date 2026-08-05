@@ -720,21 +720,15 @@ def api_data():
 
     # Meilleur jour de la semaine — historique complet depuis le cache
     older = _get_summaries(OPENING_DAY, (today_real - timedelta(15)).isoformat())
+    # ⚠️ AUJOURD'HUI N'ENTRE PAS DANS LA MOYENNE PAR JOUR DE SEMAINE.
+    # Il y était ajouté dès qu'il portait un ticket : un lundi consulté à 10 h avec 80 € au
+    # compteur comptait comme un lundi COMPLET. Avec neuf lundis pleins à 400 € de moyenne, le
+    # dixième partiel affichait 368 € — et la moyenne remontait d'elle-même dans la journée.
+    # C'est le même défaut que les projections, et la médiane par jour de semaine (plus bas)
+    # excluait déjà aujourd'hui : les deux indicateurs se contredisaient sur les mêmes données.
     wd_rows = (older if isinstance(older, list) else []) + rows_hist
-    if ts["nb"]:
-        wd_rows = wd_rows + [{"day": today_iso, "ca_ttc": ts["ca"], "nb": ts["nb"]}]
-    by_wd = {}
-    for r in wd_rows:
-        if (r.get("nb") or 0) <= 0:
-            continue
-        wd  = date.fromisoformat(r["day"]).strftime("%A")
-        acc = by_wd.setdefault(wd, {"ca": 0.0, "n": 0})
-        acc["ca"] += float(r.get("ca_ttc") or 0)
-        acc["n"]  += 1
-    weekday_data = sorted(
-        [{"day": wd, "avg_ca": round(v["ca"] / v["n"], 2), "n_days": v["n"]}
-         for wd, v in by_wd.items()],
-        key=lambda x: -x["avg_ca"]) or None
+    wd_rows = [r for r in wd_rows if r.get("day") != today_iso]
+    weekday_data = _weekday_averages(wd_rows, today_iso)
 
     result = {
         # Méta
@@ -1910,6 +1904,34 @@ def _summarize_docs_items(docs, catalog):
 
 def _upsert_summary(day_iso, summary):
     _supa_upsert("daily_summary", {"day": day_iso, **summary})
+
+def _weekday_averages(rows, today_iso):
+    """
+    CA moyen par jour de semaine, sur les jours PLEINS uniquement.
+
+    ⚠️ AUJOURD'HUI EST EXCLU. Il était compté dès qu'il portait un ticket : un lundi consulté à
+    10 h avec 80 € au compteur pesait autant qu'un lundi complet. Avec neuf lundis pleins à
+    400 € de moyenne, le dixième partiel ramenait l'affichage à 368 € — puis la moyenne
+    remontait d'elle-même au fil de la journée.
+
+    La médiane par jour de semaine, elle, excluait déjà aujourd'hui. Les deux indicateurs se
+    contredisaient donc sur les mêmes données : le filtre vit désormais ici, pour les deux.
+
+    Un jour sans ticket n'est pas une journée à 0 € : il est absent des données, pas nul.
+    """
+    by_wd = {}
+    for r in rows:
+        if r.get("day") == today_iso or (r.get("nb") or 0) <= 0:
+            continue
+        wd  = date.fromisoformat(r["day"]).strftime("%A")
+        acc = by_wd.setdefault(wd, {"ca": 0.0, "n": 0})
+        acc["ca"] += float(r.get("ca_ttc") or 0)
+        acc["n"]  += 1
+    return sorted(
+        [{"day": wd, "avg_ca": round(v["ca"] / v["n"], 2), "n_days": v["n"]}
+         for wd, v in by_wd.items()],
+        key=lambda x: -x["avg_ca"]) or None
+
 
 def _audit_summaries(cache_rows, vendus_by_day, from_date, to_date, tol=0.01):
     """

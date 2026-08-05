@@ -87,6 +87,17 @@ def _negate_refund(d):
     for p in d.get("payments", []):
         if p.get("amount") is not None:
             p["amount"] = -abs(float(p["amount"]))
+    # ⚠️ LE BLOC `taxes` AUSSI. Il était le seul oublié, et Vendus le renvoie POSITIF sur un
+    # avoir exactement comme sur une vente — vérifié sur l'avoir 362109040 :
+    # {'total': '10.50', 'base': '9.29', 'amount': '1.21', 'rate': 13}.
+    # `tva_breakdown` les additionnait donc au lieu de les soustraire : une vente de 100 € TTC
+    # annulée le même jour affichait un CA de 0 € (juste) mais une ventilation TVA de 200 € de
+    # total et 23 € de TVA collectée (faux). Ce champ n'est plus rendu par le dashboard, mais
+    # il reste servi par l'API — et c'est celui qu'on relit pour une déclaration.
+    for t in d.get("taxes", []):
+        for k in ("base", "amount", "total"):
+            if t.get(k) is not None:
+                t[k] = -abs(float(t[k]))
     return d
 
 
