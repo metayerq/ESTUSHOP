@@ -480,8 +480,9 @@ def ticket_median(docs):
 
 def best_weekday():
     """Meilleur jour de la semaine sur tout l'historique disponible (90j)."""
-    from datetime import date, timedelta
-    today = date.today()
+    from datetime import timedelta
+    from config import today_lisbon
+    today = today_lisbon()
     since = (today - timedelta(days=90)).isoformat()
     try:
         raw = vendus("/documents/", {"since": since, "until": today.isoformat(), "status": "N"})
@@ -524,8 +525,9 @@ def best_weekday():
 
 def wow_growth():
     """Croissance semaine en cours vs semaine précédente (même 7 jours)."""
-    from datetime import date, timedelta
-    today = date.today()
+    from datetime import timedelta
+    from config import today_lisbon
+    today = today_lisbon()
     # Semaine en cours : 7 derniers jours
     since_cur  = (today - timedelta(days=6)).isoformat()
     # Semaine précédente : les 7 jours avant ça
@@ -1011,8 +1013,9 @@ def product_stats_7d(since: str, until: str):
 
 def weekly_sparkline(days=7):
     """CA et nb transactions par jour sur les `days` derniers jours."""
-    from datetime import date, timedelta
-    today = date.today()
+    from datetime import timedelta
+    from config import today_lisbon
+    today = today_lisbon()
     since = (today - timedelta(days=days - 1)).isoformat()
     until = today.isoformat()
     try:
