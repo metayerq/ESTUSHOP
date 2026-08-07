@@ -636,3 +636,24 @@ td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 
   .flux-label { font-size: 10.5px; }
   .flux-amount { font-size: 12px; }
 }
+
+/* ── KPI cliquable ────────────────────────────────────────────────────────────
+   Le lien EMBOÎTE la cellule au lieu de la remplacer : `data-tip` reste porté par
+   .kpi-cell, que le tooltip partagé cible — le déplacer sur le <a> le ferait
+   disparaître sans bruit.
+
+   L'ancre devient donc l'élément de grille ; la cellule doit la remplir, sinon les
+   cartes voisines perdent leur alignement en hauteur. */
+.kpi-link { display: block; text-decoration: none; color: inherit; height: 100%; }
+.kpi-link .kpi-cell { height: 100%; transition: border-color .12s, background .12s; }
+.kpi-link:hover .kpi-cell { border-color: var(--spec); background: var(--bg-hover); }
+.kpi-link:focus-visible .kpi-cell { outline: 2px solid var(--spec); outline-offset: 2px; }
+
+/* La flèche ne s'affiche qu'au survol : un chevron permanent sur une carte parmi
+   quatre suggère une hiérarchie qui n'existe pas. */
+.kpi-go { color: var(--spec); opacity: 0; transition: opacity .12s; margin-left: 2px; }
+.kpi-link:hover .kpi-go, .kpi-link:focus-visible .kpi-go { opacity: 1; }
+@media (hover: none) { .kpi-go { opacity: .55; } }
+/* .kpi-cell[data-tip]:hover impose `cursor: help` — juste pour une carte qui explique,
+   trompeur pour une carte qui MÈNE quelque part. Le lien reprend la main. */
+.kpi-link .kpi-cell[data-tip]:hover { cursor: pointer; }

@@ -282,12 +282,20 @@
         <div class="kpi-delta" id="kpi-ca-perday" style="margin-top:2px;"></div>
         <div class="kpi-delta" id="kpi-ca-ht" style="color:var(--muted);margin-top:2px;"></div>
       </div>
-      <div class="kpi-cell" data-tip="Number of sales tickets over the period, refunds deducted. A ticket is one customer checkout, whatever the number of items.">
-        <div class="kpi-label">Transactions</div>
+      <!-- Cliquable vers /transactions. Le lien EMBOÎTE la cellule au lieu de la remplacer :
+           `data-tip` est lu par le tooltip partagé (style.css #hover-tip) sur .kpi-cell, et
+           déplacer l'attribut sur le <a> le ferait disparaître en silence. -->
+      <!-- Pas d'attribut `title` : le tooltip partagé existe pour REMPLACER les title natifs
+           (voir dashboard.js), les deux se superposeraient. L'invitation au clic est dans
+           `data-tip`, que ce tooltip lit déjà. -->
+      <a href="/transactions" class="kpi-link">
+      <div class="kpi-cell" data-tip="Number of sales tickets over the period, refunds deducted. A ticket is one customer checkout, whatever the number of items. Click to open the daily analysis since opening.">
+        <div class="kpi-label">Transactions <span class="kpi-go">→</span></div>
         <div class="kpi-value" id="kpi-nb">—</div>
         <div class="kpi-delta" id="kpi-nb-delta"></div>
         <div class="kpi-delta" id="kpi-nb-perday" style="color:var(--muted);margin-top:2px;"></div>
       </div>
+      </a>
       <div class="kpi-cell" data-tip="Revenue ÷ transactions. The median below is the typical ticket — it ignores outliers like one big catering order that inflates the average.">
         <div class="kpi-label">Average ticket</div>
         <div class="kpi-value" id="kpi-ticket">—</div>
