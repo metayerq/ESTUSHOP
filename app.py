@@ -2181,7 +2181,12 @@ def _tx_day_records(rows, today_real):
             "ca_ttc":      round(float(r.get("ca_ttc") or 0), 2),
             "weekday":     date.fromisoformat(iso).weekday(),   # 0 = lundi
             "partial":     iso == today_iso,
-            "multi_count": int(float(r.get("multi_count") or 0)),
+            # `None` ≠ 0 : une ligne de cache écrite avant l'existence de ce champ n'a pas
+            # « zéro ticket multi-lignes », elle n'a pas la mesure. Les confondre afficherait
+            # un 0,0 % qui se lit « personne ne prend deux articles » — une information fausse
+            # là où il n'y en a aucune.
+            "multi_count": (int(float(r["multi_count"]))
+                            if r.get("multi_count") is not None else None),
         })
     out.sort(key=lambda d: d["day"])
     return out
@@ -2225,7 +2230,8 @@ def _tx_window_stats(records, w_from, w_to, window_days=TX_WINDOW_DAYS,
     ca     = _median([d["ca_ttc"] for d in full])
     basket = _median([d["ca_ttc"] / d["nb"] for d in full])
     tickets = sum(d["nb"] for d in full)
-    multi   = sum(d["multi_count"] for d in full)
+    mesures = [d["multi_count"] for d in full if d["multi_count"] is not None]
+    multi   = sum(mesures)
 
     # Ce que la fenêtre ne dit pas, elle le dit. Une fenêtre tronquée (début de
     # l'historique) reste comparable — une médiane ne dépend pas de la durée —
@@ -2233,21 +2239,23 @@ def _tx_window_stats(records, w_from, w_to, window_days=TX_WINDOW_DAYS,
     caveats = []
     span = (w_to - w_from).days + 1
     if span < window_days:
-        caveats.append(f"fenêtre tronquée à {span} jours calendaires "
-                       f"(début de l'historique)")
+        caveats.append("truncated")
     if n == 0:
-        caveats.append("aucun jour plein avec activité")
+        caveats.append("no-days")
     elif n < min_full:
-        caveats.append(f"{n} jour{'s' if n > 1 else ''} plein{'s' if n > 1 else ''} seulement")
+        caveats.append("too-few-days")
 
     return {
         "from": f_iso, "to": t_iso, "full_days": n,
         "tx_median":     round(tx, 1)     if tx     is not None else None,
         "ca_median":     round(ca, 2)     if ca     is not None else None,
         "basket_median": round(basket, 2) if basket is not None else None,
-        "multi_pct":     round(multi / tickets * 100, 1) if tickets else None,
+        # Mesuré uniquement si TOUS les jours pleins portent le compte : un sous-ensemble
+        # produirait une proportion calculée sur un dénominateur qui ne lui correspond pas.
+        "multi_pct":     (round(multi / tickets * 100, 1)
+                          if tickets and len(mesures) == len(full) else None),
         "reliable":      n >= min_full,
-        "reason":        " ; ".join(caveats) or None,
+        "reason":        "+".join(caveats) or None,
     }
 
 
@@ -2328,33 +2336,28 @@ def _tx_headline(windows, min_full=TX_MIN_FULL_DAYS):
             "prev_tx_median": None, "prev_n": 0, "prev_from": None, "prev_to": None,
             "delta_pct": None}
     if not idx:
-        return {**vide, "reason": (
-            f"aucune fenêtre de 14 jours n'atteint {min_full} jours pleins "
-            f"— pas assez d'historique pour une médiane qui tienne")}
+        return {**vide, "reason": "no-reliable-window"}
 
     cur = windows[idx[-1]]
     caveats = []
     if idx[-1] != len(windows) - 1:
-        derniere = windows[-1]
-        caveats.append("fenêtre la plus récente écartée "
-                       f"({derniere['reason'] or 'non fiable'})")
+        caveats.append("latest-window-skipped")
 
     prev = windows[idx[-2]] if len(idx) >= 2 else None
     if prev is None:
         delta = None
-        caveats.append("une seule fenêtre fiable : rien à comparer")
+        caveats.append("no-prev-window")
     elif idx[-2] != idx[-1] - 1:
         # On compare quand même — mais à une fenêtre plus ancienne que « la
         # précédente », et le trou entre les deux change le sens de l'écart.
         delta = (round((cur["tx_median"] - prev["tx_median"]) / prev["tx_median"] * 100)
                  if prev["tx_median"] else None)
-        caveats.append(f"{idx[-1] - idx[-2] - 1} fenêtre(s) intermédiaire(s) "
-                       "non fiable(s) ignorée(s)")
+        caveats.append("windows-skipped")
         if delta is None:
-            caveats.append("fenêtre de référence à zéro ticket médian")
+            caveats.append("prev-zero")
     elif not prev["tx_median"]:
         delta = None
-        caveats.append("fenêtre de référence à zéro ticket médian")
+        caveats.append("prev-zero")
     else:
         delta = round((cur["tx_median"] - prev["tx_median"]) / prev["tx_median"] * 100)
 
@@ -2366,7 +2369,7 @@ def _tx_headline(windows, min_full=TX_MIN_FULL_DAYS):
         "prev_from":      prev["from"]      if prev else None,
         "prev_to":        prev["to"]        if prev else None,
         "delta_pct": delta,
-        "reason": " ; ".join(caveats) or None,
+        "reason": "+".join(caveats) or None,
     }
 
 

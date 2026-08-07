@@ -1,4 +1,10 @@
 """
+⚠️ `reason` porte des CODES, pas de la prose. Première intégration avec la page : l'endpoint
+renvoyait « 2 jours pleins seulement » en toutes lettres, qui s'affichait tel quel dans une
+interface anglaise. Le serveur ne décide pas de la langue de l'écran — il nomme la cause, la
+page possède la formulation (`reasonLabel`, static/transactions.js). Plusieurs causes se
+cumulent avec « + ».
+
 L'affluence — compter les gens quand le chiffre d'affaires baisse.
 
 Un CA qui recule ne dit pas s'il y a moins de monde ou si chacun consomme moins : les deux
@@ -192,7 +198,7 @@ def test_la_plus_ancienne_fenetre_annonce_sa_troncature():
     wins = app._tx_windows(app._tx_day_records([], date(2026, 8, 7)),
                            OUVERTURE, date(2026, 8, 7))
     assert wins[0]["from"] == "2026-05-27" and wins[0]["to"] == "2026-05-28"
-    assert "tronquée" in wins[0]["reason"]
+    assert "truncated" in wins[0]["reason"]
     assert all("tronquée" not in (w["reason"] or "") for w in wins[1:])
 
 
@@ -203,7 +209,7 @@ def test_une_fenetre_sans_jour_plein_ne_rend_aucun_chiffre():
     assert w["tx_median"] is None and w["ca_median"] is None
     assert w["basket_median"] is None and w["multi_pct"] is None
     assert w["reliable"] is False
-    assert "aucun jour plein" in w["reason"]
+    assert "no-days" in w["reason"]
 
 
 def test_sous_six_jours_pleins_la_fenetre_n_est_pas_fiable_mais_reste_chiffree():
@@ -213,7 +219,7 @@ def test_sous_six_jours_pleins_la_fenetre_n_est_pas_fiable_mais_reste_chiffree()
                   "2026-07-27": 25, "2026-07-30": 20})
     w = _fenetre(cinq, date(2026, 7, 24), date(2026, 8, 6), today)
     assert w["full_days"] == 5 and w["reliable"] is False
-    assert w["reason"] == "5 jours pleins seulement"
+    assert w["reason"] == "too-few-days"
     assert w["tx_median"] == 20.0, "la médiane existe quand même"
 
     six = _fenetre(cinq + [_jour("2026-07-31", 20)], date(2026, 7, 24), date(2026, 8, 6), today)
@@ -324,7 +330,7 @@ def test_une_seule_fenetre_fiable_ne_produit_pas_de_delta():
     assert h["tx_median"] == 20.0, "le niveau, lui, est connu"
     assert h["delta_pct"] is None
     assert h["prev_tx_median"] is None and h["prev_n"] == 0
-    assert "une seule fenêtre fiable" in h["reason"]
+    assert "no-prev-window" in h["reason"]
 
 
 def test_une_fenetre_trop_maigre_ne_sert_pas_de_reference():
@@ -334,13 +340,13 @@ def test_une_fenetre_trop_maigre_ne_sert_pas_de_reference():
     h = app._transactions_payload(rows, date(2026, 7, 10), date(2026, 8, 7))["headline"]
     assert h["delta_pct"] is None
     assert h["prev_tx_median"] is None
-    assert "une seule fenêtre fiable" in h["reason"]
+    assert "no-prev-window" in h["reason"]
 
 
 def test_sans_aucune_fenetre_fiable_le_headline_ne_dit_rien_et_explique():
     h = app._transactions_payload(_rows({"2026-07-24": 20}), OUVERTURE, date(2026, 8, 7))["headline"]
     assert h["tx_median"] is None and h["delta_pct"] is None and h["n"] == 0
-    assert "jours pleins" in h["reason"]
+    assert "no-reliable-window" in h["reason"]
 
 
 def test_les_premiers_jours_n_ont_pas_encore_de_fenetre():
@@ -363,8 +369,13 @@ def test_une_fenetre_recente_ecartee_est_annoncee():
     h = app._transactions_payload(rows, date(2026, 6, 26), date(2026, 8, 7))["headline"]
     assert (h["from"], h["to"]) == ("2026-07-10", "2026-07-23")
     assert h["delta_pct"] == -33
-    assert "la plus récente écartée" in h["reason"]
-    assert "1 jour plein seulement" in h["reason"], "la raison de l'écart est reprise telle quelle"
+    assert "latest-window-skipped" in h["reason"]
+    # Le DÉTAIL de l'écart (« 1 jour plein seulement ») n'est plus imbriqué dans le code du
+    # headline : il vit dans la fenêtre concernée, que la page affiche juste en dessous avec
+    # son n et sa propre raison. L'information n'est pas perdue, elle est à un seul endroit.
+    derniere = app._transactions_payload(rows, date(2026, 6, 26), date(2026, 8, 7))["windows"][-1]
+    assert derniere["full_days"] == 1
+    assert "too-few-days" in derniere["reason"]
 
 
 # ── 7. Le contrat de la réponse ──────────────────────────────────────────────
@@ -464,3 +475,42 @@ def test_aucune_projection_ni_tendance_n_est_calculee():
         src = inspect.getsource(fn)
         for interdit in ("polyfit", "linregress", "slope", "trend", "proj_"):
             assert interdit not in src, f"{fn.__name__} calcule une tendance ({interdit})"
+
+
+# ── Le compte multi-lignes : mesuré, ou pas mesuré — jamais zéro par défaut ───
+
+def test_un_champ_multi_count_absent_ne_vaut_pas_zero():
+    """
+    Trouvé à l'intégration : une reconstitution sans `multi_count` affichait « 0.0 % » sur
+    toutes les fenêtres — un chiffre qui se lit « personne ne prend deux articles » là où il
+    n'y a aucune mesure. Les lignes de cache écrites avant l'existence du champ sont dans ce
+    cas, et rien à l'écran ne le disait.
+    """
+    rows = [{"day": f"2026-07-{d:02d}", "nb": 20, "ca_ttc": 200.0, "ca_ht": 177.0}
+            for d in (10, 11, 12, 13, 16, 17, 18)]          # aucun multi_count
+    w = app._transactions_payload(rows, date(2026, 7, 10), date(2026, 7, 24))["windows"][-1]
+    assert w["tx_median"] == 20.0, "le reste de la fenêtre reste mesuré"
+    assert w["multi_pct"] is None, "multi_pct fabriqué à 0 alors que rien n'est mesuré"
+
+
+def test_une_mesure_partielle_ne_produit_pas_une_proportion():
+    """
+    Trois jours sur sept portent le compte : la proportion se calculerait sur un dénominateur
+    qui ne lui correspond pas. Mieux vaut ne rien dire que dire un chiffre sur mesuré.
+    """
+    rows = []
+    for i, d in enumerate((10, 11, 12, 13, 16, 17, 18)):
+        r = {"day": f"2026-07-{d:02d}", "nb": 20, "ca_ttc": 200.0, "ca_ht": 177.0}
+        if i < 3:
+            r["multi_count"] = 6
+        rows.append(r)
+    w = app._transactions_payload(rows, date(2026, 7, 10), date(2026, 7, 24))["windows"][-1]
+    assert w["multi_pct"] is None
+
+
+def test_quand_tout_est_mesure_la_proportion_est_calculee():
+    """Contrepartie : un vrai 0 mesuré doit bien s'afficher 0, pas disparaître."""
+    rows = [{"day": f"2026-07-{d:02d}", "nb": 20, "ca_ttc": 200.0, "ca_ht": 177.0,
+             "multi_count": 0} for d in (10, 11, 12, 13, 16, 17, 18)]
+    w = app._transactions_payload(rows, date(2026, 7, 10), date(2026, 7, 24))["windows"][-1]
+    assert w["multi_pct"] == 0.0, "un zéro MESURÉ est une information, il s'affiche"

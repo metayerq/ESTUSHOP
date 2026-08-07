@@ -61,9 +61,22 @@ function fmtRange(from, to) {
 // code brut sinon : un code inconnu reste plus honnête qu'un « — » muet, et il
 // signale que l'API a appris un cas que la page ignore encore.
 
+// ⚠️ LE SERVEUR ÉMET DES CODES, PAS DE LA PROSE — et c'est ici que vit la formulation.
+// Première intégration : l'endpoint renvoyait « 2 jours pleins seulement » en toutes lettres,
+// qui s'affichait tel quel dans une page anglaise, faute de correspondance dans cette table.
+// Le contrat que j'avais écrit donnait l'exemple en français : la faute est au contrat, pas
+// aux deux implémentations qui l'ont suivi chacune raisonnablement.
+// Plusieurs causes peuvent se cumuler : elles arrivent jointes par « + ».
 function reasonLabel(code) {
   if (!code) return null;
+  if (String(code).includes('+')) {
+    return String(code).split('+').map(reasonLabel).filter(Boolean).join(' · ');
+  }
   const MAP = {
+    'truncated':            'window truncated — start of history',
+    'no-reliable-window':   'no 14-day window reaches 6 full open days yet',
+    'latest-window-skipped':'most recent window skipped — too thin',
+    'windows-skipped':      'thin windows in between were skipped',
     'no-data':          'no day recorded yet',
     'no-days':          'no open day in this range',
     'too-few-days':     'fewer than 6 full open days — too thin for a median',
@@ -73,6 +86,7 @@ function reasonLabel(code) {
     'prev-unreliable':  'the earlier window is too thin to compare against',
     'prev-zero':        'the earlier window had no ticket — a ratio would be meaningless',
     'partial-window':   'this window is still running',
+    'multi-not-measured':'multi-line share not recorded for every day in this window',
   };
   return MAP[code] || String(code);
 }
