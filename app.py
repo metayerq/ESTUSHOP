@@ -1154,6 +1154,36 @@ def api_cashflow():
     return jsonify({"months": out, "from_date": OPEN_DATE.isoformat(), "to_date": to_date.isoformat()})
 
 
+@app.route("/api/transactions/daily")
+def api_transactions_daily():
+    """
+    Affluence : tickets jour par jour depuis l'ouverture, plus les médianes par
+    fenêtres de 14 jours et par jour de semaine. Voir `_transactions_payload`.
+
+    COÛT : zéro appel Vendus pour le passé — tout vient du cache `daily_summary`,
+    comme /api/cashflow. Seul le jour courant est monté EN MÉMOIRE, jamais écrit :
+    `_ensure_summaries` refuse de figer aujourd'hui (voir sa docstring), et c'est
+    une garde, pas une gêne — une ligne figée à 10 h resterait fausse pour
+    toujours puisqu'on ne reconstruit que les jours manquants.
+
+    Si l'appel Vendus du jour échoue, la route échoue avec lui — délibérément.
+    Le rattraper rendrait la journée en cours absente de `days` sans que rien ne
+    le signale, et un jour manquant est indiscernable d'un jour sans client.
+    """
+    today_real = today_lisbon()
+    opening    = date.fromisoformat(OPENING_DAY)
+
+    catalog = get_catalog() or {}
+    rows    = _ensure_summaries(opening, today_real - timedelta(1), catalog)
+
+    today_docs = _get_today_docs_cached()
+    if today_docs:
+        rows = rows + [{"day": today_real.isoformat(),
+                        **_summarize_docs_items(today_docs, catalog)}]
+
+    return jsonify({"ok": True, **_transactions_payload(rows, opening, today_real)})
+
+
 @app.route("/cogs")
 def cogs_page():
     return render_template("cogs.html", role=_current_role() or "admin")
@@ -2059,6 +2089,306 @@ def _tx_per_open_day(period_rows, from_date, to_date, today_real):
     total = sum(float(r.get("nb") or 0) for r in full_rows)
     return {"tx_per_open_day": round(total / basis, 1),
             "tx_basis_days": basis, "tx_basis_reason": None}
+
+
+# ── Affluence : tickets par jour et médianes par fenêtres de 14 jours ─────────
+#
+# La question posée est « le CA baisse — est-ce que les GENS viennent encore ? ».
+# Elle ne se répond pas avec le chiffre d'affaires : un panier qui se tasse et
+# une salle qui se vide produisent la même courbe de CA. On compte donc les
+# TICKETS, et on regarde le panier à côté, jamais à la place.
+#
+# MÉDIANE, PAS MOYENNE. L'historique porte de vrais jours hors norme (80 tickets
+# le 16 juillet, 73 le 29 juin, contre une médiane de 20 à 30). Sur une fenêtre
+# de 8 jours ouvrés, une moyenne serait tirée d'un tiers par ce seul jour ; la
+# médiane le lit comme « un jour au-dessus », ce qu'il est.
+#
+# FENÊTRES DE 14 JOURS CALENDAIRES. Assez large pour contenir chaque jour de
+# semaine deux fois (le samedi et le lundi ne pèsent pas pareil : sans cette
+# largeur, on comparerait des compositions de semaine, pas des niveaux). Assez
+# courte pour qu'un changement d'il y a trois semaines soit encore visible.
+# Calées sur la FIN — la plus récente se termine hier — parce qu'un décalage de
+# calage ferait bouger tous les chiffres au fil des jours sans qu'il se passe rien.
+#
+# AUCUNE TENDANCE, AUCUNE RÉGRESSION, AUCUNE PROJECTION. Une quarantaine de jours
+# ouvrés depuis l'ouverture, un calendrier d'ouverture qui change au milieu
+# (SCHEDULE_CUTOVER, 12 juin) et un mois d'août touristique : une pente calculée
+# là-dessus décrirait le bruit avec trois décimales. Deux fenêtres comparées
+# entre elles, c'est tout ce que ces données peuvent porter honnêtement.
+
+TX_WINDOW_DAYS = 14      # jours CALENDAIRES par fenêtre
+TX_MIN_FULL_DAYS = 6     # en dessous, la médiane d'une fenêtre n'est pas fiable
+
+# Libellés figés : `strftime("%A")` dépend de la locale du runtime, qui n'est pas
+# la même sur Vercel et sur un poste de dev. Un contrat d'API ne se négocie pas
+# avec la locale du serveur.
+_TX_WEEKDAY_LABELS = ("Monday", "Tuesday", "Wednesday", "Thursday",
+                      "Friday", "Saturday", "Sunday")
+
+
+def _median(values):
+    """
+    Médiane d'une série, ou None si la série est VIDE.
+
+    Effectif impair : la valeur centrale. Effectif pair : moyenne des deux
+    valeurs centrales (convention `statistics.median`), réimplémentée ici pour
+    que le comportement du cas vide soit à nous : `statistics.median([])` lève,
+    et une exception au fond d'un agrégat se rattrape mal en `None` explicite.
+
+    Une série vide ne vaut pas 0. « Aucun jour mesuré » et « des jours mesurés à
+    zéro ticket » sont deux constats opposés ; les confondre fabriquerait de
+    l'information à partir d'une absence.
+    """
+    vals = sorted(float(v) for v in values)
+    if not vals:
+        return None
+    n = len(vals)
+    if n % 2:
+        return vals[n // 2]
+    return (vals[n // 2 - 1] + vals[n // 2]) / 2
+
+
+def _tx_day_records(rows, today_real):
+    """
+    Normalise les lignes `daily_summary` en JOURS D'ACTIVITÉ, triés par date.
+
+    Un jour sans ticket est ABSENT de la liste, jamais présent à 0 : le café
+    ferme le mardi et le mercredi depuis le 12 juin, et fermait d'autres jours
+    pendant la période de lancement. Une ligne à 0 se lirait « ouvert, personne
+    n'est venu » — et surtout elle entrerait dans les médianes, qu'elle tirerait
+    vers le bas au rythme des jours de fermeture.
+
+    Le jour courant est conservé, marqué `partial`. Il est le seul de la liste à
+    ne pas être une journée complète, et il est exclu de TOUT calcul en aval
+    (fenêtres, médianes par jour de semaine, headline) : à 10 h du matin il ne
+    dit rien du niveau d'affluence de la journée.
+
+    Sortie interne : porte `multi_count`, que le contrat public n'expose pas jour
+    par jour (il ne sert qu'aux agrégats de fenêtre).
+    """
+    today_iso = today_real.isoformat()
+    out = []
+    for r in rows:
+        iso = r.get("day")
+        if not iso:
+            continue
+        nb = int(float(r.get("nb") or 0))
+        if nb <= 0:
+            continue        # jour fermé, ou journée sans autre mouvement qu'un avoir
+        out.append({
+            "day":         iso,
+            "nb":          nb,
+            "ca_ttc":      round(float(r.get("ca_ttc") or 0), 2),
+            "weekday":     date.fromisoformat(iso).weekday(),   # 0 = lundi
+            "partial":     iso == today_iso,
+            "multi_count": int(float(r.get("multi_count") or 0)),
+        })
+    out.sort(key=lambda d: d["day"])
+    return out
+
+
+def _tx_window_stats(records, w_from, w_to, window_days=TX_WINDOW_DAYS,
+                     min_full=TX_MIN_FULL_DAYS):
+    """
+    Médianes d'UNE fenêtre, sur ses jours PLEINS avec activité.
+
+    `full_days` compte les jours réellement travaillés observés dans la fenêtre —
+    pas les jours ouvrables du calendrier. La différence n'est pas cosmétique :
+    une fenêtre à cheval sur le 12 juin enjambe deux calendriers d'ouverture
+    (six jours par semaine avant, cinq après), et un jour de fermeture
+    exceptionnelle ne figure dans aucun calendrier. Compter ce qui a été observé
+    est la seule mesure qui ne suppose rien.
+
+    `basket_median` est la médiane des paniers MOYENS JOURNALIERS (ca_ttc / nb du
+    jour), et non `ca_median / tx_median` : deux médianes ne se divisent pas, le
+    quotient ne serait la médiane de rien. Ce n'est pas non plus la médiane des
+    tickets un par un — le cache journalier ne porte pas le détail ticket par
+    ticket, et l'aller-chercher coûterait un appel Vendus par ticket.
+
+    `multi_pct` est une PROPORTION agrégée (somme des multi ÷ somme des tickets),
+    pas une médiane : une proportion se cumule sans se déformer, et la médiane
+    d'un taux journalier donnerait le même poids à un jour de 4 tickets qu'à un
+    jour de 60.
+    ⚠️ Sa définition réelle, héritée de `_summarize_docs_items`, est « ticket
+    comportant au moins DEUX LIGNES distinctes, avoirs exclus ». Un ticket
+    « 2 cafés » saisi en une seule ligne (qty = 2) compte donc comme mono-ligne.
+    C'est un indicateur de VENTE ADDITIONNELLE (un café + un gâteau), pas de
+    taille de commande ; le lire comme « part des clients qui prennent plusieurs
+    articles » le surestimerait dans un sens et le sous-estimerait dans l'autre.
+    """
+    f_iso, t_iso = w_from.isoformat(), w_to.isoformat()
+    full = [d for d in records
+            if not d["partial"] and f_iso <= d["day"] <= t_iso and d["nb"] > 0]
+    n = len(full)
+
+    tx     = _median([d["nb"] for d in full])
+    ca     = _median([d["ca_ttc"] for d in full])
+    basket = _median([d["ca_ttc"] / d["nb"] for d in full])
+    tickets = sum(d["nb"] for d in full)
+    multi   = sum(d["multi_count"] for d in full)
+
+    # Ce que la fenêtre ne dit pas, elle le dit. Une fenêtre tronquée (début de
+    # l'historique) reste comparable — une médiane ne dépend pas de la durée —
+    # mais le lecteur doit savoir qu'elle ne couvre pas deux semaines.
+    caveats = []
+    span = (w_to - w_from).days + 1
+    if span < window_days:
+        caveats.append(f"fenêtre tronquée à {span} jours calendaires "
+                       f"(début de l'historique)")
+    if n == 0:
+        caveats.append("aucun jour plein avec activité")
+    elif n < min_full:
+        caveats.append(f"{n} jour{'s' if n > 1 else ''} plein{'s' if n > 1 else ''} seulement")
+
+    return {
+        "from": f_iso, "to": t_iso, "full_days": n,
+        "tx_median":     round(tx, 1)     if tx     is not None else None,
+        "ca_median":     round(ca, 2)     if ca     is not None else None,
+        "basket_median": round(basket, 2) if basket is not None else None,
+        "multi_pct":     round(multi / tickets * 100, 1) if tickets else None,
+        "reliable":      n >= min_full,
+        "reason":        " ; ".join(caveats) or None,
+    }
+
+
+def _tx_windows(records, opening_day, today_real, window_days=TX_WINDOW_DAYS,
+                min_full=TX_MIN_FULL_DAYS):
+    """
+    Découpe l'histoire en fenêtres de `window_days` jours calendaires, de la plus
+    ancienne à la plus récente. La dernière se termine HIER.
+
+    Le calage se fait depuis la fin, jamais depuis l'ouverture : ancrées sur le
+    27 mai, les bornes des fenêtres seraient figées et la fenêtre « courante »
+    grossirait d'un jour par jour, si bien que sa médiane bougerait pour deux
+    raisons mêlées (les ventes, et sa propre longueur).
+
+    La plus ANCIENNE fenêtre est bornée à l'ouverture, donc généralement plus
+    courte : l'histoire ne fait pas un multiple de quatorze. On la garde plutôt
+    que de jeter ses jours en silence — mais elle annonce sa troncature.
+
+    Le découpage ne dépend PAS des données : le même nombre de fenêtres est
+    produit qu'elles portent des ventes ou non. Une fenêtre sans jour plein
+    existe, avec `tx_median: None` et sa raison — c'est un trou constaté, pas un
+    trou masqué.
+    """
+    end = today_real - timedelta(1)          # aujourd'hui n'entre dans aucune fenêtre
+    if end < opening_day:
+        return []
+    wins = []
+    w_to = end
+    while w_to >= opening_day:
+        w_from = max(w_to - timedelta(window_days - 1), opening_day)
+        wins.append(_tx_window_stats(records, w_from, w_to, window_days, min_full))
+        w_to -= timedelta(window_days)
+    wins.reverse()
+    return wins
+
+
+def _tx_by_weekday(records):
+    """
+    Médiane de tickets par jour de semaine, sur les jours PLEINS.
+
+    `weekday` suit `date.weekday()` : 0 = lundi. Un jour de semaine sans aucun
+    jour plein est ABSENT de la liste — pas présent avec une médiane à 0.
+
+    `n` est publié parce qu'il est indispensable à la lecture : depuis le 12 juin
+    le café ferme mardi et mercredi, donc ces deux lignes ne peuvent porter que
+    des jours de la période de lancement (n petit, données anciennes). Sans `n`,
+    un mardi de rodage à 8 tickets se lirait comme le niveau d'un mardi.
+    """
+    by_wd = {}
+    for d in records:
+        if d["partial"]:
+            continue
+        by_wd.setdefault(d["weekday"], []).append(d["nb"])
+    out = []
+    for wd in sorted(by_wd):
+        vals = by_wd[wd]
+        out.append({"weekday": wd, "label": _TX_WEEKDAY_LABELS[wd],
+                    "tx_median": round(_median(vals), 1), "n": len(vals)})
+    return out
+
+
+def _tx_headline(windows, min_full=TX_MIN_FULL_DAYS):
+    """
+    La phrase du haut de page : dernière fenêtre FIABLE contre la précédente FIABLE.
+
+    ⚠️ JAMAIS DE DELTA CONTRE UNE FENÊTRE VIDE OU NON FIABLE. Comparer à une
+    fenêtre de deux jours pleins produirait un écart à deux chiffres tiré d'un
+    seul jour ; comparer à une fenêtre vide (traitée comme 0) produirait un
+    −100 % qui n'est le récit de rien. Quand il n'y a pas deux fenêtres fiables,
+    `delta_pct` vaut None et `reason` dit laquelle manque.
+
+    Les fenêtres non fiables SAUTÉES sont annoncées : si la plus récente est
+    écartée, le chiffre affiché n'est pas celui des quinze derniers jours, et
+    quelqu'un doit le savoir avant d'en tirer une décision.
+    """
+    idx = [i for i, w in enumerate(windows) if w["reliable"]]
+    vide = {"tx_median": None, "n": 0, "from": None, "to": None,
+            "prev_tx_median": None, "prev_n": 0, "prev_from": None, "prev_to": None,
+            "delta_pct": None}
+    if not idx:
+        return {**vide, "reason": (
+            f"aucune fenêtre de 14 jours n'atteint {min_full} jours pleins "
+            f"— pas assez d'historique pour une médiane qui tienne")}
+
+    cur = windows[idx[-1]]
+    caveats = []
+    if idx[-1] != len(windows) - 1:
+        derniere = windows[-1]
+        caveats.append("fenêtre la plus récente écartée "
+                       f"({derniere['reason'] or 'non fiable'})")
+
+    prev = windows[idx[-2]] if len(idx) >= 2 else None
+    if prev is None:
+        delta = None
+        caveats.append("une seule fenêtre fiable : rien à comparer")
+    elif idx[-2] != idx[-1] - 1:
+        # On compare quand même — mais à une fenêtre plus ancienne que « la
+        # précédente », et le trou entre les deux change le sens de l'écart.
+        delta = (round((cur["tx_median"] - prev["tx_median"]) / prev["tx_median"] * 100)
+                 if prev["tx_median"] else None)
+        caveats.append(f"{idx[-1] - idx[-2] - 1} fenêtre(s) intermédiaire(s) "
+                       "non fiable(s) ignorée(s)")
+        if delta is None:
+            caveats.append("fenêtre de référence à zéro ticket médian")
+    elif not prev["tx_median"]:
+        delta = None
+        caveats.append("fenêtre de référence à zéro ticket médian")
+    else:
+        delta = round((cur["tx_median"] - prev["tx_median"]) / prev["tx_median"] * 100)
+
+    return {
+        "tx_median": cur["tx_median"], "n": cur["full_days"],
+        "from": cur["from"], "to": cur["to"],
+        "prev_tx_median": prev["tx_median"] if prev else None,
+        "prev_n":         prev["full_days"] if prev else 0,
+        "prev_from":      prev["from"]      if prev else None,
+        "prev_to":        prev["to"]        if prev else None,
+        "delta_pct": delta,
+        "reason": " ; ".join(caveats) or None,
+    }
+
+
+def _transactions_payload(rows, opening_day, today_real):
+    """
+    Assemble la réponse de /api/transactions/daily à partir des lignes du cache.
+
+    Fonction PURE : elle ne connaît ni Supabase, ni Vendus, ni l'horloge — le
+    jour courant lui est passé. C'est ce qui rend testable la règle la plus
+    facile à casser du lot (« aujourd'hui n'entre dans aucune médiane »).
+    """
+    records = _tx_day_records(rows, today_real)
+    windows = _tx_windows(records, opening_day, today_real)
+    public  = ("day", "nb", "ca_ttc", "weekday", "partial")
+    return {
+        "from":     opening_day.isoformat(),
+        "to":       today_real.isoformat(),
+        "days":     [{k: d[k] for k in public} for d in records],
+        "windows":  windows,
+        "weekday":  _tx_by_weekday(records),
+        "headline": _tx_headline(windows),
+    }
 
 
 def _ensure_summaries(from_date, to_date, catalog):
