@@ -1934,8 +1934,18 @@ def _summarize_docs_items(docs, catalog):
     cogs = covered = items_ht = 0.0
     multi = 0
     products = {}
+    # Heure de passage en caisse, par tranche horaire. ⚠️ `local_time` est l'heure MURALE de
+    # Lisbonne — vérifié sur documents réels : system_time 14:03:57 face à local_time 15:03:57.
+    # Les avoirs sont exclus : une annulation n'est pas une visite.
+    hours = {}
     for d in docs:
         its = d.get("items", [])
+        if not d.get("_refund"):
+            lt = d.get("local_time") or ""
+            hh = lt[11:13]
+            if hh.isdigit():
+                k = str(int(hh))
+                hours[k] = hours.get(k, 0) + 1
         if len(its) >= 2 and not d.get("_refund"):
             multi += 1
         for item in its:
@@ -1961,12 +1971,26 @@ def _summarize_docs_items(docs, catalog):
         "covered_ht":  round(covered, 2),
         "items_ht":    round(items_ht, 2),
         "multi_count": multi,
+        "hours":       hours,          # {"9": 12, "20": 8} — heure locale, avoirs exclus
         "products":    {k: {"qty": v["qty"], "rev_ttc": round(v["rev_ttc"], 2),
                             "rev_ht": round(v["rev_ht"], 2)} for k, v in products.items()},
     }
 
 def _upsert_summary(day_iso, summary):
-    _supa_upsert("daily_summary", {"day": day_iso, **summary})
+    """
+    Écrit une ligne de cache.
+
+    ⚠️ TOLÉRANT À LA COLONNE `hours` MANQUANTE. Elle arrive avec l'analyse des heures et demande
+    une migration SQL ; déployer le code avant de l'exécuter ferait échouer TOUTE écriture de
+    cache — pas seulement les heures. Le dépôt applique déjà ce repli trois fois (supplier,
+    waste_pct, category) : mieux vaut perdre un champ neuf que la ligne entière.
+    """
+    row = {"day": day_iso, **summary}
+    ok, err = _supa_upsert("daily_summary", row)
+    if not ok and err and "hours" in str(err):
+        row.pop("hours", None)
+        ok, err = _supa_upsert("daily_summary", row)
+    return ok, err
 
 def _weekday_averages(rows, today_iso):
     """
@@ -2148,6 +2172,56 @@ def _median(values):
     return (vals[n // 2 - 1] + vals[n // 2]) / 2
 
 
+def _tx_hourly(records, min_days=6):
+    """
+    Répartition horaire sur les jours PLEINS, séparée matin / après-midi / soir.
+
+    Deux pics distincts ressortent des données du café : 08h-12h et 20h-23h, avec un creux
+    entre les deux. Ce sont deux clientèles, pas une seule étalée — d'où la ventilation par
+    bloc plutôt qu'une simple courbe.
+
+    ⚠️ CE QUI N'A PAS D'HEURE N'EST PAS À MINUIT. Les lignes de cache écrites avant l'existence
+    du champ `hours` n'ont pas « zéro ticket à chaque heure », elles n'ont pas la mesure. Elles
+    sont écartées, et `days_measured` dit sur combien de jours la répartition porte — sans quoi
+    un historique à moitié instrumenté se lirait comme un historique complet.
+
+    Les blocs sont bornés par l'observation, pas par une convention : `BLOCS` reprend les
+    plages où le café a effectivement vendu (07h-23h).
+    """
+    BLOCS = (("morning", 5, 12), ("afternoon", 13, 18), ("evening", 19, 23))
+
+    mesures = [r for r in records if not r.get("partial") and isinstance(r.get("hours"), dict)]
+    if len(mesures) < min_days:
+        return {"days_measured": len(mesures), "reason": "too-few-measured-days",
+                "by_hour": [], "blocks": []}
+
+    par_heure = {}
+    for r in mesures:
+        for h, n in r["hours"].items():
+            try:
+                hi = int(h)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= hi <= 23:
+                par_heure[hi] = par_heure.get(hi, 0) + int(n or 0)
+
+    total = sum(par_heure.values())
+    by_hour = [{"hour": h, "tickets": par_heure[h],
+                "pct": round(par_heure[h] / total * 100, 1) if total else None,
+                "per_day": round(par_heure[h] / len(mesures), 1)}
+               for h in sorted(par_heure)]
+
+    blocks = []
+    for nom, deb, fin in BLOCS:
+        n = sum(v for h, v in par_heure.items() if deb <= h <= fin)
+        blocks.append({"block": nom, "from_hour": deb, "to_hour": fin, "tickets": n,
+                       "pct": round(n / total * 100, 1) if total else None,
+                       "per_day": round(n / len(mesures), 1)})
+
+    return {"days_measured": len(mesures), "reason": None,
+            "by_hour": by_hour, "blocks": blocks}
+
+
 def _tx_day_records(rows, today_real):
     """
     Normalise les lignes `daily_summary` en JOURS D'ACTIVITÉ, triés par date.
@@ -2187,6 +2261,9 @@ def _tx_day_records(rows, today_real):
             # là où il n'y en a aucune.
             "multi_count": (int(float(r["multi_count"]))
                             if r.get("multi_count") is not None else None),
+            # Même règle : absent ≠ vide. Un dict manquant signifie « pas instrumenté ce
+            # jour-là », et _tx_hourly écarte ces jours au lieu de les compter à zéro.
+            "hours":       r.get("hours") if isinstance(r.get("hours"), dict) else None,
         })
     out.sort(key=lambda d: d["day"])
     return out
@@ -2389,6 +2466,7 @@ def _transactions_payload(rows, opening_day, today_real):
         "to":       today_real.isoformat(),
         "days":     [{k: d[k] for k in public} for d in records],
         "windows":  windows,
+        "hourly":   _tx_hourly(records),
         "weekday":  _tx_by_weekday(records),
         "headline": _tx_headline(windows),
     }

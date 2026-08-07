@@ -389,7 +389,7 @@ def test_la_forme_de_la_reponse_est_celle_attendue_par_la_page():
     jours = ["2026-07-24", "2026-07-25", "2026-07-26", "2026-07-27", "2026-07-30", "2026-07-31"]
     out = app._transactions_payload(_rows({d: 20 for d in jours}), OUVERTURE, today)
 
-    assert set(out) == {"from", "to", "days", "windows", "weekday", "headline"}
+    assert set(out) == {"from", "to", "days", "windows", "hourly", "weekday", "headline"}
     assert (out["from"], out["to"]) == ("2026-05-27", "2026-08-07")
     assert set(out["days"][0]) == {"day", "nb", "ca_ttc", "weekday", "partial"}
     assert set(out["windows"][0]) == {"from", "to", "full_days", "tx_median", "ca_median",
@@ -397,6 +397,7 @@ def test_la_forme_de_la_reponse_est_celle_attendue_par_la_page():
     assert set(out["weekday"][0]) == {"weekday", "label", "tx_median", "n"}
     assert set(out["headline"]) == {"tx_median", "n", "from", "to", "prev_tx_median", "prev_n",
                                     "prev_from", "prev_to", "delta_pct", "reason"}
+    assert set(out["hourly"]) == {"days_measured", "reason", "by_hour", "blocks"}
     assert out["days"][0]["weekday"] == date(2026, 7, 24).weekday() == 4
 
 
@@ -514,3 +515,103 @@ def test_quand_tout_est_mesure_la_proportion_est_calculee():
              "multi_count": 0} for d in (10, 11, 12, 13, 16, 17, 18)]
     w = app._transactions_payload(rows, date(2026, 7, 10), date(2026, 7, 24))["windows"][-1]
     assert w["multi_pct"] == 0.0, "un zéro MESURÉ est une information, il s'affiche"
+
+
+# ── Les heures : deux clientèles, et ce qui n'est pas instrumenté ────────────
+
+def _jour_h(day, nb, hours=None):
+    r = _jour(day, nb)
+    if hours is not None:
+        r["hours"] = hours
+    return r
+
+
+def test_sans_champ_hours_la_repartition_n_existe_pas():
+    """
+    Les lignes écrites avant l'existence du champ n'ont pas « zéro ticket à chaque heure »,
+    elles n'ont pas la mesure. Les compter à zéro ferait passer un historique à moitié
+    instrumenté pour un historique complet.
+    """
+    rows = [_jour_h(f"2026-07-{d:02d}", 20) for d in (10, 11, 12, 13, 16, 17, 18)]
+    h = app._transactions_payload(rows, date(2026, 7, 10), date(2026, 7, 24))["hourly"]
+    assert h["days_measured"] == 0
+    assert h["reason"] == "too-few-measured-days"
+    assert h["by_hour"] == [] and h["blocks"] == []
+
+
+def test_les_deux_pics_ressortent_quand_la_mesure_existe():
+    """Matin et soir séparés : ce sont deux clientèles, pas une seule étalée."""
+    rows = [_jour_h(f"2026-07-{d:02d}", 20, {"9": 8, "11": 4, "15": 2, "21": 6})
+            for d in (10, 11, 12, 13, 16, 17, 18)]
+    h = app._transactions_payload(rows, date(2026, 7, 10), date(2026, 7, 24))["hourly"]
+    assert h["days_measured"] == 7
+    blocs = {b["block"]: b for b in h["blocks"]}
+    assert blocs["morning"]["tickets"] == 7 * 12
+    assert blocs["afternoon"]["tickets"] == 7 * 2
+    assert blocs["evening"]["tickets"] == 7 * 6
+    assert round(sum(b["pct"] for b in h["blocks"])) == 100
+
+
+def test_le_jour_en_cours_n_entre_pas_dans_la_repartition():
+    """Consulté à 10 h, il n'aurait que des heures du matin et fausserait les deux pics."""
+    today = date(2026, 8, 7)
+    passe = [_jour_h(f"2026-07-{d:02d}", 20, {"9": 10, "21": 10}) for d in (10, 11, 12, 13, 16, 17)]
+    rows  = passe + [_jour_h("2026-08-07", 3, {"9": 3})]
+    h = app._transactions_payload(rows, date(2026, 7, 10), today)["hourly"]
+    assert h["days_measured"] == 6, "aujourd'hui est écarté de la mesure"
+    blocs = {b["block"]: b for b in h["blocks"]}
+    assert blocs["morning"]["tickets"] == blocs["evening"]["tickets"], \
+        "les 3 tickets du matin en cours ne doivent pas déséquilibrer les pics"
+
+
+def test_une_mesure_trop_maigre_ne_produit_pas_de_repartition():
+    """Trois jours instrumentés ne décrivent pas une journée type."""
+    rows = ([_jour_h(f"2026-07-{d:02d}", 20, {"9": 20}) for d in (10, 11, 12)]
+            + [_jour_h(f"2026-07-{d:02d}", 20) for d in (13, 16, 17, 18)])
+    h = app._transactions_payload(rows, date(2026, 7, 10), date(2026, 7, 24))["hourly"]
+    assert h["days_measured"] == 3 and h["reason"] == "too-few-measured-days"
+    assert h["by_hour"] == []
+
+
+# ── Le repli qui protège la production ───────────────────────────────────────
+
+def test_une_colonne_hours_absente_ne_fait_pas_perdre_la_ligne(monkeypatch):
+    """
+    `hours` demande une migration SQL. Déployer le code avant de l'exécuter ferait échouer
+    TOUTE écriture de cache — pas seulement les heures : le jour entier serait perdu, et le
+    cache prendrait du retard sans que rien ne le dise.
+
+    Le dépôt applique déjà ce repli trois fois (supplier, waste_pct, category). On vérifie ici
+    qu'il vaut aussi pour daily_summary, et surtout qu'il ne se déclenche QUE pour cette
+    colonne : avaler une autre erreur Supabase masquerait une vraie panne.
+    """
+    appels = []
+
+    def faux_upsert(table, data):
+        appels.append(dict(data))
+        if "hours" in data:
+            return False, 'column "hours" of relation "daily_summary" does not exist'
+        return True, None
+
+    monkeypatch.setattr(app, "_supa_upsert", faux_upsert)
+    ok, err = app._upsert_summary("2026-08-06", {"nb": 20, "ca_ttc": 200.0, "hours": {"9": 20}})
+
+    assert ok is True, "la ligne doit être écrite malgré la colonne manquante"
+    assert len(appels) == 2, "un essai avec hours, puis un sans"
+    assert "hours" in appels[0] and "hours" not in appels[1]
+    assert appels[1]["nb"] == 20, "le reste de la journée est bien conservé"
+
+
+def test_une_autre_erreur_supabase_n_est_pas_avalee(monkeypatch):
+    """Le repli est ciblé : une panne réelle doit remonter, pas être réessayée en silence."""
+    appels = []
+
+    def faux_upsert(table, data):
+        appels.append(dict(data))
+        return False, "permission denied for table daily_summary"
+
+    monkeypatch.setattr(app, "_supa_upsert", faux_upsert)
+    ok, err = app._upsert_summary("2026-08-06", {"nb": 20, "hours": {"9": 20}})
+
+    assert ok is False and "permission denied" in err
+    assert len(appels) == 1, "aucun réessai : l'erreur n'a rien à voir avec la colonne"
