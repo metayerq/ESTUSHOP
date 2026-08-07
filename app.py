@@ -1159,6 +1159,16 @@ def cogs_page():
     return render_template("cogs.html", role=_current_role() or "admin")
 
 
+@app.route("/transactions")
+def transactions_page():
+    """Page « affluence » : tickets par jour ouvré depuis l'ouverture.
+
+    Les données viennent de /api/transactions/daily côté navigateur — la page ne
+    calcule rien côté serveur, pour qu'il n'existe qu'UNE définition des médianes.
+    """
+    return render_template("transactions.html")
+
+
 @app.route("/charges")
 def charges_page():
     return render_template("charges.html", role=_current_role() or "admin")

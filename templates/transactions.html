@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/static/icons/favicon-32.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Estudantina">
+<meta name="theme-color" content="#EDEAE3">
+<title>Estudantina · Transactions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+/* ── Tokens uniquement. Aucune couleur en dur : le mode sombre suit tout seul.
+      Rien ici n'est un solde, donc AUCUN ROUGE — une affluence qui baisse est une
+      mesure, pas une perte. Vert = ce qui tient, gris = tout le reste. ── */
+
+.tx-section { margin-bottom: 34px; }
+.tx-section-title {
+  font-size: 11px; font-weight: 500; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 10px;
+}
+.tx-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 20px 22px;
+}
+.tx-dim   { color: var(--faint); font-weight: 400; }
+.tx-empty { color: var(--muted); font-size: 13px; padding: 18px 0; }
+
+/* ── 1. Bandeau-réponse ── */
+.tx-answer { padding: 22px 24px; }
+.tx-q {
+  font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 12px;
+}
+.tx-answer-main { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.tx-value {
+  font-family: var(--mono); font-size: 40px; font-weight: 600;
+  letter-spacing: -1px; color: var(--text); line-height: 1;
+}
+.tx-unit { font-size: 14px; color: var(--muted); }
+.tx-delta {
+  font-family: var(--mono); font-size: 12.5px; font-weight: 500;
+  padding: 3px 9px; border-radius: 20px; white-space: nowrap;
+}
+.tx-delta-up   { color: var(--green); border: 1px solid var(--green); }
+.tx-delta-down { color: var(--muted); border: 1px solid var(--border); background: var(--flux-leave); }
+.tx-delta-flat { color: var(--muted); border: 1px solid var(--border); }
+.tx-sub  { font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+.tx-prev { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.tx-prev b { color: var(--text); font-family: var(--mono); font-weight: 600; }
+/* La raison prend la place du chiffre absent : même poids visuel, pas une note. */
+.tx-reason {
+  font-size: 12.5px; color: var(--amber); margin-top: 10px;
+  border-left: 2px solid var(--amber); padding-left: 10px;
+}
+
+/* ── 2. Graphique ── */
+.tx-chart-wrap { position: relative; height: 300px; }
+.tx-chart-foot { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.6; }
+.tx-chart-foot b { color: var(--muted); font-weight: 600; }
+.tx-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); margin-bottom: 14px; }
+.tx-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.tx-legend i { width: 12px; height: 10px; border-radius: 2px; flex: none; display: inline-block; }
+.tx-legend i.k-bar    { background: var(--flux-leave); }
+.tx-legend i.k-median { background: transparent; border-top: 2px solid var(--green); height: 2px; border-radius: 0; }
+.tx-legend i.k-part   { background: var(--bg); border: 1px dashed var(--faint); }
+
+/* ── 3./4. Tables ── */
+.tx-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tx-table th {
+  text-align: left; font-size: 10.5px; font-weight: 500; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted);
+  padding: 0 10px 8px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.tx-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); color: var(--text); }
+.tx-table tr:last-child td { border-bottom: none; }
+.tx-num  { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tx-mono { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.tx-row-thin td { color: var(--faint); }
+.tx-note-row td {
+  font-size: 11.5px; color: var(--amber); padding: 0 10px 9px;
+  border-bottom: 1px solid var(--border);
+}
+.tx-identity {
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 10px; display: inline-block;
+}
+.tx-identity-note { font-size: 11.5px; color: var(--faint); margin: 8px 0 14px; }
+.tx-bar-cell { width: 42%; }
+.tx-bar {
+  display: block; height: 8px; border-radius: 2px;
+  background: var(--flux-leave); min-width: 0;
+}
+
+/* ── 5. Ce que la page ne peut pas dire ── */
+.tx-cannot { border-style: dashed; }
+.tx-cannot h3 {
+  font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 14px;
+}
+.tx-cannot dl { margin: 0; }
+.tx-cannot dt {
+  font-size: 13px; font-weight: 600; color: var(--text); margin-top: 14px;
+}
+.tx-cannot dt:first-child { margin-top: 0; }
+.tx-cannot dd { font-size: 12.5px; color: var(--muted); margin: 3px 0 0; line-height: 1.6; }
+.tx-cannot dd code { font-family: var(--mono); font-size: 11.5px; color: var(--text); }
+
+#tx-error {
+  display: none; margin-bottom: 20px; padding: 11px 14px; border-radius: 8px;
+  border: 1px solid var(--amber); color: var(--amber); font-size: 12.5px;
+}
+
+@media (max-width: 760px) {
+  .tx-value { font-size: 32px; }
+  .tx-chart-wrap { height: 240px; }
+  .tx-bar-cell { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <style>
+/* ── Nav groupée (menus déroulants) ── */
+.topnav { display:flex; gap:4px; margin-bottom:28px; border-bottom:1px solid var(--border); position:relative; flex-wrap:wrap; }
+.nav-link, .nav-btn { display:flex; align-items:center; gap:8px; padding:11px 16px; font-size:13px; font-weight:500;
+  color:var(--muted); text-decoration:none; border-radius:8px 8px 0 0; border:1px solid transparent; border-bottom:none;
+  margin-bottom:-1px; white-space:nowrap; background:none; cursor:pointer; font-family:inherit; }
+.nav-link svg, .nav-btn svg { width:16px; height:16px; flex-shrink:0; }
+.nav-link:hover, .nav-btn:hover { color:var(--text); background:var(--bg-hover); }
+.nav-link.active, .nav-btn.active { color:var(--text); background:var(--bg-card); border-color:var(--border); font-weight:600; }
+.nav-group { position:relative; }
+.caret { font-style:normal; font-size:10px; opacity:.55; margin-left:1px; }
+.nav-menu { position:absolute; top:100%; left:0; min-width:190px; background:var(--bg-card); border:1px solid var(--border);
+  border-radius:0 10px 10px 10px; box-shadow:0 10px 28px rgba(20,18,14,.14); padding:6px; display:none; z-index:60; }
+.nav-group:hover .nav-menu, .nav-group.open .nav-menu { display:block; }
+.nav-menu a { display:block; padding:9px 12px; font-size:13px; color:var(--text); text-decoration:none; border-radius:7px; white-space:nowrap; }
+.nav-menu a:hover { background:var(--bg-hover); }
+.nav-menu a.active { background:var(--bg-hover); font-weight:600; color:var(--spec); }
+@media (max-width:760px){ .topnav { overflow-x:auto; } .nav-link span, .nav-btn span { display:inline; } }
+</style>
+<nav class="topnav" id="topnav">
+  <a href="/" class="nav-link" data-path="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg><span>Dashboard</span></a>
+  <div class="nav-group">
+    <button class="nav-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5-9 4.5-9-4.5Z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg><span>Carte &amp; Stock</span><i class="caret">&#9662;</i></button>
+    <div class="nav-menu">
+      <a href="/cogs" data-path="/cogs">COGS &mdash; recettes &amp; co&ucirc;ts</a>
+      <a href="/stock" data-path="/stock">Stock &mdash; inventaire</a>
+    </div>
+  </div>
+  <div class="nav-group">
+    <button class="nav-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1" fill="currentColor" stroke="none"/></svg><span>Finances</span><i class="caret">&#9662;</i></button>
+    <div class="nav-menu">
+      <a href="/charges" data-path="/charges">Costs &mdash; charges fixes</a>
+      <a href="/expenses" data-path="/expenses">Expenses &mdash; d&eacute;penses</a>
+      <a href="/reconciliation" data-path="/reconciliation">Reconciliation &mdash; caisse</a>
+    </div>
+  </div>
+  <div class="nav-group">
+    <button class="nav-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>Op&eacute;rations</span><i class="caret">&#9662;</i></button>
+    <div class="nav-menu">
+      <a href="/sop" data-path="/sop">SOP &mdash; checklists</a>
+      <a href="/holidays" data-path="/holidays">Holidays &mdash; cong&eacute;s</a>
+      <a href="/events" data-path="/events">Events &mdash; pop-ups</a>
+    </div>
+  </div>
+</nav>
+<script>
+(function(){
+  var path=(location.pathname.replace(/\/+$/,'')||'/');
+  var nav=document.getElementById('topnav'); if(!nav) return;
+  nav.querySelectorAll('a[data-path]').forEach(function(a){
+    var p=a.getAttribute('data-path');
+    if(p===path||(p!=='/'&&path.indexOf(p)===0)){
+      a.classList.add('active');
+      var g=a.closest('.nav-group'); if(g) g.querySelector('.nav-btn').classList.add('active');
+    }
+  });
+  nav.querySelectorAll('.nav-group .nav-btn').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      var g=btn.parentElement, wasOpen=g.classList.contains('open');
+      nav.querySelectorAll('.nav-group').forEach(function(x){x.classList.remove('open');});
+      if(!wasOpen) g.classList.add('open');
+    });
+  });
+  document.addEventListener('click',function(){ nav.querySelectorAll('.nav-group').forEach(function(x){x.classList.remove('open');}); });
+})();
+</script>
+
+  <div class="header" style="margin-bottom:22px;">
+    <div>
+      <div class="header-title">Transactions</div>
+      <div class="header-sub">Footfall per open day, since opening · <span id="tx-scope" class="tx-dim"></span></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn-secondary" onclick="loadTx()" title="Reload">↻</button>
+      <a href="/logout" title="Log out" style="font-size:12px;color:var(--faint);text-decoration:none;padding:5px 8px;">⎋</a>
+    </div>
+  </div>
+
+  <div id="tx-error"></div>
+
+  <!-- ── 1. LA RÉPONSE ─────────────────────────────────────────────────────── -->
+  <div class="tx-section">
+    <div class="tx-card tx-answer">
+      <div class="tx-q">Is footfall holding?</div>
+      <div class="tx-answer-main">
+        <span class="tx-value" id="hl-value">—</span>
+        <span class="tx-unit">tickets / open day</span>
+        <span class="tx-delta" id="hl-delta" style="display:none"></span>
+      </div>
+      <div class="tx-sub" id="hl-n"></div>
+      <div class="tx-prev" id="hl-prev"></div>
+      <div class="tx-reason" id="hl-note" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- ── 2. TICKETS PAR JOUR ───────────────────────────────────────────────── -->
+  <div class="tx-section">
+    <div class="tx-section-title">Tickets per open day, since 27 May 2026</div>
+    <div class="tx-card">
+      <div class="tx-legend">
+        <span><i class="k-bar"></i> tickets that day</span>
+        <span><i class="k-median"></i> 14-day median (step, not a trend line)</span>
+        <span><i class="k-part"></i> today — partial, excluded from medians</span>
+      </div>
+      <div class="tx-chart-wrap" id="tx-chart-box"><canvas id="chart-tx"></canvas></div>
+      <div class="tx-empty" id="tx-chart-empty" style="display:none"></div>
+      <div class="tx-chart-foot" id="tx-chart-foot"></div>
+    </div>
+  </div>
+
+  <!-- ── 3. FENÊTRES DE 14 JOURS ───────────────────────────────────────────── -->
+  <div class="tx-section">
+    <div class="tx-section-title">14-day windows · <span class="tx-identity">revenue = tickets × basket</span></div>
+    <div class="tx-identity-note">
+      That line is an identity — the three columns below are arithmetically linked by definition.
+      It says nothing about what moves what.
+    </div>
+    <div class="tx-card">
+      <table class="tx-table">
+        <thead>
+          <tr>
+            <th>Window</th>
+            <th class="tx-num">Tickets / day</th>
+            <th class="tx-num">Revenue / day</th>
+            <th class="tx-num">Basket</th>
+            <th class="tx-num">Full days (n)</th>
+          </tr>
+        </thead>
+        <tbody id="tx-win-body">
+          <tr><td colspan="5" class="tx-empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── 4a. PAR JOUR DE SEMAINE ───────────────────────────────────────────── -->
+  <div class="tx-section">
+    <div class="tx-section-title">Median tickets by weekday</div>
+    <div class="tx-card">
+      <table class="tx-table">
+        <thead>
+          <tr>
+            <th>Day</th>
+            <th class="tx-num">Median tickets</th>
+            <th></th>
+            <th class="tx-num">Days measured (n)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tx-wd-body">
+          <tr><td colspan="5" class="tx-empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── 4b. TICKETS MULTI-LIGNES ──────────────────────────────────────────── -->
+  <div class="tx-section">
+    <div class="tx-section-title">Multi-line tickets</div>
+    <div class="tx-card">
+      <div class="tx-answer-main">
+        <span class="tx-value" id="tx-multi-val" style="font-size:28px">—</span>
+      </div>
+      <div class="tx-sub" id="tx-multi-sub"></div>
+    </div>
+  </div>
+
+  <!-- ── 5. CE QUE CETTE PAGE NE PEUT PAS DIRE ─────────────────────────────
+       Encart FIXE : il reste à l'écran même quand tout va bien. Sans lui, les
+       trois questions ci-dessous se répondraient par un chiffre inventé.        -->
+  <div class="tx-section">
+    <div class="tx-card tx-cannot">
+      <h3>What this page cannot tell you</h3>
+      <dl>
+        <dt>Regulars — not measurable, and no proxy will do</dt>
+        <dd>
+          The till is anonymous. Checked against the API: <code>client.fiscal_id</code> is
+          <code>'---------'</code> on 59 of 60 tickets sampled since opening. Nothing here can
+          separate a returning customer from a new one, and no substitute
+          (ticket size, weekday habits, hourly patterns) would be that measurement — it would
+          only look like one.
+        </dd>
+        <dt>Hours — not in the daily cache</dt>
+        <dd>
+          Ticket times are not stored in the daily cache this page reads, so
+          &laquo;&nbsp;are the mornings emptier?&nbsp;&raquo; cannot be answered here.
+        </dd>
+        <dt>Holiday effect — no reference August exists</dt>
+        <dd>
+          This is the café's first summer. There is no earlier August to compare against, so
+          nothing on this page can tell an August dip from a decline. That comparison becomes
+          possible in 2027, not before.
+        </dd>
+      </dl>
+    </div>
+  </div>
+
+</div>
+
+<script src="/static/ui.js?v={{ v }}"></script>
+<script src="/static/transactions.js?v={{ v }}"></script>
+</body>
+</html>
