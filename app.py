@@ -21,6 +21,7 @@ from config import today_lisbon, now_lisbon, TVA_MOYENNE_BLENDED
 
 from flask import Flask, jsonify, render_template, request, redirect, make_response, g
 from vendus import (
+    DRINK_CAT_IDS,
     get_documents, get_documents_with_items, get_catalog, get_categories,
     calc_stats, hourly_breakdown, payment_breakdown, top_products, recent_docs,
     rush_detector, unsold_today, product_stats_from_docs,
@@ -1171,17 +1172,23 @@ def api_transactions_daily():
     le signale, et un jour manquant est indiscernable d'un jour sans client.
     """
     today_real = today_lisbon()
-    opening    = date.fromisoformat(OPENING_DAY)
-
+    # ⚠️ L'ANALYSE DÉMARRE AU 1ER JUILLET, PAS À L'OUVERTURE (TX_ANALYSIS_START).
+    # Juin porte l'ouverture — 95 tickets/jour la première semaine contre 25 en régime — et
+    # neuf commandes de groupe jusqu'à 55 boissons sur un ticket. Mêlé au reste, ça décrit un
+    # café qui n'existe plus. Le cache reste construit depuis l'ouverture : c'est la FENÊTRE
+    # D'ANALYSE qui commence plus tard, et la page l'annonce.
+    debut   = TX_ANALYSIS_START
     catalog = get_catalog() or {}
-    rows    = _ensure_summaries(opening, today_real - timedelta(1), catalog)
+    rows    = _ensure_summaries(debut, today_real - timedelta(1), catalog)
 
     today_docs = _get_today_docs_cached()
     if today_docs:
         rows = rows + [{"day": today_real.isoformat(),
                         **_summarize_docs_items(today_docs, catalog)}]
 
-    return jsonify({"ok": True, **_transactions_payload(rows, opening, today_real)})
+    return jsonify({"ok": True, "analysis_start": debut.isoformat(),
+                    "opening_day": OPENING_DAY,
+                    **_transactions_payload(rows, debut, today_real)})
 
 
 @app.route("/cogs")
@@ -1938,6 +1945,23 @@ def _summarize_docs_items(docs, catalog):
     # Lisbonne — vérifié sur documents réels : system_time 14:03:57 face à local_time 15:03:57.
     # Les avoirs sont exclus : une annulation n'est pas une visite.
     hours = {}
+    # ── Couverts estimés ─────────────────────────────────────────────────────
+    # Heuristique du propriétaire : une boisson = une personne. Mesurée sur ses données du
+    # 1er juillet au 6 août — 734 tickets, 1031 personnes, 1,40 par ticket, distribution sans
+    # queue aberrante (max 5 boissons).
+    #
+    # ⚠️ PLANCHER À 1, INDISPENSABLE. 18 % des tickets ne portent AUCUNE boisson — un livre,
+    # une pâtisserie à emporter. Sans plancher, 133 clients réels compteraient pour zéro.
+    #
+    # ⚠️ PLAFOND À 8, QUI ANNONCE CE QU'IL COUPE. Juin porte des tickets à 29, 43, 55 boissons :
+    # des commandes de groupe, pas 55 personnes assises. `covers_capped` compte les tickets
+    # écrêtés pour que l'écran puisse le dire au lieu de lisser en silence.
+    #
+    # C'est une estimation HAUTE : une personne qui prend deux boissons compte pour deux, un
+    # café emporté pour trois collègues compte pour trois. Elle ne sous-estime jamais. L'écran
+    # doit donc dire « personnes estimées », jamais « clients ».
+    covers = 0
+    covers_capped = 0
     for d in docs:
         its = d.get("items", [])
         if not d.get("_refund"):
@@ -1946,6 +1970,15 @@ def _summarize_docs_items(docs, catalog):
             if hh.isdigit():
                 k = str(int(hh))
                 hours[k] = hours.get(k, 0) + 1
+        if not d.get("_refund"):
+            n_boissons = sum(float(i.get("qty", 0)) for i in its
+                             if (catalog.get(i.get("title", "").strip()) or {})
+                                .get("category_id") in DRINK_CAT_IDS)
+            p = max(1, int(round(n_boissons)))
+            if p > COVERS_CAP:
+                covers_capped += 1
+                p = COVERS_CAP
+            covers += p
         if len(its) >= 2 and not d.get("_refund"):
             multi += 1
         for item in its:
@@ -1972,6 +2005,8 @@ def _summarize_docs_items(docs, catalog):
         "items_ht":    round(items_ht, 2),
         "multi_count": multi,
         "hours":       hours,          # {"9": 12, "20": 8} — heure locale, avoirs exclus
+        "covers":        covers,         # personnes ESTIMÉES (1 boisson = 1 personne, plancher 1)
+        "covers_capped": covers_capped,  # tickets ramenés au plafond — à annoncer à l'écran
         "products":    {k: {"qty": v["qty"], "rev_ttc": round(v["rev_ttc"], 2),
                             "rev_ht": round(v["rev_ht"], 2)} for k, v in products.items()},
     }
@@ -1987,8 +2022,15 @@ def _upsert_summary(day_iso, summary):
     """
     row = {"day": day_iso, **summary}
     ok, err = _supa_upsert("daily_summary", row)
-    if not ok and err and "hours" in str(err):
-        row.pop("hours", None)
+    # Chaque colonne neuve peut manquer indépendamment (deux migrations distinctes) : on
+    # retire seulement celle que Supabase nomme, et on réessaie tant qu'il en nomme une.
+    for _ in range(3):
+        if ok or not err:
+            break
+        manquante = next((c for c in ("hours", "covers_capped", "covers") if c in str(err)), None)
+        if manquante is None or manquante not in row:
+            break
+        row.pop(manquante, None)
         ok, err = _supa_upsert("daily_summary", row)
     return ok, err
 
@@ -2140,8 +2182,30 @@ def _tx_per_open_day(period_rows, from_date, to_date, today_real):
 # là-dessus décrirait le bruit avec trois décimales. Deux fenêtres comparées
 # entre elles, c'est tout ce que ces données peuvent porter honnêtement.
 
-TX_WINDOW_DAYS = 14      # jours CALENDAIRES par fenêtre
-TX_MIN_FULL_DAYS = 6     # en dessous, la médiane d'une fenêtre n'est pas fiable
+# ── Cadrage de l'analyse d'affluence ─────────────────────────────────────────
+#
+# FENÊTRE DE 7 JOURS, pas 14. Le café ouvre 5 jours sur 7 : une fenêtre de 7 jours calendaires
+# porte donc toujours EXACTEMENT le même assortiment de jours de semaine (lun, jeu, ven, sam,
+# dim). C'est son vrai avantage sur 14 jours — aucun biais de composition d'une fenêtre à
+# l'autre — et ça double la granularité, que 14 jours rendaient trop grossière.
+TX_WINDOW_DAYS = 7
+
+# 4 jours pleins sur les 5 possibles. Le seuil de 6 avait du sens sur une fenêtre de 14 jours ;
+# appliqué à 7, il rendrait TOUTE fenêtre non fiable, puisque le maximum atteignable est 5.
+TX_MIN_FULL_DAYS = 4
+
+# ⚠️ L'ANALYSE COMMENCE AU 1ER JUILLET, PAS À L'OUVERTURE. Décision du propriétaire, et les
+# données lui donnent raison : juin porte l'ouverture (95 tickets/jour la première semaine,
+# contre 25 en régime), plus neuf commandes de groupe allant jusqu'à 55 boissons sur un seul
+# ticket — 17 % de toutes les boissons de l'historique. Mêlées au reste, elles décrivent un
+# café qui n'existe plus.
+#
+# La page ANNONCE cette exclusion : la masquer serait une troncature muette, et quelqu'un
+# finirait par se demander où sont passées les cinq premières semaines.
+TX_ANALYSIS_START = date(2026, 7, 1)
+
+# Au-delà, un ticket n'est plus une tablée mais une commande de groupe. Voir _summarize_docs_items.
+COVERS_CAP = 8
 
 # Libellés figés : `strftime("%A")` dépend de la locale du runtime, qui n'est pas
 # la même sur Vercel et sur un poste de dev. Un contrat d'API ne se négocie pas
@@ -2264,6 +2328,9 @@ def _tx_day_records(rows, today_real):
             # Même règle : absent ≠ vide. Un dict manquant signifie « pas instrumenté ce
             # jour-là », et _tx_hourly écarte ces jours au lieu de les compter à zéro.
             "hours":       r.get("hours") if isinstance(r.get("hours"), dict) else None,
+            # Même règle : une ligne d'avant la migration n'a pas « zéro personne ».
+            "covers":      (int(float(r["covers"])) if r.get("covers") is not None else None),
+            "covers_capped": int(float(r.get("covers_capped") or 0)),
         })
     out.sort(key=lambda d: d["day"])
     return out
@@ -2307,6 +2374,9 @@ def _tx_window_stats(records, w_from, w_to, window_days=TX_WINDOW_DAYS,
     ca     = _median([d["ca_ttc"] for d in full])
     basket = _median([d["ca_ttc"] / d["nb"] for d in full])
     tickets = sum(d["nb"] for d in full)
+    couverts = [d["covers"] for d in full if d.get("covers") is not None]
+    ca_pers  = [d["ca_ttc"] / d["covers"] for d in full
+                if d.get("covers") and d["ca_ttc"]]
     mesures = [d["multi_count"] for d in full if d["multi_count"] is not None]
     multi   = sum(mesures)
 
@@ -2329,6 +2399,9 @@ def _tx_window_stats(records, w_from, w_to, window_days=TX_WINDOW_DAYS,
         "basket_median": round(basket, 2) if basket is not None else None,
         # Mesuré uniquement si TOUS les jours pleins portent le compte : un sous-ensemble
         # produirait une proportion calculée sur un dénominateur qui ne lui correspond pas.
+        "covers_median": _median(couverts) if len(couverts) == len(full) else None,
+        "ca_per_cover":  round(_median(ca_pers), 2) if len(ca_pers) == len(full) and full else None,
+        "covers_capped": sum(d.get("covers_capped") or 0 for d in full),
         "multi_pct":     (round(multi / tickets * 100, 1)
                           if tickets and len(mesures) == len(full) else None),
         "reliable":      n >= min_full,
@@ -2460,7 +2533,7 @@ def _transactions_payload(rows, opening_day, today_real):
     """
     records = _tx_day_records(rows, today_real)
     windows = _tx_windows(records, opening_day, today_real)
-    public  = ("day", "nb", "ca_ttc", "weekday", "partial")
+    public  = ("day", "nb", "ca_ttc", "covers", "weekday", "partial")
     return {
         "from":     opening_day.isoformat(),
         "to":       today_real.isoformat(),

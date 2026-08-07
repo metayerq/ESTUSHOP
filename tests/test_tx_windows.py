@@ -31,12 +31,18 @@ source, comme test_month_series.py et test_timezone_lisbon.py.
 """
 import inspect
 import sys
-from datetime import date
+from datetime import date, timedelta
 
 sys.path.insert(0, ".")
 
 import app
 from config import count_open_days_raw, SCHEDULE_CUTOVER
+from app import TX_WINDOW_DAYS, TX_MIN_FULL_DAYS
+
+# ⚠️ Ces tests décrivent des RÈGLES, pas un réglage. Ils lisent donc la taille de fenêtre et le
+# seuil de fiabilité dans le module plutôt que de les recopier : le passage de 14 à 7 jours en
+# avait cassé sept d'un coup alors qu'aucune règle n'avait changé.
+NB_FENETRES = lambda deb, fin: -(-((fin - deb).days + 1) // TX_WINDOW_DAYS)
 
 
 OUVERTURE = date(2026, 5, 27)
@@ -152,8 +158,8 @@ def test_un_jour_sans_ticket_est_absent_et_non_present_a_zero():
     assert [d["day"] for d in out["days"]] == ["2026-07-24", "2026-07-25", "2026-07-26",
                                                "2026-07-27", "2026-07-30", "2026-07-31"]
     derniere = out["windows"][-1]
-    assert derniere["full_days"] == 6
     assert derniere["tx_median"] == 20.0
+    assert all(d["nb"] > 0 for d in out["days"]), "aucun jour matérialisé à zéro"
 
 
 def test_une_journee_qui_ne_porte_qu_un_avoir_n_est_pas_une_journee_ouverte():
@@ -175,7 +181,7 @@ def test_les_fenetres_sont_calees_sur_hier_et_remontent_jusqu_a_l_ouverture():
     wins = app._tx_windows(app._tx_day_records([], date(2026, 8, 7)),
                            OUVERTURE, date(2026, 8, 7))
     assert wins[-1]["to"] == "2026-08-06", "la plus récente se termine HIER"
-    assert wins[-1]["from"] == "2026-07-24"
+    assert wins[-1]["from"] == (date(2026, 8, 6) - timedelta(TX_WINDOW_DAYS - 1)).isoformat()
     assert [w["from"] for w in wins] == sorted(w["from"] for w in wins), "du plus ancien au plus récent"
     assert wins[0]["from"] == OUVERTURE.isoformat(), "on ne remonte pas avant l'ouverture"
 
@@ -186,18 +192,20 @@ def test_le_decoupage_ne_depend_pas_des_donnees():
     vides = app._tx_windows(app._tx_day_records([], today), OUVERTURE, today)
     pleines = app._tx_windows(
         app._tx_day_records(_rows({"2026-07-24": 20}), today), OUVERTURE, today)
-    assert len(vides) == len(pleines) == 6
+    assert len(vides) == len(pleines) == NB_FENETRES(OUVERTURE, date(2026, 8, 6))
     assert [(w["from"], w["to"]) for w in vides] == [(w["from"], w["to"]) for w in pleines]
 
 
 def test_la_plus_ancienne_fenetre_annonce_sa_troncature():
     """
-    72 jours d'histoire ne font pas un multiple de 14. On garde les jours qui dépassent plutôt
-    que de les jeter en silence — mais la fenêtre dit qu'elle ne couvre pas deux semaines.
+    L'histoire ne fait pas un multiple entier de fenêtres. On garde les jours qui dépassent
+    plutôt que de les jeter en silence — mais la fenêtre dit qu'elle est plus courte.
     """
     wins = app._tx_windows(app._tx_day_records([], date(2026, 8, 7)),
                            OUVERTURE, date(2026, 8, 7))
-    assert wins[0]["from"] == "2026-05-27" and wins[0]["to"] == "2026-05-28"
+    assert wins[0]["from"] == OUVERTURE.isoformat()
+    span = (date.fromisoformat(wins[0]["to"]) - date.fromisoformat(wins[0]["from"])).days + 1
+    assert span < TX_WINDOW_DAYS
     assert "truncated" in wins[0]["reason"]
     assert all("tronquée" not in (w["reason"] or "") for w in wins[1:])
 
@@ -212,18 +220,21 @@ def test_une_fenetre_sans_jour_plein_ne_rend_aucun_chiffre():
     assert "no-days" in w["reason"]
 
 
-def test_sous_six_jours_pleins_la_fenetre_n_est_pas_fiable_mais_reste_chiffree():
+def test_sous_le_seuil_la_fenetre_n_est_pas_fiable_mais_reste_chiffree():
     """Non fiable ≠ tue. Le chiffre est publié, accompagné de ce qui le fragilise."""
     today = date(2026, 8, 7)
-    cinq = _rows({"2026-07-24": 20, "2026-07-25": 22, "2026-07-26": 18,
-                  "2026-07-27": 25, "2026-07-30": 20})
-    w = _fenetre(cinq, date(2026, 7, 24), date(2026, 8, 6), today)
-    assert w["full_days"] == 5 and w["reliable"] is False
+    fin, deb = date(2026, 8, 6), date(2026, 8, 6) - timedelta(TX_WINDOW_DAYS - 1)
+    # Un jour sous le seuil, puis exactement le seuil.
+    jours = [(deb + timedelta(i)).isoformat() for i in range(TX_WINDOW_DAYS)]
+    maigre = _rows({d: 20 for d in jours[:TX_MIN_FULL_DAYS - 1]})
+    w = _fenetre(maigre, deb, fin, today)
+    assert w["full_days"] == TX_MIN_FULL_DAYS - 1 and w["reliable"] is False
     assert w["reason"] == "too-few-days"
     assert w["tx_median"] == 20.0, "la médiane existe quand même"
 
-    six = _fenetre(cinq + [_jour("2026-07-31", 20)], date(2026, 7, 24), date(2026, 8, 6), today)
-    assert six["full_days"] == 6 and six["reliable"] is True and six["reason"] is None
+    juste = _fenetre(_rows({d: 20 for d in jours[:TX_MIN_FULL_DAYS]}), deb, fin, today)
+    assert juste["full_days"] == TX_MIN_FULL_DAYS
+    assert juste["reliable"] is True and juste["reason"] is None
 
 
 def test_le_panier_median_n_est_pas_le_quotient_des_deux_medianes():
@@ -266,19 +277,24 @@ def test_une_fenetre_a_cheval_sur_le_12_juin_compte_ce_qui_a_ete_TRAVAILLE():
     (le 10) et un mercredi fermé (le 17). Compter les jours OBSERVÉS est la seule mesure qui ne
     suppose aucun calendrier — et la seule qui survivra au prochain changement d'horaires.
     """
-    today = date(2026, 6, 20)                       # la fenêtre pleine est 06-06 → 06-19
-    ouverts = ["2026-06-06", "2026-06-07", "2026-06-08", "2026-06-10", "2026-06-11",
-               "2026-06-12", "2026-06-13", "2026-06-14", "2026-06-15", "2026-06-18",
-               "2026-06-19"]
-    assert count_open_days_raw(date(2026, 6, 6), date(2026, 6, 19)) == len(ouverts) == 11
-    assert SCHEDULE_CUTOVER == date(2026, 6, 12)
+    # La fin est choisie pour que la fenêtre enjambe le 12 juin QUEL QUE SOIT son réglage :
+    # deux jours après la bascule, donc le début retombe forcément avant.
+    fin   = SCHEDULE_CUTOVER + timedelta(2)
+    deb   = fin - timedelta(TX_WINDOW_DAYS - 1)
+    today = fin + timedelta(1)
+    assert deb < SCHEDULE_CUTOVER <= fin, "la fenêtre doit bien enjamber la bascule"
 
-    out = app._transactions_payload(_rows({d: 20 for d in ouverts}), date(2026, 6, 6), today)
+    jours = [(deb + timedelta(i)) for i in range(TX_WINDOW_DAYS)]
+    ouverts = [d.isoformat() for d in jours if count_open_days_raw(d, d) == 1]
+
+    out = app._transactions_payload(_rows({d: 20 for d in ouverts}), deb, today)
     w = out["windows"][-1]
-    assert (w["from"], w["to"]) == ("2026-06-06", "2026-06-19")
-    assert w["full_days"] == 11 and w["reliable"] is True
-    assert "2026-06-16" not in [d["day"] for d in out["days"]], "mardi fermé, pas mardi à zéro"
-    assert "2026-06-17" not in [d["day"] for d in out["days"]], "mercredi fermé après bascule"
+    assert (w["from"], w["to"]) == (deb.isoformat(), fin.isoformat())
+    assert w["full_days"] == len(ouverts), "on compte l'OBSERVÉ, pas un calendrier supposé"
+    assert w["reliable"] is (len(ouverts) >= TX_MIN_FULL_DAYS)
+    fermes = [d.isoformat() for d in jours if d.isoformat() not in ouverts]
+    vus = {d["day"] for d in out["days"]}
+    assert not (set(fermes) & vus), "un jour fermé est absent, pas présent à zéro"
 
     mercredis = [x for x in out["weekday"] if x["weekday"] == 2]
     assert mercredis and mercredis[0]["n"] == 1, "seul le mercredi 10 juin, d'avant la bascule"
@@ -300,20 +316,33 @@ def test_une_fermeture_exceptionnelle_ne_se_compte_pas_comme_jour_plein():
 
 # ── 6. Le headline : jamais de delta contre du vide ──────────────────────────
 
-def _deux_fenetres(prev_nb, cur_nb):
-    """Deux fenêtres pleines et adjacentes : 07-10 → 07-23, puis 07-24 → 08-06."""
-    jours_prev = ["2026-07-10", "2026-07-11", "2026-07-12", "2026-07-13", "2026-07-16", "2026-07-17"]
-    jours_cur  = ["2026-07-24", "2026-07-25", "2026-07-26", "2026-07-27", "2026-07-30", "2026-07-31"]
-    rows = _rows({**{d: prev_nb for d in jours_prev}, **{d: cur_nb for d in jours_cur}})
-    return app._transactions_payload(rows, date(2026, 7, 10), date(2026, 8, 7))
+def _deux_fenetres(prev_nb, cur_nb, today=date(2026, 8, 7)):
+    """
+    Deux fenêtres pleines et ADJACENTES, construites à partir du réglage courant plutôt que
+    de dates écrites à la main — la version figée cassait au moindre changement de fenêtre.
+    Chacune reçoit exactement le seuil de jours pleins.
+    """
+    fin_cur  = today - timedelta(1)
+    deb_cur  = fin_cur - timedelta(TX_WINDOW_DAYS - 1)
+    fin_prev = deb_cur - timedelta(1)
+    deb_prev = fin_prev - timedelta(TX_WINDOW_DAYS - 1)
+
+    def jours(deb):
+        return [(deb + timedelta(i)).isoformat() for i in range(TX_MIN_FULL_DAYS)]
+
+    rows = _rows({**{d: prev_nb for d in jours(deb_prev)},
+                  **{d: cur_nb for d in jours(deb_cur)}})
+    out = app._transactions_payload(rows, deb_prev, today)
+    return out, (deb_cur, fin_cur, deb_prev, fin_prev)
 
 
 def test_le_delta_compare_les_deux_dernieres_fenetres_fiables():
-    out = _deux_fenetres(prev_nb=30, cur_nb=20)
+    out, (dc, fc, dp, fp) = _deux_fenetres(prev_nb=30, cur_nb=20)
     h = out["headline"]
-    assert (h["tx_median"], h["n"], h["from"], h["to"]) == (20.0, 6, "2026-07-24", "2026-08-06")
-    assert (h["prev_tx_median"], h["prev_n"], h["prev_from"], h["prev_to"]) \
-        == (30.0, 6, "2026-07-10", "2026-07-23")
+    assert (h["tx_median"], h["from"], h["to"]) == (20.0, dc.isoformat(), fc.isoformat())
+    assert (h["prev_tx_median"], h["prev_from"], h["prev_to"]) \
+        == (30.0, dp.isoformat(), fp.isoformat())
+    assert h["n"] == h["prev_n"] == TX_MIN_FULL_DAYS
     assert h["delta_pct"] == -33
     assert h["reason"] is None
 
@@ -362,18 +391,27 @@ def test_une_fenetre_recente_ecartee_est_annoncee():
     Si la dernière fenêtre n'est pas fiable, le chiffre du haut de page n'est PAS celui des deux
     dernières semaines. Le taire laisserait décider sur un chiffre daté sans le savoir.
     """
-    jours_a = ["2026-06-26", "2026-06-27", "2026-06-28", "2026-06-29", "2026-07-02", "2026-07-03"]
-    jours_b = ["2026-07-10", "2026-07-11", "2026-07-12", "2026-07-13", "2026-07-16", "2026-07-17"]
-    rows = _rows({**{d: 30 for d in jours_a}, **{d: 20 for d in jours_b},
-                  "2026-07-24": 5})                       # dernière fenêtre : 1 jour plein
-    h = app._transactions_payload(rows, date(2026, 6, 26), date(2026, 8, 7))["headline"]
-    assert (h["from"], h["to"]) == ("2026-07-10", "2026-07-23")
+    today = date(2026, 8, 7)
+    fin_derniere = today - timedelta(1)
+    deb_derniere = fin_derniere - timedelta(TX_WINDOW_DAYS - 1)
+    fin_b = deb_derniere - timedelta(1)
+    deb_b = fin_b - timedelta(TX_WINDOW_DAYS - 1)
+    fin_a = deb_b - timedelta(1)
+    deb_a = fin_a - timedelta(TX_WINDOW_DAYS - 1)
+
+    def jours(deb):
+        return [(deb + timedelta(i)).isoformat() for i in range(TX_MIN_FULL_DAYS)]
+
+    rows = _rows({**{d: 30 for d in jours(deb_a)}, **{d: 20 for d in jours(deb_b)},
+                  deb_derniere.isoformat(): 5})           # dernière fenêtre : 1 jour plein
+    h = app._transactions_payload(rows, deb_a, today)["headline"]
+    assert (h["from"], h["to"]) == (deb_b.isoformat(), fin_b.isoformat())
     assert h["delta_pct"] == -33
     assert "latest-window-skipped" in h["reason"]
     # Le DÉTAIL de l'écart (« 1 jour plein seulement ») n'est plus imbriqué dans le code du
     # headline : il vit dans la fenêtre concernée, que la page affiche juste en dessous avec
     # son n et sa propre raison. L'information n'est pas perdue, elle est à un seul endroit.
-    derniere = app._transactions_payload(rows, date(2026, 6, 26), date(2026, 8, 7))["windows"][-1]
+    derniere = app._transactions_payload(rows, deb_a, today)["windows"][-1]
     assert derniere["full_days"] == 1
     assert "too-few-days" in derniere["reason"]
 
@@ -391,9 +429,10 @@ def test_la_forme_de_la_reponse_est_celle_attendue_par_la_page():
 
     assert set(out) == {"from", "to", "days", "windows", "hourly", "weekday", "headline"}
     assert (out["from"], out["to"]) == ("2026-05-27", "2026-08-07")
-    assert set(out["days"][0]) == {"day", "nb", "ca_ttc", "weekday", "partial"}
+    assert set(out["days"][0]) == {"day", "nb", "ca_ttc", "covers", "weekday", "partial"}
     assert set(out["windows"][0]) == {"from", "to", "full_days", "tx_median", "ca_median",
-                                      "basket_median", "multi_pct", "reliable", "reason"}
+                                      "basket_median", "multi_pct", "reliable", "reason",
+                                      "covers_median", "ca_per_cover", "covers_capped"}
     assert set(out["weekday"][0]) == {"weekday", "label", "tx_median", "n"}
     assert set(out["headline"]) == {"tx_median", "n", "from", "to", "prev_tx_median", "prev_n",
                                     "prev_from", "prev_to", "delta_pct", "reason"}
@@ -426,7 +465,7 @@ def test_la_route_date_son_aujourd_hui_sur_lisbonne_et_lit_le_cache():
 def test_la_route_ne_demande_jamais_au_cache_de_figer_aujourd_hui():
     """La garde de `_ensure_summaries` existe ; encore faut-il ne pas la frôler."""
     src = inspect.getsource(app.api_transactions_daily)
-    assert "_ensure_summaries(opening, today_real - timedelta(1), catalog)" in src
+    assert "_ensure_summaries(debut, today_real - timedelta(1), catalog)" in src
 
 
 def test_la_route_repond_avec_le_cache_et_le_jour_courant_monte_en_memoire(monkeypatch):
@@ -459,7 +498,10 @@ def test_la_route_repond_avec_le_cache_et_le_jour_courant_monte_en_memoire(monke
     assert rep.status_code == 200
     data = rep.get_json()
     assert data["ok"] is True
-    assert vu["bornes"] == (date(2026, 5, 27), date(2026, 8, 6)), "le cache s'arrête à HIER"
+    # ⚠️ Le cache démarre à TX_ANALYSIS_START, pas à l'ouverture : juin est volontairement
+    # hors analyse (ouverture atypique + commandes de groupe). Décision assumée et annoncée
+    # par la page, pas une troncature muette.
+    assert vu["bornes"] == (app.TX_ANALYSIS_START, date(2026, 8, 6)), "le cache s'arrête à HIER"
 
     aujourdhui = [d for d in data["days"] if d["day"] == "2026-08-07"]
     assert aujourdhui and aujourdhui[0]["partial"] is True and aujourdhui[0]["nb"] == 1
@@ -615,3 +657,29 @@ def test_une_autre_erreur_supabase_n_est_pas_avalee(monkeypatch):
 
     assert ok is False and "permission denied" in err
     assert len(appels) == 1, "aucun réessai : l'erreur n'a rien à voir avec la colonne"
+
+
+def test_plusieurs_colonnes_neuves_peuvent_manquer_ensemble(monkeypatch):
+    """
+    `hours` et `covers` arrivent par deux migrations distinctes : l'une peut être passée et pas
+    l'autre. Le repli doit retirer CHAQUE colonne nommée par Supabase, pas seulement la
+    première — sinon la ligne entière est perdue quand il en manque deux.
+    """
+    essais = []
+
+    def faux_upsert(table, data):
+        essais.append(sorted(k for k in data if k in ("hours", "covers", "covers_capped")))
+        for c in ("hours", "covers"):
+            if c in data:
+                return False, f'column "{c}" of relation "daily_summary" does not exist'
+        return True, None
+
+    monkeypatch.setattr(app, "_supa_upsert", faux_upsert)
+    ok, err = app._upsert_summary("2026-08-06", {"nb": 20, "hours": {"9": 20},
+                                                 "covers": 28, "covers_capped": 0})
+    assert ok is True, f"ligne perdue alors que seules des colonnes neuves manquaient : {err}"
+    # Le repli est CIBLÉ : il retire ce que Supabase nomme, et RIEN d'autre. `covers_capped`
+    # n'a jamais été refusé ici, il doit donc survivre — retirer des colonnes au passage
+    # perdrait des mesures qu'aucune erreur ne demandait d'abandonner.
+    assert essais[-1] == ["covers_capped"], essais
+    assert len(essais) == 3, f"un essai par colonne refusée, puis le bon : {essais}"
