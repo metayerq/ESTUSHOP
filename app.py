@@ -1514,6 +1514,47 @@ def api_events_get():
     rows = _supa_get("events", {"active": "eq.true", "order": "date.asc"})
     return jsonify(rows if isinstance(rows, list) else [])
 
+def _build_event_row(data, status):
+    """
+    Construit la ligne `events` d'un upsert. Le titre et la date sont validés par l'appelant.
+
+    ⚠️ UNE MISE À JOUR NE FABRIQUE AUCUN CHAMP QU'ELLE N'A PAS REÇU.
+    L'écriture passe par un upsert PostgREST en `merge-duplicates` : tout champ présent dans la
+    ligne ÉCRASE la valeur en base. `series_id` et `active` y figuraient toujours — le premier
+    à `None` faute d'être envoyé par le formulaire d'édition, le second forcé à `True`.
+    Éditer une occurrence d'un pop-up hebdomadaire la détachait donc silencieusement de sa
+    série : `deleteSeries` s'appuie sur `series_id` pour retrouver les occurrences sœurs, et ne
+    la comptait plus. Le titre changeait bien ; le lien disparaissait sans un mot.
+
+    `notes` était déjà protégé par le même garde — les deux autres avaient été oubliés.
+
+    À la CRÉATION, en revanche, ces champs doivent porter leur valeur par défaut : une nouvelle
+    occurrence de série arrive avec son `series_id`, un événement isolé sans. Le comportement
+    de création est donc inchangé, et seule la mise à jour cesse d'inventer.
+    """
+    row = {
+        "title":       (data.get("title") or "").strip(),
+        "date":        data["date"],
+        "end_date":    data.get("end_date") or None,
+        "start_time":  (data.get("start_time") or "").strip() or None,
+        "end_time":    (data.get("end_time") or "").strip() or None,
+        "location":    (data.get("location") or "").strip(),
+        "status":      status,
+        "description": (data.get("description") or "").strip(),
+        "color":       (data.get("color") or "#2554C7").strip(),
+        "updated_at":  _utc_iso(),
+    }
+    est_mise_a_jour = bool(data.get("id"))
+    for champ, defaut in (("series_id", None), ("active", True), ("notes", None)):
+        if champ in data:
+            row[champ] = data[champ]
+        elif not est_mise_a_jour and champ != "notes":
+            row[champ] = defaut
+    if est_mise_a_jour:
+        row["id"] = data["id"]
+    return row
+
+
 @app.route("/api/events", methods=["POST"])
 def api_events_post():
     data  = request.get_json() or {}
@@ -1525,25 +1566,7 @@ def api_events_post():
     status = data.get("status", "planned")
     if status not in ("planned", "confirmed", "done", "cancelled"):
         status = "planned"
-    row = {
-        "title":       title,
-        "date":        data["date"],
-        "end_date":    data.get("end_date") or None,
-        "start_time":  (data.get("start_time") or "").strip() or None,
-        "end_time":    (data.get("end_time") or "").strip() or None,
-        "location":    (data.get("location") or "").strip(),
-        "status":      status,
-        "description": (data.get("description") or "").strip(),
-        "color":       (data.get("color") or "#2554C7").strip(),
-        "series_id":   data.get("series_id"),
-        "active":      data.get("active", True),
-        "updated_at":  _utc_iso(),
-    }
-    if "notes" in data:
-        row["notes"] = data["notes"]
-    if data.get("id"):
-        row["id"] = data["id"]
-    ok, err = _supa_upsert("events", row)
+    ok, err = _supa_upsert("events", _build_event_row(data, status))
     return jsonify({"ok": ok, "error": err})
 
 @app.route("/api/events/<string:event_id>", methods=["PATCH"])
