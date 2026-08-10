@@ -1828,9 +1828,32 @@ def _supa_headers(prefer=None):
         h["Prefer"] = prefer
     return h
 
+class SupabaseSchemaError(RuntimeError):
+    """Table ou colonne absente : un défaut de déploiement, pas une donnée manquante."""
+
+
 def _supa_get(table, params=None):
+    """
+    Lecture Supabase. Renvoie [] sur échec — SAUF si la table n'existe pas.
+
+    ⚠️ POURQUOI CETTE EXCEPTION EXISTE. Pendant deux mois, `daily_summary` n'a existé dans
+    aucun schéma du projet. Cette fonction renvoyait `[]`, indiscernable de « aucune ligne » :
+    l'app en concluait que le cache était vide, rappelait Vendus sur tout l'historique — un
+    appel de détail par document — puis échouait à écrire, également en silence. Les chiffres
+    affichés restaient justes, le coût était multiplié, et rien ne l'a jamais dit.
+
+    « Table absente » n'est pas un état des données, c'est un déploiement incomplet. PostgREST
+    le signale par un 404 : on le laisse remonter. Les autres échecs (réseau, 5xx passager)
+    gardent le repli sur [], parce qu'ils sont transitoires et qu'un écran vide vaut mieux
+    qu'une page en erreur.
+    """
     r = _req.get(f"{SUPA_URL}/rest/v1/{table}", headers=_supa_headers(), params=params)
-    return r.json() if r.ok else []
+    if r.ok:
+        return r.json()
+    if r.status_code == 404:
+        raise SupabaseSchemaError(
+            f"table '{table}' absente du projet Supabase — migration non exécutée ?")
+    return []
 
 def _supa_upsert(table, data):
     r = _req.post(f"{SUPA_URL}/rest/v1/{table}", json=data,
