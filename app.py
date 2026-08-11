@@ -955,6 +955,14 @@ def api_data():
         result["insights"] = None
         warnings.append(f"Insights unavailable ({type(e).__name__})")
 
+    # Le rodage du POS doit se voir. Sans ça, une caisse d'essai qui tourne toute la journée
+    # laisserait un dashboard parfaitement calme, et le jour où le garde devra sauter, personne
+    # ne se souviendrait qu'il existe.
+    import vendus as _v
+    if getattr(_v, "LAST_TEST_DOCS_DROPPED", 0):
+        warnings.append(f"{_v.LAST_TEST_DOCS_DROPPED} document(s) de la caisse d'essai POS "
+                        f"écartés des chiffres")
+
     # ── Produits et mix — depuis les agrégats fusionnés ───────────────────────
     result["products"] = _products_list(merged_products, catalog, n=None)
     result["mix"]      = _mix_from_merged(merged_products, catalog)

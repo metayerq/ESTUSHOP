@@ -66,6 +66,38 @@ def vendus(endpoint, params=None):
     return r.json()
 
 
+# ══ CAISSE D'ESSAI DU POS ════════════════════════════════════════════════════
+#
+# ⚠️ GARDE TEMPORAIRE — À RETIRER LE JOUR OÙ LE POS ENCAISSE POUR DE VRAI.
+#
+# Le POS Mesa est en rodage : il émet sur une caisse Vendus dédiée (« API Mesa ») du compte de
+# PRODUCTION, faute de compte de test. Son .env portait d'ailleurs la clé de production alors
+# que son README exige un compte de test — l'isolement ne tient donc qu'à un identifiant de
+# caisse, c'est-à-dire à une ligne de configuration.
+#
+# Ne pas faire confiance à cette configuration pour rester correcte : le dashboard écarte
+# lui-même ces documents. Cent tickets d'essai demain ne déplaceront pas d'un centime les
+# chiffres du café.
+#
+# ⚠️ LE JOUR DU PASSAGE EN RÉEL, VIDER CET ENSEMBLE — sinon les vraies ventes du POS
+# disparaîtront des chiffres, ce qui est le défaut symétrique et bien plus coûteux.
+# `LAST_TEST_DOCS_DROPPED` permet à l'écran d'annoncer ce qui a été écarté : une troncature
+# muette se lirait « il n'y a rien eu ».
+TEST_REGISTER_IDS = {"360703227"}       # « API Mesa » — caisse de rodage du POS
+LAST_TEST_DOCS_DROPPED = 0
+
+
+def _drop_test_registers(docs):
+    """Écarte les documents des caisses d'essai et retient combien, pour l'annoncer."""
+    global LAST_TEST_DOCS_DROPPED
+    if not TEST_REGISTER_IDS:
+        LAST_TEST_DOCS_DROPPED = 0
+        return docs
+    gardes = [d for d in docs if str(d.get("register_id")) not in TEST_REGISTER_IDS]
+    LAST_TEST_DOCS_DROPPED = len(docs) - len(gardes)
+    return gardes
+
+
 SALE_TYPES   = {"FT", "FS", "FR", "FG"}
 REFUND_TYPES = {"NC"}   # notas de crédito — soustraites du CA
 
@@ -148,7 +180,7 @@ def get_documents(since: str, until: str, detailed: bool = False):
                 break
             next_page += WAVE
     out = []
-    for d in all_raw:
+    for d in _drop_test_registers(all_raw):
         t = d.get("type")
         if t in SALE_TYPES:
             out.append(d)
