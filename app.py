@@ -1773,16 +1773,22 @@ def api_tpa_data(token):
     # passé) + aujourd'hui en live. Jamais bloquant : si une source est
     # indisponible, la page affiche l'autre plutôt qu'une erreur.
     vendus_by_day, warning = {}, None
+    # LECTURE SEULE du cache daily_summary : une requête Supabase, quasi
+    # infaillible. Surtout ne pas reconstruire les jours manquants ici
+    # (_ensure_summaries) — sur tout l'historique ça déclenche des rafales
+    # d'appels Vendus qui dépassent le timeout serverless → page à zéro.
     try:
-        catalog = get_catalog() or {}
-        rows = _ensure_summaries(date(2026, 5, 27), today - timedelta(1), catalog)
+        rows = _fetch_summaries(OPENING_DAY, (today - timedelta(1)).isoformat())
         vendus_by_day = {r["day"]: float(r.get("ca_ttc") or 0) for r in rows}
+    except Exception as e:
+        warning = f"Faturação Vendus indisponível ({type(e).__name__}: {str(e)[:100]})"
+    try:
         tdocs = _get_today_docs_cached()
         if tdocs:
             vendus_by_day[today.isoformat()] = round(
                 sum(float(d.get("amount_gross") or 0) for d in tdocs), 2)
     except Exception:
-        warning = "Faturação Vendus temporariamente indisponível"
+        pass   # le jour courant est un bonus, jamais bloquant
     revolut = _load_revolut_days()
 
     months = {}
