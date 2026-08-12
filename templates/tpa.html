@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reconciliação TPA · Quiet Frequency</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#EDEAE3;--card:#fff;--border:#DBD7CB;--text:#26241E;--muted:#6E6A5E;--faint:#A29D8F;
+  --green:#448361;--red:#c4554d;--spec:#2554C7;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+body{font-family:'Inter',ui-sans-serif,system-ui,sans-serif;font-size:14px;background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
+.page{max-width:980px;margin:0 auto;padding:44px 32px 90px}
+h1{font-size:24px;font-weight:700;letter-spacing:-.4px}
+h1::before{content:"◳ ";color:var(--spec)}
+.sub{font-size:13px;color:var(--muted);margin-top:4px;margin-bottom:28px}
+.label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:26px 0 10px}
+.label::before{content:"— ";color:var(--faint)}
+.note{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 18px;font-size:12.5px;color:var(--muted);margin-bottom:10px}
+.note b{color:var(--text)}
+.warn{background:#fff8e1;border:1px solid #ffe082;color:#795548}
+table{width:100%;border-collapse:collapse;background:var(--card);font-size:13px}
+.twrap{border:1px solid var(--border);border-radius:10px;overflow-x:auto;margin-bottom:8px}
+th{font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);text-align:right;padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+th:first-child{text-align:left}
+td{padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;border-bottom:1px solid var(--border);white-space:nowrap}
+td:first-child{text-align:left;font-weight:500}
+tr:last-child td{border-bottom:none}
+tr.total td{font-weight:700;background:var(--bg);border-top:2px solid var(--border)}
+tr.month-row{cursor:pointer}
+tr.month-row:hover td{background:rgba(38,36,30,.04)}
+tr.month-row td:first-child::before{content:"▸ ";color:var(--faint);font-size:11px}
+tr.month-row.open td:first-child::before{content:"▾ "}
+.cash{color:var(--green);font-weight:700}
+.chev{color:var(--faint)}
+.daytable td{font-size:12px;color:var(--muted);padding:6px 12px}
+.daytable td:first-child{font-weight:400}
+.formula{font-family:var(--mono);font-size:12px;background:var(--card);border:1px dashed var(--border);border-radius:8px;padding:10px 14px;color:var(--muted);margin-bottom:16px}
+.btn{font-family:inherit;font-size:12.5px;font-weight:500;border:1px solid var(--border);background:var(--card);color:var(--text);padding:7px 14px;border-radius:8px;cursor:pointer}
+.btn:hover{border-color:var(--text)}
+.loading{padding:40px;text-align:center;color:var(--muted)}
+#admin-upload{display:none;margin-top:34px;border-top:1px solid var(--border);padding-top:18px}
+footer{margin-top:40px;font-size:11px;color:var(--faint)}
+@media(max-width:640px){.page{padding:24px 14px 60px}}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Reconciliação TPA — Quiet Frequency, Unipessoal LDA</h1>
+  <div class="sub">Café Estudantina · Terminal Revolut vs faturação Vendus · atualizado <span id="gen">…</span></div>
+
+  <div class="note warn">
+    <b>Notas metodológicas — importantes para a reconciliação:</b><br>
+    · <b>27–31 de maio:</b> ainda não usávamos o Vendus. As vendas foram cobradas no terminal Revolut e faturadas no Vendus já em junho — os totais de maio e junho devem ser lidos em conjunto.<br>
+    · <b>Junho:</b> as faturas eram criadas manualmente ao final do dia, enquanto os pagamentos eram cobrados durante o dia. A comparação <b>dia a dia não é aplicável</b> neste período — apenas os totais.<br>
+    · <b>Gorjetas:</b> cobradas no terminal mas não constituem faturação.<br>
+    · <b>Comissões Revolut:</b> encargo bancário — não são numerário.
+  </div>
+
+  <div class="formula">
+    Numerário implícito = Faturado Vendus − (TPA bruto − Gorjetas)
+  </div>
+
+  <div class="label">Totais por mês</div>
+  <div class="twrap">
+    <table id="tbl">
+      <thead><tr>
+        <th>Mês</th><th>Faturado Vendus</th><th>TPA bruto</th><th>Gorjetas</th>
+        <th>Vendas cartão</th><th>Comissões</th><th>Líquido creditado</th><th>Numerário</th><th>Tx</th>
+      </tr></thead>
+      <tbody id="tbody"><tr><td colspan="9" class="loading">A carregar…</td></tr></tbody>
+    </table>
+  </div>
+  <div style="font-size:11.5px;color:var(--faint);margin-bottom:18px;">
+    Clique num mês para ver o detalhe diário (indicativo). Vendas cartão = TPA bruto − gorjetas.
+  </div>
+
+  <button class="btn" onclick="exportCsv()">⇩ Exportar CSV</button>
+
+  <div id="admin-upload">
+    <div class="label">Importar extrato Revolut (admin)</div>
+    <div class="note">Ficheiro <b>Merchant reconciliation statement</b> (CSV) exportado do Revolut Business. As linhas são agregadas por dia de cobrança e gravadas — reimportar o mesmo período apenas atualiza os valores.</div>
+    <input type="file" id="up-file" accept=".csv" style="font-size:13px;">
+    <button class="btn" onclick="doUpload()" id="up-btn">Importar</button>
+    <span id="up-status" style="font-size:12px;color:var(--muted);margin-left:8px;"></span>
+  </div>
+
+  <footer>Documento de trabalho gerado automaticamente a partir do extrato oficial Revolut (Merchant reconciliation statement) e da faturação Vendus (software certificado AT). Acesso reservado.</footer>
+</div>
+
+<script>
+const TOKEN = {{ token|tojson }};
+const fmt = v => new Intl.NumberFormat('pt-PT',{style:'currency',currency:'EUR'}).format(v);
+const MESES = {'05':'Maio','06':'Junho','07':'Julho','08':'Agosto','09':'Setembro','10':'Outubro','11':'Novembro','12':'Dezembro','01':'Janeiro','02':'Fevereiro','03':'Março','04':'Abril'};
+let DATA = null;
+
+async function load(){
+  try{
+    const r = await fetch(`/api/tpa/${TOKEN}/data`);
+    DATA = await r.json();
+    document.getElementById('gen').textContent = DATA.generated || '';
+    if (DATA.warning) {
+      const w = document.createElement('div');
+      w.className = 'note warn';
+      w.textContent = '⚠ ' + DATA.warning + ' — os valores Vendus aparecem a zero.';
+      document.querySelector('.formula').before(w);
+    }
+    render();
+  }catch(e){
+    document.getElementById('tbody').innerHTML = '<tr><td colspan="9" class="loading">Erro ao carregar — recarregue a página.</td></tr>';
+  }
+}
+
+function render(){
+  const tb = document.getElementById('tbody');
+  let html = '';
+  const g = {vendus:0,gross:0,tips:0,card_sales:0,fees:0,net:0,cash:0,tx:0};
+  for(const m of DATA.months){
+    const t = m.totals;
+    for(const k in g) g[k] += (t[k]||0);
+    const label = `${MESES[m.month.slice(5)]||m.month} ${m.month.slice(0,4)}`;
+    html += `<tr class="month-row" data-m="${m.month}" onclick="toggleMonth('${m.month}')">
+      <td>${label}</td><td>${fmt(t.vendus)}</td><td>${fmt(t.gross)}</td><td>${fmt(t.tips)}</td>
+      <td><b>${fmt(t.card_sales)}</b></td><td>${fmt(t.fees)}</td><td>${fmt(t.net)}</td>
+      <td class="cash" ${t.cash<0?'style="color:var(--red)" title="Vendas cobradas no terminal antes da faturação no Vendus (ver notas)"':''}>${fmt(t.cash)}</td><td class="chev">${t.tx}</td>
+    </tr>`;
+    html += `<tr class="dayrows" data-m="${m.month}" style="display:none;"><td colspan="9" style="padding:0;">
+      <table class="daytable" style="width:100%;">
+        ${m.days.map(d=>`<tr>
+          <td style="padding-left:34px;">${d.day}</td><td>${fmt(d.vendus)}</td><td>${fmt(d.gross)}</td>
+          <td>${fmt(d.tips)}</td><td>${fmt(d.gross-d.tips)}</td><td>${fmt(d.fees)}</td><td>${fmt(d.net)}</td>
+          <td style="color:var(--faint)">—</td><td>${d.tx||''}</td>
+        </tr>`).join('')}
+      </table>
+    </td></tr>`;
+  }
+  html += `<tr class="total">
+    <td>TOTAL</td><td>${fmt(g.vendus)}</td><td>${fmt(g.gross)}</td><td>${fmt(g.tips)}</td>
+    <td>${fmt(g.card_sales)}</td><td>${fmt(g.fees)}</td><td>${fmt(g.net)}</td>
+    <td class="cash">${fmt(g.cash)}</td><td>${g.tx}</td>
+  </tr>`;
+  tb.innerHTML = html;
+}
+
+function toggleMonth(m){
+  const row  = document.querySelector(`.month-row[data-m="${m}"]`);
+  const days = document.querySelector(`.dayrows[data-m="${m}"]`);
+  const open = days.style.display !== 'none';
+  days.style.display = open ? 'none' : '';
+  row.classList.toggle('open', !open);
+}
+
+function exportCsv(){
+  if(!DATA) return;
+  const rows = [['Data','Faturado Vendus','TPA bruto','Gorjetas','Vendas cartao','Comissoes','Liquido creditado','Transacoes']];
+  for(const m of DATA.months){
+    for(const d of m.days)
+      rows.push([d.day,d.vendus,d.gross,d.tips,(d.gross-d.tips).toFixed(2),d.fees,d.net,d.tx]);
+    const t=m.totals;
+    rows.push([`TOTAL ${m.month}`,t.vendus,t.gross,t.tips,t.card_sales,t.fees,t.net,t.tx]);
+  }
+  const csv = rows.map(r=>r.join(';')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));
+  a.download = 'reconciliacao_tpa_quiet_frequency.csv';
+  a.click();
+}
+
+async function doUpload(){
+  const f = document.getElementById('up-file').files[0];
+  const st = document.getElementById('up-status');
+  if(!f){ st.textContent = 'Escolha um ficheiro.'; return; }
+  const btn=document.getElementById('up-btn'); btn.disabled=true; st.textContent='A importar…';
+  try{
+    const fd = new FormData(); fd.append('file', f);
+    const r = await fetch('/api/tpa/upload',{method:'POST',body:fd});
+    const d = await r.json();
+    st.textContent = d.ok ? `✓ ${d.days} dias (${d.from} → ${d.to}), ${d.transactions} transações` : ('Erro: '+(d.error||''));
+    if(d.ok) load();
+  }catch(e){ st.textContent='Erro de rede.'; }
+  finally{ btn.disabled=false; }
+}
+
+// Zone d'upload : visible seulement si la session a le cookie admin.
+fetch('/api/tpa/upload',{method:'POST'}).then(r=>{
+  if(r.status !== 403) document.getElementById('admin-upload').style.display='block';
+});
+
+load();
+</script>
+</body>
+</html>

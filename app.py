@@ -390,6 +390,10 @@ def _require_auth():
     # Endpoints cron : protégés par CRON_SECRET, pas par le login dashboard.
     if request.path.startswith("/api/cron/"):
         return
+    # Page comptable : protégée par un token secret dans l'URL (vérifié dans la
+    # route), pas par le login. Lecture seule, ne montre que la réconciliation TPA.
+    if request.path.startswith("/tpa/") or request.path.startswith("/api/tpa/"):
+        return
     role = _current_role()
     if role is None:
         if request.path.startswith("/api/"):
@@ -1726,6 +1730,130 @@ def api_reconciliation():
            for k, v in sorted(days.items())]
     return jsonify({"month": month, "days": out, "payment_titles": sorted(titles),
                     "revolut": revolut})
+
+# ── Página da contabilista : reconciliação TPA ────────────────────────────────
+# Accès par token secret (env ACCOUNTANT_TOKEN) — lecture seule, en portugais.
+# Données Revolut : table Supabase revolut_days (fallback revolut_data.json).
+# Le jour-par-jour de mai/juin n'est pas réconciliable (saisie Vendus le soir) ;
+# la page le dit explicitement et met en avant les totaux de période.
+
+def _tpa_token_ok(token):
+    expected = os.environ.get("ACCOUNTANT_TOKEN", "")
+    return bool(expected) and hmac.compare_digest(token, expected)
+
+def _load_revolut_days():
+    """{day: {gross, tips, fees, net, tx}} — Supabase d'abord, JSON en secours."""
+    try:
+        rows = _supa_get("revolut_days", {"order": "day.asc"})
+    except Exception:
+        rows = None
+    if isinstance(rows, list) and rows:
+        return {r["day"]: {k: float(r.get(k) or 0) if k != "tx" else int(r.get(k) or 0)
+                           for k in ("gross", "tips", "fees", "net", "tx")}
+                for r in rows}
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "revolut_data.json")) as f:
+            data = json.load(f)
+        return {day: v for m in data.values() for day, v in m.get("days", {}).items()}
+    except Exception:
+        return {}
+
+@app.route("/tpa/<token>")
+def tpa_page(token):
+    if not _tpa_token_ok(token):
+        return "Não autorizado", 404
+    return render_template("tpa.html", token=token)
+
+@app.route("/api/tpa/<token>/data")
+def api_tpa_data(token):
+    if not _tpa_token_ok(token):
+        return jsonify({"error": "unauthorized"}), 404
+    today = date.today()
+    # Faturação Vendus par jour — cache daily_summary (zéro appel Vendus pour le
+    # passé) + aujourd'hui en live. Jamais bloquant : si une source est
+    # indisponible, la page affiche l'autre plutôt qu'une erreur.
+    vendus_by_day, warning = {}, None
+    try:
+        catalog = get_catalog() or {}
+        rows = _ensure_summaries(date(2026, 5, 27), today - timedelta(1), catalog)
+        vendus_by_day = {r["day"]: float(r.get("ca_ttc") or 0) for r in rows}
+        tdocs = _get_today_docs_cached()
+        if tdocs:
+            vendus_by_day[today.isoformat()] = round(
+                sum(float(d.get("amount_gross") or 0) for d in tdocs), 2)
+    except Exception:
+        warning = "Faturação Vendus temporariamente indisponível"
+    revolut = _load_revolut_days()
+
+    months = {}
+    for day in sorted(set(vendus_by_day) | set(revolut)):
+        m = day[:7]
+        r = revolut.get(day) or {}
+        months.setdefault(m, []).append({
+            "day":     day,
+            "vendus":  round(vendus_by_day.get(day, 0.0), 2),
+            "gross":   round(float(r.get("gross") or 0), 2),
+            "tips":    round(float(r.get("tips") or 0), 2),
+            "fees":    round(float(r.get("fees") or 0), 2),
+            "net":     round(float(r.get("net") or 0), 2),
+            "tx":      int(r.get("tx") or 0),
+        })
+    out = []
+    for m in sorted(months):
+        days = months[m]
+        tot = {k: round(sum(d[k] for d in days), 2)
+               for k in ("vendus", "gross", "tips", "fees", "net")}
+        tot["tx"] = sum(d["tx"] for d in days)
+        tot["card_sales"] = round(tot["gross"] - tot["tips"], 2)
+        tot["cash"] = round(tot["vendus"] - tot["card_sales"], 2)
+        out.append({"month": m, "days": days, "totals": tot})
+    return jsonify({"months": out, "warning": warning,
+                    "generated": datetime.now().strftime("%d/%m/%Y %H:%M")})
+
+@app.route("/api/tpa/upload", methods=["POST"])
+def api_tpa_upload():
+    """Import du Merchant reconciliation statement (CSV Revolut) → revolut_days.
+    Réservé admin (l'exemption d'auth du préfixe /api/tpa/ ne suffit pas ici)."""
+    if not _is_admin():
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"ok": False, "error": "file required"}), 400
+    import csv as _csv, io
+    try:
+        text = f.read().decode("utf-8-sig")
+        reader = _csv.DictReader(io.StringIO(text))
+        agg = {}
+        n_settle = 0
+        for r in reader:
+            if (r.get("Type") or "") != "Settlement":
+                continue
+            day = (r.get("Payment Capture Date & Time (UTC)") or "")[:10]
+            if not day:
+                continue
+            n_settle += 1
+            a = agg.setdefault(day, {"gross": 0.0, "tips": 0.0, "fees": 0.0,
+                                     "net": 0.0, "tx": 0})
+            a["gross"] += float(r.get("Original amount") or 0)
+            a["net"]   += float(r.get("Settlement amount") or 0)
+            a["fees"]  += abs(float(r.get("Processing fee") or 0))
+            a["tips"]  += float(r.get("Tip amount") or 0)
+            a["tx"]    += 1
+        if not agg:
+            return jsonify({"ok": False,
+                            "error": "nenhuma linha Settlement encontrada — é o Merchant reconciliation statement?"}), 400
+        for day, a in agg.items():
+            _supa_upsert("revolut_days", {
+                "day": day,
+                "gross": round(a["gross"], 2), "tips": round(a["tips"], 2),
+                "fees": round(a["fees"], 2),   "net": round(a["net"], 2),
+                "tx": a["tx"],
+            })
+        return jsonify({"ok": True, "days": len(agg), "transactions": n_settle,
+                        "from": min(agg), "to": max(agg)})
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 400
+
 
 @app.route("/api/cash")
 def api_cash():
