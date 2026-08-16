@@ -68,7 +68,7 @@ def vendus(endpoint, params=None):
 
 # ══ CAISSE D'ESSAI DU POS ════════════════════════════════════════════════════
 #
-# ⚠️ GARDE TEMPORAIRE — À RETIRER LE JOUR OÙ LE POS ENCAISSE POUR DE VRAI.
+# ⚠️ GARDE LEVÉE. Le POS est passé en encaissement réel : ses ventes DOIVENT compter.
 #
 # Le POS Mesa est en rodage : il émet sur une caisse Vendus dédiée (« API Mesa ») du compte de
 # PRODUCTION, faute de compte de test. Son .env portait d'ailleurs la clé de production alors
@@ -79,11 +79,19 @@ def vendus(endpoint, params=None):
 # lui-même ces documents. Cent tickets d'essai demain ne déplaceront pas d'un centime les
 # chiffres du café.
 #
-# ⚠️ LE JOUR DU PASSAGE EN RÉEL, VIDER CET ENSEMBLE — sinon les vraies ventes du POS
-# disparaîtront des chiffres, ce qui est le défaut symétrique et bien plus coûteux.
-# `LAST_TEST_DOCS_DROPPED` permet à l'écran d'annoncer ce qui a été écarté : une troncature
-# muette se lirait « il n'y a rien eu ».
-TEST_REGISTER_IDS = {"360703227"}       # « API Mesa » — caisse de rodage du POS
+# L'ensemble est VIDE : plus aucune caisse n'est écartée, les ventes du POS comptent comme
+# celles du comptoir principal. Le mécanisme reste en place et testé — remettre un identifiant
+# ici suffirait à réisoler une caisse de rodage, sans rien réécrire.
+#
+# Rappel de ce que la garde a servi : le POS émettait sur une caisse dédiée du compte de
+# PRODUCTION, faute de compte de test, et son .env portait la clé de production. Découvert
+# depuis : les documents en mode formation ne sortent de l'API que si l'on demande
+# explicitement `mode=tests` — le dashboard, qui ne le demande pas, ne les a jamais vus. La
+# garde était donc une ceinture par-dessus des bretelles.
+#
+# `LAST_TEST_DOCS_DROPPED` reste : si une caisse est réisolée un jour, l'écran doit l'annoncer.
+# Une troncature muette se lirait « il n'y a rien eu ».
+TEST_REGISTER_IDS = set()
 LAST_TEST_DOCS_DROPPED = 0
 
 
