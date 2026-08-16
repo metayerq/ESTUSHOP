@@ -1768,7 +1768,10 @@ def tpa_page(token):
 def api_tpa_data(token):
     if not _tpa_token_ok(token):
         return jsonify({"error": "unauthorized"}), 404
-    today = date.today()
+    # ⚠️ L'heure du café, pas celle du serveur. Vercel tourne en UTC ; entre minuit et 1 h à
+    # Lisbonne, `date.today()` renvoie la veille — la page comptable arrêterait alors ses
+    # totaux un jour trop tôt, et le comptable le verrait avant nous.
+    today = today_lisbon()
     # Faturação Vendus par jour — cache daily_summary (zéro appel Vendus pour le
     # passé) + aujourd'hui en live. Jamais bloquant : si une source est
     # indisponible, la page affiche l'autre plutôt qu'une erreur.
@@ -1814,7 +1817,9 @@ def api_tpa_data(token):
         tot["cash"] = round(tot["vendus"] - tot["card_sales"], 2)
         out.append({"month": m, "days": days, "totals": tot})
     return jsonify({"months": out, "warning": warning,
-                    "generated": datetime.now().strftime("%d/%m/%Y %H:%M")})
+                    # Horodatage LU PAR QUELQU'UN : c'est l'heure de Lisbonne qui compte,
+                    # pas celle de Greenwich.
+                    "generated": now_lisbon().strftime("%d/%m/%Y %H:%M")})
 
 @app.route("/api/tpa/upload", methods=["POST"])
 def api_tpa_upload():
