@@ -145,6 +145,10 @@
   color:#fff; padding:10px 18px; border-radius:8px; font-size:13px; opacity:0; transition:all .25s; z-index:200; }
 .toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
 </style>
+  <!-- ⚠️ SANS CECI LE THÈME N'EST PAS APPLIQUÉ. Le gabarit a été extrait d'events.html
+       avant cette ligne : la page restait en clair pendant que le reste du dashboard
+       était en sombre, et le contraste devenait imprévisible. -->
+  <script src="/static/ui.js?v={{ v }}"></script>
 </head>
 <body>
 <div class="page">
@@ -234,7 +238,7 @@
   <div style="overflow-x:auto">
     <table id="loyalty-table" style="width:100%;border-collapse:collapse;font-size:14px">
       <thead>
-        <tr style="text-align:left;border-bottom:1px solid var(--line,#e3e0d8)">
+        <tr style="text-align:left;border-bottom:1px solid var(--border)">
           <th style="padding:8px 10px">N&deg;</th>
           <th style="padding:8px 10px">Pr&eacute;nom</th>
           <th style="padding:8px 10px;text-align:right">Boissons</th>
@@ -254,7 +258,7 @@
   <div id="fiche" role="dialog" aria-modal="true" aria-label="Fiche client"
        style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);
               align-items:center;justify-content:center;padding:16px">
-    <div style="background:var(--card,#fff);color:inherit;max-width:560px;width:100%;
+    <div style="background:var(--bg-card);color:var(--text);max-width:560px;width:100%;
                 max-height:88vh;overflow:auto;border-radius:12px;padding:20px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">
         <h2 id="fiche-titre" style="margin:0;font-size:20px"></h2>
@@ -292,7 +296,7 @@
     if(!rows.length){ document.getElementById('loyalty-empty').style.display=''; return; }
     rows.forEach(function(m){
       var tr = document.createElement('tr');
-      tr.style.borderBottom = '1px solid var(--line,#eee)';
+      tr.style.borderBottom = '1px solid var(--border)';
       tr.innerHTML =
         '<td style="padding:8px 10px;font-variant-numeric:tabular-nums">' + m.number + '</td>' +
         '<td style="padding:8px 10px"><button class="voir" data-n="' + m.number + '" '
@@ -306,7 +310,7 @@
           + (m.rewards || 0) + '</td>' +
         '<td style="padding:8px 10px">' + fmtDate(m.last_seen) + '</td>' +
         '<td style="padding:8px 10px"><button data-n="' + m.number + '" class="fix" '
-          + 'style="border:1px solid var(--line,#ddd);border-radius:6px;padding:4px 8px;'
+          + 'style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;'
           + 'background:none;cursor:pointer">\u00b1</button></td>';
       /* Le pr\u00e9nom est ins\u00e9r\u00e9 comme TEXTE, jamais comme HTML : il vient d'une saisie au comptoir. */
       /* Le prénom est inséré comme TEXTE, jamais comme HTML : il vient d'une saisie au comptoir. */
@@ -329,7 +333,7 @@
       return '<label style="display:block;margin:10px 0 2px;font-size:12px;opacity:.7">'
         + label + '</label><input id="' + id + '" type="' + (type||'text') + '" value="'
         + String(valeur === null || valeur === undefined ? '' : valeur).replace(/"/g,'&quot;')
-        + '" style="width:100%;padding:8px;border:1px solid var(--line,#ddd);border-radius:6px">';
+        + '" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-page);color:var(--text)">';
     };
 
     var ouvrirFiche = function(n){
@@ -356,8 +360,15 @@
           + champ('f-tel', 'T\u00e9l\u00e9phone (vide = retirer)', m.phone, 'tel')
           + champ('f-mail', 'E-mail (vide = retirer)', m.email, 'email')
           + champ('f-notes', 'Pr\u00e9f\u00e9rences / notes', m.notes)
+          + '<div style="display:flex;gap:8px">'
+          + '<div style="flex:1">' + champ('f-jour', 'Anniversaire \u2014 jour', m.birth_day, 'number') + '</div>'
+          + '<div style="flex:1">' + champ('f-mois', 'Mois (pas d\'ann\u00e9e)', m.birth_month, 'number') + '</div>'
+          + '</div>'
+          + '<p style="margin:4px 0 0;font-size:12px;opacity:.7">Jour et mois seulement\u00a0: '
+          + 'l\'\u00e2ge ne sert \u00e0 rien ici, et s\'en passer retire \u00e0 cette donn\u00e9e '
+          + 'l\'essentiel de sa sensibilit\u00e9.</p>' 
           + '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">'
-          + '<button id="f-save" style="padding:8px 14px;border-radius:6px;border:1px solid var(--line,#ddd);cursor:pointer">Enregistrer</button>'
+          + '<button id="f-save" style="padding:8px 14px;border-radius:6px;border:1px solid var(--border);cursor:pointer">Enregistrer</button>'
           + '<button id="f-del" style="padding:8px 14px;border-radius:6px;border:1px solid #c33;color:#c33;background:none;cursor:pointer">Supprimer</button>'
           + '</div>'
           + '<p style="margin-top:10px;font-size:12px;opacity:.7">La suppression efface pr\u00e9nom, '
@@ -378,7 +389,9 @@
               first_name: document.getElementById('f-nom').value,
               phone: document.getElementById('f-tel').value,
               email: document.getElementById('f-mail').value,
-              notes: document.getElementById('f-notes').value
+              notes: document.getElementById('f-notes').value,
+              birth_day: document.getElementById('f-jour').value,
+              birth_month: document.getElementById('f-mois').value
             })
           }).then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
             .then(function(x){
@@ -427,6 +440,19 @@
           }).catch(function(e){ alert('\u00c9chec\u00a0: ' + e.message); });
       });
     });
+    /* ⚠️ LES ANNIVERSAIRES DE LA SEMAINE, pour anticiper. Un anniversaire qu'on découvre au
+       moment où la personne paie ne laisse pas le temps de préparer quoi que ce soit. */
+    var aujourdhui = new Date();
+    var proches = rows.filter(function(m){ return m.birthday_today; });
+    if(proches.length){
+      var el = document.getElementById('loyalty-summary');
+      el.innerHTML = '<div style="padding:8px 10px;border-radius:8px;background:#FFF3CD;color:#5c4400;'
+        + 'margin-bottom:8px">\ud83c\udf82 <strong>Anniversaire aujourd\'hui\u00a0:</strong> '
+        + proches.map(function(m){ return m.first_name + ' (n\u00b0' + m.number + ')'; }).join(', ')
+        + '</div>' + el.innerHTML;
+    }
+    void aujourdhui;
+
     /* Les mesures, chargees a part : une liste qui s'affiche vaut mieux qu'une page vide si
        le calcul echoue. */
     fetch('/api/loyalty/stats').then(function(r){ return r.json(); }).then(function(s){

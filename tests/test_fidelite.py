@@ -10,6 +10,7 @@ import sys
 sys.path.insert(0, ".")
 
 import app as A
+from datetime import date
 
 
 CAFE = "Bica"
@@ -468,3 +469,99 @@ def test_la_fiche_propose_l_édition_ET_la_suppression():
     # ⚠️ La suppression se confirme, et la confirmation DIT ce qu'elle efface et ce qu'elle garde.
     assert "confirm(" in page
     assert "reste r\\u00e9serv\\u00e9" in page
+
+
+# ── L'anniversaire ──────────────────────────────────────────────────────────
+
+def test_jour_et_mois_seulement_jamais_l_année():
+    """
+    ⚠️ On n'a aucun usage de l'âge d'un client, et s'en passer retire à cette donnée l'essentiel
+    de sa sensibilité : c'est une date de fête, pas un élément d'identité.
+    """
+    assert A._loyalty_clean_birthday(4, 7) == (4, 7, None)
+
+
+def test_une_date_impossible_est_REFUSÉE_et_non_corrigée():
+    """Un 31 février corrigé en silence ferait fêter quelqu'un le mauvais jour, tous les ans."""
+    assert A._loyalty_clean_birthday(31, 2)[2] == "birthday_invalid"
+    assert A._loyalty_clean_birthday(0, 5)[2] == "birthday_invalid"
+    assert A._loyalty_clean_birthday(12, 13)[2] == "birthday_invalid"
+    assert A._loyalty_clean_birthday("abc", 5)[2] == "birthday_invalid"
+
+
+def test_le_29_février_est_une_date_valide():
+    """Il existe, et des gens sont nés ce jour-là."""
+    assert A._loyalty_clean_birthday(29, 2) == (29, 2, None)
+
+
+def test_deux_champs_vides_EFFACENT_l_anniversaire():
+    assert A._loyalty_clean_birthday(None, None) == (None, None, None)
+    assert A._loyalty_clean_birthday("", "") == (None, None, None)
+
+
+def test_l_anniversaire_se_reconnaît_le_bon_jour():
+    m = {"birth_day": 4, "birth_month": 7}
+    assert A._loyalty_is_birthday(m, date(2026, 7, 4)) is True
+    assert A._loyalty_is_birthday(m, date(2026, 7, 5)) is False
+    # Toutes les années, pas seulement celle de la saisie.
+    assert A._loyalty_is_birthday(m, date(2031, 7, 4)) is True
+
+
+def test_sans_anniversaire_renseigné_rien_ne_se_déclenche():
+    assert A._loyalty_is_birthday({}, date(2026, 7, 4)) is False
+    assert A._loyalty_is_birthday({"birth_day": 4, "birth_month": None}, date(2026, 7, 4)) is False
+
+
+def test_le_29_fevrier_se_fete_le_28_les_annees_non_bissextiles():
+    """
+    Sans cette règle, un client né le 29 février ne serait JAMAIS fêté trois années sur quatre.
+    Le décaler d'un jour vaut mieux que de l'oublier.
+    """
+    m = {"birth_day": 29, "birth_month": 2}
+    assert A._loyalty_is_birthday(m, date(2027, 2, 28)) is True    # 2027 non bissextile
+    assert A._loyalty_is_birthday(m, date(2028, 2, 28)) is False   # 2028 bissextile : c'est le 29
+    assert A._loyalty_is_birthday(m, date(2028, 2, 29)) is True
+
+
+def test_le_POS_reçoit_un_BOOLÉEN_et_jamais_la_date():
+    """
+    ⚠️ Ce que la caisse ne reçoit pas ne peut pas s'afficher par mégarde sur un écran de
+    comptoir. Le calcul se fait sur le dashboard.
+    """
+    vue = A._loyalty_public({"number": 1, "first_name": "Maria", "drinks": 0, "rewards": 0,
+                             "birth_day": 4, "birth_month": 7})
+    assert "birth_day" not in vue and "birth_month" not in vue
+    assert "birthday_today" in vue
+
+
+# ── La page est lisible dans les deux thèmes ────────────────────────────────
+
+def test_la_page_applique_le_thème_mémorisé():
+    """
+    ⚠️ DÉFAUT RÉEL. Le gabarit a été extrait d'events.html AVANT la ligne qui charge `ui.js` :
+    la page restait en clair pendant que le reste du dashboard était en sombre, et le contraste
+    devenait imprévisible.
+    """
+    import pathlib
+    page = pathlib.Path("templates/loyalty.html").read_text()
+    assert "/static/ui.js" in page, "le thème mémorisé n'est pas appliqué sur cette page"
+
+
+def test_aucun_jeton_de_style_INVENTÉ():
+    """
+    ⚠️ LA CAUSE DU BLANC SUR BLANC. Le modal employait `var(--card)` et `var(--line)`, qui
+    n'existent NULLE PART dans ce dépôt : le repli codé en dur donnait une carte blanche avec un
+    texte clair hérité de la page en thème sombre. Les jetons réels sont `--bg-card`, `--border`,
+    `--text`, `--bg-page`.
+
+    Un jeton absent ne casse rien de visible au moment où on l'écrit — c'est précisément
+    pourquoi il faut un test.
+    """
+    import pathlib
+    page = pathlib.Path("templates/loyalty.html").read_text()
+    assert "var(--card" not in page
+    assert "var(--line" not in page
+    # Et le modal fixe SES couleurs plutôt que d'hériter : c'est l'héritage qui produisait
+    # le texte invisible.
+    assert "background:var(--bg-card);color:var(--text)" in page
+    assert "background:var(--bg-page);color:var(--text)" in page

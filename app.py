@@ -1332,6 +1332,56 @@ def _loyalty_stats(members, events, today):
     }
 
 
+def _loyalty_clean_birthday(day, month):
+    """
+    Valide un anniversaire, ou l'efface.
+
+    ⚠️ JOUR ET MOIS SEULEMENT, JAMAIS L'ANNÉE. On n'a aucun usage de l'âge d'un client, et s'en
+    passer retire à cette donnée l'essentiel de sa sensibilité — c'est une date de fête, pas un
+    élément d'identité.
+
+    Les deux champs vides EFFACENT : c'est le geste « retirer l'anniversaire ».
+    """
+    if day in (None, "", 0) and month in (None, "", 0):
+        return None, None, None
+    try:
+        d, m = int(day), int(month)
+    except (TypeError, ValueError):
+        return None, None, "birthday_invalid"
+    if not (1 <= m <= 12):
+        return None, None, "birthday_invalid"
+    # Un 31 février n'est l'anniversaire de personne. On refuse plutôt que de corriger en
+    # silence : une date fausse ferait fêter quelqu'un le mauvais jour, tous les ans.
+    jours = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1]
+    if not (1 <= d <= jours):
+        return None, None, "birthday_invalid"
+    return d, m, None
+
+
+def _loyalty_is_birthday(row, today):
+    """
+    Est-ce l'anniversaire de cette personne aujourd'hui ?
+
+    ⚠️ LE 29 FÉVRIER SE FÊTE LE 28 LES ANNÉES NON BISSEXTILES. Sans cette règle, un client né
+    ce jour-là ne serait jamais fêté — trois années sur quatre, son anniversaire n'existerait
+    pas. Le décaler d'un jour vaut mieux que de l'oublier.
+    """
+    d, m = row.get("birth_day"), row.get("birth_month")
+    if not d or not m:
+        return False
+    d, m = int(d), int(m)
+    if (today.month, today.day) == (m, d):
+        return True
+    if (m, d) == (2, 29) and (today.month, today.day) == (2, 28):
+        # Année non bissextile : le 29 février n'existe pas, on fête la veille.
+        try:
+            date(today.year, 2, 29)
+            return False
+        except ValueError:
+            return True
+    return False
+
+
 def _loyalty_is_deleted(row):
     """Une fiche anonymisée n'est plus un membre : elle ne réserve plus qu'un numéro."""
     return (row or {}).get("status") == "deleted"
@@ -1393,6 +1443,10 @@ def _loyalty_public(row):
         "threshold": LOYALTY_THRESHOLD,
         "rewards_available": _loyalty_rewards_available(drinks),
         "rewards": int(row.get("rewards") or 0),
+        # ⚠️ UN BOOLÉEN, PAS UNE DATE. Le POS n'a aucun usage de la date de naissance : ce qu'il
+        # ne reçoit pas ne peut pas s'afficher par mégarde sur un écran de comptoir. Le calcul
+        # se fait ici, avec l'heure de Lisbonne.
+        "birthday_today": _loyalty_is_birthday(row, today_lisbon()),
     }
 
 
@@ -1656,6 +1710,11 @@ def api_loyalty_edit(number):
         maj["email"] = mail
     if "notes" in data:
         maj["notes"] = ((data.get("notes") or "").strip()[:500]) or None
+    if "birth_day" in data or "birth_month" in data:
+        d, m, err = _loyalty_clean_birthday(data.get("birth_day"), data.get("birth_month"))
+        if err:
+            return jsonify({"error": err}), 400
+        maj["birth_day"], maj["birth_month"] = d, m
 
     ok, err = _supa_upsert("loyalty_members", maj)
     if not ok:
