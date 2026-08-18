@@ -395,6 +395,11 @@ def _require_auth():
     # route), pas par le login. Lecture seule, ne montre que la réconciliation TPA.
     if request.path.startswith("/tpa/") or request.path.startswith("/api/tpa/"):
         return
+    # API fidélité : appelée par le POS, qui n'a pas de session dashboard. Protégée par un
+    # jeton vérifié DANS chaque route (`_loyalty_authorized`), jamais ici — laisser passer sans
+    # contrôle ouvrirait l'écriture des points à n'importe qui.
+    if request.path.startswith("/api/loyalty/"):
+        return
     role = _current_role()
     if role is None:
         if request.path.startswith("/api/"):
@@ -1149,6 +1154,240 @@ def api_summary_rebuild():
         count += 1
         cur += timedelta(1)
     return jsonify({"ok": True, "days_rebuilt": count})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FIDÉLITÉ — dix boissons, la onzième offerte
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# POURQUOI DES BOISSONS ET NON DES EUROS. Un livre à 25 € laisse 10 € de marge (40 %), un café
+# à 4 € en laisse 3,30 (82 %). Avec « 1 € = 1 point », un seul livre vaudrait la moitié d'une
+# récompense sur des euros deux fois moins margés : les cafés offerts seraient financés par la
+# librairie. Compter les boissons adosse la récompense à ce qui la finance — et « dix boissons,
+# la onzième offerte » se comprend sans explication au comptoir.
+#
+# POURQUOI LA DÉFINITION DE « BOISSON » VIT ICI. Le POS pourrait compter lui-même, mais il y
+# aurait alors deux définitions de ce qu'est une boisson, et un jour elles divergeraient sans que
+# personne ne le voie. `DRINK_CAT_IDS` est déjà la référence pour l'estimation des couverts ;
+# elle le reste ici.
+
+LOYALTY_THRESHOLD = 10   # boissons pour une récompense
+
+
+def _loyalty_authorized():
+    """
+    Le POS n'a pas de session dashboard : il présente un jeton partagé.
+
+    ⚠️ REFUSE QUAND LE JETON N'EST PAS CONFIGURÉ. Un secret absent ne doit pas valoir « accès
+    libre » — ce serait exactement la panne qu'on ne remarque jamais, jusqu'au jour où quelqu'un
+    s'offre des cafés.
+    """
+    attendu = os.environ.get("LOYALTY_TOKEN") or ""
+    if not attendu:
+        return False
+    presente = request.headers.get("X-Loyalty-Token") or ""
+    # Comparaison à temps constant : le jeton ne doit pas se deviner caractère par caractère.
+    #
+    # ⚠️ EN OCTETS, PAS EN CHAÎNES. `compare_digest` lève sur une chaîne non-ASCII : un jeton
+    # contenant un accent aurait fait planter l'endpoint (500) au lieu de refuser proprement —
+    # et une caisse qui reçoit une erreur serveur sur chaque crédit ressemble à une panne, pas
+    # à un secret mal configuré.
+    return hmac.compare_digest(presente.encode("utf-8"), attendu.encode("utf-8"))
+
+
+def _loyalty_count_drinks(items, catalog):
+    """
+    Combien de BOISSONS dans un panier.
+
+    `items` : [{"title": ..., "qty": ...}] — la même forme que les lignes d'un document Vendus.
+
+    ⚠️ UN ARTICLE INCONNU DU CATALOGUE NE COMPTE PAS. Le créditer « au cas où » offrirait des
+    cafés sur des ventes qui n'en sont pas ; ne pas le compter est le sens sûr de l'erreur.
+    """
+    n = 0
+    for i in (items or []):
+        titre = (i.get("title") or "").strip()
+        fiche = catalog.get(titre) or {}
+        if fiche.get("category_id") in DRINK_CAT_IDS:
+            try:
+                q = float(i.get("qty") or 0)
+            except (TypeError, ValueError):
+                continue
+            if q > 0:
+                n += int(round(q))
+    return n
+
+
+def _loyalty_rewards_available(drinks):
+    """Combien de récompenses le solde permet aujourd'hui."""
+    return max(0, int(drinks or 0)) // LOYALTY_THRESHOLD
+
+
+def _loyalty_next_number(rows):
+    """
+    Le prochain numéro à attribuer.
+
+    ⚠️ TOUJOURS AU-DESSUS DU PLUS GRAND DÉJÀ ATTRIBUÉ, jamais un trou rebouché. Recycler le
+    numéro d'un membre supprimé rattacherait les points d'hier à quelqu'un d'autre — et le
+    client concerné réciterait un numéro qui n'est plus le sien sans que rien ne l'indique.
+    """
+    return max([int(r.get("number") or 0) for r in (rows or [])] + [0]) + 1
+
+
+def _loyalty_member(number):
+    """Une fiche membre, ou None."""
+    rows = _supa_get("loyalty_members", {"number": f"eq.{int(number)}", "limit": 1})
+    return rows[0] if rows else None
+
+
+def _loyalty_public(row):
+    """Ce que le POS reçoit d'une fiche. Le téléphone n'en fait pas partie : il ne lui sert à rien."""
+    drinks = int(row.get("drinks") or 0)
+    return {
+        "number": int(row["number"]),
+        "first_name": row.get("first_name") or "",
+        "drinks": drinks,
+        "threshold": LOYALTY_THRESHOLD,
+        "rewards_available": _loyalty_rewards_available(drinks),
+        "rewards": int(row.get("rewards") or 0),
+    }
+
+
+@app.route("/api/loyalty/member/<int:number>")
+def api_loyalty_member(number):
+    """Le solde d'un membre, pour affichage AVANT de valider — c'est ce qui attrape le 47/74."""
+    if not _loyalty_authorized():
+        return jsonify({"error": "unauthorized"}), 401
+    row = _loyalty_member(number)
+    if not row:
+        return jsonify({"error": "no_member", "number": number}), 404
+    return jsonify(_loyalty_public(row))
+
+
+@app.route("/api/loyalty/members", methods=["POST"])
+def api_loyalty_create():
+    """Inscrit un membre et lui attribue son numéro."""
+    if not _loyalty_authorized():
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    prenom = (data.get("first_name") or "").strip()
+    if not prenom:
+        # Le prénom sert à confirmer de visu qu'on a tapé le bon numéro : sans lui, la garde
+        # contre la faute de frappe disparaît.
+        return jsonify({"error": "first_name_required"}), 400
+    tel = (data.get("phone") or "").strip() or None
+    numero = _loyalty_next_number(_supa_get("loyalty_members", {"select": "number"}))
+    ligne = {"number": numero, "first_name": prenom[:40], "drinks": 0, "rewards": 0}
+    if tel:
+        # Le téléphone n'est enregistré QU'AVEC un consentement horodaté. Sans lui, on garde
+        # une fiche sans contact — ce qui reste parfaitement fonctionnel pour les points.
+        ligne["phone"] = tel[:32]
+        ligne["consent_at"] = now_lisbon().isoformat()
+    ok, err = _supa_upsert("loyalty_members", ligne)
+    if not ok:
+        return jsonify({"error": "write_failed", "detail": str(err)}), 502
+    return jsonify(_loyalty_public(ligne))
+
+
+@app.route("/api/loyalty/credit", methods=["POST"])
+def api_loyalty_credit():
+    """
+    Crédite les boissons d'un ticket encaissé.
+
+    ⚠️ APPELÉ APRÈS L'ÉMISSION DU DOCUMENT, JAMAIS AVANT. Créditer une vente qui échoue ensuite
+    offrirait des cafés sur des tickets qui n'existent pas.
+    """
+    if not _loyalty_authorized():
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    try:
+        numero = int(data.get("number"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "number_required"}), 400
+    row = _loyalty_member(numero)
+    if not row:
+        return jsonify({"error": "no_member", "number": numero}), 404
+
+    catalog = get_catalog() or {}
+    if not catalog:
+        # Sans catalogue on ne sait pas ce qui est une boisson. Créditer au hasard serait pire
+        # que de ne rien créditer : le client repartirait avec des points qu'il n'a pas gagnés.
+        return jsonify({"error": "catalog_unavailable"}), 502
+    n = _loyalty_count_drinks(data.get("items"), catalog)
+    if n == 0:
+        # Un ticket sans boisson n'est pas une erreur — un livre, une pâtisserie à emporter.
+        return jsonify({**_loyalty_public(row), "credited": 0})
+
+    nouveau = int(row.get("drinks") or 0) + n
+    ok, err = _supa_upsert("loyalty_members", {
+        "number": numero, "first_name": row.get("first_name"), "drinks": nouveau,
+        "rewards": int(row.get("rewards") or 0), "last_seen": now_lisbon().isoformat(),
+    })
+    if not ok:
+        return jsonify({"error": "write_failed", "detail": str(err)}), 502
+    _supa_upsert("loyalty_events", {"number": numero, "kind": "credit", "drinks": n,
+                                    "document": (data.get("document") or None)})
+    return jsonify({**_loyalty_public({**row, "drinks": nouveau}), "credited": n})
+
+
+@app.route("/api/loyalty/redeem", methods=["POST"])
+def api_loyalty_redeem():
+    """
+    Consomme une récompense : dix boissons retirées du solde.
+
+    ⚠️ REFUSE SI LE SOLDE NE SUFFIT PAS, plutôt que de passer à zéro. Un solde qui descend sans
+    récompense rendue est indétectable pour le client, et indéfendable ensuite.
+    """
+    if not _loyalty_authorized():
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    try:
+        numero = int(data.get("number"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "number_required"}), 400
+    row = _loyalty_member(numero)
+    if not row:
+        return jsonify({"error": "no_member", "number": numero}), 404
+    solde = int(row.get("drinks") or 0)
+    if solde < LOYALTY_THRESHOLD:
+        return jsonify({"error": "not_enough", "drinks": solde,
+                        "threshold": LOYALTY_THRESHOLD}), 409
+
+    reste = solde - LOYALTY_THRESHOLD
+    ok, err = _supa_upsert("loyalty_members", {
+        "number": numero, "first_name": row.get("first_name"), "drinks": reste,
+        "rewards": int(row.get("rewards") or 0) + 1, "last_seen": now_lisbon().isoformat(),
+    })
+    if not ok:
+        return jsonify({"error": "write_failed", "detail": str(err)}), 502
+    _supa_upsert("loyalty_events", {"number": numero, "kind": "reward",
+                                    "drinks": -LOYALTY_THRESHOLD,
+                                    "document": (data.get("document") or None)})
+    return jsonify(_loyalty_public({**row, "drinks": reste,
+                                    "rewards": int(row.get("rewards") or 0) + 1}))
+
+
+@app.route("/loyalty")
+def page_loyalty():
+    """L'onglet fidélité du dashboard. Protégé par le login, comme le reste des pages."""
+    return render_template("loyalty.html")
+
+
+@app.route("/api/loyalty/list")
+def api_loyalty_list():
+    """
+    La liste des membres, pour l'onglet du dashboard.
+
+    ⚠️ CE CHEMIN EST SOUS LE LOGIN, PAS SOUS LE JETON. Il vit sous `/api/loyalty/`, qui échappe
+    au login pour laisser passer le POS — il faut donc rétablir le contrôle ici, sinon la liste
+    des clients serait publique. Le jeton du POS ne suffit pas : il sert à créditer des points,
+    pas à lire le fichier.
+    """
+    if _current_role() is None:
+        return jsonify({"error": "unauthorized"}), 401
+    rows = _supa_get("loyalty_members", {"select": "*", "order": "last_seen.desc.nullslast"})
+    membres = [{**_loyalty_public(r), "last_seen": r.get("last_seen")} for r in rows]
+    return jsonify({"threshold": LOYALTY_THRESHOLD, "members": membres})
 
 
 @app.route("/api/cashflow")
