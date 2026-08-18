@@ -495,6 +495,32 @@ def index():
                            role=_current_role() or "admin")
 
 
+def _usable_comparison(comp_from, comp_to, opening_iso=None):
+    """
+    La fenêtre de comparaison est-elle utilisable ? Rend `(from, to, utilisable)`.
+
+    ⚠️ CE QUE FAISAIT L'ANCIENNE VERSION. « Depuis l'ouverture » couvre 84 jours au 18 août ; la
+    fenêtre précédente de même longueur remontait au 4 MARS — 84 jours pendant lesquels le café
+    n'existait pas. Trois conséquences, aucune visible à l'écran :
+
+      1. `_ensure_summaries` figeait une ligne `daily_summary` À ZÉRO pour chacun de ces jours ;
+         la période s'allongeant d'un jour par jour, la fenêtre RECULAIT indéfiniment et le cache
+         se remplissait sans fin de journées antérieures au café ;
+      2. chaque nouvelle journée déclenchait en plus une lecture Vendus détaillée sur une plage
+         où il n'y a rien à lire ;
+      3. surtout, l'écran comparait la période au NÉANT — `calc_stats([])` rend des zéros, donc
+         une progression s'affichait contre une base inexistante.
+
+    ⚠️ ET TRONQUER SERAIT PIRE QUE S'ABSTENIR. Se contenter de borner `comp_from` à l'ouverture
+    donnerait une fenêtre PLUS COURTE que la période comparée — 84 jours opposés à 12 — et le
+    total afficherait une chute spectaculaire qui ne serait qu'une différence de durée. On exige
+    donc que la fenêtre ENTIÈRE soit postérieure à l'ouverture, sans quoi il n'y a pas de
+    comparaison du tout. La règle de la maison : une fenêtre vide ne produit PAS de delta.
+    """
+    ouverture = date.fromisoformat(opening_iso or OPENING_DAY)
+    return comp_from, comp_to, (comp_from >= ouverture and comp_from <= comp_to)
+
+
 @app.route("/api/data")
 def api_data():
     preset = request.args.get("preset", "today")
@@ -563,6 +589,10 @@ def api_data():
     else:
         comp_label = f"vs previous {n_days} days"
 
+    comp_from, comp_to, comp_exists = _usable_comparison(comp_from, comp_to)
+    if not comp_exists:
+        comp_label = None
+
     # ── Stratégie de chargement ──────────────────────────────────────────────
     # Aujourd'hui : items live avec micro-cache 45s (partagé entre les vues).
     # Jour passé unique : items live (peu de tickets).
@@ -585,6 +615,10 @@ def api_data():
         return _get_today_docs_cached(force=force_fresh)
 
     def _load_comp():
+        # Rien à comparer : on ne consulte pas Vendus sur une plage antérieure au café. `None`
+        # emprunte le chemin « comparaison indisponible », qui n'invente aucun delta.
+        if not comp_exists:
+            return None
         try:
             return get_documents(comp_from.isoformat(), comp_to.isoformat())
         except Exception:
@@ -638,7 +672,11 @@ def api_data():
 
         docs_comp = fut_comp.result(timeout=5)
         if docs_comp is None:
-            warnings.append("Previous-period comparison unavailable")
+            # Deux causes, deux messages : une comparaison qui n'EXISTE pas n'est pas une
+            # comparaison qui a ÉCHOUÉ. Les confondre ferait chercher une panne inexistante.
+            warnings.append(
+                "No earlier period to compare with — the café opened on " + OPENING_DAY
+                if not comp_exists else "Previous-period comparison unavailable")
             docs_comp = []
         # Vue "aujourd'hui" : ne garder du jour de comparaison que ce qui a été
         # vendu avant l'heure courante → comparaison à périmètre horaire égal.
@@ -791,7 +829,10 @@ def api_data():
     # donc cette évolution reflète surtout les changements de MARGE (mix/prix).
     try:
         comp_days = (comp_to - comp_from).days + 1
-        comp_rows = _ensure_summaries(comp_from, comp_to, catalog) if comp_from <= comp_to else []
+        # ⚠️ `comp_exists` ET PAS SEULEMENT `comp_from <= comp_to`. C'est ici que partaient les
+        # écritures de jours antérieurs au café : `_ensure_summaries` fige une ligne pour chaque
+        # jour manquant de la plage qu'on lui donne, sans savoir que le café n'existait pas.
+        comp_rows = _ensure_summaries(comp_from, comp_to, catalog) if comp_exists else []
         if comp_rows:
             comp_cogs_agg = (
                 round(sum(r.get("cogs_ht",    0) for r in comp_rows), 2),
