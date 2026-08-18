@@ -356,3 +356,115 @@ def test_deux_cafés_sur_un_ticket_font_DEUX_boissons():
     catalogue["Cold Brew"] = {"category_id": 343053226}
     items = [{"title": "Americano", "qty": 1}, {"title": "Cold Brew", "qty": 2}]
     assert A._loyalty_count_drinks(items, catalogue) == 3
+
+
+# ── La fiche, l'édition, la suppression ─────────────────────────────────────
+
+def test_supprimer_le_DERNIER_membre_ne_libère_pas_son_numéro():
+    """
+    ⚠️ LE DÉFAUT QUE LE TEST PRÉCÉDENT NE VOYAIT PAS. Il couvrait un trou au MILIEU
+    (1, 2, 7 → 8), qui passe même avec un « max + 1 » naïf. Supprimer le DERNIER, lui, libérait
+    son numéro : deux personnes auraient récité le même au comptoir à des mois d'intervalle, et
+    les points de la première seraient allés à la seconde.
+
+    La ligne reste donc en base, anonymisée — elle ne réserve plus qu'un numéro.
+    """
+    apres = A._loyalty_anonymise({"number": 3, "drinks": 4, "rewards": 1, "first_name": "Maria"})
+    # La ligne existe toujours, donc `_loyalty_next_number` la voit encore.
+    assert A._loyalty_next_number([{"number": 1}, {"number": 2}, apres]) == 4
+
+
+def test_la_suppression_efface_VRAIMENT_les_données_personnelles():
+    """Réserver un numéro ne doit pas servir de prétexte à conserver un fichier."""
+    apres = A._loyalty_anonymise({"number": 3, "first_name": "Maria", "phone": "912345678",
+                                  "email": "m@x.co", "notes": "lait d'avoine",
+                                  "birth_day": 4, "birth_month": 7, "drinks": 4, "rewards": 1})
+    for champ in ("phone", "email", "notes", "birth_day", "birth_month", "consent_at"):
+        assert apres[champ] is None, champ
+    assert apres["first_name"] == "—"
+    assert apres["status"] == "deleted"
+    # Les compteurs restent : l'historique du programme ne se réécrit pas.
+    assert apres["drinks"] == 4 and apres["rewards"] == 1
+
+
+def test_une_fiche_supprimée_n_est_plus_un_membre():
+    assert A._loyalty_is_deleted({"status": "deleted"}) is True
+    assert A._loyalty_is_deleted({"status": None}) is False
+
+
+def test_la_caisse_ne_retrouve_PAS_une_fiche_supprimée():
+    """
+    ⚠️ Sinon elle y créditerait des points, et afficherait « — » comme un prénom à confronter au
+    visage — c'est-à-dire aucune garde du tout.
+    """
+    import inspect
+    assert "_loyalty_is_deleted(row)" in inspect.getsource(A.api_loyalty_member)
+    assert "_loyalty_is_deleted(r)" in inspect.getsource(A.api_loyalty_search)
+
+
+def test_l_édition_ne_touche_QU_AUX_champs_envoyés():
+    """
+    ⚠️ UN CHAMP ABSENT N'EST PAS UN CHAMP VIDÉ. Corriger un prénom ne doit pas effacer un
+    téléphone — c'est la différence entre une correction et une perte silencieuse.
+    """
+    import inspect
+    src = inspect.getsource(A.api_loyalty_edit)
+    for champ in ("first_name", "phone", "email", "notes"):
+        assert f'if "{champ}" in data:' in src, champ
+
+
+def test_l_édition_refuse_de_vider_le_prénom():
+    """C'est la seule garde contre la faute de frappe au comptoir."""
+    import inspect
+    assert "first_name_required" in inspect.getsource(A.api_loyalty_edit)
+
+
+def test_l_e_mail_est_vérifié_a_minima_et_peut_être_EFFACÉ():
+    assert A._loyalty_clean_email("  m@example.com ") == ("m@example.com", None)
+    assert A._loyalty_clean_email("pasunemail")[1] == "email_invalid"
+    # Un champ vidé efface, il ne refuse pas : c'est le geste « retirer le contact ».
+    assert A._loyalty_clean_email("") == (None, None)
+
+
+def test_la_fiche_du_dashboard_porte_les_contacts_mais_pas_celle_du_POS():
+    """
+    ⚠️ Le POS n'a aucun usage d'un téléphone : ce qu'il ne reçoit pas ne peut pas s'afficher par
+    mégarde sur un écran de comptoir.
+    """
+    row = {"number": 3, "first_name": "Maria", "drinks": 2, "rewards": 0,
+           "phone": "912345678", "email": "m@x.co"}
+    assert "phone" not in A._loyalty_public(row)
+    assert A._loyalty_full(row)["phone"] == "912345678"
+
+
+def test_la_fiche_et_l_édition_sont_sous_le_LOGIN():
+    import inspect
+    for route in (A.api_loyalty_card, A.api_loyalty_edit, A.api_loyalty_delete):
+        src = inspect.getsource(route)
+        assert "_current_role()" in src, route.__name__
+        assert "_loyalty_authorized" not in src, route.__name__
+
+
+def test_la_fiche_est_atteignable_depuis_la_liste():
+    """
+    ⚠️ UNE FICHE QU'AUCUN CLIC N'ATTEINT N'EXISTE PAS. C'est arrivé au bouton « Éditer » des
+    événements — rendu, cliquable pour un test, et caché derrière un tiroir par son z-index.
+    On vérifie ici les trois maillons : le nom est un bouton, le modal existe, et il passe
+    au-dessus du reste.
+    """
+    import pathlib
+    page = pathlib.Path("templates/loyalty.html").read_text()
+    assert 'class="voir"' in page, "le prénom n'est pas cliquable"
+    assert 'id="fiche"' in page, "le modal n'existe pas"
+    assert "z-index:9999" in page, "le modal peut passer derrière un autre élément"
+    assert "/card" in page, "la fiche ne charge pas l'historique"
+
+
+def test_la_fiche_propose_l_édition_ET_la_suppression():
+    import pathlib
+    page = pathlib.Path("templates/loyalty.html").read_text()
+    assert "method:'PATCH'" in page
+    assert "method:'DELETE'" in page
+    # ⚠️ La suppression se confirme, et la confirmation DIT ce qu'elle efface et ce qu'elle garde.
+    assert "confirm(" in page
+    assert "reste r\\u00e9serv\\u00e9" in page

@@ -248,6 +248,22 @@
     </table>
   </div>
 
+  <!-- ⚠️ Z-INDEX ÉLEVÉ ET ASSUMÉ. Sur ce dépôt, un modal déclaré AVANT un tiroir latéral au même
+       niveau passait derrière lui : le bouton s'ouvrait dans le vide et paraissait mort. Ici la
+       fiche est le dernier élément du document ET au-dessus de tout le reste. -->
+  <div id="fiche" role="dialog" aria-modal="true" aria-label="Fiche client"
+       style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);
+              align-items:center;justify-content:center;padding:16px">
+    <div style="background:var(--card,#fff);color:inherit;max-width:560px;width:100%;
+                max-height:88vh;overflow:auto;border-radius:12px;padding:20px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">
+        <h2 id="fiche-titre" style="margin:0;font-size:20px"></h2>
+        <button id="fiche-fermer" style="border:none;background:none;font-size:22px;cursor:pointer">&times;</button>
+      </div>
+      <div id="fiche-corps" style="margin-top:12px"></div>
+    </div>
+  </div>
+
   <p class="muted" id="loyalty-empty" style="display:none;margin-top:16px">
     Aucun membre pour l'instant. Les inscriptions se font depuis la caisse.
   </p>
@@ -279,7 +295,9 @@
       tr.style.borderBottom = '1px solid var(--line,#eee)';
       tr.innerHTML =
         '<td style="padding:8px 10px;font-variant-numeric:tabular-nums">' + m.number + '</td>' +
-        '<td style="padding:8px 10px"></td>' +
+        '<td style="padding:8px 10px"><button class="voir" data-n="' + m.number + '" '
+          + 'style="border:none;background:none;padding:0;color:inherit;text-decoration:underline;'
+          + 'cursor:pointer;font:inherit"></button></td>' +
         '<td style="padding:8px 10px;text-align:right;font-variant-numeric:tabular-nums">'
           + m.drinks + ' / ' + seuil + '</td>' +
         '<td style="padding:8px 10px;text-align:right">'
@@ -291,8 +309,99 @@
           + 'style="border:1px solid var(--line,#ddd);border-radius:6px;padding:4px 8px;'
           + 'background:none;cursor:pointer">\u00b1</button></td>';
       /* Le pr\u00e9nom est ins\u00e9r\u00e9 comme TEXTE, jamais comme HTML : il vient d'une saisie au comptoir. */
-      tr.children[1].textContent = m.first_name || '\u2014';
+      /* Le prénom est inséré comme TEXTE, jamais comme HTML : il vient d'une saisie au comptoir. */
+      tr.children[1].querySelector('button.voir').textContent = m.first_name || '\u2014';
       tb.appendChild(tr);
+    });
+
+
+    /* ── La fiche client ──────────────────────────────────────────────────────
+       ⚠️ L'HISTORIQUE EXISTAIT SANS LECTEUR. Chaque crédit, chaque récompense, chaque
+       correction y est écrit depuis le début et rien ne permettait de le lire. C'est pourtant
+       lui qui tranche un litige : « j'avais neuf cafés » ne se discute pas contre un solde nu. */
+    var modal = document.getElementById('fiche');
+    var fermer = function(){ modal.style.display = 'none'; };
+    document.getElementById('fiche-fermer').addEventListener('click', fermer);
+    modal.addEventListener('click', function(e){ if(e.target === modal) fermer(); });
+    document.addEventListener('keydown', function(e){ if(e.key === 'Escape') fermer(); });
+
+    var champ = function(id, label, valeur, type){
+      return '<label style="display:block;margin:10px 0 2px;font-size:12px;opacity:.7">'
+        + label + '</label><input id="' + id + '" type="' + (type||'text') + '" value="'
+        + String(valeur === null || valeur === undefined ? '' : valeur).replace(/"/g,'&quot;')
+        + '" style="width:100%;padding:8px;border:1px solid var(--line,#ddd);border-radius:6px">';
+    };
+
+    var ouvrirFiche = function(n){
+      fetch('/api/loyalty/member/' + n + '/card').then(function(r){
+        if(!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function(d){
+        var m = d.member, ev = d.events || [];
+        document.getElementById('fiche-titre').textContent = (m.first_name || '\u2014') + '  \u2014  n\u00b0' + m.number;
+        var lignes = ev.map(function(e){
+          var signe = e.drinks > 0 ? '+' : '';
+          return '<tr><td style="padding:4px 8px;white-space:nowrap">' + fmtDate(e.at) + '</td>'
+            + '<td style="padding:4px 8px">' + (e.kind === 'reward' ? 'r\u00e9compense'
+                : e.kind === 'adjust' ? 'correction' : 'cr\u00e9dit') + '</td>'
+            + '<td style="padding:4px 8px;text-align:right;font-variant-numeric:tabular-nums">'
+              + signe + e.drinks + '</td>'
+            + '<td style="padding:4px 8px;opacity:.7"></td></tr>';
+        }).join('');
+        document.getElementById('fiche-corps').innerHTML =
+          '<div style="font-variant-numeric:tabular-nums">' + m.drinks + ' / ' + m.threshold
+            + ' boisson(s) &middot; ' + m.rewards + ' offerte(s)'
+            + (m.rewards_available > 0 ? ' &middot; <strong>r\u00e9compense due</strong>' : '') + '</div>'
+          + champ('f-nom', 'Pr\u00e9nom', m.first_name)
+          + champ('f-tel', 'T\u00e9l\u00e9phone (vide = retirer)', m.phone, 'tel')
+          + champ('f-mail', 'E-mail (vide = retirer)', m.email, 'email')
+          + champ('f-notes', 'Pr\u00e9f\u00e9rences / notes', m.notes)
+          + '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">'
+          + '<button id="f-save" style="padding:8px 14px;border-radius:6px;border:1px solid var(--line,#ddd);cursor:pointer">Enregistrer</button>'
+          + '<button id="f-del" style="padding:8px 14px;border-radius:6px;border:1px solid #c33;color:#c33;background:none;cursor:pointer">Supprimer</button>'
+          + '</div>'
+          + '<p style="margin-top:10px;font-size:12px;opacity:.7">La suppression efface pr\u00e9nom, '
+          + 'contacts et notes. Le num\u00e9ro reste r\u00e9serv\u00e9\u00a0: le lib\u00e9rer le ferait '
+          + 'r\u00e9attribuer \u00e0 quelqu\'un d\'autre, qui h\u00e9riterait des points.</p>'
+          + '<h3 style="margin:18px 0 6px;font-size:14px">Historique</h3>'
+          + (lignes ? '<table style="width:100%;border-collapse:collapse;font-size:13px">' + lignes + '</table>'
+                    : '<p class="muted" style="font-size:13px">Aucun mouvement enregistr\u00e9.</p>');
+
+        /* Le motif d'une correction est inséré comme TEXTE : il vient d'une saisie libre. */
+        var tds = document.getElementById('fiche-corps').querySelectorAll('table td:nth-child(4)');
+        ev.forEach(function(e, i){ if(tds[i]) tds[i].textContent = e.reason || ''; });
+
+        document.getElementById('f-save').addEventListener('click', function(){
+          fetch('/api/loyalty/member/' + n, {
+            method:'PATCH', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({
+              first_name: document.getElementById('f-nom').value,
+              phone: document.getElementById('f-tel').value,
+              email: document.getElementById('f-mail').value,
+              notes: document.getElementById('f-notes').value
+            })
+          }).then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
+            .then(function(x){
+              if(!x.ok){ alert('Refus\u00e9\u00a0: ' + (x.j.error || '')); return; }
+              location.reload();
+            }).catch(function(e){ alert('\u00c9chec\u00a0: ' + e.message); });
+        });
+
+        document.getElementById('f-del').addEventListener('click', function(){
+          if(!confirm('Supprimer la fiche de ' + (m.first_name || '') + '\u00a0?\n\n'
+            + 'Pr\u00e9nom, contacts et notes sont effac\u00e9s. Le num\u00e9ro '
+            + n + ' reste r\u00e9serv\u00e9 et ne sera jamais r\u00e9attribu\u00e9.')) return;
+          fetch('/api/loyalty/member/' + n, {method:'DELETE'})
+            .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); location.reload(); })
+            .catch(function(e){ alert('\u00c9chec\u00a0: ' + e.message); });
+        });
+
+        modal.style.display = 'flex';
+      }).catch(function(e){ alert('Fiche indisponible\u00a0: ' + e.message); });
+    };
+
+    tb.querySelectorAll('button.voir').forEach(function(b){
+      b.addEventListener('click', function(){ ouvrirFiche(b.getAttribute('data-n')); });
     });
 
     /* ⚠️ MOTIF OBLIGATOIRE. Sans lui, une correction devient indiscernable d'une erreur de

@@ -1332,6 +1332,51 @@ def _loyalty_stats(members, events, today):
     }
 
 
+def _loyalty_is_deleted(row):
+    """Une fiche anonymisée n'est plus un membre : elle ne réserve plus qu'un numéro."""
+    return (row or {}).get("status") == "deleted"
+
+
+def _loyalty_anonymise(row):
+    """
+    Ce qu'écrit une suppression.
+
+    ⚠️ ON N'EFFACE PAS LA LIGNE. Le prochain numéro vaut « le plus grand attribué, plus un » :
+    supprimer le DERNIER membre libérerait son numéro pour le suivant, et deux personnes
+    réciteraient le même au comptoir à des mois d'intervalle — les points de la première iraient
+    à la seconde. Un trou au MILIEU ne pose pas ce problème, ce qui explique que le défaut soit
+    passé inaperçu.
+
+    ⚠️ MAIS LES DONNÉES PERSONNELLES PARTENT VRAIMENT. Prénom, téléphone, e-mail, notes,
+    anniversaire : effacés. C'est ce qu'exige une demande d'effacement, et ça laisse un numéro
+    réservé qui n'identifie plus personne.
+    """
+    return {
+        "number": int(row["number"]),
+        "first_name": "—",
+        "phone": None, "email": None, "notes": None,
+        "birth_day": None, "birth_month": None, "consent_at": None,
+        "status": "deleted",
+        # Les compteurs restent : l'historique du programme ne doit pas se réécrire.
+        "drinks": int(row.get("drinks") or 0),
+        "rewards": int(row.get("rewards") or 0),
+    }
+
+
+def _loyalty_clean_email(raw):
+    """
+    ⚠️ VÉRIFICATION MINIMALE, ASSUMÉE. Une arobase et un point après. Prétendre valider une
+    adresse serait faux — seule la boîte du destinataire peut le dire — et un contrôle strict
+    refuserait des adresses légitimes. Rend `None` pour un champ vidé, ce qui EFFACE.
+    """
+    v = (raw or "").strip()
+    if v == "":
+        return None, None
+    if not _re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", v):
+        return None, "email_invalid"
+    return v[:120], None
+
+
 def _loyalty_member(number):
     """Une fiche membre, ou None."""
     rows = _supa_get("loyalty_members", {"number": f"eq.{int(number)}", "limit": 1})
@@ -1357,7 +1402,9 @@ def api_loyalty_member(number):
     if not _loyalty_authorized():
         return jsonify({"error": "unauthorized"}), 401
     row = _loyalty_member(number)
-    if not row:
+    # ⚠️ Une fiche anonymisée n'est plus un membre : la caisse ne doit pas pouvoir y créditer
+    # des points, ni afficher « — » comme un prénom à confronter au visage.
+    if not row or _loyalty_is_deleted(row):
         return jsonify({"error": "no_member", "number": number}), 404
     return jsonify(_loyalty_public(row))
 
@@ -1385,6 +1432,7 @@ def api_loyalty_search():
     rows = _supa_get("loyalty_members",
                      {"first_name": f"ilike.{q}*", "order": "last_seen.desc.nullslast",
                       "limit": 8})
+    rows = [r for r in rows if not _loyalty_is_deleted(r)]
     return jsonify({"members": [_loyalty_public(r) for r in rows]})
 
 
@@ -1528,6 +1576,107 @@ def api_loyalty_list():
     rows = _supa_get("loyalty_members", {"select": "*", "order": "last_seen.desc.nullslast"})
     membres = [{**_loyalty_public(r), "last_seen": r.get("last_seen")} for r in rows]
     return jsonify({"threshold": LOYALTY_THRESHOLD, "members": membres})
+
+
+def _loyalty_full(row):
+    """
+    La fiche COMPLÈTE, pour le dashboard seulement.
+
+    ⚠️ ELLE PORTE LES CONTACTS, contrairement à `_loyalty_public` que reçoit la caisse. Le POS
+    n'a aucun usage d'un téléphone : ce qu'il ne reçoit pas ne peut pas s'afficher par mégarde
+    sur un écran de comptoir.
+    """
+    return {
+        **_loyalty_public(row),
+        "phone": row.get("phone"), "email": row.get("email"),
+        "notes": row.get("notes"),
+        "birth_day": row.get("birth_day"), "birth_month": row.get("birth_month"),
+        "consent_at": row.get("consent_at"), "created_at": row.get("created_at"),
+        "last_seen": row.get("last_seen"), "status": row.get("status"),
+    }
+
+
+@app.route("/api/loyalty/member/<int:number>/card")
+def api_loyalty_card(number):
+    """
+    La fiche client et SON HISTORIQUE.
+
+    ⚠️ L'HISTORIQUE EXISTAIT SANS LECTEUR. Chaque crédit, chaque récompense, chaque correction y
+    est écrit depuis le début, et rien ne permettait de le lire — même situation que le journal
+    des langues avant qu'on lui fasse un écran. C'est pourtant lui qui tranche un litige :
+    « j'avais neuf cafés » ne se discute pas contre un solde nu.
+    """
+    if _current_role() is None:
+        return jsonify({"error": "unauthorized"}), 401
+    row = _loyalty_member(number)
+    if not row:
+        return jsonify({"error": "no_member"}), 404
+    events = _supa_get("loyalty_events",
+                       {"number": f"eq.{number}", "order": "at.desc", "limit": 100})
+    return jsonify({"member": _loyalty_full(row), "events": events})
+
+
+@app.route("/api/loyalty/member/<int:number>", methods=["PATCH"])
+def api_loyalty_edit(number):
+    """
+    Modifie une fiche. Sous le LOGIN — c'est un geste de patron, pas de caisse.
+
+    ⚠️ UN CHAMP ABSENT N'EST PAS UN CHAMP VIDÉ. Envoyer seulement `first_name` ne doit pas
+    effacer le téléphone : on ne touche qu'à ce qui est explicitement présent. C'est la
+    différence entre corriger un prénom et perdre un contact sans s'en apercevoir.
+    """
+    if _current_role() is None:
+        return jsonify({"error": "unauthorized"}), 401
+    row = _loyalty_member(number)
+    if not row:
+        return jsonify({"error": "no_member"}), 404
+    if _loyalty_is_deleted(row):
+        return jsonify({"error": "member_deleted"}), 409
+    data = request.get_json(silent=True) or {}
+    maj = {"number": number, "first_name": row.get("first_name"),
+           "drinks": int(row.get("drinks") or 0), "rewards": int(row.get("rewards") or 0)}
+
+    if "first_name" in data:
+        prenom = (data.get("first_name") or "").strip()
+        # Le prénom est ce qui permet de confirmer de visu qu'on a tapé le bon numéro : le vider
+        # retirerait la seule garde contre la faute de frappe au comptoir.
+        if not prenom:
+            return jsonify({"error": "first_name_required"}), 400
+        maj["first_name"] = prenom[:40]
+    if "phone" in data:
+        tel = (data.get("phone") or "").strip()
+        maj["phone"] = tel[:32] or None
+        # Un contact ajouté depuis le dashboard est un contact que le patron a saisi lui-même :
+        # l'horodatage du consentement suit, ou s'efface avec le numéro.
+        maj["consent_at"] = now_lisbon().isoformat() if tel else None
+    if "email" in data:
+        mail, err = _loyalty_clean_email(data.get("email"))
+        if err:
+            return jsonify({"error": err}), 400
+        maj["email"] = mail
+    if "notes" in data:
+        maj["notes"] = ((data.get("notes") or "").strip()[:500]) or None
+
+    ok, err = _supa_upsert("loyalty_members", maj)
+    if not ok:
+        return jsonify({"error": "write_failed", "detail": str(err)}), 502
+    return jsonify(_loyalty_full({**row, **maj}))
+
+
+@app.route("/api/loyalty/member/<int:number>", methods=["DELETE"])
+def api_loyalty_delete(number):
+    """Supprime une fiche : anonymisation, numéro conservé. Voir `_loyalty_anonymise`."""
+    if _current_role() is None:
+        return jsonify({"error": "unauthorized"}), 401
+    row = _loyalty_member(number)
+    if not row:
+        return jsonify({"error": "no_member"}), 404
+    ok, err = _supa_upsert("loyalty_members", _loyalty_anonymise(row))
+    if not ok:
+        return jsonify({"error": "write_failed", "detail": str(err)}), 502
+    _supa_upsert("loyalty_events", {"number": number, "kind": "adjust", "drinks": 0,
+                                    "reason": "fiche supprimée (anonymisée)"})
+    return jsonify({"ok": True, "number": number})
 
 
 @app.route("/api/loyalty/adjust", methods=["POST"])
