@@ -1279,6 +1279,32 @@ def api_loyalty_member(number):
     return jsonify(_loyalty_public(row))
 
 
+@app.route("/api/loyalty/search")
+def api_loyalty_search():
+    """
+    Cherche des membres par PRÉNOM.
+
+    ⚠️ LA PORTE DE SECOURS DU SYSTÈME. On oublie son numéro — c'est la faiblesse assumée d'un
+    code qu'on récite. Sans cette recherche, on bloque au comptoir devant quelqu'un qui a bien
+    une carte, et le programme devient un irritant au lieu d'un service.
+
+    Recherche insensible à la casse et aux accents (`ilike` avec un joker de fin) : on tape deux
+    lettres, on obtient les Maria et les María. Bornée à huit résultats — au-delà, la liste ne
+    se lit plus d'un coup d'œil et il vaut mieux taper une lettre de plus.
+    """
+    if not _loyalty_authorized():
+        return jsonify({"error": "unauthorized"}), 401
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        # Une requête vide ne rend PAS tout le fichier : ce serait déverser la liste des clients
+        # sur un écran de comptoir, et ça n'aide personne à retrouver quelqu'un.
+        return jsonify({"members": []})
+    rows = _supa_get("loyalty_members",
+                     {"first_name": f"ilike.{q}*", "order": "last_seen.desc.nullslast",
+                      "limit": 8})
+    return jsonify({"members": [_loyalty_public(r) for r in rows]})
+
+
 @app.route("/api/loyalty/members", methods=["POST"])
 def api_loyalty_create():
     """Inscrit un membre et lui attribue son numéro."""

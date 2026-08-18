@@ -209,3 +209,21 @@ def test_le_refus_est_BRANCHÉ_sur_l_inscription():
     src = inspect.getsource(A.api_loyalty_create)
     assert "_loyalty_number_taken(existants, numero)" in src
     assert "number_taken" in src
+
+
+# ── La recherche par prénom ─────────────────────────────────────────────────
+
+def test_la_recherche_exige_le_jeton_et_ne_déverse_pas_le_fichier():
+    """
+    ⚠️ DEUX GARDES EN UNE. Le jeton, comme partout ici ; et surtout : une requête VIDE ne rend
+    pas tout le fichier. Déverser la liste des clients sur un écran de comptoir n'aide personne
+    à retrouver quelqu'un, et expose tout le monde.
+    """
+    import inspect
+    src = inspect.getsource(A.api_loyalty_search)
+    assert "_loyalty_authorized()" in src
+    assert 'return jsonify({"members": []})' in src
+    # Bornée : au-delà de huit, la liste ne se lit plus d'un coup d'œil.
+    assert '"limit": 8' in src
+    # Insensible à la casse : on tape deux lettres au comptoir, pas un prénom exact.
+    assert "ilike" in src
