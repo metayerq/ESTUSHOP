@@ -909,3 +909,72 @@ def test_la_fiche_et_les_mesures_rendent_le_palmares():
     import inspect
     assert "_loyalty_top_products(events)" in inspect.getsource(A.api_loyalty_card)
     assert "_loyalty_top_products(events, 10)" in inspect.getsource(A.api_loyalty_stats)
+
+
+# ── Les chiffres d'un client ────────────────────────────────────────────────
+
+def _c(jour, drinks=1, cents=None):
+    e = {"kind": "credit", "drinks": drinks, "at": f"{jour}T10:00:00+00:00"}
+    if cents is not None:
+        e["amount_cents"] = cents
+    return e
+
+
+def test_les_visites_se_comptent_par_JOUR():
+    """Deux tickets d'affilée, c'est une visite : les additionner gonflerait l'assiduité."""
+    st = A._loyalty_member_stats({}, [_c("2026-08-01"), _c("2026-08-01"), _c("2026-08-05")],
+                                 date(2026, 8, 21))
+    assert st["visits"] == 2
+    assert st["tickets"] == 3
+
+
+def test_aucun_zero_invente():
+    """
+    ⚠️ Un client sans montant enregistré n'a pas « dépensé 0 € » — les visites d'avant la
+    collecte n'en portent pas. Un tiret dit la vérité; un zéro se lirait comme une mesure.
+    """
+    st = A._loyalty_member_stats({}, [_c("2026-08-01")], date(2026, 8, 21))
+    assert st["spent_eur"] is None
+    assert st["avg_ticket_eur"] is None
+    st_vide = A._loyalty_member_stats({}, [], date(2026, 8, 21))
+    assert st_vide["visits"] is None and st_vide["tickets"] is None
+
+
+def test_la_moyenne_ne_porte_que_sur_les_tickets_CHIFFRES():
+    """Diviser par tous les tickets ferait chuter le panier moyen à mesure qu'on remonte."""
+    st = A._loyalty_member_stats({}, [_c("2026-08-01", cents=1000), _c("2026-08-02")],
+                                 date(2026, 8, 21))
+    assert st["spent_eur"] == 10.0
+    assert st["avg_ticket_eur"] == 10.0
+
+
+def test_les_delais_se_calculent_et_une_date_illisible_ne_ment_pas():
+    st = A._loyalty_member_stats({"last_seen": "2026-08-11", "created_at": "2026-06-21"},
+                                 [], date(2026, 8, 21))
+    assert st["days_since_last"] == 10
+    assert st["member_since_days"] == 61
+    st2 = A._loyalty_member_stats({"last_seen": "n'importe quoi"}, [], date(2026, 8, 21))
+    assert st2["days_since_last"] is None
+
+
+def test_la_fiche_est_organisee_en_deux_onglets():
+    """
+    ⚠️ ELLE MELAIT UN FORMULAIRE D'EDITION ET DE LA LECTURE, empilés : on venait pour comprendre
+    un client et on tombait sur des champs de saisie. « Activité » est l'onglet par défaut — on
+    vient lire neuf fois sur dix, corriger est l'exception.
+    """
+    import pathlib
+    page = pathlib.Path("templates/loyalty.html").read_text()
+    assert "onglet-act" in page and "onglet-fic" in page
+    assert "montrer('act');" in page, "l'activité doit être l'onglet par défaut"
+    # Les trois actions restent atteignables depuis l'onglet Fiche.
+    for bouton in ("f-save", "f-merge", "f-del"):
+        assert bouton in page, bouton
+
+
+def test_les_chiffres_de_la_fiche_affichent_un_TIRET_et_non_un_zero():
+    """Un zéro se lirait comme une mesure ; un tiret dit qu'on ne sait pas."""
+    import pathlib
+    page = pathlib.Path("templates/loyalty.html").read_text()
+    assert "\\u2014" in page
+    assert "var nf = function(v, suf)" in page

@@ -358,11 +358,53 @@
               + signe + e.drinks + '</td>'
             + '<td style="padding:4px 8px;opacity:.7"></td></tr>';
         }).join('');
-        document.getElementById('fiche-corps').innerHTML =
-          '<div style="font-variant-numeric:tabular-nums">' + m.drinks + ' / ' + m.threshold
-            + ' boisson(s) &middot; ' + m.rewards + ' offerte(s)'
-            + (m.rewards_available > 0 ? ' &middot; <strong>r\u00e9compense due</strong>' : '') + '</div>'
-          + champ('f-nom', 'Pr\u00e9nom', m.first_name)
+        /* ⚠️ DEUX ONGLETS, ET « ACTIVITÉ » PAR DÉFAUT. La fiche mêlait un formulaire d'édition
+           et de la lecture, empilés : on venait pour comprendre un client et on tombait sur des
+           champs de saisie. On vient lire neuf fois sur dix ; corriger est l'exception. */
+        var nf = function(v, suf){ return (v === null || v === undefined) ? '\u2014' : v + (suf || ''); };
+        var st = d.stats || {};
+        var bloc = function(t, v){
+          return '<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px">'
+            + '<div style="font-size:11px;opacity:.7;text-transform:uppercase;letter-spacing:.06em">'
+            + t + '</div><div style="font-size:18px;font-variant-numeric:tabular-nums">' + v
+            + '</div></div>';
+        };
+        var lignes = ev.map(function(e){
+          var signe = e.drinks > 0 ? '+' : '';
+          return '<tr><td style="padding:4px 8px;white-space:nowrap">' + fmtDate(e.at) + '</td>'
+            + '<td style="padding:4px 8px">' + (e.kind === 'reward' ? 'r\u00e9compense'
+                : e.kind === 'adjust' ? 'correction' : 'cr\u00e9dit') + '</td>'
+            + '<td style="padding:4px 8px;text-align:right;font-variant-numeric:tabular-nums">'
+              + signe + e.drinks + '</td>'
+            + '<td style="padding:4px 8px;text-align:right;font-variant-numeric:tabular-nums">'
+              + (e.amount_cents ? (e.amount_cents / 100).toFixed(2) + '\u00a0\u20ac' : '\u2014') + '</td>'
+            + '<td style="padding:4px 8px;opacity:.7"></td></tr>';
+        }).join('');
+
+        var activite =
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">'
+          + bloc('Solde', m.drinks + ' / ' + m.threshold)
+          + bloc('Visites', nf(st.visits))
+          + bloc('Sans boisson', nf(st.visits_without_drink))
+          + bloc('D\u00e9pens\u00e9', st.spent_eur === null || st.spent_eur === undefined
+              ? '\u2014' : st.spent_eur.toFixed(2) + '\u00a0\u20ac')
+          + bloc('Panier moyen', st.avg_ticket_eur === null || st.avg_ticket_eur === undefined
+              ? '\u2014' : st.avg_ticket_eur.toFixed(2) + '\u00a0\u20ac')
+          + bloc('Vu il y a', nf(st.days_since_last, '\u00a0j'))
+          + bloc('Membre depuis', nf(st.member_since_days, '\u00a0j'))
+          + bloc('Offertes', m.rewards)
+          + '</div>'
+          + (m.rewards_available > 0
+              ? '<p style="margin:10px 0 0"><strong>R\u00e9compense due.</strong></p>' : '')
+          + (d.top && d.top.length
+              ? '<h3 style="margin:18px 0 6px;font-size:14px">Ce qu\'il prend le plus</h3>'
+                + '<div style="font-size:13px" id="fiche-top"></div>' : '')
+          + '<h3 style="margin:18px 0 6px;font-size:14px">Historique</h3>'
+          + (lignes ? '<table style="width:100%;border-collapse:collapse;font-size:13px">' + lignes + '</table>'
+                    : '<p class="muted" style="font-size:13px">Aucun mouvement enregistr\u00e9.</p>');
+
+        var fiche =
+          champ('f-nom', 'Pr\u00e9nom', m.first_name)
           + champ('f-tel', 'T\u00e9l\u00e9phone (vide = retirer)', m.phone, 'tel')
           + champ('f-mail', 'E-mail (vide = retirer)', m.email, 'email')
           + champ('f-pays', 'Nationalit\u00e9', m.country)
@@ -373,38 +415,38 @@
           + '<div style="flex:1">' + champ('f-mois', 'Mois (pas d\'ann\u00e9e)', m.birth_month, 'number') + '</div>'
           + '</div>'
           + '<p style="margin:4px 0 0;font-size:12px;opacity:.7">Jour et mois seulement\u00a0: '
-          + 'l\'\u00e2ge ne sert \u00e0 rien ici, et s\'en passer retire \u00e0 cette donn\u00e9e '
-          + 'l\'essentiel de sa sensibilit\u00e9.</p>' 
+          + 'l\'\u00e2ge ne sert \u00e0 rien ici.</p>'
           + '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">'
-          + '<button id="f-save" style="padding:8px 14px;border-radius:6px;border:1px solid var(--border);cursor:pointer">Enregistrer</button>'
+          + '<button id="f-save" style="padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:none;cursor:pointer">Enregistrer</button>'
           + '<button id="f-merge" style="padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:none;cursor:pointer">Fusionner\u2026</button>'
           + '<button id="f-del" style="padding:8px 14px;border-radius:6px;border:1px solid #c33;color:#c33;background:none;cursor:pointer">Supprimer</button>'
           + '</div>'
-          + '<p style="margin-top:10px;font-size:12px;opacity:.7">La suppression efface pr\u00e9nom, '
+          + '<p style="margin:10px 0 0;font-size:12px;opacity:.7">La suppression efface pr\u00e9nom, '
           + 'contacts et notes. Le num\u00e9ro reste r\u00e9serv\u00e9\u00a0: le lib\u00e9rer le ferait '
-          + 'r\u00e9attribuer \u00e0 quelqu\'un d\'autre, qui h\u00e9riterait des points.</p>'
-          + (d.top && d.top.length
-              ? '<h3 style="margin:18px 0 6px;font-size:14px">Ce qu\'il prend le plus</h3>'
-                + '<div style="font-size:13px" id="fiche-top"></div>'
-              : '')
-          + '<h3 style="margin:18px 0 6px;font-size:14px">Historique</h3>'
-          + (lignes ? '<table style="width:100%;border-collapse:collapse;font-size:13px">' + lignes + '</table>'
-                    : '<p class="muted" style="font-size:13px">Aucun mouvement enregistr\u00e9.</p>');
+          + 'r\u00e9attribuer \u00e0 quelqu\'un d\'autre, qui h\u00e9riterait des points.</p>';
 
-        /* Les titres de produits sont posés comme TEXTE : ils viennent du catalogue Vendus,
-           qu'un opérateur édite depuis la caisse. */
-        var top = document.getElementById('fiche-top');
-        if(top && d.top){
-          d.top.forEach(function(p){
-            var l = document.createElement('div');
-            l.textContent = p.qty + '\u00d7 ' + p.title;
-            top.appendChild(l);
+        var onglet = function(id, libelle){
+          return '<button data-onglet="' + id + '" style="padding:8px 14px;border:none;background:none;'
+            + 'cursor:pointer;font:inherit;border-bottom:2px solid transparent">' + libelle + '</button>';
+        };
+        document.getElementById('fiche-corps').innerHTML =
+          '<div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px">'
+          + onglet('act', 'Activit\u00e9') + onglet('fic', 'Fiche') + '</div>'
+          + '<div id="onglet-act">' + activite + '</div>'
+          + '<div id="onglet-fic" style="display:none">' + fiche + '</div>';
+
+        var montrer = function(id){
+          document.getElementById('onglet-act').style.display = id === 'act' ? '' : 'none';
+          document.getElementById('onglet-fic').style.display = id === 'fic' ? '' : 'none';
+          document.querySelectorAll('#fiche-corps [data-onglet]').forEach(function(b){
+            b.style.borderBottomColor = b.getAttribute('data-onglet') === id ? 'currentColor' : 'transparent';
+            b.style.opacity = b.getAttribute('data-onglet') === id ? '1' : '.6';
           });
-        }
-
-        /* Le motif d'une correction est inséré comme TEXTE : il vient d'une saisie libre. */
-        var tds = document.getElementById('fiche-corps').querySelectorAll('table td:nth-child(4)');
-        ev.forEach(function(e, i){ if(tds[i]) tds[i].textContent = e.reason || ''; });
+        };
+        document.querySelectorAll('#fiche-corps [data-onglet]').forEach(function(b){
+          b.addEventListener('click', function(){ montrer(b.getAttribute('data-onglet')); });
+        });
+        montrer('act');
 
         document.getElementById('f-save').addEventListener('click', function(){
           fetch('/api/loyalty/member/' + n, {

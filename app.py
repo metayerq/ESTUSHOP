@@ -1543,6 +1543,41 @@ def _loyalty_top_products(events, limit=8):
     return [{"title": t, "qty": q} for t, q in ordonne[:limit]]
 
 
+def _loyalty_member_stats(member, events, today):
+    """
+    Les chiffres d'UN client, tels que sa fiche les montre.
+
+    ⚠️ AUCUN ZÉRO INVENTÉ. Un client sans montant enregistré n'a pas « dépensé 0 € » — les
+    visites d'avant la collecte n'en portent pas. Une moyenne sur zéro ticket n'existe pas non
+    plus. Chaque valeur non calculable rend `None`, et l'écran affiche un tiret plutôt qu'un
+    chiffre qui se lirait comme une mesure.
+
+    ⚠️ ET LES VISITES SE COMPTENT PAR JOUR. Deux tickets d'affilée, c'est une visite : les
+    additionner ferait paraître un client deux fois plus assidu qu'il ne l'est.
+    """
+    credits = [e for e in (events or []) if e.get("kind") == "credit"]
+    jours = {(e.get("at") or "")[:10] for e in credits if e.get("at")}
+    montants = [int(e.get("amount_cents") or 0) for e in credits if e.get("amount_cents")]
+
+    def depuis(iso):
+        if not iso:
+            return None
+        try:
+            return (today - date.fromisoformat(str(iso)[:10])).days
+        except ValueError:
+            return None
+
+    return {
+        "visits": len(jours) or None,
+        "tickets": len(credits) or None,
+        "visits_without_drink": sum(1 for e in credits if int(e.get("drinks") or 0) == 0),
+        "spent_eur": round(sum(montants) / 100.0, 2) if montants else None,
+        "avg_ticket_eur": round(sum(montants) / 100.0 / len(montants), 2) if montants else None,
+        "days_since_last": depuis(member.get("last_seen")),
+        "member_since_days": depuis(member.get("created_at")),
+    }
+
+
 def _loyalty_merge_payload(source, cible):
     """
     Ce que devient la carte CONSERVÉE après absorption d'un doublon.
@@ -1913,7 +1948,8 @@ def api_loyalty_card(number):
                        {"number": f"eq.{number}", "order": "at.desc", "limit": 100})
     return jsonify({"member": _loyalty_full(row), "events": events,
                     # Ce qu'il prend le plus — « lait d'avoine » sans avoir à le demander.
-                    "top": _loyalty_top_products(events)})
+                    "top": _loyalty_top_products(events),
+                    "stats": _loyalty_member_stats(row, events, today_lisbon())})
 
 
 @app.route("/api/loyalty/member/<int:number>", methods=["PATCH"])
