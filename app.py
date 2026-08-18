@@ -1182,10 +1182,14 @@ def _loyalty_authorized():
     libre » — ce serait exactement la panne qu'on ne remarque jamais, jusqu'au jour où quelqu'un
     s'offre des cafés.
     """
-    attendu = os.environ.get("LOYALTY_TOKEN") or ""
+    # ⚠️ ESPACES RETIRÉS DES DEUX CÔTÉS. `openssl rand -hex` produit un retour à la ligne, et
+    # l'interface de Vercel conserve ce qu'on lui colle : un secret correct suivi d'un « \n »
+    # produisait un refus indiscernable d'un mauvais jeton. Un blanc de bord n'est pas un secret
+    # différent, c'est un artefact de copie — et faire chercher ça à quelqu'un est cruel.
+    attendu = (os.environ.get("LOYALTY_TOKEN") or "").strip()
     if not attendu:
         return False
-    presente = request.headers.get("X-Loyalty-Token") or ""
+    presente = (request.headers.get("X-Loyalty-Token") or "").strip()
     # Comparaison à temps constant : le jeton ne doit pas se deviner caractère par caractère.
     #
     # ⚠️ EN OCTETS, PAS EN CHAÎNES. `compare_digest` lève sur une chaîne non-ASCII : un jeton
@@ -1234,6 +1238,17 @@ def _loyalty_next_number(rows):
     return max([int(r.get("number") or 0) for r in (rows or [])] + [0]) + 1
 
 
+def _loyalty_number_taken(rows, numero):
+    """
+    Le numéro est-il déjà attribué ?
+
+    ⚠️ REFUSER PLUTÔT QU'ÉCRASER. Reprendre le numéro d'un membre existant rattacherait ses
+    points à quelqu'un d'autre, et les deux réciteraient le même numéro au comptoir sans que
+    rien ne l'indique — jusqu'au jour où l'un réclame une récompense que l'autre a consommée.
+    """
+    return any(int(r.get("number") or 0) == int(numero) for r in (rows or []))
+
+
 def _loyalty_member(number):
     """Une fiche membre, ou None."""
     rows = _supa_get("loyalty_members", {"number": f"eq.{int(number)}", "limit": 1})
@@ -1276,7 +1291,23 @@ def api_loyalty_create():
         # contre la faute de frappe disparaît.
         return jsonify({"error": "first_name_required"}), 400
     tel = (data.get("phone") or "").strip() or None
-    numero = _loyalty_next_number(_supa_get("loyalty_members", {"select": "number"}))
+
+    # ⚠️ UN NUMÉRO PEUT ÊTRE IMPOSÉ, mais jamais volé. Reprendre celui d'un membre existant
+    # rattacherait ses points à quelqu'un d'autre, et les deux réciteraient le même numéro sans
+    # que rien ne l'indique. On refuse en le disant, plutôt que d'écraser.
+    demande = data.get("number")
+    existants = _supa_get("loyalty_members", {"select": "number"})
+    if demande is not None:
+        try:
+            numero = int(demande)
+        except (TypeError, ValueError):
+            return jsonify({"error": "number_invalid"}), 400
+        if numero <= 0:
+            return jsonify({"error": "number_invalid"}), 400
+        if _loyalty_number_taken(existants, numero):
+            return jsonify({"error": "number_taken", "number": numero}), 409
+    else:
+        numero = _loyalty_next_number(existants)
     ligne = {"number": numero, "first_name": prenom[:40], "drinks": 0, "rewards": 0}
     if tel:
         # Le téléphone n'est enregistré QU'AVEC un consentement horodaté. Sans lui, on garde

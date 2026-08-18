@@ -153,3 +153,59 @@ def test_l_onglet_figure_dans_la_navigation():
     import pathlib
     nav = pathlib.Path("templates/index.html").read_text()
     assert 'data-path="/loyalty"' in nav
+
+
+# ── Le jeton et les blancs de bord ──────────────────────────────────────────
+
+def test_un_retour_à_la_ligne_ne_change_pas_le_secret(monkeypatch):
+    """
+    ⚠️ LE DÉFAUT RÉELLEMENT RENCONTRÉ. `openssl rand -hex` produit un retour à la ligne, et
+    l'interface de Vercel conserve ce qu'on lui colle. Un secret correct suivi d'un « \\n »
+    donnait un refus strictement indiscernable d'un mauvais jeton — et personne ne pense à
+    chercher un caractère invisible.
+    """
+    monkeypatch.setenv("LOYALTY_TOKEN", "abc123\n")
+    with A.app.test_request_context("/api/loyalty/member/1",
+                                    headers={"X-Loyalty-Token": "abc123"}):
+        assert A._loyalty_authorized() is True
+    monkeypatch.setenv("LOYALTY_TOKEN", "abc123")
+    with A.app.test_request_context("/api/loyalty/member/1",
+                                    headers={"X-Loyalty-Token": " abc123 "}):
+        assert A._loyalty_authorized() is True
+
+
+def test_un_jeton_réellement_différent_est_toujours_refusé(monkeypatch):
+    """Le nettoyage ne doit pas devenir une tolérance."""
+    monkeypatch.setenv("LOYALTY_TOKEN", "abc123")
+    with A.app.test_request_context("/api/loyalty/member/1",
+                                    headers={"X-Loyalty-Token": "abc124"}):
+        assert A._loyalty_authorized() is False
+
+
+def test_un_jeton_qui_n_est_QUE_des_blancs_refuse(monkeypatch):
+    """Sinon un secret mal collé (vide + espaces) vaudrait « accès libre »."""
+    monkeypatch.setenv("LOYALTY_TOKEN", "   ")
+    with A.app.test_request_context("/api/loyalty/member/1",
+                                    headers={"X-Loyalty-Token": "   "}):
+        assert A._loyalty_authorized() is False
+
+
+# ── Un numéro imposé ────────────────────────────────────────────────────────
+
+def test_un_numéro_déjà_pris_est_REFUSÉ():
+    """
+    ⚠️ REFUSER PLUTÔT QU'ÉCRASER. Reprendre le numéro d'un membre existant rattacherait ses
+    points à quelqu'un d'autre, et les deux réciteraient le même numéro au comptoir — jusqu'au
+    jour où l'un réclame une récompense que l'autre a consommée.
+    """
+    existants = [{"number": 1}, {"number": 47}]
+    assert A._loyalty_number_taken(existants, 47) is True
+    assert A._loyalty_number_taken(existants, 48) is False
+
+
+def test_le_refus_est_BRANCHÉ_sur_l_inscription():
+    """La règle juste que plus personne n'appelle : le trou classique de ce dépôt."""
+    import inspect
+    src = inspect.getsource(A.api_loyalty_create)
+    assert "_loyalty_number_taken(existants, numero)" in src
+    assert "number_taken" in src
