@@ -377,6 +377,7 @@
           + 'l\'essentiel de sa sensibilit\u00e9.</p>' 
           + '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">'
           + '<button id="f-save" style="padding:8px 14px;border-radius:6px;border:1px solid var(--border);cursor:pointer">Enregistrer</button>'
+          + '<button id="f-merge" style="padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:none;cursor:pointer">Fusionner\u2026</button>'
           + '<button id="f-del" style="padding:8px 14px;border-radius:6px;border:1px solid #c33;color:#c33;background:none;cursor:pointer">Supprimer</button>'
           + '</div>'
           + '<p style="margin-top:10px;font-size:12px;opacity:.7">La suppression efface pr\u00e9nom, '
@@ -403,6 +404,29 @@
               birth_day: document.getElementById('f-jour').value,
               birth_month: document.getElementById('f-mois').value
             })
+          }).then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
+            .then(function(x){
+              if(!x.ok){ alert('Refus\u00e9\u00a0: ' + (x.j.error || '')); return; }
+              location.reload();
+            }).catch(function(e){ alert('\u00c9chec\u00a0: ' + e.message); });
+        });
+
+        /* ⚠️ LES DOUBLONS ARRIVENT: quelqu'un oublie son numéro, on cherche par prénom, on ne
+           trouve pas, une seconde carte est créée. Les points se répartissent alors sur deux
+           numéros et le client n'atteint jamais dix — sans que rien ne le signale. */
+        document.getElementById('f-merge').addEventListener('click', function(){
+          var vers = prompt('Fusionner la fiche n\u00b0' + n + ' DANS quelle carte\u00a0?\n\n'
+            + 'Les points, r\u00e9compenses, d\u00e9penses et l\'historique y sont transf\u00e9r\u00e9s. '
+            + 'La fiche n\u00b0' + n + ' est vid\u00e9e et son num\u00e9ro reste r\u00e9serv\u00e9.');
+          if(vers === null || vers.trim() === '') return;
+          var motif = prompt('Motif (obligatoire)\u00a0:');
+          if(motif === null || motif.trim() === ''){
+            alert('Fusion annul\u00e9e\u00a0: le motif est obligatoire.');
+            return;
+          }
+          fetch('/api/loyalty/merge', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({from: Number(n), into: Number(vers), reason: motif})
           }).then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
             .then(function(x){
               if(!x.ok){ alert('Refus\u00e9\u00a0: ' + (x.j.error || '')); return; }

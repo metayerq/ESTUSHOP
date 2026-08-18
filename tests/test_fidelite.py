@@ -754,3 +754,83 @@ def test_les_trois_listes_sont_affichees_et_expliquees():
     assert "Personne pour l" in page          # l'état vide est expliqué
     # Les prénoms sont posés comme TEXTE, jamais comme HTML : ils viennent d'une saisie libre.
     assert 'class="nom"' in page and "textContent = m.first_name" in page
+
+
+# ── Fusionner deux cartes ───────────────────────────────────────────────────
+
+def test_la_fusion_ADDITIONNE_les_soldes():
+    """
+    ⚠️ LE DÉFAUT QU'ELLE RÉPARE. Quelqu'un oublie son numéro, on cherche par prénom, on ne trouve
+    pas — orthographe, diminutif, prénom courant — et une seconde carte est créée. Les points se
+    répartissent sur deux numéros et le client n'atteint JAMAIS dix. Les deux cartes sont
+    valides, les deux soldes progressent, et c'est le client le plus assidu qui en fait les
+    frais. Rien ne le signale.
+    """
+    source = {"number": 12, "drinks": 6, "rewards": 1, "spent_cents": 3000}
+    cible = {"number": 3, "first_name": "Maria", "drinks": 5, "rewards": 2, "spent_cents": 4500}
+    f = A._loyalty_merge_payload(source, cible)
+    assert f["drinks"] == 11        # et non 5 ou 6 : le client a bien bu onze fois
+    assert f["rewards"] == 3
+    assert f["spent_cents"] == 7500
+
+
+def test_un_contact_PRESENT_n_est_jamais_ecrase():
+    """
+    On ne peut pas savoir lequel des deux est le bon, et le plus récent n'est pas forcément le
+    meilleur. Un champ VIDE, lui, se remplit : c'est du gain sans risque.
+    """
+    source = {"number": 12, "phone": "911111111", "email": "vieux@x.co", "country": "Brasil"}
+    cible = {"number": 3, "first_name": "Maria", "phone": "922222222"}
+    f = A._loyalty_merge_payload(source, cible)
+    assert f["phone"] == "922222222"     # conservé
+    assert f["email"] == "vieux@x.co"    # récupéré, la cible n'en avait pas
+    assert f["country"] == "Brasil"
+
+
+def test_la_fusion_garde_la_PREMIERE_inscription_et_le_DERNIER_passage():
+    """Le client est là depuis la première, et il est venu la dernière fois qu'il est venu."""
+    source = {"number": 12, "created_at": "2026-05-02", "last_seen": "2026-08-20"}
+    cible = {"number": 3, "first_name": "M", "created_at": "2026-07-01", "last_seen": "2026-08-01"}
+    f = A._loyalty_merge_payload(source, cible)
+    assert f["created_at"] == "2026-05-02"
+    assert f["last_seen"] == "2026-08-20"
+
+
+def test_une_carte_FUSIONNEE_n_est_plus_un_membre():
+    """
+    ⚠️ Son numéro reste réservé — quelqu'un peut encore le réciter pendant des mois — mais une
+    recherche dessus doit échouer proprement au lieu de tomber sur un compte vide.
+    """
+    assert A._loyalty_is_deleted({"status": "merged"}) is True
+    assert A._loyalty_is_deleted({"status": "deleted"}) is True
+    assert A._loyalty_is_deleted({"status": None}) is False
+
+
+def test_la_fusion_exige_le_login_un_motif_et_deux_cartes_distinctes():
+    import inspect
+    src = inspect.getsource(A.api_loyalty_merge)
+    assert "_current_role()" in src
+    assert "_loyalty_authorized" not in src, "le jeton de la caisse ne doit PAS suffire"
+    assert "reason_required" in src
+    assert "same_card" in src, "fusionner une carte avec elle-même doublerait son solde"
+    assert "member_deleted" in src
+
+
+def test_l_historique_SUIT_les_points():
+    """
+    ⚠️ Le laisser sur la fiche anonymisée le rendrait illisible : « j'avais neuf cafés » ne se
+    tranche qu'avec les mouvements sous les yeux.
+    """
+    import inspect
+    src = inspect.getsource(A.api_loyalty_merge)
+    assert '_supa_patch("loyalty_events"' in src
+
+
+def test_la_fusion_est_atteignable_depuis_la_fiche():
+    """Une fonction qu'aucun clic n'atteint n'existe pas."""
+    import pathlib
+    page = pathlib.Path("templates/loyalty.html").read_text()
+    assert "/api/loyalty/merge" in page
+    assert "f-merge" in page
+    # La confirmation DIT ce qui est transféré et ce qu'il advient du doublon.
+    assert "reste r\\u00e9serv\\u00e9" in page

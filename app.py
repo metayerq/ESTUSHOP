@@ -1443,7 +1443,7 @@ def _loyalty_is_birthday(row, today):
 
 def _loyalty_is_deleted(row):
     """Une fiche anonymisée n'est plus un membre : elle ne réserve plus qu'un numéro."""
-    return (row or {}).get("status") == "deleted"
+    return (row or {}).get("status") in ("deleted", "merged")
 
 
 def _loyalty_anonymise(row):
@@ -1491,6 +1491,47 @@ def _loyalty_clean_email(raw):
 LOYALTY_ALMOST = 2      # boissons restantes pour figurer dans « bientôt »
 LOYALTY_LAPSED_DAYS = 30
 LOYALTY_NEW_DAYS = 7
+
+
+def _loyalty_merge_payload(source, cible):
+    """
+    Ce que devient la carte CONSERVÉE après absorption d'un doublon.
+
+    ⚠️ POURQUOI CETTE FONCTION EXISTE. Quelqu'un oublie son numéro, on cherche par prénom, on ne
+    trouve pas — orthographe, diminutif, prénom courant — et une seconde carte est créée. Les
+    points se répartissent alors sur deux numéros et le client n'atteint JAMAIS dix. Les deux
+    cartes sont valides, les deux soldes progressent, et c'est le client le plus assidu qui en
+    fait les frais. Rien ne le signale.
+
+    ⚠️ ON ADDITIONNE, ON N'ÉCRASE PAS. Boissons, récompenses déjà offertes et dépense se
+    cumulent : effacer l'un des deux soldes retirerait au client des visites qu'il a réellement
+    faites.
+
+    ⚠️ ET UN CONTACT PRÉSENT N'EST JAMAIS REMPLACÉ. Si la carte conservée porte déjà un
+    téléphone, celui du doublon ne l'écrase pas — on ne peut pas savoir lequel est le bon, et le
+    plus récent n'est pas forcément le meilleur. Un champ VIDE, en revanche, se remplit : c'est
+    du gain sans risque.
+    """
+    fusion = {
+        "number": int(cible["number"]),
+        "first_name": cible.get("first_name") or source.get("first_name") or "—",
+        "drinks": int(cible.get("drinks") or 0) + int(source.get("drinks") or 0),
+        "rewards": int(cible.get("rewards") or 0) + int(source.get("rewards") or 0),
+        "spent_cents": int(cible.get("spent_cents") or 0) + int(source.get("spent_cents") or 0),
+    }
+    # Le plus RÉCENT des deux derniers passages, et le plus ANCIEN des deux inscriptions : le
+    # client est là depuis la première, et il est venu la dernière fois qu'il est venu.
+    vues = [v for v in (cible.get("last_seen"), source.get("last_seen")) if v]
+    if vues:
+        fusion["last_seen"] = max(vues)
+    crees = [v for v in (cible.get("created_at"), source.get("created_at")) if v]
+    if crees:
+        fusion["created_at"] = min(crees)
+    for champ in ("phone", "email", "fiscal_id", "country", "notes", "birth_day", "birth_month",
+                  "consent_at"):
+        garde = cible.get(champ)
+        fusion[champ] = garde if garde not in (None, "") else source.get(champ)
+    return fusion
 
 
 def _loyalty_lists(members, today):
@@ -1893,6 +1934,54 @@ def api_loyalty_delete(number):
     _supa_upsert("loyalty_events", {"number": number, "kind": "adjust", "drinks": 0,
                                     "reason": "fiche supprimée (anonymisée)"})
     return jsonify({"ok": True, "number": number})
+
+
+@app.route("/api/loyalty/merge", methods=["POST"])
+def api_loyalty_merge():
+    """
+    Fusionne un doublon dans la carte à conserver.
+
+    ⚠️ SOUS LE LOGIN. C'est un geste de patron : la caisse crédite ce qui est vendu, elle ne
+    recompose pas des comptes.
+
+    ⚠️ LE DOUBLON N'EST PAS SUPPRIMÉ, IL EST ANONYMISÉ ET MARQUÉ. Son numéro reste réservé —
+    quelqu'un peut encore le réciter pendant des mois, et il ne doit surtout pas être réattribué
+    à un autre client. Une recherche dessus échoue proprement au lieu de tomber sur un inconnu.
+    """
+    if _current_role() is None:
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    try:
+        depuis, vers = int(data.get("from")), int(data.get("into"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "from_and_into_required"}), 400
+    if depuis == vers:
+        return jsonify({"error": "same_card"}), 400
+    motif = (data.get("reason") or "").strip()
+    if not motif:
+        return jsonify({"error": "reason_required"}), 400
+
+    source, cible = _loyalty_member(depuis), _loyalty_member(vers)
+    if not source or not cible:
+        return jsonify({"error": "no_member"}), 404
+    # Fusionner une fiche déjà anonymisée recomposerait un compte à partir de rien.
+    if _loyalty_is_deleted(source) or _loyalty_is_deleted(cible):
+        return jsonify({"error": "member_deleted"}), 409
+
+    ok, err = _supa_upsert("loyalty_members", _loyalty_merge_payload(source, cible))
+    if not ok:
+        return jsonify({"error": "write_failed", "detail": str(err)}), 502
+
+    # ⚠️ L'HISTORIQUE SUIT LES POINTS. Le laisser sur une fiche anonymisée le rendrait
+    # illisible : « j'avais neuf cafés » ne se tranche qu'avec les mouvements sous les yeux.
+    _supa_patch("loyalty_events", {"number": f"eq.{depuis}"}, {"number": vers})
+    _supa_upsert("loyalty_events", {"number": vers, "kind": "adjust", "drinks": 0,
+                                    "reason": f"fusion du n°{depuis} — {motif}"[:200]})
+    ok, err = _supa_upsert("loyalty_members", {**_loyalty_anonymise(source),
+                                              "drinks": 0, "rewards": 0, "status": "merged"})
+    if not ok:
+        return jsonify({"error": "write_failed", "detail": str(err)}), 502
+    return jsonify(_loyalty_full({**cible, **_loyalty_merge_payload(source, cible)}))
 
 
 @app.route("/api/loyalty/lists")
@@ -2857,6 +2946,23 @@ def _supa_upsert(table, data):
     except Exception:
         msg = r.text
     return False, msg
+
+def _supa_patch(table, filtre, data):
+    """
+    Mise à jour ciblée. Ajoutée pour la fusion de cartes : réaffecter l'historique d'un membre à
+    un autre demande un UPDATE, que `_supa_upsert` ne sait pas faire — il écrirait une ligne par
+    événement au lieu de les déplacer.
+    """
+    r = _req.patch(f"{SUPA_URL}/rest/v1/{table}", json=data,
+                   headers=_supa_headers(), params=filtre)
+    if r.ok:
+        return True, None
+    try:
+        msg = r.json().get("message") or r.text
+    except Exception:
+        msg = r.text
+    return False, msg
+
 
 def _supa_delete(table, col, val):
     r = _req.delete(f"{SUPA_URL}/rest/v1/{table}",
