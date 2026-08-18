@@ -1486,6 +1486,64 @@ def _loyalty_clean_email(raw):
     return v[:120], None
 
 
+# Bornes des trois listes. Nommées plutôt que semées dans le code : ce sont des choix
+# discutables, et on doit pouvoir les discuter sans lire une fonction.
+LOYALTY_ALMOST = 2      # boissons restantes pour figurer dans « bientôt »
+LOYALTY_LAPSED_DAYS = 30
+LOYALTY_NEW_DAYS = 7
+
+
+def _loyalty_lists(members, today):
+    """
+    Trois listes qui font AGIR, plutôt qu'un classement qui fait regarder.
+
+    ⚠️ POURQUOI PAS DE PALMARÈS. Un classement de clients par dépense ne fait prendre aucune
+    décision, et c'est exactement la donnée qu'on ne veut pas afficher sur un écran visible du
+    comptoir. Ces trois-là appellent chacune une phrase à dire ou un geste à faire.
+
+      · « bientôt » — à dire en servant : « encore une et elle est offerte ». C'est ce qui fait
+        revenir, et ça ne coûte rien.
+      · « perdus de vue » — le seul signal d'un client qui décroche, tant qu'il est rattrapable.
+      · « nouveaux » — pour savoir si le programme recrute, ou s'il tourne en vase clos.
+
+    ⚠️ UN MEMBRE JAMAIS VU N'EST PAS « PERDU DE VUE ». Il n'est jamais revenu, ce qui est un
+    autre problème : le compter comme un client qui décroche mêlerait deux populations et
+    gonflerait l'alarme d'inscrits qui n'ont jamais rien acheté.
+    """
+    vivants = [m for m in (members or []) if not _loyalty_is_deleted(m)]
+
+    def jours_depuis(iso):
+        if not iso:
+            return None
+        try:
+            return (today - date.fromisoformat(str(iso)[:10])).days
+        except ValueError:
+            return None
+
+    bientot, perdus, nouveaux = [], [], []
+    for m in vivants:
+        vue = _loyalty_public(m)
+        restant = LOYALTY_THRESHOLD - (int(m.get("drinks") or 0) % LOYALTY_THRESHOLD)
+        # Une récompense DÉJÀ due ne figure pas dans « bientôt » : elle est due, pas proche.
+        if _loyalty_rewards_available(m.get("drinks")) == 0 and 0 < restant <= LOYALTY_ALMOST:
+            bientot.append({**vue, "missing": restant})
+
+        d = jours_depuis(m.get("last_seen"))
+        if d is not None and d > LOYALTY_LAPSED_DAYS:
+            perdus.append({**vue, "days": d})
+
+        n = jours_depuis(m.get("created_at"))
+        if n is not None and n <= LOYALTY_NEW_DAYS:
+            nouveaux.append({**vue, "days": n})
+
+    bientot.sort(key=lambda x: x["missing"])
+    perdus.sort(key=lambda x: -x["days"])
+    nouveaux.sort(key=lambda x: x["days"])
+    return {"almost": bientot, "lapsed": perdus, "new": nouveaux,
+            "almost_threshold": LOYALTY_ALMOST, "lapsed_days": LOYALTY_LAPSED_DAYS,
+            "new_days": LOYALTY_NEW_DAYS}
+
+
 def _loyalty_member(number):
     """Une fiche membre, ou None."""
     rows = _supa_get("loyalty_members", {"number": f"eq.{int(number)}", "limit": 1})
@@ -1835,6 +1893,14 @@ def api_loyalty_delete(number):
     _supa_upsert("loyalty_events", {"number": number, "kind": "adjust", "drinks": 0,
                                     "reason": "fiche supprimée (anonymisée)"})
     return jsonify({"ok": True, "number": number})
+
+
+@app.route("/api/loyalty/lists")
+def api_loyalty_lists():
+    """Les trois listes actionnables. Sous le login, comme le reste du dashboard."""
+    if _current_role() is None:
+        return jsonify({"error": "unauthorized"}), 401
+    return jsonify(_loyalty_lists(_supa_get("loyalty_members", {"select": "*"}), today_lisbon()))
 
 
 @app.route("/api/loyalty/adjust", methods=["POST"])

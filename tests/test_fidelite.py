@@ -666,3 +666,91 @@ def test_sans_montant_remonté_aucune_dépense_n_est_inventée():
     s = A._loyalty_stats([{"number": 1}], [_ev(1, "2026-08-01")], _d(2026, 8, 18))
     assert s["spent_eur"] is None
     assert s["avg_ticket_eur"] is None
+
+
+# ── Les trois listes ────────────────────────────────────────────────────────
+
+def _membre(n, drinks=0, last_seen=None, created="2026-01-01", **kw):
+    return {"number": n, "first_name": f"M{n}", "drinks": drinks, "rewards": 0,
+            "last_seen": last_seen, "created_at": created, **kw}
+
+
+AUJ = date(2026, 8, 21)
+
+
+def test_bientot_ne_retient_que_ceux_qui_y_sont_presque():
+    """C'est la liste qui fait revenir : « encore une et elle est offerte », dit en servant."""
+    r = A._loyalty_lists([_membre(1, drinks=9), _membre(2, drinks=8), _membre(3, drinks=5)], AUJ)
+    assert [m["number"] for m in r["almost"]] == [1, 2]      # triés par ce qui manque
+    assert r["almost"][0]["missing"] == 1
+
+
+def test_une_recompense_DEJA_DUE_ne_figure_pas_dans_bientot():
+    """
+    Elle est due, pas proche — la mêler brouillerait la seule liste qui appelle une phrase.
+
+    ⚠️ LE CAS QUI DISCRIMINE EST 19, PAS 10. À 10 ou 20, le reste vaut 10 et la borne les écarte
+    déjà : la première version de ce test passait donc même sans la garde. À 19, une récompense
+    est due ET il ne manque qu'une boisson pour la suivante — c'est là que « due » et « proche »
+    se confondent si l'on n'y prend pas garde.
+    """
+    r = A._loyalty_lists([_membre(1, drinks=10), _membre(2, drinks=20), _membre(3, drinks=19)], AUJ)
+    assert r["almost"] == []
+
+
+def test_un_membre_JAMAIS_VU_n_est_pas_perdu_de_vue():
+    """
+    ⚠️ Il n'est jamais revenu, ce qui est un autre problème. Le compter comme un client qui
+    décroche mêlerait deux populations et gonflerait l'alarme d'inscrits qui n'ont jamais rien
+    acheté.
+    """
+    r = A._loyalty_lists([_membre(1, last_seen=None)], AUJ)
+    assert r["lapsed"] == []
+
+
+def test_perdus_de_vue_au_dela_du_seuil_et_tries_du_plus_ancien():
+    r = A._loyalty_lists(
+        [_membre(1, last_seen="2026-08-19"),   # 2 jours
+         _membre(2, last_seen="2026-07-01"),   # 51 jours
+         _membre(3, last_seen="2026-06-01")],  # 81 jours
+        AUJ)
+    assert [m["number"] for m in r["lapsed"]] == [3, 2]
+    assert r["lapsed"][0]["days"] == 81
+
+
+def test_les_nouveaux_de_la_semaine():
+    r = A._loyalty_lists([_membre(1, created="2026-08-20"), _membre(2, created="2026-06-01")], AUJ)
+    assert [m["number"] for m in r["new"]] == [1]
+
+
+def test_les_fiches_supprimees_ne_figurent_dans_AUCUNE_liste():
+    """Une fiche anonymisée n'est plus un membre : la relancer serait absurde."""
+    supprime = _membre(1, drinks=9, last_seen="2026-01-01", created="2026-08-20",
+                       status="deleted")
+    r = A._loyalty_lists([supprime], AUJ)
+    assert r["almost"] == [] and r["lapsed"] == [] and r["new"] == []
+
+
+def test_une_date_illisible_n_invente_rien():
+    """Elle ne doit ni faire planter la page, ni classer quelqu'un au hasard."""
+    r = A._loyalty_lists([_membre(1, last_seen="pas-une-date", created="pas-une-date")], AUJ)
+    assert r["lapsed"] == [] and r["new"] == []
+
+
+def test_les_listes_sont_sous_le_LOGIN():
+    import inspect
+    assert "_current_role()" in inspect.getsource(A.api_loyalty_lists)
+
+
+def test_les_trois_listes_sont_affichees_et_expliquees():
+    """
+    ⚠️ UNE LISTE VIDE DOIT DIRE POURQUOI. Un cadre vide se lit « c'est cassé » — surtout au
+    démarrage du programme, où les trois le seront.
+    """
+    import pathlib
+    page = pathlib.Path("templates/loyalty.html").read_text()
+    assert "/api/loyalty/lists" in page
+    assert "Perdus de vue" in page and "Nouveaux" in page
+    assert "Personne pour l" in page          # l'état vide est expliqué
+    # Les prénoms sont posés comme TEXTE, jamais comme HTML : ils viennent d'une saisie libre.
+    assert 'class="nom"' in page and "textContent = m.first_name" in page

@@ -235,6 +235,12 @@
        rien de plus — or la question qui decide de garder le programme est celle du RETOUR. -->
   <div id="loyalty-stats" class="muted" style="margin-bottom:20px;font-size:13px"></div>
 
+  <!-- ⚠️ TROIS LISTES QUI FONT AGIR, plutôt qu'un classement qui fait regarder. Chacune appelle
+       une phrase à dire ou un geste à faire ; un palmarès des plus gros clients n'appellerait
+       rien, et c'est la donnée qu'on veut le moins voir sur un écran de comptoir. -->
+  <div id="loyalty-listes" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+       gap:12px;margin-bottom:20px"></div>
+
   <div style="overflow-x:auto">
     <table id="loyalty-table" style="width:100%;border-collapse:collapse;font-size:14px">
       <thead>
@@ -456,6 +462,45 @@
         + '</div>' + el.innerHTML;
     }
     void aujourdhui;
+
+    /* Les trois listes, chargées à part elles aussi : la liste complète reste utilisable même
+       si ce calcul échoue. */
+    fetch('/api/loyalty/lists').then(function(r){ return r.json(); }).then(function(L){
+      var carte = function(titre, sous, items, ligne){
+        var d = document.createElement('div');
+        d.style.cssText = 'border:1px solid var(--border);border-radius:10px;padding:12px';
+        var h = '<div style="font-weight:600">' + titre + '</div>'
+              + '<div style="font-size:12px;opacity:.7;margin-bottom:8px">' + sous + '</div>';
+        /* ⚠️ UNE LISTE VIDE DIT POURQUOI. Un cadre vide se lit « c'est cassé ». */
+        h += items.length
+          ? '<ul style="margin:0;padding-left:18px;font-size:13px">'
+            + items.slice(0, 12).map(ligne).join('') + '</ul>'
+              + (items.length > 12 ? '<div style="font-size:12px;opacity:.7;margin-top:6px">+ '
+                  + (items.length - 12) + ' autre(s)</div>' : '')
+          : '<div style="font-size:13px;opacity:.7">Personne pour l\'instant.</div>';
+        d.innerHTML = h;
+        /* Les prénoms sont posés comme TEXTE : ils viennent d'une saisie au comptoir. */
+        var noms = d.querySelectorAll('li span.nom');
+        items.slice(0, 12).forEach(function(m, i){ if(noms[i]) noms[i].textContent = m.first_name; });
+        return d;
+      };
+      var el = document.getElementById('loyalty-listes');
+      el.appendChild(carte(
+        '\u00c0 une boisson pr\u00e8s',
+        '\u00c0 dire en servant\u00a0: « encore une et elle est offerte »',
+        L.almost,
+        function(m){ return '<li><span class="nom"></span> \u2014 il manque ' + m.missing + '</li>'; }));
+      el.appendChild(carte(
+        'Perdus de vue',
+        'Plus de ' + L.lapsed_days + ' jours sans venir',
+        L.lapsed,
+        function(m){ return '<li><span class="nom"></span> \u2014 ' + m.days + ' jours</li>'; }));
+      el.appendChild(carte(
+        'Nouveaux',
+        'Inscrits depuis moins de ' + L.new_days + ' jours',
+        L.new,
+        function(m){ return '<li><span class="nom"></span> \u2014 n\u00b0' + m.number + '</li>'; }));
+    }).catch(function(){ /* la liste complète reste utilisable sans les trois cartes */ });
 
     /* Les mesures, chargees a part : une liste qui s'affiche vaut mieux qu'une page vide si
        le calcul echoue. */
