@@ -227,3 +227,79 @@ def test_la_recherche_exige_le_jeton_et_ne_déverse_pas_le_fichier():
     assert '"limit": 8' in src
     # Insensible à la casse : on tape deux lettres au comptoir, pas un prénom exact.
     assert "ilike" in src
+
+
+# ── Corriger un solde ───────────────────────────────────────────────────────
+
+def test_une_correction_ne_descend_jamais_sous_zéro():
+    """
+    ⚠️ Un solde négatif se propagerait : le client verrait « −3 / 10 » sans comprendre, et le
+    prochain crédit partirait d'un trou qu'il n'a pas creusé.
+    """
+    assert A._loyalty_apply_adjust(2, -10) == 0
+    assert A._loyalty_apply_adjust(12, -10) == 2
+    assert A._loyalty_apply_adjust(None, 3) == 3
+
+
+def test_la_correction_exige_le_LOGIN_et_un_MOTIF():
+    """
+    ⚠️ DEUX GARDES. Corriger un solde est un geste de patron, pas de caisse : le jeton du POS
+    sert à créditer ce qui a été vendu, jamais à réécrire un compte. Et sans motif, une
+    correction devient indiscernable d'une erreur de plus.
+    """
+    import inspect
+    src = inspect.getsource(A.api_loyalty_adjust)
+    assert "_current_role()" in src, "la correction n'est pas protégée par le login"
+    assert "_loyalty_authorized" not in src, "le jeton du POS ne doit PAS suffire ici"
+    assert "reason_required" in src
+
+
+# ── Mesurer le programme ────────────────────────────────────────────────────
+
+from datetime import date as _d
+
+
+def _ev(n, jour, drinks=1, kind="credit"):
+    return {"number": n, "kind": kind, "drinks": drinks, "at": f"{jour}T10:00:00+00:00"}
+
+
+def test_aucune_moyenne_sur_moins_de_deux_visites():
+    """
+    ⚠️ LE PIÈGE. Un membre vu une seule fois n'a pas de « fréquence de retour ». L'inclure à zéro
+    écraserait la moyenne et ferait conclure que le programme ne fait revenir personne — alors
+    qu'on n'en sait rien.
+    """
+    s = A._loyalty_stats([{"number": 1, "rewards": 0}], [_ev(1, "2026-08-01")], _d(2026, 8, 18))
+    assert s["avg_days_between_visits"] is None
+    assert s["returned"] == 0
+
+
+def test_la_fréquence_se_calcule_sur_les_revenus():
+    events = [_ev(1, "2026-08-01"), _ev(1, "2026-08-05"), _ev(2, "2026-08-02"), _ev(2, "2026-08-12")]
+    s = A._loyalty_stats([{"number": 1}, {"number": 2}], events, _d(2026, 8, 18))
+    assert s["returned"] == 2
+    assert s["avg_days_between_visits"] == 7.0   # (4 + 10) / 2
+
+
+def test_deux_crédits_le_MÊME_JOUR_ne_font_pas_deux_visites():
+    """Deux tickets d'affilée, c'est une visite — sinon la fréquence paraît deux fois meilleure."""
+    s = A._loyalty_stats([{"number": 1}], [_ev(1, "2026-08-01"), _ev(1, "2026-08-01")], _d(2026, 8, 2))
+    assert s["avg_days_between_visits"] is None
+
+
+def test_le_coût_est_une_FOURCHETTE():
+    """
+    ⚠️ Une boisson offerte à quelqu'un qui serait venu coûte son PRIX ; une qui provoque une
+    visite ne coûte que son ACHAT. On ne peut pas trancher a posteriori — un chiffre unique
+    serait faussement précis.
+    """
+    s = A._loyalty_stats([{"number": 1, "rewards": 3}], [], _d(2026, 8, 18))
+    assert s["cost_low_eur"] == round(3 * A.LOYALTY_COST_EUR, 2)
+    assert s["cost_high_eur"] == round(3 * A.LOYALTY_PRICE_EUR, 2)
+    assert s["cost_low_eur"] < s["cost_high_eur"]
+
+
+def test_un_programme_vide_ne_rend_pas_des_zéros_trompeurs():
+    s = A._loyalty_stats([], [], _d(2026, 8, 18))
+    assert s["avg_days_between_visits"] is None
+    assert s["reward_rate_pct"] is None

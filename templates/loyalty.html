@@ -225,7 +225,11 @@
     la r&eacute;compense est adoss&eacute;e &agrave; ce qui la finance.
   </p>
 
-  <div id="loyalty-summary" class="muted" style="margin-bottom:16px">Chargement&hellip;</div>
+  <div id="loyalty-summary" class="muted" style="margin-bottom:8px">Chargement&hellip;</div>
+
+  <!-- ⚠️ LE PROGRAMME MARCHE-T-IL ? Sans cette ligne, on sait combien de gens sont inscrits et
+       rien de plus — or la question qui decide de garder le programme est celle du RETOUR. -->
+  <div id="loyalty-stats" class="muted" style="margin-bottom:20px;font-size:13px"></div>
 
   <div style="overflow-x:auto">
     <table id="loyalty-table" style="width:100%;border-collapse:collapse;font-size:14px">
@@ -237,6 +241,7 @@
           <th style="padding:8px 10px;text-align:right">R&eacute;compense due</th>
           <th style="padding:8px 10px;text-align:right">Offertes</th>
           <th style="padding:8px 10px">Derni&egrave;re visite</th>
+          <th style="padding:8px 10px">Corriger</th>
         </tr>
       </thead>
       <tbody id="loyalty-rows"></tbody>
@@ -281,11 +286,56 @@
           + (m.rewards_available > 0 ? '<strong>' + m.rewards_available + '</strong>' : '\u2014') + '</td>' +
         '<td style="padding:8px 10px;text-align:right;font-variant-numeric:tabular-nums">'
           + (m.rewards || 0) + '</td>' +
-        '<td style="padding:8px 10px">' + fmtDate(m.last_seen) + '</td>';
+        '<td style="padding:8px 10px">' + fmtDate(m.last_seen) + '</td>' +
+        '<td style="padding:8px 10px"><button data-n="' + m.number + '" class="fix" '
+          + 'style="border:1px solid var(--line,#ddd);border-radius:6px;padding:4px 8px;'
+          + 'background:none;cursor:pointer">\u00b1</button></td>';
       /* Le pr\u00e9nom est ins\u00e9r\u00e9 comme TEXTE, jamais comme HTML : il vient d'une saisie au comptoir. */
       tr.children[1].textContent = m.first_name || '\u2014';
       tb.appendChild(tr);
     });
+
+    /* ⚠️ MOTIF OBLIGATOIRE. Sans lui, une correction devient indiscernable d'une erreur de
+       plus : six mois plus tard, personne ne saura pourquoi un solde a bouge de -10. */
+    tb.querySelectorAll('button.fix').forEach(function(b){
+      b.addEventListener('click', function(){
+        var n = b.getAttribute('data-n');
+        var delta = prompt('Correction pour le n\u00b0' + n + '\u00a0: combien de boissons ?\n'
+                         + '(un nombre, n\u00e9gatif pour retirer)');
+        if(delta === null || delta.trim() === '') return;
+        var motif = prompt('Motif de la correction (obligatoire)\u00a0:');
+        if(motif === null || motif.trim() === '') {
+          alert('Correction annul\u00e9e\u00a0: le motif est obligatoire.');
+          return;
+        }
+        fetch('/api/loyalty/adjust', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({number: Number(n), delta: Number(delta), reason: motif})
+        }).then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
+          .then(function(x){
+            if(!x.ok) { alert('Refus\u00e9\u00a0: ' + (x.j.error || '')); return; }
+            location.reload();
+          }).catch(function(e){ alert('\u00c9chec\u00a0: ' + e.message); });
+      });
+    });
+    /* Les mesures, chargees a part : une liste qui s'affiche vaut mieux qu'une page vide si
+       le calcul echoue. */
+    fetch('/api/loyalty/stats').then(function(r){ return r.json(); }).then(function(s){
+      var el = document.getElementById('loyalty-stats');
+      var freq = (s.avg_days_between_visits === null || s.avg_days_between_visits === undefined)
+        ? 'pas encore mesurable' /* jamais « 0 jour », qui se lirait « ils reviennent le jour meme » */
+        : s.avg_days_between_visits + ' jours entre deux visites, en moyenne';
+      el.innerHTML =
+        '<strong>' + s.returned + '</strong> membre(s) revenu(s) au moins une fois &middot; ' + freq
+        + ' &middot; ' + s.active_30d + ' actif(s) sur 30 jours<br>'
+        + s.drinks_credited + ' boisson(s) cr\u00e9dit\u00e9e(s), ' + s.rewards_given
+        + ' offerte(s) &mdash; co\u00fbt entre <strong>' + s.cost_low_eur.toFixed(2)
+        + '\u00a0\u20ac</strong> (prix d\'achat) et <strong>' + s.cost_high_eur.toFixed(2)
+        + '\u00a0\u20ac</strong> (manque \u00e0 gagner). '
+        + 'La v\u00e9rit\u00e9 est entre les deux\u00a0: une boisson offerte \u00e0 quelqu\'un qui '
+        + 'serait venu de toute fa\u00e7on co\u00fbte son prix, une qui provoque une visite ne '
+        + 'co\u00fbte que son achat.';
+    }).catch(function(){ /* la liste reste utilisable sans les mesures */ });
   }).catch(function(e){
     document.getElementById('loyalty-summary').textContent =
       'Liste indisponible \u2014 ' + e.message + '. La migration a-t-elle \u00e9t\u00e9 lanc\u00e9e ?';

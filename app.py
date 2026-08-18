@@ -1173,6 +1173,13 @@ def api_summary_rebuild():
 
 LOYALTY_THRESHOLD = 10   # boissons pour une récompense
 
+# Bornes du coût d'une boisson offerte, mesurées sur le compte (août) : le café le plus vendu
+# part à 4,00 € et coûte 0,70 € à l'achat. Une récompense donnée à quelqu'un qui serait venu de
+# toute façon coûte le PRIX ; une qui provoque une visite ne coûte que l'ACHAT. On ne peut pas
+# trancher a posteriori — d'où deux bornes plutôt qu'un chiffre faussement précis.
+LOYALTY_COST_EUR = 0.70
+LOYALTY_PRICE_EUR = 4.00
+
 
 def _loyalty_authorized():
     """
@@ -1247,6 +1254,82 @@ def _loyalty_number_taken(rows, numero):
     rien ne l'indique — jusqu'au jour où l'un réclame une récompense que l'autre a consommée.
     """
     return any(int(r.get("number") or 0) == int(numero) for r in (rows or []))
+
+
+def _loyalty_apply_adjust(drinks, delta):
+    """
+    Nouveau solde après correction, jamais négatif.
+
+    ⚠️ UN SOLDE NÉGATIF N'A AUCUN SENS et se propagerait : `_loyalty_rewards_available` le
+    ramènerait à zéro, mais le client verrait « −3 / 10 » sans comprendre, et le prochain crédit
+    partirait d'un trou qu'il n'a pas creusé. On borne à zéro et la correction reste tracée pour
+    ce qu'elle vaut.
+    """
+    return max(0, int(drinks or 0) + int(delta))
+
+
+def _loyalty_stats(members, events, today):
+    """
+    Le programme marche-t-il, et combien coûte-t-il ?
+
+    ⚠️ AUCUNE MOYENNE SUR MOINS DE DEUX VISITES. Un membre vu une seule fois n'a pas de
+    « fréquence de retour » : l'inclure à zéro écraserait la moyenne vers le bas et ferait
+    conclure que le programme ne fait revenir personne, alors qu'on n'en sait rien. Ils sont
+    comptés à part.
+
+    ⚠️ ET LE COÛT EST UNE FOURCHETTE, PAS UN NOMBRE. Une boisson offerte à quelqu'un qui serait
+    venu de toute façon coûte son PRIX ; une qui provoque une visite ne coûte que son ACHAT. On
+    ne peut pas trancher a posteriori, alors on montre les deux bornes plutôt qu'un chiffre
+    faussement précis.
+    """
+    membres = list(members or [])
+    credits = [e for e in (events or []) if e.get("kind") == "credit"]
+
+    # Visites par membre, datées.
+    par_membre = {}
+    for e in credits:
+        jour = (e.get("at") or "")[:10]
+        if jour:
+            par_membre.setdefault(int(e.get("number") or 0), []).append(jour)
+
+    ecarts = []
+    revenus = 0
+    for jours in par_membre.values():
+        uniques = sorted(set(jours))
+        if len(uniques) < 2:
+            continue
+        revenus += 1
+        d = [date.fromisoformat(x) for x in uniques]
+        ecarts += [(d[i] - d[i - 1]).days for i in range(1, len(d))]
+
+    actifs = 0
+    for m in membres:
+        vu = (m.get("last_seen") or "")[:10]
+        if vu:
+            try:
+                if (today - date.fromisoformat(vu)).days <= 30:
+                    actifs += 1
+            except ValueError:
+                pass
+
+    recompenses = sum(int(m.get("rewards") or 0) for m in membres)
+    boissons = sum(int(e.get("drinks") or 0) for e in credits)
+    return {
+        "members": len(membres),
+        "active_30d": actifs,
+        # Membres revenus au moins une fois — le seul sur lequel une fréquence a un sens.
+        "returned": revenus,
+        "drinks_credited": boissons,
+        "rewards_given": recompenses,
+        # `None` tant que personne n'est revenu : « 0 jour » se lirait « ils reviennent le jour
+        # même », l'inverse exact de la vérité.
+        "avg_days_between_visits": round(sum(ecarts) / len(ecarts), 1) if ecarts else None,
+        # Part des boissons créditées qui est repartie en récompenses.
+        "reward_rate_pct": (round(recompenses * LOYALTY_THRESHOLD * 100.0 / boissons, 1)
+                            if boissons else None),
+        "cost_low_eur": round(recompenses * LOYALTY_COST_EUR, 2),
+        "cost_high_eur": round(recompenses * LOYALTY_PRICE_EUR, 2),
+    }
 
 
 def _loyalty_member(number):
@@ -1445,6 +1528,57 @@ def api_loyalty_list():
     rows = _supa_get("loyalty_members", {"select": "*", "order": "last_seen.desc.nullslast"})
     membres = [{**_loyalty_public(r), "last_seen": r.get("last_seen")} for r in rows]
     return jsonify({"threshold": LOYALTY_THRESHOLD, "members": membres})
+
+
+@app.route("/api/loyalty/adjust", methods=["POST"])
+def api_loyalty_adjust():
+    """
+    Corrige le solde d'un membre.
+
+    ⚠️ SOUS LE LOGIN, PAS SOUS LE JETON. Corriger un solde est un geste de PATRON, pas de
+    caisse : le jeton du POS sert à créditer ce qui a été vendu, jamais à réécrire un compte.
+    `/api/loyalty/` échappant au login pour laisser passer le POS, le contrôle est rétabli ici.
+
+    ⚠️ ET LE MOTIF EST OBLIGATOIRE. Sans lui, une correction devient indiscernable d'une erreur
+    de plus : six mois plus tard, personne ne saura pourquoi un solde a bougé de −10.
+    """
+    if _current_role() is None:
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    try:
+        numero, delta = int(data.get("number")), int(data.get("delta"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "number_and_delta_required"}), 400
+    motif = (data.get("reason") or "").strip()
+    if not motif:
+        return jsonify({"error": "reason_required"}), 400
+    if delta == 0:
+        return jsonify({"error": "delta_zero"}), 400
+    row = _loyalty_member(numero)
+    if not row:
+        return jsonify({"error": "no_member", "number": numero}), 404
+
+    nouveau = _loyalty_apply_adjust(row.get("drinks"), delta)
+    ok, err = _supa_upsert("loyalty_members", {
+        "number": numero, "first_name": row.get("first_name"), "drinks": nouveau,
+        "rewards": int(row.get("rewards") or 0),
+    })
+    if not ok:
+        return jsonify({"error": "write_failed", "detail": str(err)}), 502
+    # La trace part MÊME si elle échoue à s'écrire : le solde, lui, a bougé.
+    _supa_upsert("loyalty_events", {"number": numero, "kind": "adjust",
+                                    "drinks": delta, "reason": motif[:200]})
+    return jsonify(_loyalty_public({**row, "drinks": nouveau}))
+
+
+@app.route("/api/loyalty/stats")
+def api_loyalty_stats():
+    """Le programme marche-t-il, et combien coûte-t-il ? Sous le login, comme la liste."""
+    if _current_role() is None:
+        return jsonify({"error": "unauthorized"}), 401
+    membres = _supa_get("loyalty_members", {"select": "*"})
+    events = _supa_get("loyalty_events", {"select": "number,kind,drinks,at", "limit": 5000})
+    return jsonify(_loyalty_stats(membres, events, today_lisbon()))
 
 
 @app.route("/api/cashflow")
