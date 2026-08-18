@@ -243,6 +243,38 @@ function pickWindows(payload) {
 // son CA/personne est SUR-estimé. Ça ne se murmure pas en note de bas de page :
 // c'est une borne qui déforme le chiffre affiché juste au-dessus.
 
+// ── D'où viennent les personnes : comptées ou devinées ────────────────────────
+// Le POS demande le nombre de personnes à l'ouverture d'une table et l'écrit sur la
+// note du document ; le reste — le comptoir, la caisse principale — est ESTIMÉ en
+// comptant les boissons. Le total mêle donc les deux.
+//
+// ⚠️ SANS CETTE PHRASE, UN CHIFFRE À 90 % DEVINÉ SE LIT COMME UN COMPTAGE. C'est
+// précisément le malentendu que la remontée du POS était censée dissiper : le taire
+// annulerait tout le bénéfice. `null` tant que rien n'est classé — pas « 0 % mesuré »,
+// qui affirmerait qu'on a regardé.
+
+function coversSourceModel(windows) {
+  const src = Array.isArray(windows) ? windows : [];
+  let best = null;
+  for (let i = 0; i < src.length; i++) {
+    const w = src[i];
+    if (!w || typeof w.covers_measured_pct !== 'number' || !isFinite(w.covers_measured_pct))
+      continue;
+    best = w.covers_measured_pct;
+  }
+  if (best === null) return { known: false, text: null };
+  return {
+    known: true,
+    pct: best,
+    text: best >= 99.5
+      ? 'people are <b>counted</b>, not estimated — every ticket here carries a real headcount'
+      : best <= 0.5
+        ? 'people are <b>estimated</b> from drinks (1 drink = 1 person) — no ticket here carries a real headcount'
+        : Math.round(best) + '% of tickets carry a <b>counted</b> headcount from the POS; '
+          + 'the rest is <b>estimated</b> from drinks',
+  };
+}
+
 function cappedModel(windows) {
   const src = Array.isArray(windows) ? windows : [];
   let total = 0, touched = 0;
@@ -1261,7 +1293,9 @@ function renderCharts(d) {
   }
 
   const capped = cappedModel(payload.windows);
+  const source = coversSourceModel(payload.windows);
   el('tx-chart-foot').innerHTML =
+    (source.known ? source.text + ' · ' : '') +
     foot.n + ' open days plotted · closed days have no bar — <b>they are not zero-ticket days</b>'
     + (foot.partialDays.length
         ? ' · hatched = ' + esc(foot.partialDays.join(', ')) + ' <b>partial, excluded from every median</b>'

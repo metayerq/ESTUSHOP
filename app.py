@@ -9,6 +9,7 @@ Usage:
 
 import os
 import json
+import re as _re
 import hmac
 import time
 import hashlib
@@ -2106,6 +2107,32 @@ def _summaries_cache_put(day_iso, row):
     except (AttributeError, RuntimeError):
         pass
 
+# ── Couverts : la mesure du POS, quand elle existe ──────────────────────────
+# Le POS demande le nombre de personnes à chaque ouverture de table et l'écrit dans la NOTE du
+# document, sous la forme `pax:N` (contrat écrit dans `apps/pos/lib/covers.ts` côté caisse).
+# C'est une MESURE, saisie par un humain ; l'heuristique des boissons, elle, est une estimation.
+#
+# ⚠️ ELLE NE COUVRIRA JAMAIS TOUT, ET IL NE FAUT PAS FAIRE SEMBLANT. Le comptoir n'ouvre pas de
+# table et la caisse principale n'est pas ce POS : du 15 au 18 août, 10 documents sur 95 venaient
+# du POS. On préfère donc la mesure document par document, on garde l'estimation ailleurs, et on
+# COMPTE combien de documents relèvent de l'une et de l'autre — sans ce compte, un chiffre à 90 %
+# estimé se lirait comme un chiffre mesuré.
+_PAX_RE = _re.compile(r"(?:^|\s)pax:(\d{1,3})(?:\s|$)", _re.I)
+
+
+def _covers_from_notes(doc):
+    """Couverts réels portés par la note d'un document, ou None.
+
+    ⚠️ REND None, JAMAIS 0. Zéro couvert se propagerait comme « une table sans personne » et
+    ferait chuter la moyenne, au lieu de laisser l'estimation faire son travail.
+    """
+    m = _PAX_RE.search(doc.get("notes") or "")
+    if not m:
+        return None
+    n = int(m.group(1))
+    return n if n > 0 else None
+
+
 def _summarize_docs_items(docs, catalog):
     """Agrégats item-level d'une liste de docs avec items (1 journée)."""
     cogs = covered = items_ht = 0.0
@@ -2132,6 +2159,11 @@ def _summarize_docs_items(docs, catalog):
     # doit donc dire « personnes estimées », jamais « clients ».
     covers = 0
     covers_capped = 0
+    # ⚠️ CE QUI PERMET DE DIRE CE QU'ON MONTRE. Sans ces deux compteurs, un chiffre à 90 %
+    # estimé se lirait comme un chiffre mesuré — c'est exactement ce que la remontée du POS est
+    # censée corriger, et le taire annulerait le bénéfice.
+    covers_measured = 0
+    covers_estimated = 0
     for d in docs:
         its = d.get("items", [])
         if not d.get("_refund"):
@@ -2141,14 +2173,23 @@ def _summarize_docs_items(docs, catalog):
                 k = str(int(hh))
                 hours[k] = hours.get(k, 0) + 1
         if not d.get("_refund"):
-            n_boissons = sum(float(i.get("qty", 0)) for i in its
-                             if (catalog.get(i.get("title", "").strip()) or {})
-                                .get("category_id") in DRINK_CAT_IDS)
-            p = max(1, int(round(n_boissons)))
-            if p > COVERS_CAP:
-                covers_capped += 1
-                p = COVERS_CAP
-            covers += p
+            # La MESURE d'abord, quand le POS l'a portée sur la note : elle a été saisie par un
+            # humain qui avait les gens sous les yeux. Ni plancher ni plafond ne s'y appliquent —
+            # ce sont des garde-fous d'estimation, pas de comptage.
+            mesure = _covers_from_notes(d)
+            if mesure is not None:
+                covers += mesure
+                covers_measured += 1
+            else:
+                n_boissons = sum(float(i.get("qty", 0)) for i in its
+                                 if (catalog.get(i.get("title", "").strip()) or {})
+                                    .get("category_id") in DRINK_CAT_IDS)
+                p = max(1, int(round(n_boissons)))
+                if p > COVERS_CAP:
+                    covers_capped += 1
+                    p = COVERS_CAP
+                covers += p
+                covers_estimated += 1
         if len(its) >= 2 and not d.get("_refund"):
             multi += 1
         for item in its:
@@ -2175,8 +2216,14 @@ def _summarize_docs_items(docs, catalog):
         "items_ht":    round(items_ht, 2),
         "multi_count": multi,
         "hours":       hours,          # {"9": 12, "20": 8} — heure locale, avoirs exclus
-        "covers":        covers,         # personnes ESTIMÉES (1 boisson = 1 personne, plancher 1)
-        "covers_capped": covers_capped,  # tickets ramenés au plafond — à annoncer à l'écran
+        # ⚠️ MÉLANGE ASSUMÉ, ET ANNONCÉ. `covers` additionne des personnes MESURÉES (note du
+        # POS) et des personnes ESTIMÉES (1 boisson = 1 personne, plancher 1, plafond 8). Les
+        # deux compteurs qui suivent disent la part de chacune : sans eux, un total à 90 %
+        # estimé se lirait comme un comptage.
+        "covers":          covers,
+        "covers_capped":   covers_capped,   # tickets ESTIMÉS ramenés au plafond
+        "covers_measured": covers_measured, # documents portant un compte réel (POS)
+        "covers_estimated": covers_estimated,
         "products":    {k: {"qty": v["qty"], "rev_ttc": round(v["rev_ttc"], 2),
                             "rev_ht": round(v["rev_ht"], 2)} for k, v in products.items()},
     }
@@ -2194,10 +2241,13 @@ def _upsert_summary(day_iso, summary):
     ok, err = _supa_upsert("daily_summary", row)
     # Chaque colonne neuve peut manquer indépendamment (deux migrations distinctes) : on
     # retire seulement celle que Supabase nomme, et on réessaie tant qu'il en nomme une.
-    for _ in range(3):
+    for _ in range(5):
         if ok or not err:
             break
-        manquante = next((c for c in ("hours", "covers_capped", "covers") if c in str(err)), None)
+        # ⚠️ L'ORDRE COMPTE : `covers_measured` avant `covers`, sinon le nom court se retrouverait
+        # dans le message d'erreur qui nomme le nom long, et on retirerait la mauvaise colonne.
+        manquante = next((c for c in ("hours", "covers_measured", "covers_estimated",
+                                      "covers_capped", "covers") if c in str(err)), None)
         if manquante is None or manquante not in row:
             break
         row.pop(manquante, None)
@@ -2501,6 +2551,11 @@ def _tx_day_records(rows, today_real):
             # Même règle : une ligne d'avant la migration n'a pas « zéro personne ».
             "covers":      (int(float(r["covers"])) if r.get("covers") is not None else None),
             "covers_capped": int(float(r.get("covers_capped") or 0)),
+            # Une ligne écrite avant cette remontée n'a pas « zéro document mesuré » : elle n'en
+            # sait rien. Mais pour un compte, 0 et « inconnu » se traitent pareil ici — aucune
+            # part ne sera calculée dessus sans dénominateur.
+            "covers_measured": int(float(r.get("covers_measured") or 0)),
+            "covers_estimated": int(float(r.get("covers_estimated") or 0)),
         })
     out.sort(key=lambda d: d["day"])
     return out
@@ -2572,6 +2627,15 @@ def _tx_window_stats(records, w_from, w_to, window_days=TX_WINDOW_DAYS,
         "covers_median": _median(couverts) if len(couverts) == len(full) else None,
         "ca_per_cover":  round(_median(ca_pers), 2) if len(ca_pers) == len(full) and full else None,
         "covers_capped": sum(d.get("covers_capped") or 0 for d in full),
+        # Part des personnes qui viennent d'un COMPTAGE et non d'une estimation. `None` tant
+        # qu'aucun document n'a été classé — pas 0 %, qui se lirait « rien n'est mesuré » alors
+        # qu'on n'en sait rien.
+        "covers_measured_pct": (
+            round(sum(d.get("covers_measured") or 0 for d in full) * 100.0
+                  / max(1, sum((d.get("covers_measured") or 0) + (d.get("covers_estimated") or 0)
+                               for d in full)), 1)
+            if sum((d.get("covers_measured") or 0) + (d.get("covers_estimated") or 0)
+                   for d in full) > 0 else None),
         "multi_pct":     (round(multi / tickets * 100, 1)
                           if tickets and len(mesures) == len(full) else None),
         "reliable":      n >= min_full,

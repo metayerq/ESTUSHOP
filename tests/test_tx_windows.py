@@ -430,7 +430,11 @@ def test_la_forme_de_la_reponse_est_celle_attendue_par_la_page():
     assert set(out) == {"from", "to", "days", "windows", "hourly", "weekday", "headline"}
     assert (out["from"], out["to"]) == ("2026-05-27", "2026-08-07")
     assert set(out["days"][0]) == {"day", "nb", "ca_ttc", "covers", "weekday", "partial"}
-    assert set(out["windows"][0]) == {"from", "to", "full_days", "tx_median", "ca_median",
+    # `covers_measured_pct` : part des personnes COMPTÉES (note du POS) plutôt qu'estimées.
+    # Elle figure ici parce que la page l'affiche — une clé que personne ne lit serait de la
+    # donnée morte, et ce test existe justement pour tenir l'API et la page ensemble.
+    assert set(out["windows"][0]) == {"covers_measured_pct",
+                                      "from", "to", "full_days", "tx_median", "ca_median",
                                       "basket_median", "multi_pct", "reliable", "reason",
                                       "covers_median", "ca_per_cover", "covers_capped"}
     assert set(out["weekday"][0]) == {"weekday", "label", "tx_median", "n"}
