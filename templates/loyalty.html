@@ -359,6 +359,8 @@
           + champ('f-nom', 'Pr\u00e9nom', m.first_name)
           + champ('f-tel', 'T\u00e9l\u00e9phone (vide = retirer)', m.phone, 'tel')
           + champ('f-mail', 'E-mail (vide = retirer)', m.email, 'email')
+          + champ('f-pays', 'Nationalit\u00e9', m.country)
+          + champ('f-nif', 'NIF (repris sur chaque facture)', m.fiscal_id)
           + champ('f-notes', 'Pr\u00e9f\u00e9rences / notes', m.notes)
           + '<div style="display:flex;gap:8px">'
           + '<div style="flex:1">' + champ('f-jour', 'Anniversaire \u2014 jour', m.birth_day, 'number') + '</div>'
@@ -390,6 +392,8 @@
               phone: document.getElementById('f-tel').value,
               email: document.getElementById('f-mail').value,
               notes: document.getElementById('f-notes').value,
+              country: document.getElementById('f-pays').value,
+              fiscal_id: document.getElementById('f-nif').value,
               birth_day: document.getElementById('f-jour').value,
               birth_month: document.getElementById('f-mois').value
             })

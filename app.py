@@ -1429,7 +1429,7 @@ def _loyalty_anonymise(row):
     return {
         "number": int(row["number"]),
         "first_name": "—",
-        "phone": None, "email": None, "notes": None, "fiscal_id": None,
+        "phone": None, "email": None, "notes": None, "fiscal_id": None, "country": None,
         "birth_day": None, "birth_month": None, "consent_at": None,
         "status": "deleted",
         # Les compteurs restent : l'historique du programme ne doit pas se réécrire.
@@ -1558,6 +1558,9 @@ def api_loyalty_create():
         return jsonify({"error": err}), 400
     if mail:
         ligne["email"] = mail
+    pays = (data.get("country") or "").strip()
+    if pays:
+        ligne["country"] = pays[:60]
     nif, err = _loyalty_clean_nif(data.get("fiscal_id"))
     if err:
         return jsonify({"error": err}), 400
@@ -1693,7 +1696,7 @@ def _loyalty_full(row):
         "phone": row.get("phone"), "email": row.get("email"),
         "notes": row.get("notes"),
         "birth_day": row.get("birth_day"), "birth_month": row.get("birth_month"),
-        "fiscal_id": row.get("fiscal_id"),
+        "fiscal_id": row.get("fiscal_id"), "country": row.get("country"),
         "consent_at": row.get("consent_at"), "created_at": row.get("created_at"),
         "last_seen": row.get("last_seen"), "status": row.get("status"),
     }
@@ -1759,6 +1762,8 @@ def api_loyalty_edit(number):
         maj["email"] = mail
     if "notes" in data:
         maj["notes"] = ((data.get("notes") or "").strip()[:500]) or None
+    if "country" in data:
+        maj["country"] = ((data.get("country") or "").strip()[:60]) or None
     if "fiscal_id" in data:
         nif, err = _loyalty_clean_nif(data.get("fiscal_id"))
         if err:
