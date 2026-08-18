@@ -1332,6 +1332,31 @@ def _loyalty_stats(members, events, today):
     }
 
 
+def _loyalty_clean_nif(raw):
+    """
+    Valide un NIF portugais, ou l'efface.
+
+    ⚠️ JUMEAU DE `apps/pos/lib/nif.ts`. Les deux dépôts vérifient la même clé de contrôle :
+    somme pondérée des huit premiers chiffres par 9…2, modulo 11 ; la clé vaut 0 si le reste est
+    0 ou 1, sinon 11 − reste. Algorithme confirmé sur un NIF réel du compte (517659328).
+
+    ⚠️ VALIDE NE VEUT PAS DIRE EXISTANT. La formule ne dit rien de l'existence du contribuable.
+    Mais elle attrape la faute de frappe — et un NIF stocké faux repartirait sur TOUTES les
+    factures suivantes sans que personne ne le retape.
+    """
+    v = _re.sub(r"[\s.\-]", "", (raw or ""))
+    if v == "":
+        return None, None
+    if not v.isdigit() or len(v) != 9 or v[0] not in "12356789":
+        return None, "nif_invalid"
+    somme = sum(int(v[i]) * (9 - i) for i in range(8))
+    reste = somme % 11
+    cle = 0 if reste < 2 else 11 - reste
+    if cle != int(v[8]):
+        return None, "nif_invalid"
+    return v, None
+
+
 def _loyalty_clean_birthday(day, month):
     """
     Valide un anniversaire, ou l'efface.
@@ -1404,7 +1429,7 @@ def _loyalty_anonymise(row):
     return {
         "number": int(row["number"]),
         "first_name": "—",
-        "phone": None, "email": None, "notes": None,
+        "phone": None, "email": None, "notes": None, "fiscal_id": None,
         "birth_day": None, "birth_month": None, "consent_at": None,
         "status": "deleted",
         # Les compteurs restent : l'historique du programme ne doit pas se réécrire.
@@ -1447,6 +1472,10 @@ def _loyalty_public(row):
         # ne reçoit pas ne peut pas s'afficher par mégarde sur un écran de comptoir. Le calcul
         # se fait ici, avec l'heure de Lisbonne.
         "birthday_today": _loyalty_is_birthday(row, today_lisbon()),
+        # ⚠️ LE NIF, LUI, DESCEND JUSQU'À LA CAISSE — contrairement au téléphone. Elle en a un
+        # usage précis : le pré-remplir sur la facture, pour que le client n'ait plus à réciter
+        # neuf chiffres à chaque visite. Un champ sans usage ne descend pas ; celui-ci en a un.
+        "fiscal_id": row.get("fiscal_id") or None,
     }
 
 
@@ -1520,6 +1549,25 @@ def api_loyalty_create():
     else:
         numero = _loyalty_next_number(existants)
     ligne = {"number": numero, "first_name": prenom[:40], "drinks": 0, "rewards": 0}
+
+    # Tout ce qui suit est FACULTATIF. L'inscription est le seul moment qui coûte du temps au
+    # client : chaque champ exigé s'y ajoute. Un refus ne doit donc jamais bloquer la création —
+    # sauf si la donnée est fausse, auquel cas la garder serait pire.
+    mail, err = _loyalty_clean_email(data.get("email"))
+    if err:
+        return jsonify({"error": err}), 400
+    if mail:
+        ligne["email"] = mail
+    nif, err = _loyalty_clean_nif(data.get("fiscal_id"))
+    if err:
+        return jsonify({"error": err}), 400
+    if nif:
+        ligne["fiscal_id"] = nif
+    d, m, err = _loyalty_clean_birthday(data.get("birth_day"), data.get("birth_month"))
+    if err:
+        return jsonify({"error": err}), 400
+    if d and m:
+        ligne["birth_day"], ligne["birth_month"] = d, m
     if tel:
         # Le téléphone n'est enregistré QU'AVEC un consentement horodaté. Sans lui, on garde
         # une fiche sans contact — ce qui reste parfaitement fonctionnel pour les points.
@@ -1645,6 +1693,7 @@ def _loyalty_full(row):
         "phone": row.get("phone"), "email": row.get("email"),
         "notes": row.get("notes"),
         "birth_day": row.get("birth_day"), "birth_month": row.get("birth_month"),
+        "fiscal_id": row.get("fiscal_id"),
         "consent_at": row.get("consent_at"), "created_at": row.get("created_at"),
         "last_seen": row.get("last_seen"), "status": row.get("status"),
     }
@@ -1710,6 +1759,11 @@ def api_loyalty_edit(number):
         maj["email"] = mail
     if "notes" in data:
         maj["notes"] = ((data.get("notes") or "").strip()[:500]) or None
+    if "fiscal_id" in data:
+        nif, err = _loyalty_clean_nif(data.get("fiscal_id"))
+        if err:
+            return jsonify({"error": err}), 400
+        maj["fiscal_id"] = nif
     if "birth_day" in data or "birth_month" in data:
         d, m, err = _loyalty_clean_birthday(data.get("birth_day"), data.get("birth_month"))
         if err:

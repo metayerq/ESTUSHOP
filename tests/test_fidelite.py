@@ -565,3 +565,51 @@ def test_aucun_jeton_de_style_INVENTÉ():
     # le texte invisible.
     assert "background:var(--bg-card);color:var(--text)" in page
     assert "background:var(--bg-page);color:var(--text)" in page
+
+
+# ── Le NIF sur la carte ─────────────────────────────────────────────────────
+
+def test_le_NIF_réel_du_compte_passe():
+    """Jumeau de `apps/pos/lib/nif.ts` — même clé de contrôle, confirmée sur un NIF réel."""
+    assert A._loyalty_clean_nif("517659328") == ("517659328", None)
+    assert A._loyalty_clean_nif("517 659 328") == ("517659328", None)   # dicté, tapé avec espaces
+
+
+def test_un_NIF_faux_est_REFUSÉ_et_non_stocké():
+    """
+    ⚠️ IL PART SUR UN DOCUMENT OPPOSABLE, ET À CHAQUE VISITE. Un NIF stocké faux se retrouverait
+    sur toutes les factures suivantes sans que personne ne le retape — l'erreur se répète au lieu
+    de se corriger.
+    """
+    for mauvais in ("517659327", "51765932", "01234567 8", "412345678", "abcdefghi"):
+        assert A._loyalty_clean_nif(mauvais)[1] == "nif_invalid", mauvais
+
+
+def test_un_NIF_vidé_efface_sans_refuser():
+    assert A._loyalty_clean_nif("") == (None, None)
+    assert A._loyalty_clean_nif(None) == (None, None)
+
+
+def test_le_NIF_descend_jusqu_à_la_caisse_contrairement_au_téléphone():
+    """
+    ⚠️ LA DIFFÉRENCE EST L'USAGE. La caisse pré-remplit la facture avec le NIF — neuf chiffres
+    que le client ne récite plus. Elle n'a aucun usage d'un téléphone, donc elle ne le reçoit
+    pas : ce qu'elle ne reçoit pas ne peut pas s'afficher par mégarde.
+    """
+    row = {"number": 3, "first_name": "Maria", "drinks": 0, "rewards": 0,
+           "fiscal_id": "517659328", "phone": "912345678"}
+    vue = A._loyalty_public(row)
+    assert vue["fiscal_id"] == "517659328"
+    assert "phone" not in vue
+
+
+def test_la_création_accepte_les_champs_facultatifs_sans_les_exiger():
+    """
+    L'inscription est le seul moment qui coûte du temps au CLIENT : chaque champ exige s'y
+    ajoute. Aucun n'est obligatoire — mais un champ FAUX est refusé, car le garder serait pire.
+    """
+    import inspect
+    src = inspect.getsource(A.api_loyalty_create)
+    for champ in ("email", "fiscal_id", "birth_day"):
+        assert champ in src, champ
+    assert "first_name_required" in src   # le prénom, lui, reste exigé
