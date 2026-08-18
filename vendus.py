@@ -476,7 +476,18 @@ def unsold_today(docs, catalog):
 # Retail = Livres + Papeterie + café en sac + non catégorisé
 FOOD_CAT_IDS         = {343042919, 343065085, 343055566, 343079649, 343052198}
 VIENNOISERIE_CAT_IDS = {343054458}
-DRINK_CAT_IDS        = {343052000, 343053226, 343046110, 343053550, 343055376}
+# ⚠️ TROIS CATÉGORIES, ET SEULEMENT TROIS : Coffee, Cold Coffee, Non-Coffee. C'est la règle du
+# café, confirmée par lui — un cheesecake ne rapproche pas d'un café offert.
+#
+# L'ensemble portait aussi 343053550 et 343055376, qui ne correspondent à AUCUNE catégorie du
+# compte : deux identifiants morts, sans effet tant qu'aucun produit ne les porte, mais qui
+# auraient silencieusement compté comme boissons le jour où une catégorie aurait réutilisé un de
+# ces numéros. Une règle métier doit se lire, pas se deviner.
+DRINK_CAT_IDS        = {
+    343052000,   # Coffee
+    343053226,   # Cold Coffee
+    343046110,   # Non-Coffee
+}
 RETAIL_CAT_IDS       = {343071668, 343077316}   # Livres, Papeterie
 EXTRA_CAT_IDS        = set()   # fusionné dans Food (conservé pour compat imports)
 

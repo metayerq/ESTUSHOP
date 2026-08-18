@@ -303,3 +303,38 @@ def test_un_programme_vide_ne_rend_pas_des_zéros_trompeurs():
     s = A._loyalty_stats([], [], _d(2026, 8, 18))
     assert s["avg_days_between_visits"] is None
     assert s["reward_rate_pct"] is None
+
+
+# ── Ce qui compte comme boisson ─────────────────────────────────────────────
+
+def test_exactement_trois_catégories_comptent():
+    """
+    ⚠️ LA RÈGLE DU CAFÉ, ÉPINGLÉE. Coffee, Cold Coffee, Non-Coffee — et rien d'autre. Un
+    cheesecake ne rapproche pas d'un café offert, et une catégorie ajoutée au catalogue ne doit
+    pas se mettre à compter parce que personne n'a relu cette ligne.
+
+    Les identifiants sont ceux du compte réel :
+      343052000 Coffee · 343053226 Cold Coffee · 343046110 Non-Coffee
+    """
+    import vendus
+    assert vendus.DRINK_CAT_IDS == {343052000, 343053226, 343046110}
+
+
+def test_un_ticket_sans_boisson_ne_compte_pas():
+    """« Si pas de boissons, pas de passage. » Un cheesecake seul ne crédite rien."""
+    catalogue = {"Cheesecake": {"category_id": 343055566}}   # Food
+    assert A._loyalty_count_drinks([{"title": "Cheesecake", "qty": 1}], catalogue) == 0
+
+
+def test_un_ticket_mixte_ne_compte_que_la_boisson():
+    """« Cheesecake basque et americano » : la boisson compte, la pâtisserie non."""
+    catalogue = {"Cheesecake": {"category_id": 343055566},
+                 "Americano": {"category_id": 343052000}}
+    items = [{"title": "Cheesecake", "qty": 1}, {"title": "Americano", "qty": 1}]
+    assert A._loyalty_count_drinks(items, catalogue) == 1
+
+
+def test_les_livres_et_le_retail_ne_comptent_jamais():
+    catalogue = {"Livro": {"category_id": 343071668}, "Papeterie": {"category_id": 343077316}}
+    items = [{"title": "Livro", "qty": 2}, {"title": "Papeterie", "qty": 1}]
+    assert A._loyalty_count_drinks(items, catalogue) == 0
