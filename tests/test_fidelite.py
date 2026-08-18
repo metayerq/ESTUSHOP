@@ -613,3 +613,56 @@ def test_la_création_accepte_les_champs_facultatifs_sans_les_exiger():
     for champ in ("email", "fiscal_id", "birth_day"):
         assert champ in src, champ
     assert "first_name_required" in src   # le prénom, lui, reste exigé
+
+
+# ── Les visites sans boisson ────────────────────────────────────────────────
+
+def test_le_montant_est_en_CENTIMES_entiers():
+    """
+    ⚠️ Un montant en virgule flottante dérive à l'addition : sur des centaines de tickets, le
+    cumul finit par ne plus tomber juste, et la dérive reste invisible jusqu'au jour où on la
+    compare à la comptabilité.
+    """
+    assert A._loyalty_amount_cents(9.61) == 961
+    assert A._loyalty_amount_cents("7.40") == 740
+    # Les prix qui dérivent le plus : 0,07 et 2,675.
+    assert A._loyalty_amount_cents(0.07) == 7
+    assert A._loyalty_amount_cents(2.675) == 268
+
+
+def test_un_montant_absent_ou_absurde_rend_None_et_jamais_0():
+    """« 0 € dépensé » se lirait comme un client qui ne consomme rien, pas comme une absence."""
+    for v in (None, "", 0, -5, "abc"):
+        assert A._loyalty_amount_cents(v) is None, v
+
+
+def test_une_visite_SANS_boisson_est_enregistrée():
+    """
+    ⚠️ LE POINT AVEUGLE CORRIGÉ. Un ticket sans boisson ne laissait aucune trace : ni passage, ni
+    date, ni montant. Quelqu'un qui vient acheter un livre chaque semaine était invisible — et
+    cet historique ne se reconstruit pas, chaque jour passé est perdu définitivement.
+    """
+    import inspect
+    src = inspect.getsource(A.api_loyalty_credit)
+    # Il n'y a plus de sortie anticipée à zéro boisson.
+    assert "if n == 0:" not in src, "un ticket sans boisson ressort sans laisser de trace"
+    assert "last_seen" in src
+    assert "amount_cents" in src
+
+
+def test_les_visites_sans_boisson_se_comptent_à_part():
+    """Pour voir si la fidélité ne parle qu'aux buveurs de café."""
+    events = [_ev(1, "2026-08-01", drinks=2), _ev(1, "2026-08-05", drinks=0)]
+    for e in events:
+        e["amount_cents"] = 1000
+    s = A._loyalty_stats([{"number": 1}], events, _d(2026, 8, 18))
+    assert s["visits"] == 2
+    assert s["visits_without_drink"] == 1
+    assert s["spent_eur"] == 20.0
+    assert s["avg_ticket_eur"] == 10.0
+
+
+def test_sans_montant_remonté_aucune_dépense_n_est_inventée():
+    s = A._loyalty_stats([{"number": 1}], [_ev(1, "2026-08-01")], _d(2026, 8, 18))
+    assert s["spent_eur"] is None
+    assert s["avg_ticket_eur"] is None

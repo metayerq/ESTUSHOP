@@ -467,6 +467,11 @@
       el.innerHTML =
         '<strong>' + s.returned + '</strong> membre(s) revenu(s) au moins une fois &middot; ' + freq
         + ' &middot; ' + s.active_30d + ' actif(s) sur 30 jours<br>'
+        + s.visits + ' visite(s) dont <strong>' + s.visits_without_drink
+        + '</strong> sans boisson'
+        + (s.spent_eur === null ? '' : ' &middot; ' + s.spent_eur.toFixed(2) + '\u00a0\u20ac d\u00e9pens\u00e9s, '
+            + 'panier moyen ' + s.avg_ticket_eur.toFixed(2) + '\u00a0\u20ac')
+        + '<br>'
         + s.drinks_credited + ' boisson(s) cr\u00e9dit\u00e9e(s), ' + s.rewards_given
         + ' offerte(s) &mdash; co\u00fbt entre <strong>' + s.cost_low_eur.toFixed(2)
         + '\u00a0\u20ac</strong> (prix d\'achat) et <strong>' + s.cost_high_eur.toFixed(2)

@@ -1314,6 +1314,12 @@ def _loyalty_stats(members, events, today):
 
     recompenses = sum(int(m.get("rewards") or 0) for m in membres)
     boissons = sum(int(e.get("drinks") or 0) for e in credits)
+    # ⚠️ VISITES SANS BOISSON COMPTÉES À PART. C'est le point aveugle qu'on vient de corriger :
+    # quelqu'un qui achète un livre chaque semaine ne gagne aucune récompense et n'apparaissait
+    # nulle part. Les distinguer permet de voir si la fidélité ne parle qu'aux buveurs de café.
+    sans_boisson = sum(1 for e in credits if int(e.get("drinks") or 0) == 0)
+    cents = sum(int(e.get("amount_cents") or 0) for e in credits)
+    avec_montant = sum(1 for e in credits if e.get("amount_cents"))
     return {
         "members": len(membres),
         "active_30d": actifs,
@@ -1327,9 +1333,37 @@ def _loyalty_stats(members, events, today):
         # Part des boissons créditées qui est repartie en récompenses.
         "reward_rate_pct": (round(recompenses * LOYALTY_THRESHOLD * 100.0 / boissons, 1)
                             if boissons else None),
+        "visits": len(credits),
+        "visits_without_drink": sans_boisson,
+        # `None` tant qu'aucun montant n'est remonté : « 0 € dépensé » se lirait comme une
+        # clientèle qui ne consomme rien, alors qu'on n'a simplement pas la donnée.
+        "spent_eur": round(cents / 100.0, 2) if avec_montant else None,
+        "avg_ticket_eur": round(cents / 100.0 / avec_montant, 2) if avec_montant else None,
         "cost_low_eur": round(recompenses * LOYALTY_COST_EUR, 2),
         "cost_high_eur": round(recompenses * LOYALTY_PRICE_EUR, 2),
     }
+
+
+def _loyalty_amount_cents(raw):
+    """
+    Montant d'un ticket, en CENTIMES entiers, ou None.
+
+    ⚠️ EN CENTIMES ET PAS EN EUROS. Un montant en virgule flottante dérive à l'addition : sur des
+    centaines de tickets, le cumul finit par ne plus tomber juste, et la dérive reste invisible
+    jusqu'au jour où on la compare à la comptabilité. Les entiers ne dérivent pas.
+
+    ⚠️ REND None PLUTÔT QUE 0 quand rien n'est fourni. Un ticket à zéro euro n'existe pas ; le
+    compter comme tel ferait chuter une dépense moyenne au lieu de laisser la donnée absente.
+    """
+    if raw is None or raw == "":
+        return None
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if v <= 0 or v != v:      # v != v attrape NaN
+        return None
+    return int(round(v * 100))
 
 
 def _loyalty_clean_nif(raw):
@@ -1607,18 +1641,23 @@ def api_loyalty_credit():
         # que de ne rien créditer : le client repartirait avec des points qu'il n'a pas gagnés.
         return jsonify({"error": "catalog_unavailable"}), 502
     n = _loyalty_count_drinks(data.get("items"), catalog)
-    if n == 0:
-        # Un ticket sans boisson n'est pas une erreur — un livre, une pâtisserie à emporter.
-        return jsonify({**_loyalty_public(row), "credited": 0})
+    cents = _loyalty_amount_cents(data.get("amount"))
 
+    # ⚠️ LA VISITE EST ENREGISTRÉE MÊME SANS BOISSON. Un ticket sans boisson ne laissait aucune
+    # trace : ni passage, ni date, ni montant. Quelqu'un qui vient acheter un livre chaque
+    # semaine était invisible — et cet historique ne se reconstruit pas, chaque jour passé est
+    # perdu définitivement. Zéro boisson n'est pas « rien à dire », c'est une visite sans café.
     nouveau = int(row.get("drinks") or 0) + n
+    depense = int(row.get("spent_cents") or 0) + (cents or 0)
     ok, err = _supa_upsert("loyalty_members", {
         "number": numero, "first_name": row.get("first_name"), "drinks": nouveau,
         "rewards": int(row.get("rewards") or 0), "last_seen": now_lisbon().isoformat(),
+        "spent_cents": depense,
     })
     if not ok:
         return jsonify({"error": "write_failed", "detail": str(err)}), 502
     _supa_upsert("loyalty_events", {"number": numero, "kind": "credit", "drinks": n,
+                                    "amount_cents": cents,
                                     "document": (data.get("document") or None)})
     return jsonify({**_loyalty_public({**row, "drinks": nouveau}), "credited": n})
 
@@ -1697,6 +1736,7 @@ def _loyalty_full(row):
         "notes": row.get("notes"),
         "birth_day": row.get("birth_day"), "birth_month": row.get("birth_month"),
         "fiscal_id": row.get("fiscal_id"), "country": row.get("country"),
+        "spent_cents": int(row.get("spent_cents") or 0),
         "consent_at": row.get("consent_at"), "created_at": row.get("created_at"),
         "last_seen": row.get("last_seen"), "status": row.get("status"),
     }
