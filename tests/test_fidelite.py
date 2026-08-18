@@ -834,3 +834,78 @@ def test_la_fusion_est_atteignable_depuis_la_fiche():
     assert "f-merge" in page
     # La confirmation DIT ce qui est transféré et ce qu'il advient du doublon.
     assert "reste r\\u00e9serv\\u00e9" in page
+
+
+# ── Ce que les membres achètent ─────────────────────────────────────────────
+
+def test_on_garde_le_titre_et_la_quantite_rien_d_autre():
+    """
+    ⚠️ Ni prix, ni identifiant : le prix change et se relit sur le document, l'identifiant ne dit
+    rien à un humain. Ce qu'on veut savoir, c'est « quoi », pas « combien ça coûtait ce jour-là ».
+    """
+    r = A._loyalty_clean_items([{"title": " Flat White ", "qty": 2, "price": 4.0, "id": 7}])
+    assert r == [{"t": "Flat White", "q": 2}]
+
+
+def test_une_ligne_absurde_est_ecartee_sans_jeter_le_reste():
+    r = A._loyalty_clean_items([{"title": "", "qty": 1}, {"title": "Bica", "qty": 0},
+                                {"title": "Chá", "qty": "x"}, {"title": "Cold Brew", "qty": 1}])
+    assert r == [{"t": "Cold Brew", "q": 1}]
+
+
+def test_aucune_ligne_rend_None_et_pas_une_liste_vide():
+    """Une absence de lignes n'est pas un ticket vide : c'est une requête qui n'en portait pas."""
+    assert A._loyalty_clean_items([]) is None
+    assert A._loyalty_clean_items(None) is None
+
+
+def test_le_nombre_de_lignes_conservees_est_borne():
+    """Une requête anormale ne doit pas faire grossir la base sans limite."""
+    beaucoup = [{"title": f"P{i}", "qty": 1} for i in range(200)]
+    assert len(A._loyalty_clean_items(beaucoup)) == A.LOYALTY_MAX_ITEMS
+
+
+def test_le_palmares_compte_les_QUANTITES_pas_les_tickets():
+    """
+    ⚠️ Quelqu'un qui prend deux cafés à chaque fois en boit deux. Dire « une visite avec du
+    café » effacerait la moitié de sa consommation.
+    """
+    events = [{"items": [{"t": "Flat White", "q": 2}]},
+              {"items": [{"t": "Flat White", "q": 1}, {"t": "Bica", "q": 1}]}]
+    assert A._loyalty_top_products(events) == [{"title": "Flat White", "qty": 3},
+                                               {"title": "Bica", "qty": 1}]
+
+
+def test_les_visites_SANS_lignes_ne_comptent_pas_pour_zero():
+    """
+    Les visites d'avant cette collecte n'en portent pas. Les faire peser à zéro ferait croire à
+    des clients qui ne prennent rien.
+    """
+    events = [{"items": None}, {"kind": "credit"}, {"items": [{"t": "Bica", "q": 1}]}]
+    assert A._loyalty_top_products(events) == [{"title": "Bica", "qty": 1}]
+
+
+def test_le_palmares_est_borne_et_deterministe_a_egalite():
+    """Un classement qui permute d'un rendu à l'autre n'inspire aucune confiance."""
+    events = [{"items": [{"t": "B", "q": 1}, {"t": "A", "q": 1}]}]
+    assert [p["title"] for p in A._loyalty_top_products(events)] == ["A", "B"]
+    gros = [{"items": [{"t": f"P{i}", "q": 100 - i} for i in range(30)]}]
+    assert len(A._loyalty_top_products(gros, 8)) == 8
+
+
+def test_les_lignes_sont_BRANCHEES_sur_le_credit():
+    """
+    ⚠️ VÉRIFIE LE BRANCHEMENT, PAS LA RÈGLE. Les lignes remontaient déjà à chaque encaissement et
+    étaient JETÉES : la règle de nettoyage peut être parfaite et personne pour l'appeler. Et
+    comme cette donnée ne se reconstruit pas, un débranchement se paierait en jours perdus avant
+    que quiconque le remarque.
+    """
+    import inspect
+    src = inspect.getsource(A.api_loyalty_credit)
+    assert '"items": _loyalty_clean_items(data.get("items"))' in src
+
+
+def test_la_fiche_et_les_mesures_rendent_le_palmares():
+    import inspect
+    assert "_loyalty_top_products(events)" in inspect.getsource(A.api_loyalty_card)
+    assert "_loyalty_top_products(events, 10)" in inspect.getsource(A.api_loyalty_stats)

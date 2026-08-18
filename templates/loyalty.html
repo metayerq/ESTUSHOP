@@ -383,9 +383,24 @@
           + '<p style="margin-top:10px;font-size:12px;opacity:.7">La suppression efface pr\u00e9nom, '
           + 'contacts et notes. Le num\u00e9ro reste r\u00e9serv\u00e9\u00a0: le lib\u00e9rer le ferait '
           + 'r\u00e9attribuer \u00e0 quelqu\'un d\'autre, qui h\u00e9riterait des points.</p>'
+          + (d.top && d.top.length
+              ? '<h3 style="margin:18px 0 6px;font-size:14px">Ce qu\'il prend le plus</h3>'
+                + '<div style="font-size:13px" id="fiche-top"></div>'
+              : '')
           + '<h3 style="margin:18px 0 6px;font-size:14px">Historique</h3>'
           + (lignes ? '<table style="width:100%;border-collapse:collapse;font-size:13px">' + lignes + '</table>'
                     : '<p class="muted" style="font-size:13px">Aucun mouvement enregistr\u00e9.</p>');
+
+        /* Les titres de produits sont posés comme TEXTE : ils viennent du catalogue Vendus,
+           qu'un opérateur édite depuis la caisse. */
+        var top = document.getElementById('fiche-top');
+        if(top && d.top){
+          d.top.forEach(function(p){
+            var l = document.createElement('div');
+            l.textContent = p.qty + '\u00d7 ' + p.title;
+            top.appendChild(l);
+          });
+        }
 
         /* Le motif d'une correction est inséré comme TEXTE : il vient d'une saisie libre. */
         var tds = document.getElementById('fiche-corps').querySelectorAll('table td:nth-child(4)');
@@ -548,6 +563,20 @@
         + 'La v\u00e9rit\u00e9 est entre les deux\u00a0: une boisson offerte \u00e0 quelqu\'un qui '
         + 'serait venu de toute fa\u00e7on co\u00fbte son prix, une qui provoque une visite ne '
         + 'co\u00fbte que son achat.';
+      /* ⚠️ CE QUE LES MEMBRES ACHÈTENT. Les lignes remontaient depuis le début et étaient
+         jetées : savoir que les fidèles prennent le flat white et jamais le batch brew change
+         une carte, un réassort, un prix. */
+      if(s.top && s.top.length){
+        var bloc = document.createElement('div');
+        bloc.style.cssText = 'margin-top:8px;font-size:13px';
+        bloc.appendChild(document.createTextNode('Le plus pris par les membres\u00a0: '));
+        s.top.forEach(function(p, i){
+          var sp = document.createElement('span');
+          sp.textContent = (i ? ', ' : '') + p.title + ' (' + p.qty + ')';
+          bloc.appendChild(sp);
+        });
+        document.getElementById('loyalty-stats').appendChild(bloc);
+      }
     }).catch(function(){ /* la liste reste utilisable sans les mesures */ });
   }).catch(function(e){
     document.getElementById('loyalty-summary').textContent =

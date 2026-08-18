@@ -1493,6 +1493,56 @@ LOYALTY_LAPSED_DAYS = 30
 LOYALTY_NEW_DAYS = 7
 
 
+# Combien de lignes on conserve par ticket. Un ticket de café en porte une poignée ; la borne
+# existe pour qu'une requête anormale ne fasse pas grossir la base sans limite.
+LOYALTY_MAX_ITEMS = 30
+
+
+def _loyalty_clean_items(items):
+    """
+    Les lignes d'un ticket, nettoyées pour être conservées — ou `None`.
+
+    ⚠️ ON GARDE LE TITRE ET LA QUANTITÉ, RIEN D'AUTRE. Ni prix, ni identifiant : le prix change
+    et se relit sur le document, l'identifiant ne dit rien à un humain. Ce qu'on veut savoir,
+    c'est « quoi », pas « combien ça coûtait ce jour-là ».
+
+    Rend `None` plutôt qu'une liste vide : une absence de lignes n'est pas un ticket vide, c'est
+    une requête qui n'en portait pas.
+    """
+    propres = []
+    for i in (items or [])[:LOYALTY_MAX_ITEMS]:
+        titre = (str(i.get("title") or "")).strip()[:80]
+        try:
+            q = int(round(float(i.get("qty") or 0)))
+        except (TypeError, ValueError):
+            continue
+        if titre and q > 0:
+            propres.append({"t": titre, "q": q})
+    return propres or None
+
+
+def _loyalty_top_products(events, limit=8):
+    """
+    Ce qui revient le plus, sur un lot de visites.
+
+    ⚠️ COMPTE LES QUANTITÉS, PAS LES TICKETS. Quelqu'un qui prend deux cafés à chaque fois en
+    boit deux — le dire « une visite avec du café » effacerait la moitié de sa consommation.
+
+    ⚠️ ET LES ÉVÉNEMENTS SANS LIGNES SONT IGNORÉS, jamais comptés comme des achats vides : les
+    visites d'avant cette collecte n'en portent pas, et les faire peser à zéro ferait croire à
+    des clients qui ne prennent rien.
+    """
+    compte = {}
+    for e in (events or []):
+        for i in (e.get("items") or []):
+            titre = i.get("t")
+            if not titre:
+                continue
+            compte[titre] = compte.get(titre, 0) + int(i.get("q") or 0)
+    ordonne = sorted(compte.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [{"title": t, "qty": q} for t, q in ordonne[:limit]]
+
+
 def _loyalty_merge_payload(source, cible):
     """
     Ce que devient la carte CONSERVÉE après absorption d'un doublon.
@@ -1757,6 +1807,9 @@ def api_loyalty_credit():
         return jsonify({"error": "write_failed", "detail": str(err)}), 502
     _supa_upsert("loyalty_events", {"number": numero, "kind": "credit", "drinks": n,
                                     "amount_cents": cents,
+                                    # ⚠️ On ne jette plus les lignes : c'est la seule donnée
+                                    # neuve qui vaille, et elle ne se reconstruit pas.
+                                    "items": _loyalty_clean_items(data.get("items")),
                                     "document": (data.get("document") or None)})
     return jsonify({**_loyalty_public({**row, "drinks": nouveau}), "credited": n})
 
@@ -1858,7 +1911,9 @@ def api_loyalty_card(number):
         return jsonify({"error": "no_member"}), 404
     events = _supa_get("loyalty_events",
                        {"number": f"eq.{number}", "order": "at.desc", "limit": 100})
-    return jsonify({"member": _loyalty_full(row), "events": events})
+    return jsonify({"member": _loyalty_full(row), "events": events,
+                    # Ce qu'il prend le plus — « lait d'avoine » sans avoir à le demander.
+                    "top": _loyalty_top_products(events)})
 
 
 @app.route("/api/loyalty/member/<int:number>", methods=["PATCH"])
@@ -2039,8 +2094,10 @@ def api_loyalty_stats():
     if _current_role() is None:
         return jsonify({"error": "unauthorized"}), 401
     membres = _supa_get("loyalty_members", {"select": "*"})
-    events = _supa_get("loyalty_events", {"select": "number,kind,drinks,at", "limit": 5000})
-    return jsonify(_loyalty_stats(membres, events, today_lisbon()))
+    events = _supa_get("loyalty_events",
+                       {"select": "number,kind,drinks,at,amount_cents,items", "limit": 5000})
+    return jsonify({**_loyalty_stats(membres, events, today_lisbon()),
+                    "top": _loyalty_top_products(events, 10)})
 
 
 @app.route("/api/cashflow")
