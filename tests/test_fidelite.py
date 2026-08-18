@@ -338,3 +338,21 @@ def test_les_livres_et_le_retail_ne_comptent_jamais():
     catalogue = {"Livro": {"category_id": 343071668}, "Papeterie": {"category_id": 343077316}}
     items = [{"title": "Livro", "qty": 2}, {"title": "Papeterie", "qty": 1}]
     assert A._loyalty_count_drinks(items, catalogue) == 0
+
+
+def test_deux_cafés_sur_un_ticket_font_DEUX_boissons():
+    """
+    ⚠️ DÉCISION EXPLICITE DU CAFÉ, à ne pas « simplifier » plus tard.
+
+    On compte des BOISSONS, pas des passages. Deux cafés sur un même ticket valent deux, et non
+    un. L'écart n'est pas cosmétique : à 1,40 boisson par ticket — mesuré sur les données réelles
+    de juillet-août —, dix boissons représentent environ SEPT visites, tandis que dix passages en
+    représenteraient DIX. Plafonner à un par ticket rendrait la récompense 40 % moins fréquente,
+    donc le programme 40 % moins généreux, sans que personne ne l'ait décidé.
+    """
+    catalogue = {"Americano": {"category_id": 343052000}}
+    assert A._loyalty_count_drinks([{"title": "Americano", "qty": 2}], catalogue) == 2
+    # Et deux LIGNES de boissons différentes s'additionnent aussi.
+    catalogue["Cold Brew"] = {"category_id": 343053226}
+    items = [{"title": "Americano", "qty": 1}, {"title": "Cold Brew", "qty": 2}]
+    assert A._loyalty_count_drinks(items, catalogue) == 3
