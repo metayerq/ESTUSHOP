@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Estudantina — Cartão</title>
+  <meta name="theme-color" content="#171612">
+  <!-- Ajoutée à l'écran d'accueil, la page s'ouvre sans barre de navigateur : c'est ce qui la
+       fait ressembler à une carte plutôt qu'à un site. -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Estudantina">
+  <style>
+    :root{ --ink:#171612; --paper:#EDEAE3; --muted:#8B8677; --action:#9BE28A; }
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:var(--ink);color:var(--paper);
+         font-family:-apple-system,system-ui,sans-serif;display:flex;align-items:center;
+         justify-content:center;padding:24px}
+    .carte{width:100%;max-width:22rem;text-align:center}
+    .nom{font-size:34px;font-weight:650;margin:0}
+    .num{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:60px;
+         letter-spacing:.04em;margin:4px 0 2px}
+    .label{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
+           text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
+    .points{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:26px 0 10px}
+    .p{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--muted)}
+    .p.on{background:var(--paper);border-color:var(--paper)}
+    .du{background:var(--action);color:var(--ink);border-radius:10px;padding:12px;
+        font-weight:650;margin-top:16px}
+    .note{color:var(--muted);font-size:13px;line-height:1.5;margin-top:24px}
+  </style>
+</head>
+<body>
+  <div class="carte">
+    <div class="label">Estudantina</div>
+    <h1 class="nom">{{ membre.first_name }}</h1>
+
+    <!-- ⚠️ LE NUMÉRO EN GRAND, ET C'EST TOUTE LA RAISON D'ÊTRE DE CETTE PAGE. Le client ne
+         retient pas son numéro; il le LIT et le récite au comptoir. Deux secondes, sans caméra,
+         sans que personne n'ait à scanner quoi que ce soit. -->
+    <div class="num">{{ membre.number }}</div>
+    <div class="label">o seu número</div>
+
+    <!-- Des pastilles plutôt qu'un chiffre : on voit d'un coup d'œil ce qui reste, comme sur une
+         carte à tampons. -->
+    <div class="points">
+      {% for i in range(membre.threshold) %}
+        <div class="p {% if i < membre.drinks % membre.threshold or (membre.rewards_available > 0 and membre.drinks % membre.threshold == 0) %}on{% endif %}"></div>
+      {% endfor %}
+    </div>
+
+    {% if membre.rewards_available > 0 %}
+      <div class="du">A sua bebida está oferecida 🎉</div>
+    {% else %}
+      <div class="label">
+        faltam {{ membre.threshold - (membre.drinks % membre.threshold) }} bebida(s)
+      </div>
+    {% endif %}
+
+    <!-- ⚠️ DIRE QUAND CE CHIFFRE A ÉTÉ LU. Une page gardée ouverte ou remise depuis le cache
+         montrerait un solde périmé, et le client le croirait à jour. -->
+    <p class="note">
+      Dez bebidas, a décima primeira é oferecida. Cafés, bebidas frias e sem café contam;
+      livros e comida não.<br><br>
+      Actualizado em {{ maintenant }}. Recarregue a página para ver o saldo mais recente.
+    </p>
+  </div>
+</body>
+</html>

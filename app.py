@@ -10,6 +10,7 @@ Usage:
 import os
 import json
 import re as _re
+import secrets as _secrets
 import hmac
 import time
 import hashlib
@@ -399,6 +400,10 @@ def _require_auth():
     # jeton vérifié DANS chaque route (`_loyalty_authorized`), jamais ici — laisser passer sans
     # contrôle ouvrirait l'écriture des points à n'importe qui.
     if request.path.startswith("/api/loyalty/"):
+        return
+    # Carte personnelle d'un client : protégée par un JETON imprévisible dans l'URL, vérifié
+    # dans la route. Lecture seule, et ne montre que prénom, numéro et solde.
+    if request.path.startswith("/carte/"):
         return
     role = _current_role()
     if role is None:
@@ -1670,6 +1675,27 @@ def _loyalty_lists(members, today):
             "new_days": LOYALTY_NEW_DAYS}
 
 
+def _loyalty_new_token():
+    """
+    Jeton d'adresse personnelle : 32 caractères imprévisibles.
+
+    ⚠️ `secrets`, PAS `random`. Un générateur pseudo-aléatoire ordinaire est reproductible : qui
+    connaît deux jetons peut deviner les suivants, et le fichier clients devient énumérable —
+    exactement ce que ce jeton existe pour empêcher.
+    """
+    return _secrets.token_urlsafe(24)
+
+
+def _loyalty_member_by_token(token):
+    """La fiche correspondant à un jeton, ou None. Jamais de recherche approximative."""
+    t = (token or "").strip()
+    if len(t) < 16:
+        # Trop court pour être un vrai jeton : on n'interroge même pas la base.
+        return None
+    rows = _supa_get("loyalty_members", {"public_token": f"eq.{t}", "limit": 1})
+    return rows[0] if rows else None
+
+
 def _loyalty_member(number):
     """Une fiche membre, ou None."""
     rows = _supa_get("loyalty_members", {"number": f"eq.{int(number)}", "limit": 1})
@@ -2029,6 +2055,51 @@ def api_loyalty_delete(number):
     _supa_upsert("loyalty_events", {"number": number, "kind": "adjust", "drinks": 0,
                                     "reason": "fiche supprimée (anonymisée)"})
     return jsonify({"ok": True, "number": number})
+
+
+@app.route("/carte/<token>")
+def page_carte(token):
+    """
+    La carte d'un client, telle qu'il la voit sur son téléphone.
+
+    ⚠️ CE QU'ELLE MONTRE, ET RIEN D'AUTRE : prénom, numéro, solde. Ni téléphone, ni e-mail, ni
+    NIF, ni historique, ni montant dépensé. Une page qu'on ouvre sans se connecter ne doit porter
+    que ce que son porteur sait déjà — et ce qu'il peut montrer à quelqu'un sans conséquence.
+
+    ⚠️ UN JETON INCONNU REND 404, PAS UNE PAGE VIDE. Une page vide laisserait croire à une carte
+    expirée ou à une panne ; le refus doit être net pour qu'on redemande le bon lien.
+    """
+    row = _loyalty_member_by_token(token)
+    if not row or _loyalty_is_deleted(row):
+        return render_template("carte_inconnue.html"), 404
+    return render_template("carte.html", membre=_loyalty_public(row),
+                           maintenant=now_lisbon().strftime("%d/%m às %H:%M"))
+
+
+@app.route("/api/loyalty/member/<int:number>/link", methods=["POST"])
+def api_loyalty_link(number):
+    """
+    Rend l'adresse personnelle d'un membre, en la créant si elle n'existe pas encore.
+
+    ⚠️ SOUS LE JETON DE LA CAISSE. C'est elle qui affichera le QR au client au comptoir : elle
+    doit pouvoir obtenir le lien sans session dashboard. Elle n'obtient QUE le lien.
+    """
+    if not _loyalty_authorized() and _current_role() is None:
+        return jsonify({"error": "unauthorized"}), 401
+    row = _loyalty_member(number)
+    if not row or _loyalty_is_deleted(row):
+        return jsonify({"error": "no_member"}), 404
+    token = (row.get("public_token") or "").strip()
+    if not token:
+        token = _loyalty_new_token()
+        ok, err = _supa_upsert("loyalty_members", {
+            "number": number, "first_name": row.get("first_name"),
+            "drinks": int(row.get("drinks") or 0), "rewards": int(row.get("rewards") or 0),
+            "public_token": token,
+        })
+        if not ok:
+            return jsonify({"error": "write_failed", "detail": str(err)}), 502
+    return jsonify({"url": f"{request.host_url.rstrip('/')}/carte/{token}"})
 
 
 @app.route("/api/loyalty/merge", methods=["POST"])

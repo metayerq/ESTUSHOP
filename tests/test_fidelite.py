@@ -978,3 +978,72 @@ def test_les_chiffres_de_la_fiche_affichent_un_TIRET_et_non_un_zero():
     page = pathlib.Path("templates/loyalty.html").read_text()
     assert "\\u2014" in page
     assert "var nf = function(v, suf)" in page
+
+
+# ── La carte du client ──────────────────────────────────────────────────────
+
+def test_le_jeton_est_imprevisible_et_unique():
+    """
+    ⚠️ `secrets`, PAS `random`. Un générateur pseudo-aléatoire ordinaire est reproductible : qui
+    connaît deux jetons peut deviner les suivants, et le fichier clients devient énumérable —
+    exactement ce que ce jeton existe pour empêcher.
+    """
+    jetons = {A._loyalty_new_token() for _ in range(200)}
+    assert len(jetons) == 200
+    assert all(len(j) >= 24 for j in jetons)
+    import inspect
+    assert "_secrets" in inspect.getsource(A._loyalty_new_token)
+
+
+def test_un_jeton_trop_court_n_interroge_meme_pas_la_base():
+    """Le numéro de carte fait deux chiffres : il ne doit jamais pouvoir servir d'adresse."""
+    assert A._loyalty_member_by_token("47") is None
+    assert A._loyalty_member_by_token("") is None
+    assert A._loyalty_member_by_token(None) is None
+
+
+def test_la_carte_publique_echappe_au_login_mais_PAS_au_jeton():
+    import inspect
+    assert 'request.path.startswith("/carte/")' in inspect.getsource(A._require_auth)
+    src = inspect.getsource(A.page_carte)
+    assert "_loyalty_member_by_token(token)" in src
+    # Une fiche anonymisée ou fusionnée ne rend pas de carte.
+    assert "_loyalty_is_deleted(row)" in src
+    # Un jeton inconnu rend 404, pas une page vide.
+    assert "404" in src
+
+
+def test_la_carte_ne_montre_QUE_prenom_numero_et_solde():
+    """
+    ⚠️ Une page qu'on ouvre sans se connecter ne doit porter que ce que son porteur sait déjà —
+    et ce qu'il peut montrer à quelqu'un sans conséquence. Ni téléphone, ni e-mail, ni NIF, ni
+    historique, ni montant dépensé.
+    """
+    import pathlib
+    page = pathlib.Path("templates/carte.html").read_text()
+    for interdit in ("phone", "email", "fiscal_id", "spent", "notes", "country", "birth"):
+        assert interdit not in page, interdit
+    # Et le contenu attendu est bien là.
+    assert "membre.number" in page and "membre.first_name" in page
+
+
+def test_la_carte_DIT_quand_le_solde_a_ete_lu():
+    """
+    Une page gardée ouverte, ou resservie depuis le cache, montrerait un solde périmé — et le
+    client le croirait à jour.
+    """
+    import pathlib
+    page = pathlib.Path("templates/carte.html").read_text()
+    assert "maintenant" in page
+    assert "Recarregue" in page
+
+
+def test_le_lien_se_cree_a_la_demande_et_ne_change_plus():
+    """
+    ⚠️ UN JETON DÉJÀ ÉMIS NE DOIT PAS ÊTRE REMPLACÉ : le client a ajouté la page à son écran
+    d'accueil, et la régénérer casserait son raccourci sans qu'il comprenne pourquoi.
+    """
+    import inspect
+    src = inspect.getsource(A.api_loyalty_link)
+    assert 'token = (row.get("public_token") or "").strip()' in src
+    assert "if not token:" in src
