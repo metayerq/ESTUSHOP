@@ -1694,6 +1694,10 @@ def _loyalty_public(row):
         # usage précis : le pré-remplir sur la facture, pour que le client n'ait plus à réciter
         # neuf chiffres à chaque visite. Un champ sans usage ne descend pas ; celui-ci en a un.
         "fiscal_id": row.get("fiscal_id") or None,
+        # ⚠️ L'E-MAIL DESCEND AUSSI, POUR LA MÊME RAISON QUE LE NIF : la caisse en a un USAGE
+        # précis — le pré-remplir sur la facture, que Vendus envoie ensuite au client. Un champ
+        # sans usage ne descend pas (le téléphone n'est toujours pas transmis) ; celui-ci en a un.
+        "email": row.get("email") or None,
     }
 
 
