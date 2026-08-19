@@ -1097,3 +1097,34 @@ def test_la_carte_du_client_annonce_le_bon_seuil_et_cache_zero_point():
     page = pathlib.Path("templates/carte.html").read_text()
     assert "Nove bebidas" in page and "Dez bebidas" not in page
     assert "{% if membre.points %}" in page
+
+
+def test_les_tampons_suivent_le_solde_et_le_reste_est_JUSTE():
+    """
+    ⚠️ LE CAS QUI PIÈGE EST LE SEUIL EXACT. À 9 boissons sur 9, le modulo vaut 0 : sans garde,
+    la carte afficherait ZÉRO tampon et « il en manque 9 » à quelqu'un qui vient de gagner sa
+    boisson — le pire moment pour se tromper.
+    """
+    import re, app as _A
+    rendu = lambda **kw: _A.app.jinja_env.get_template("carte.html").render(
+        membre={"first_name": "Maria", "number": 47, "threshold": 9, "points": 0, **kw},
+        maintenant="22/08")
+
+    h = rendu(drinks=4, rewards_available=0)
+    assert h.count("t on") == 4
+    assert re.search(r"Faltam <b>5</b>", h)
+
+    h9 = rendu(drinks=9, rewards_available=1)
+    assert h9.count("t on") == 9, "au seuil exact, la carte doit être PLEINE"
+    assert "oferecida" in h9 and "Faltam" not in h9
+
+    h0 = rendu(drinks=0, rewards_available=0)
+    assert h0.count("t on") == 0
+    assert re.search(r"Faltam <b>9</b>", h0)
+
+
+def test_les_tampons_sont_en_grille_de_trois():
+    """Neuf en 3×3 se comptent d'un coup d'œil ; une rangée de neuf se dénombre un par un."""
+    import pathlib
+    page = pathlib.Path("templates/carte.html").read_text()
+    assert "repeat(3,1fr)" in page
