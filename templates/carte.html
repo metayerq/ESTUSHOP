@@ -49,6 +49,12 @@
       {% endfor %}
     </div>
 
+    {% if membre.points %}
+      <!-- ⚠️ AFFICHÉS SEULEMENT S'IL Y EN A. « 0 pontos » se lirait comme un client qui ne
+           dépense rien, alors que la collecte des montants vient de commencer. -->
+      <div class="label" style="margin-top:14px">{{ membre.points }} pontos</div>
+    {% endif %}
+
     {% if membre.rewards_available > 0 %}
       <div class="du">A sua bebida está oferecida 🎉</div>
     {% else %}
@@ -60,7 +66,7 @@
     <!-- ⚠️ DIRE QUAND CE CHIFFRE A ÉTÉ LU. Une page gardée ouverte ou remise depuis le cache
          montrerait un solde périmé, et le client le croirait à jour. -->
     <p class="note">
-      Dez bebidas, a décima primeira é oferecida. Cafés, bebidas frias e sem café contam;
+      Nove bebidas, a décima é oferecida. Cafés, bebidas frias e sem café contam;
       livros e comida não.<br><br>
       Actualizado em {{ maintenant }}. Recarregue a página para ver o saldo mais recente.
     </p>

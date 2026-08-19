@@ -224,7 +224,7 @@
 <main class="wrap" style="max-width:1100px;margin:0 auto;padding:24px 16px 64px">
   <h1 style="font-size:22px;margin:0 0 4px">Loyalty</h1>
   <p class="muted" style="margin:0 0 20px">
-    Dix boissons, la onzi&egrave;me offerte. Le client r&eacute;cite son num&eacute;ro au comptoir ; la caisse
+    Neuf boissons, la dixi&egrave;me offerte. Le client r&eacute;cite son num&eacute;ro au comptoir ; la caisse
     cr&eacute;dite les boissons du ticket. <strong>Les livres et la nourriture ne comptent pas</strong> &mdash;
     la r&eacute;compense est adoss&eacute;e &agrave; ce qui la finance.
   </p>
@@ -393,6 +393,7 @@
           + bloc('Vu il y a', nf(st.days_since_last, '\u00a0j'))
           + bloc('Membre depuis', nf(st.member_since_days, '\u00a0j'))
           + bloc('Offertes', m.rewards)
+          + bloc('Points', nf(m.points))
           + '</div>'
           + (m.rewards_available > 0
               ? '<p style="margin:10px 0 0"><strong>R\u00e9compense due.</strong></p>' : '')

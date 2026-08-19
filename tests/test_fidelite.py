@@ -50,10 +50,11 @@ def test_un_panier_vide_ne_crédite_rien():
 
 # ── Le seuil ────────────────────────────────────────────────────────────────
 
-def test_la_récompense_arrive_à_dix_boissons():
-    assert A._loyalty_rewards_available(9) == 0
-    assert A._loyalty_rewards_available(10) == 1
-    assert A._loyalty_rewards_available(21) == 2
+def test_la_récompense_arrive_au_seuil():
+    """Le seuil a changé de 10 à 9 : le test suit la CONSTANTE, il ne fige plus un nombre."""
+    assert A._loyalty_rewards_available(A.LOYALTY_THRESHOLD - 1) == 0
+    assert A._loyalty_rewards_available(A.LOYALTY_THRESHOLD) == 1
+    assert A._loyalty_rewards_available(A.LOYALTY_THRESHOLD * 2 + 3) == 2
 
 
 def test_un_solde_négatif_ne_donne_jamais_de_récompense():
@@ -680,7 +681,8 @@ AUJ = date(2026, 8, 21)
 
 def test_bientot_ne_retient_que_ceux_qui_y_sont_presque():
     """C'est la liste qui fait revenir : « encore une et elle est offerte », dit en servant."""
-    r = A._loyalty_lists([_membre(1, drinks=9), _membre(2, drinks=8), _membre(3, drinks=5)], AUJ)
+    T = A.LOYALTY_THRESHOLD
+    r = A._loyalty_lists([_membre(1, drinks=T - 1), _membre(2, drinks=T - 2), _membre(3, drinks=1)], AUJ)
     assert [m["number"] for m in r["almost"]] == [1, 2]      # triés par ce qui manque
     assert r["almost"][0]["missing"] == 1
 
@@ -694,7 +696,9 @@ def test_une_recompense_DEJA_DUE_ne_figure_pas_dans_bientot():
     est due ET il ne manque qu'une boisson pour la suivante — c'est là que « due » et « proche »
     se confondent si l'on n'y prend pas garde.
     """
-    r = A._loyalty_lists([_membre(1, drinks=10), _membre(2, drinks=20), _membre(3, drinks=19)], AUJ)
+    T = A.LOYALTY_THRESHOLD
+    r = A._loyalty_lists([_membre(1, drinks=T), _membre(2, drinks=T * 2),
+                          _membre(3, drinks=T * 2 - 1)], AUJ)
     assert r["almost"] == []
 
 
@@ -1047,3 +1051,49 @@ def test_le_lien_se_cree_a_la_demande_et_ne_change_plus():
     src = inspect.getsource(A.api_loyalty_link)
     assert 'token = (row.get("public_token") or "").strip()' in src
     assert "if not token:" in src
+
+
+# ── Neuf boissons, et les points ────────────────────────────────────────────
+
+def test_le_seuil_est_a_NEUF():
+    """
+    ⚠️ CHANGEMENT GÉNÉREUX, NON PUNITIF. Un client à 9 boissons, qui n'avait droit à rien sous
+    l'ancien seuil, a désormais sa récompense — personne ne perd de solde. À 1,40 boisson par
+    ticket mesuré, la récompense arrive vers la sixième ou septième visite au lieu de la
+    septième ou huitième.
+    """
+    assert A.LOYALTY_THRESHOLD == 9
+    assert A._loyalty_rewards_available(8) == 0
+    assert A._loyalty_rewards_available(9) == 1
+    assert A._loyalty_rewards_available(18) == 2
+
+
+def test_les_points_se_deduisent_et_ne_sont_pas_stockes():
+    """
+    ⚠️ Un second compteur tenu en parallèle de `spent_cents` finirait par diverger, et personne
+    ne saurait lequel croire. Seule la CONSOMMATION a sa colonne, parce qu'elle ne se déduit
+    de rien.
+    """
+    assert A._loyalty_points({"spent_cents": 4750}) == 47          # un point par euro, arrondi bas
+    assert A._loyalty_points({"spent_cents": 4750, "points_spent": 20}) == 27
+    assert A._loyalty_points({}) == 0
+
+
+def test_les_points_ne_deviennent_jamais_negatifs():
+    """Un solde négatif se propagerait et se lirait comme une dette, ce qu'il n'est pas."""
+    assert A._loyalty_points({"spent_cents": 100, "points_spent": 999}) == 0
+
+
+def test_les_points_descendent_a_la_caisse_avec_le_reste():
+    vue = A._loyalty_public({"number": 1, "first_name": "M", "drinks": 0, "rewards": 0,
+                             "spent_cents": 1250})
+    assert vue["points"] == 12
+    assert vue["threshold"] == 9
+
+
+def test_la_carte_du_client_annonce_le_bon_seuil_et_cache_zero_point():
+    """« 0 pontos » se lirait comme un client qui ne dépense rien, pas comme une collecte récente."""
+    import pathlib
+    page = pathlib.Path("templates/carte.html").read_text()
+    assert "Nove bebidas" in page and "Dez bebidas" not in page
+    assert "{% if membre.points %}" in page

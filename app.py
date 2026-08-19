@@ -1176,7 +1176,11 @@ def api_summary_rebuild():
 # personne ne le voie. `DRINK_CAT_IDS` est déjà la référence pour l'estimation des couverts ;
 # elle le reste ici.
 
-LOYALTY_THRESHOLD = 10   # boissons pour une récompense
+# ⚠️ NEUF BOISSONS, LA DIXIÈME OFFERTE. C'était dix pour onze. Le changement est GÉNÉREUX et non
+# punitif : un client à 9 boissons, qui n'avait droit à rien, a désormais sa récompense — personne
+# ne perd de solde. Coût : à 1,40 boisson par ticket mesuré, la récompense arrive vers la sixième
+# ou septième visite au lieu de la septième ou huitième.
+LOYALTY_THRESHOLD = 9   # boissons pour une récompense
 
 # Bornes du coût d'une boisson offerte, mesurées sur le compte (août) : le café le plus vendu
 # part à 4,00 € et coûte 0,70 € à l'achat. Une récompense donnée à quelqu'un qui serait venu de
@@ -1702,6 +1706,22 @@ def _loyalty_member(number):
     return rows[0] if rows else None
 
 
+def _loyalty_points(row):
+    """
+    Points du client : un par euro dépensé, moins ceux déjà consommés.
+
+    ⚠️ DÉDUITS, JAMAIS STOCKÉS. `spent_cents` est déjà cumulé à chaque vente ; un second compteur
+    tenu en parallèle finirait par diverger, et personne ne saurait lequel croire. Seule la
+    CONSOMMATION a sa colonne, parce qu'elle ne se déduit de rien.
+
+    ⚠️ ET ILS NE COMMENCENT QU'À LA COLLECTE DES MONTANTS. Les visites d'avant n'en portent pas :
+    ce n'est pas un solde à zéro, c'est un historique qui n'existe pas. L'écran doit le dire
+    plutôt que de laisser croire à un client qui n'aurait jamais rien dépensé.
+    """
+    gagnes = int(row.get("spent_cents") or 0) // 100
+    return max(0, gagnes - int(row.get("points_spent") or 0))
+
+
 def _loyalty_public(row):
     """Ce que le POS reçoit d'une fiche. Le téléphone n'en fait pas partie : il ne lui sert à rien."""
     drinks = int(row.get("drinks") or 0)
@@ -1724,6 +1744,9 @@ def _loyalty_public(row):
         # précis — le pré-remplir sur la facture, que Vendus envoie ensuite au client. Un champ
         # sans usage ne descend pas (le téléphone n'est toujours pas transmis) ; celui-ci en a un.
         "email": row.get("email") or None,
+        # Un point par euro dépensé, en parallèle des boissons. Les avantages restent à définir :
+        # on collecte d'abord, on décidera d'un seuil sur des chiffres réels.
+        "points": _loyalty_points(row),
     }
 
 
