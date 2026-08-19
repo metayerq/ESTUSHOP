@@ -1112,15 +1112,15 @@ def test_les_tampons_suivent_le_solde_et_le_reste_est_JUSTE():
 
     h = rendu(drinks=4, rewards_available=0)
     assert h.count("t on") == 4
-    assert re.search(r"Faltam <b>5</b>", h)
+    assert re.search(r"faltam 5 bebida", h, re.I)
 
     h9 = rendu(drinks=9, rewards_available=1)
     assert h9.count("t on") == 9, "au seuil exact, la carte doit être PLEINE"
-    assert "oferecida" in h9 and "Faltam" not in h9
+    assert "oferecida" in h9 and not re.search(r"faltam", h9, re.I)
 
     h0 = rendu(drinks=0, rewards_available=0)
     assert h0.count("t on") == 0
-    assert re.search(r"Faltam <b>9</b>", h0)
+    assert re.search(r"faltam 9 bebida", h0, re.I)
 
 
 def test_les_tampons_sont_en_grille_de_trois():
@@ -1128,3 +1128,28 @@ def test_les_tampons_sont_en_grille_de_trois():
     import pathlib
     page = pathlib.Path("templates/carte.html").read_text()
     assert "repeat(3,1fr)" in page
+
+
+def test_la_carte_emprunte_le_VOCABULAIRE_visuel_du_POS():
+    """
+    ⚠️ « Ça fait trop AI » — et c'était juste : serif, ombre portée, coins très arrondis, emoji.
+    C'est le look générique qu'on produit par défaut, et il ne ressemblait pas au comptoir.
+
+    La carte reprend maintenant les valeurs EXACTES de `apps/pos/app/globals.css` et la grammaire
+    du rail des tables : panneau plein pour ce qui est acquis, contour pointillé pour ce qui
+    reste — c'est déjà la distinction « occupé / libre » que l'opérateur lit toute la journée.
+    """
+    import pathlib
+    page = pathlib.Path("templates/carte.html").read_text()
+    # Les jetons du POS, aux valeurs exactes.
+    for token, valeur in (("--ink", "#171612"), ("--panel", "#201f19"), ("--paper", "#f2eee4"),
+                          ("--action", "#3fbf8a"), ("--blueprint", "#6f94e8")):
+        assert f"{token}:{valeur}" in page, token
+    # Et rien du vocabulaire générique qu'on lui reprochait.
+    assert "box-shadow" not in page
+    assert "ui-serif" not in page and "Georgia" not in page
+    assert "gradient" not in page
+    assert "☕" not in page
+    # La grammaire du rail : plein contre pointillé.
+    assert "border:1px dashed var(--line)" in page
+    assert "letter-spacing:.09em" in page
