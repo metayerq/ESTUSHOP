@@ -1705,23 +1705,6 @@ def _loyalty_member(number):
     rows = _supa_get("loyalty_members", {"number": f"eq.{int(number)}", "limit": 1})
     return rows[0] if rows else None
 
-
-def _loyalty_points(row):
-    """
-    Points du client : un par euro dépensé, moins ceux déjà consommés.
-
-    ⚠️ DÉDUITS, JAMAIS STOCKÉS. `spent_cents` est déjà cumulé à chaque vente ; un second compteur
-    tenu en parallèle finirait par diverger, et personne ne saurait lequel croire. Seule la
-    CONSOMMATION a sa colonne, parce qu'elle ne se déduit de rien.
-
-    ⚠️ ET ILS NE COMMENCENT QU'À LA COLLECTE DES MONTANTS. Les visites d'avant n'en portent pas :
-    ce n'est pas un solde à zéro, c'est un historique qui n'existe pas. L'écran doit le dire
-    plutôt que de laisser croire à un client qui n'aurait jamais rien dépensé.
-    """
-    gagnes = int(row.get("spent_cents") or 0) // 100
-    return max(0, gagnes - int(row.get("points_spent") or 0))
-
-
 def _loyalty_public(row):
     """Ce que le POS reçoit d'une fiche. Le téléphone n'en fait pas partie : il ne lui sert à rien."""
     drinks = int(row.get("drinks") or 0)
@@ -1744,9 +1727,6 @@ def _loyalty_public(row):
         # précis — le pré-remplir sur la facture, que Vendus envoie ensuite au client. Un champ
         # sans usage ne descend pas (le téléphone n'est toujours pas transmis) ; celui-ci en a un.
         "email": row.get("email") or None,
-        # Un point par euro dépensé, en parallèle des boissons. Les avantages restent à définir :
-        # on collecte d'abord, on décidera d'un seuil sur des chiffres réels.
-        "points": _loyalty_points(row),
     }
 
 

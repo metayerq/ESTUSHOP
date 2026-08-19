@@ -1054,49 +1054,14 @@ def test_le_lien_se_cree_a_la_demande_et_ne_change_plus():
 
 
 # ── Neuf boissons, et les points ────────────────────────────────────────────
-
-def test_le_seuil_est_a_NEUF():
-    """
-    ⚠️ CHANGEMENT GÉNÉREUX, NON PUNITIF. Un client à 9 boissons, qui n'avait droit à rien sous
-    l'ancien seuil, a désormais sa récompense — personne ne perd de solde. À 1,40 boisson par
-    ticket mesuré, la récompense arrive vers la sixième ou septième visite au lieu de la
-    septième ou huitième.
-    """
-    assert A.LOYALTY_THRESHOLD == 9
-    assert A._loyalty_rewards_available(8) == 0
-    assert A._loyalty_rewards_available(9) == 1
-    assert A._loyalty_rewards_available(18) == 2
-
-
-def test_les_points_se_deduisent_et_ne_sont_pas_stockes():
-    """
-    ⚠️ Un second compteur tenu en parallèle de `spent_cents` finirait par diverger, et personne
-    ne saurait lequel croire. Seule la CONSOMMATION a sa colonne, parce qu'elle ne se déduit
-    de rien.
-    """
-    assert A._loyalty_points({"spent_cents": 4750}) == 47          # un point par euro, arrondi bas
-    assert A._loyalty_points({"spent_cents": 4750, "points_spent": 20}) == 27
-    assert A._loyalty_points({}) == 0
-
-
-def test_les_points_ne_deviennent_jamais_negatifs():
-    """Un solde négatif se propagerait et se lirait comme une dette, ce qu'il n'est pas."""
-    assert A._loyalty_points({"spent_cents": 100, "points_spent": 999}) == 0
-
-
-def test_les_points_descendent_a_la_caisse_avec_le_reste():
-    vue = A._loyalty_public({"number": 1, "first_name": "M", "drinks": 0, "rewards": 0,
-                             "spent_cents": 1250})
-    assert vue["points"] == 12
-    assert vue["threshold"] == 9
-
-
 def test_la_carte_du_client_annonce_le_bon_seuil_et_cache_zero_point():
     """« 0 pontos » se lirait comme un client qui ne dépense rien, pas comme une collecte récente."""
     import pathlib
     page = pathlib.Path("templates/carte.html").read_text()
     assert "Nove bebidas" in page and "Dez bebidas" not in page
-    assert "{% if membre.points %}" in page
+    # ⚠️ UNE SEULE RÈGLE. La seconde piste « un point par euro » obligeait à expliquer deux
+    # comptes au comptoir, et « neuf points » se confondait aussitôt avec « neuf boissons ».
+    assert "ponto" not in page
 
 
 def test_les_tampons_suivent_le_solde_et_le_reste_est_JUSTE():

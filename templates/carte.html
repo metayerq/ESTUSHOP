@@ -78,7 +78,7 @@
 
     <div class="bloc">
       <div class="label">
-        {{ faits }} / {{ membre.threshold }} bebidas{% if membre.points %} · {{ membre.points }} pontos{% endif %}
+        {{ faits }} / {{ membre.threshold }} bebidas
       </div>
       <!-- ⚠️ TROIS PAR RANGÉE. Neuf en grille 3×3 se comptent d'un coup d'œil; une rangée de neuf
            oblige à les dénombrer un par un. -->
@@ -98,8 +98,12 @@
     <!-- ⚠️ DIRE QUAND CE CHIFFRE A ÉTÉ LU. Une page gardée ouverte ou remise depuis le cache
          montrerait un solde périmé, et le client le croirait à jour. -->
     <p class="note">
+      <!-- ⚠️ UNE SEULE RÈGLE, ET ELLE TIENT EN UNE PHRASE. Une seconde piste « un point par
+           euro » a existé ici quelques heures: elle obligeait à expliquer DEUX comptes au
+           comptoir, et « neuf points » se confondait aussitôt avec « neuf boissons ». Ce qui
+           demande une explication au comptoir n'a pas sa place sur une carte de fidélité. -->
       Nove bebidas, a décima é oferecida. Cafés, bebidas frias e sem café contam;
-      livros e comida não — mas cada euro dá um ponto.<br><br>
+      livros e comida não.<br><br>
       Actualizado em {{ maintenant }}. Recarregue para ver o saldo mais recente.
     </p>
   </div>
