@@ -3149,9 +3149,14 @@ def _load_ingredients():
 def _load_recipes():
     rows = _supa_get("recipes")
     # Strip trailing/leading spaces from keys so Vendus title mismatches (e.g. "Croissant ") still match
+    # ⚠️ `commission_pct` remonte tel quel, y compris 0. Le rabattre sur `or None`
+    # confondrait « on ne garde rien » avec « produit normal » — voir
+    # `product_economics`. C'est la valeur la plus courante d'un pop-up.
     return {r["product_title"].strip(): {"ingredients": r["ingredients"],
                                          "notes": r.get("notes", ""),
-                                         "waste_pct": r.get("waste_pct") or 0}
+                                         "waste_pct": r.get("waste_pct") or 0,
+                                         "partner": r.get("partner") or "",
+                                         "commission_pct": r.get("commission_pct")}
             for r in rows}
 
 def _save_ingredient(name, data):
@@ -3177,16 +3182,37 @@ def _save_ingredient(name, data):
         ok, _ = _supa_upsert("ingredients", row)
     return ok
 
-def _save_recipe(title, ingredients, notes, waste_pct=0):
+# ⚠️ « NON FOURNI » ET « EFFACÉ » NE SONT PAS LA MÊME CHOSE, et `None` ne peut pas dire
+# les deux. Décocher la case envoie `null` pour rendre le produit au café : il faut
+# ÉCRIRE ce `null`. Un appelant qui ne parle pas de partenaire — la sauvegarde d'une
+# recette ordinaire — ne doit rien écrire du tout. Sans ce jeton, décocher laissait
+# l'ancien marquage en base et le produit continuait d'être reversé à quelqu'un qui
+# n'avait plus rien à voir avec lui. Trouvé par le test qui visait exactement ça.
+_NON_FOURNI = object()
+
+
+def _save_recipe(title, ingredients, notes, waste_pct=0,
+                 partner=_NON_FOURNI, commission_pct=_NON_FOURNI):
     row = {"product_title": title, "ingredients": ingredients, "notes": notes,
            "waste_pct": round(float(waste_pct or 0), 2)}
+    # ⚠️ ON N'ÉCRIT LE MARQUAGE QUE S'IL EST DEMANDÉ, mais `0` EST demandé. `if
+    # commission_pct:` sauterait la valeur la plus fréquente d'un pop-up et laisserait
+    # l'ancienne en base — un produit rendu au café continuerait d'être reversé.
+    if commission_pct is not _NON_FOURNI or partner is not _NON_FOURNI:
+        p_val = None if partner is _NON_FOURNI else partner
+        c_val = None if commission_pct is _NON_FOURNI else commission_pct
+        row["partner"] = (p_val or "").strip() or None
+        row["commission_pct"] = (
+            None if c_val is None
+            else min(100.0, max(0.0, float(c_val)))
+        )
     ok, err = _supa_upsert("recipes", row)
-    # Tolérance migration : si la colonne waste_pct n'existe pas encore côté
-    # Supabase (SQL non exécuté), on réessaie sans elle plutôt que de perdre la
-    # sauvegarde de la recette.
-    if not ok and err and "waste_pct" in str(err):
-        row.pop("waste_pct", None)
-        ok, _ = _supa_upsert("recipes", row)
+    # Tolérance migration : si une colonne n'existe pas encore côté Supabase (SQL non
+    # exécuté), on réessaie sans elle plutôt que de perdre la sauvegarde de la recette.
+    for colonne in ("waste_pct", "commission_pct", "partner"):
+        if not ok and err and colonne in str(err):
+            row.pop(colonne, None)
+            ok, err = _supa_upsert("recipes", row)
     return ok
 
 # ── Cache daily_summary ───────────────────────────────────────────────────────
@@ -4133,6 +4159,56 @@ def prep_yield_factor(line_unit, yield_unit):
                  f"— quantité prise telle quelle")
 
 
+def product_economics(price_ht, own_cost, commission_pct=None):
+    """Ce que le café garde réellement sur un produit, et à quel taux.
+
+    ⚠️ POURQUOI CETTE FONCTION EXISTE. Un plat de chef invité passe par la caisse du
+    café : il est facturé par nous, donc il est dans notre chiffre d'affaires — mais
+    l'argent repart. Le compter comme une vente ordinaire gonfle la marge du catalogue
+    du montant exact qu'on doit à quelqu'un d'autre, et c'est le jour de plus grande
+    affluence que l'erreur est la plus grosse.
+
+    `commission_pct` est ce que le café GARDE, en % du prix hors taxe :
+      — None            : produit normal, marge = prix HT − coût ;
+      — 0               : on ne garde rien, tout repart. Marge nulle, pas inconnue.
+      — 20              : on garde un cinquième ; le reste est reversé.
+      — 100             : rien ne repart, c'est un produit comme un autre.
+
+    ⚠️ `0` EST UNE VALEUR, PAS UNE ABSENCE, et c'est le cas le plus courant : un chef
+    invité qui garde l'intégralité de ses ventes. Le confondre avec « pas de
+    commission » ferait compter tout un pop-up comme du revenu propre.
+
+    ⚠️ ET LE COÛT PROPRE S'AJOUTE AU REVERSEMENT. Si le café fournit le pain d'un toast
+    dont le reste appartient au chef, il supporte les deux : ce qu'il reverse ET ce
+    qu'il a acheté. Les traiter comme exclusifs sous-estimerait le coût.
+
+    Rend (marge_ht, marge_pct, reversement). `marge_pct` vaut None quand le prix est
+    nul ou absent : une marge sans base n'est pas 0 %, elle n'existe pas.
+    """
+    try:
+        p = float(price_ht or 0)
+    except (TypeError, ValueError):
+        return None, None, 0.0
+    try:
+        k = max(0.0, float(own_cost or 0))
+    except (TypeError, ValueError):
+        k = 0.0
+
+    reversement = 0.0
+    if commission_pct is not None:
+        try:
+            c = float(commission_pct)
+        except (TypeError, ValueError):
+            c = 0.0
+        c = min(100.0, max(0.0, c))
+        reversement = p * (1 - c / 100.0)
+
+    marge = p - reversement - k
+    if not p:
+        return None, None, round(reversement, 4)
+    return round(marge, 4), round(marge / p * 100, 1), round(reversement, 4)
+
+
 def calc_recipe_cogs(ingredients, ingr_lib, prep_lib=None, waste_pct=0):
     """Calcule le COGS total d'une recette.
     Supporte les préparations (sous-recettes) : si un ingrédient n'est pas dans
@@ -4428,8 +4504,13 @@ def api_cogs():
                                                        prep_lib, waste_pct=waste_pct)
 
         effective_cogs = recipe_total if recipe_total is not None else supply
-        marge_ht_eff   = round(price_ht - effective_cogs, 4) if price_ht else None
-        marge_pct_eff  = round((marge_ht_eff / price_ht * 100), 1) if (marge_ht_eff is not None and price_ht) else None
+        # ⚠️ LE PRODUIT D'UN TIERS NE RAPPORTE QUE SA COMMISSION. Voir
+        # `product_economics` : sans ça, un pop-up de chef gonfle la marge du
+        # catalogue du montant exact qu'on doit lui reverser.
+        commission = (recipe_data or {}).get("commission_pct")
+        partner    = (recipe_data or {}).get("partner") or ""
+        marge_ht_eff, marge_pct_eff, reversement = product_economics(
+            price_ht, effective_cogs, commission)
 
         products.append({
             "id":           p.get("id"),
@@ -4447,6 +4528,10 @@ def api_cogs():
             "recipe_notes": (recipe_data or {}).get("notes", ""),
             "waste_pct":    waste_pct,
             "has_recipe":   has_recipe,
+            # `None` = produit normal ; `0` = tout repart chez le partenaire.
+            "commission_pct": commission,
+            "partner":        partner,
+            "reversement":    reversement,
         })
 
     # Ordre d'affichage : ids connus dans l'ordre habituel, puis les catégories
@@ -4640,7 +4725,9 @@ def api_recipe_get(product_id):
     title       = r.json().get("title", "").strip()
     recipes     = _load_recipes()
     ingr_lib    = _load_ingredients()
-    recipe_data = recipes.get(title, {"ingredients": [], "notes": "", "waste_pct": 0})
+    recipe_data = recipes.get(
+        title, {"ingredients": [], "notes": "", "waste_pct": 0,
+                "partner": "", "commission_pct": None})
     waste = recipe_data.get("waste_pct") or 0
     total, breakdown = calc_recipe_cogs(recipe_data["ingredients"], ingr_lib,
                                         _load_preparations(), waste_pct=waste)
@@ -4651,6 +4738,8 @@ def api_recipe_get(product_id):
         "notes":       recipe_data.get("notes", ""),
         "waste_pct":   waste,
         "total_cogs":  total,
+        "partner":         recipe_data.get("partner", ""),
+        "commission_pct":  recipe_data.get("commission_pct"),
     })
 
 
@@ -4667,9 +4756,16 @@ def api_recipe_post(product_id):
     ingredients = data.get("ingredients", [])
     notes       = data.get("notes", "")
     waste_pct   = data.get("waste_pct") or 0
+    # ⚠️ `data.get(...)` SANS `or` : `0` est la valeur la plus courante d'un pop-up, et
+    # `or None` la transformerait en « produit normal ». La clé absente vaut None, ce
+    # qui veut bien dire « pas un produit de partenaire ».
+    # La clé ABSENTE veut dire « ne touche pas » ; la clé à `null` veut dire « rends ce
+    # produit au café ». Voir `_NON_FOURNI`.
+    partner        = data.get("partner", _NON_FOURNI)
+    commission_pct = data.get("commission_pct", _NON_FOURNI)
     total, breakdown = calc_recipe_cogs(ingredients, ingr_lib, _load_preparations(),
                                         waste_pct=waste_pct)
-    _save_recipe(title, ingredients, notes, waste_pct)
+    _save_recipe(title, ingredients, notes, waste_pct, partner, commission_pct)
     patch_r = req.patch(
         f"https://www.vendus.pt/ws/v1.1/products/{product_id}/",
         auth=(VENDUS_API_KEY, ""),
@@ -4736,6 +4832,8 @@ def api_product_create():
     ingredients = data.get("ingredients", [])
     notes       = data.get("notes", "")
     waste_pct   = data.get("waste_pct") or 0
+    partner        = data.get("partner", _NON_FOURNI)
+    commission_pct = data.get("commission_pct", _NON_FOURNI)
 
     if not title or not price_ttc:
         return jsonify({"ok": False, "error": "title et price_ttc requis"}), 400
@@ -4762,9 +4860,11 @@ def api_product_create():
 
     product_id = r.json().get("id")
 
-    # Sauvegarder recette dans Supabase
-    if ingredients:
-        _save_recipe(title, ingredients, notes, waste_pct)
+    # ⚠️ ON SAUVE AUSSI SANS INGRÉDIENT quand le produit appartient à un partenaire :
+    # un plat de chef n'a pas de recette chez nous, et c'est précisément celui dont il
+    # faut retenir qu'il ne nous rapporte que sa commission.
+    if ingredients or commission_pct is not _NON_FOURNI:
+        _save_recipe(title, ingredients, notes, waste_pct, partner, commission_pct)
 
     return jsonify({
         "ok":        True,

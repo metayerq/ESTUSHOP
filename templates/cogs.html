@@ -1086,6 +1086,40 @@
       </div>
     </div>
 
+    <!-- Produit d'un partenaire (chef invité, pop-up, dépôt-vente) -->
+    <!-- ⚠️ CE BLOC EXISTE PARCE QU'UN PLAT DE CHEF PASSE PAR NOTRE CAISSE MAIS N'EST PAS
+         À NOUS. Facturé par nous, donc dans notre chiffre d'affaires — mais l'argent
+         repart. Sans ce marquage, la marge du catalogue est gonflée du montant exact
+         qu'on doit à quelqu'un d'autre. -->
+    <div id="d-partner-box" style="margin-bottom:16px;padding:10px 12px;background:var(--bg-page);border:1px solid var(--border);border-radius:8px;">
+      <label style="display:flex;align-items:center;gap:9px;cursor:pointer;">
+        <input type="checkbox" id="d-is-partner" onchange="togglePartner()"
+               style="width:16px;height:16px;flex:none;">
+        <span>
+          <span style="font-size:12px;font-weight:600;">Sold for a partner</span>
+          <span style="display:block;font-size:10.5px;color:var(--muted);">Guest chef, pop-up, consignment — the money goes back to them</span>
+        </span>
+      </label>
+
+      <div id="d-partner-fields" style="display:none;margin-top:12px;">
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;">
+          <input id="d-partner-name" placeholder="Whose is it?" oninput="updateLiveCogs()"
+                 style="flex:1;min-width:150px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;">
+          <div style="display:flex;gap:4px;">
+            <button type="button" class="waste-preset comm-preset" onclick="setCommission(0)">0%</button>
+            <button type="button" class="waste-preset comm-preset" onclick="setCommission(10)">10%</button>
+            <button type="button" class="waste-preset comm-preset" onclick="setCommission(15)">15%</button>
+            <button type="button" class="waste-preset comm-preset" onclick="setCommission(20)">20%</button>
+          </div>
+          <input id="d-commission" type="number" min="0" max="100" step="1" value="0"
+                 oninput="updateLiveCogs()"
+                 style="width:56px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;text-align:right;">
+          <span style="font-size:13px;color:var(--muted);">% kept</span>
+        </div>
+        <div id="d-partner-note" style="font-size:11px;color:var(--muted);margin-top:8px;"></div>
+      </div>
+    </div>
+
     <!-- Notes -->
     <div class="section-label" style="margin-bottom:6px;">Notes</div>
     <textarea class="drawer-notes" id="d-notes" placeholder="Double ristretto, milk steamed 65°C…" oninput="updateLiveCogs()"></textarea>
@@ -1686,6 +1720,15 @@ function rowHtml(p) {
     recipeHtml = `<div class="no-recipe">No recipe — click to create</div>`;
   }
 
+  /* ⚠️ UN PRODUIT DE PARTENAIRE SE VOIT DANS LA LISTE. Sa marge est basse par nature —
+     0 % quand tout repart — et sans étiquette on la lit comme une erreur de prix, ou
+     pire, on « corrige » un prix qui n'a rien à corriger. */
+  if (p.commission_pct != null) {
+    const qui = p.partner || 'partner';
+    recipeHtml = `<div class="recipe-line" style="color:var(--amber);" title="${fmt(p.reversement || 0)} goes back to ${qui}">
+      ${qui} · ${p.commission_pct}% kept</div>` + recipeHtml;
+  }
+
   const cogs = p.recipe_total !== null ? p.recipe_total : p.supply_price;
   const pct  = p.marge_pct;
   const cls  = pct === null ? '' : pct >= 75 ? 'good' : pct >= 55 ? 'warn' : 'bad';
@@ -1778,12 +1821,24 @@ async function openDrawer(id, title, priceHt, priceTtc, taxRate) {
   document.getElementById('ing-rows').innerHTML = '<div class="loading" style="padding:16px;">Loading…</div>';
   document.getElementById('d-notes').value = '';
   document.getElementById('d-waste').value = 0;
+  document.getElementById('d-is-partner').checked = false;
+  document.getElementById('d-partner-name').value = '';
+  document.getElementById('d-commission').value = 0;
+  togglePartner();
   openDrawerUI();
 
   const r = await fetch(`/api/recipe/${id}`);
   const d = await r.json();
   document.getElementById('d-notes').value = d.notes || '';
   document.getElementById('d-waste').value = d.waste_pct || 0;
+  /* ⚠️ `!= null` ET NON UN TEST DE VÉRITÉ. `0` est une commission valide — la plus
+     courante — et `if (d.commission_pct)` décocherait la case sur exactement les
+     produits qu'il faut marquer. */
+  const estPartenaire = d.commission_pct != null;
+  document.getElementById('d-is-partner').checked = estPartenaire;
+  document.getElementById('d-partner-name').value = d.partner || '';
+  document.getElementById('d-commission').value = estPartenaire ? d.commission_pct : 0;
+  togglePartner();
   renderIngRows(d.ingredients || []);
   updateLiveCogs();
   runSim();
@@ -2110,13 +2165,66 @@ function updateLiveCogs() {
   cogsEl.textContent = fmt(total);
   cogsEl.title = waste > 0 ? `Material ${fmt(material)} + ${waste}% waste` : '';
   const margeEl = document.getElementById('d-margin-val');
-  if (priceHt && total > 0) {
-    const pct = ((priceHt - total) / priceHt * 100).toFixed(1);
+  const comm = partnerCommission();   // null = produit normal
+  syncCommissionPresets(comm);
+  renderPartnerNote(priceHt, total, comm);
+
+  /* ⚠️ AVEC UN PARTENAIRE, LA MARGE N'EST PLUS « PRIX − COÛT ». Ce qu'on garde, c'est la
+     commission ; le reste est reversé, et s'ajoute au coût qu'on a nous-mêmes supporté.
+     Même calcul que `product_economics` côté serveur — les deux doivent tomber pareil. */
+  const reverse = comm === null ? 0 : priceHt * (1 - comm / 100);
+  const marge   = priceHt - reverse - total;
+
+  if (priceHt && (total > 0 || comm !== null)) {
+    const pct = (marge / priceHt * 100).toFixed(1);
     const cls = pct >= 75 ? 'green' : pct >= 55 ? 'amber' : 'red';
     const wasteNote = waste > 0 ? ` <span style="font-size:10px;color:var(--faint);">incl. ${waste}% waste</span>` : '';
-    margeEl.innerHTML = `<span style="color:var(--${cls})">${pct} %</span> <span style="font-size:11px;color:var(--muted);">(${fmt(priceHt - total)} HT)</span>${wasteNote}`;
+    /* Le reversement est nommé, pas fondu dans le coût : c'est de l'argent qu'on doit à
+       quelqu'un, pas une marchandise qu'on a achetée. */
+    const partNote = comm === null ? '' :
+      ` <span style="font-size:10px;color:var(--amber);">− ${fmt(reverse)} to partner</span>`;
+    margeEl.innerHTML = `<span style="color:var(--${cls})">${pct} %</span> <span style="font-size:11px;color:var(--muted);">(${fmt(marge)} HT)</span>${wasteNote}${partNote}`;
   } else { margeEl.textContent = '—'; }
   runSim();
+}
+
+/* `null` = produit normal. `0` = produit d'un partenaire dont on ne garde RIEN — la
+   valeur la plus courante d'un pop-up, et celle qu'il ne faut surtout pas confondre
+   avec « pas de partenaire ». */
+function partnerCommission() {
+  if (!document.getElementById('d-is-partner')?.checked) return null;
+  const v = parseFloat(document.getElementById('d-commission')?.value);
+  return Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 0;
+}
+
+function togglePartner() {
+  const on = document.getElementById('d-is-partner').checked;
+  document.getElementById('d-partner-fields').style.display = on ? '' : 'none';
+  updateLiveCogs();
+}
+
+function setCommission(v) {
+  const el = document.getElementById('d-commission');
+  if (el) { el.value = v; updateLiveCogs(); }
+}
+
+function syncCommissionPresets(comm) {
+  document.querySelectorAll('.comm-preset').forEach(b => {
+    const on = comm !== null && parseFloat(b.textContent) === comm;
+    b.classList.toggle('on', on);
+  });
+}
+
+/* Dire en toutes lettres ce que la commission implique : à 0 %, tout repart. */
+function renderPartnerNote(priceHt, ownCost, comm) {
+  const el = document.getElementById('d-partner-note');
+  if (!el) return;
+  if (comm === null) { el.textContent = ''; return; }
+  const reverse = priceHt * (1 - comm / 100);
+  const name = document.getElementById('d-partner-name')?.value.trim() || 'the partner';
+  el.innerHTML = comm === 0
+    ? `You keep nothing — all ${fmt(reverse)} goes back to ${name}, against their invoice.`
+    : `You keep ${comm}% (${fmt(priceHt - reverse)}); ${fmt(reverse)} goes back to ${name}.`;
 }
 
 function setWaste(v) {
@@ -2170,7 +2278,14 @@ async function saveRecipe() {
     const r = await fetch(`/api/recipe/${drawerProd.id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ingredients, notes, waste_pct: wastePct }),
+      /* ⚠️ `partner`/`commission_pct` PARTENT MÊME À `null` : c'est ainsi qu'on rend un
+         produit au café. Les omettre laisserait l'ancien marquage en base, et le
+         produit continuerait d'être reversé à un partenaire qui n'a plus rien à voir. */
+      body: JSON.stringify({
+        ingredients, notes, waste_pct: wastePct,
+        partner:        partnerCommission() === null ? null : (document.getElementById('d-partner-name')?.value.trim() || ''),
+        commission_pct: partnerCommission(),
+      }),
     });
     const d = await r.json();
 
