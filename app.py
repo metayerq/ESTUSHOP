@@ -330,7 +330,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260831e"
+ASSET_VERSION = "20260831f"
 
 @app.context_processor
 def _inject_asset_version():
@@ -2283,7 +2283,8 @@ def api_popup_flag():
             pct = float(data.get("commission_pct"))
         except (TypeError, ValueError):
             return jsonify({"error": "commission_pct invalide"}), 400
-        if not 0 < pct < 100:
+        # 0 % est légitime : produit du chef vendu sans commission.
+        if not 0 <= pct < 100:
             return jsonify({"error": "commission_pct doit être entre 0 et 100"}), 400
         ok, err = _supa_upsert("popup_products",
                                {"product_name": name, "commission_pct": pct})

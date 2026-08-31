@@ -1463,7 +1463,7 @@ async function saveProductPopup() {
   let pct = document.getElementById('popup-pct-select').value;
   if (pct === 'custom') pct = document.getElementById('popup-pct-custom').value;
   const errEl = document.getElementById('popup-error');
-  if (popup && !(parseFloat(pct) > 0 && parseFloat(pct) < 100)) {
+  if (popup && !(parseFloat(pct) >= 0 && parseFloat(pct) < 100)) {
     errEl.textContent = 'Commission invalide — entre 0 et 100 %.';
     errEl.style.display = ''; return;
   }
