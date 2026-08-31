@@ -453,6 +453,7 @@ def _fetch_catalog():
                 "category_id":   cat_id,
                 "category_name": cat_names.get(str(cat_id), ""),
                 "price":         gross,
+                "net":           net,
                 "cost":          supply,
                 "margin_pct":    margin_pct,
             }
@@ -939,6 +940,8 @@ def product_stats_from_docs(docs_with_items, catalog):
             "qty": int(stats["qty"]), "days_sold": days_sold,
             "avg_day": round(rev_ttc / days_sold, 2) if days_sold else 0,
             "cost_ht": cost_ht, "margin_pct": margin,
+            "popup": bool((cat_info or {}).get("popup")),
+            "commission_pct": (cat_info or {}).get("commission_pct"),
         })
     return sorted(result, key=lambda x: x["revenue"], reverse=True)
 

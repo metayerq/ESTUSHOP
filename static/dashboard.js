@@ -818,12 +818,16 @@ function render(d) {
       document.getElementById('products-body').innerHTML =
         '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">No products sold.</td></tr>';
     } else {
+      window._prodData = d.products;
       document.getElementById('products-body').innerHTML = d.products.map((p, i) => {
         const barW = Math.round(p.qty / maxQty * 100);
         const rank = i === 0 ? ' style="font-weight:600"' : '';
         const marginHtml = p.margin_pct != null ? marginBadge(p.margin_pct) : '<span style="color:var(--muted)">—</span>';
-        return `<tr>
-          <td${rank}>${p.name}</td>
+        const popupBadge = p.popup
+          ? ` <span style="font-size:10px;font-weight:600;color:#7c4dbe;background:rgba(124,77,190,.12);border-radius:9px;padding:1px 7px;vertical-align:1px;">popup ${p.commission_pct}%</span>`
+          : '';
+        return `<tr style="cursor:pointer;" onclick="openProductPopup(${i})">
+          <td${rank}>${p.name}${popupBadge}</td>
           <td class="amount">${p.qty}</td>
           <td class="amount" style="color:var(--muted)">${fmt(p.avg)}</td>
           <td class="amount">${fmt(p.revenue)}</td>
@@ -1407,3 +1411,77 @@ function renderCashflow() {
 // ── Init ───────────────────────────────────────────────────────────────────
 loadData();
 setInterval(() => { if (currentPreset === 'today') loadData(); }, 5 * 60 * 1000);
+
+
+// ── Produits popup (chef partenaire) ─────────────────────────────────────────
+// La commission sur le TTC est la marge brute : côté serveur, le coût du
+// produit devient net × (1 − commission), donc la marge % affichée = le taux.
+let _popupProd = null;
+
+function openProductPopup(i) {
+  const p = (window._prodData || [])[i];
+  if (!p) return;
+  _popupProd = p;
+  document.getElementById('popup-prod-name').textContent = p.name;
+  document.getElementById('popup-prod-meta').textContent =
+    `${p.qty} sold · ${fmt(p.revenue)}` + (p.margin_pct != null ? ` · margin ${p.margin_pct}%` : '');
+  const check = document.getElementById('popup-check');
+  check.checked = !!p.popup;
+  const sel = document.getElementById('popup-pct-select');
+  const custom = document.getElementById('popup-pct-custom');
+  const pct = p.commission_pct;
+  if (pct != null && ['10','15','20'].includes(String(pct))) {
+    sel.value = String(pct); custom.style.display = 'none';
+  } else if (pct != null) {
+    sel.value = 'custom'; custom.style.display = ''; custom.value = pct;
+  } else {
+    sel.value = '20'; custom.style.display = 'none'; custom.value = '';
+  }
+  document.getElementById('popup-error').style.display = 'none';
+  popupCheckChanged();
+  document.getElementById('popup-overlay').style.display = '';
+  document.getElementById('popup-modal').style.display = '';
+}
+function closeProductPopup() {
+  document.getElementById('popup-overlay').style.display = 'none';
+  document.getElementById('popup-modal').style.display = 'none';
+  _popupProd = null;
+}
+function popupCheckChanged() {
+  document.getElementById('popup-pct-row').style.display =
+    document.getElementById('popup-check').checked ? '' : 'none';
+}
+function popupPctChanged() {
+  const isCustom = document.getElementById('popup-pct-select').value === 'custom';
+  const custom = document.getElementById('popup-pct-custom');
+  custom.style.display = isCustom ? '' : 'none';
+  if (isCustom) custom.focus();
+}
+async function saveProductPopup() {
+  if (!_popupProd) return;
+  const popup = document.getElementById('popup-check').checked;
+  let pct = document.getElementById('popup-pct-select').value;
+  if (pct === 'custom') pct = document.getElementById('popup-pct-custom').value;
+  const errEl = document.getElementById('popup-error');
+  if (popup && !(parseFloat(pct) > 0 && parseFloat(pct) < 100)) {
+    errEl.textContent = 'Commission invalide — entre 0 et 100 %.';
+    errEl.style.display = ''; return;
+  }
+  const btn = document.getElementById('popup-save');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const r = await fetch('/api/popup-flag', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name: _popupProd.name, popup, commission_pct: parseFloat(pct)})
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    closeProductPopup();
+    loadData(true);   // recharge : badge, marge et COGS reflètent le flag
+  } catch (e) {
+    errEl.textContent = 'Erreur : ' + e.message;
+    errEl.style.display = '';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}

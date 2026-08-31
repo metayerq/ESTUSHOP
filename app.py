@@ -330,7 +330,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260831d"
+ASSET_VERSION = "20260831e"
 
 @app.context_processor
 def _inject_asset_version():
@@ -634,7 +634,7 @@ def api_data():
         fut_docs    = pool.submit(_load_docs_main)
         fut_today   = pool.submit(_load_today_docs)
         fut_comp    = pool.submit(_load_comp)
-        fut_catalog = pool.submit(get_catalog)
+        fut_catalog = pool.submit(_catalog)
         fut_hm      = pool.submit(_load_heatmap_payload)
         fut_tlw     = pool.submit(_load_today_lastweek)
 
@@ -1106,11 +1106,11 @@ def api_summary_audit():
 def api_summary_rebuild():
     """Recalcule le cache daily_summary (après changement de prix d'achat/recettes).
     Body optionnel : {"from": "YYYY-MM-DD", "to": "YYYY-MM-DD"} — défaut : tout l'historique."""
-    from vendus import get_documents_with_items, get_catalog as _gc
+    from vendus import get_documents_with_items
     data      = request.get_json(silent=True) or {}
     from_iso  = data.get("from", OPENING_DAY)
     to_iso    = data.get("to", (today_lisbon() - timedelta(1)).isoformat())
-    catalog   = _gc()
+    catalog   = _catalog()
     if not catalog:
         return jsonify({"ok": False, "error": "catalogue Vendus indisponible"}), 502
     docs = get_documents_with_items(from_iso, to_iso)
@@ -1135,7 +1135,7 @@ def api_cashflow():
     OPEN_DATE = date(2026, 5, 27)
     to_date   = today_lisbon()
 
-    catalog = get_catalog() or {}
+    catalog = _catalog()
     rows    = _ensure_summaries(OPEN_DATE, to_date, catalog)
 
     # Le jour courant est ajouté EN MÉMOIRE, jamais écrit : _ensure_summaries refuse désormais
@@ -1208,7 +1208,7 @@ def api_transactions_daily():
     # café qui n'existe plus. Le cache reste construit depuis l'ouverture : c'est la FENÊTRE
     # D'ANALYSE qui commence plus tard, et la page l'annonce.
     debut   = TX_ANALYSIS_START
-    catalog = get_catalog() or {}
+    catalog = _catalog()
     rows    = _ensure_summaries(debut, today_real - timedelta(1), catalog)
 
     today_docs = _get_today_docs_cached()
@@ -2232,6 +2232,68 @@ def _supa_delete(table, col, val):
                     params={col: f"eq.{val}"})
     return r.ok
 
+# ── Produits popup (chef partenaire) ──────────────────────────────────────────
+# Le chef fournit le produit, Quentin encaisse la vente TTC et garde une
+# commission ; le chef facture le restant HT. La marge brute est donc la
+# commission — le coût recette n'a aucun sens pour ces produits.
+_POPUP_CACHE = {"at": 0.0, "flags": {}}
+
+def _load_popup_flags():
+    import time as _t
+    if _t.time() - _POPUP_CACHE["at"] < 60:
+        return _POPUP_CACHE["flags"]
+    try:
+        rows = _supa_get("popup_products")
+        _POPUP_CACHE["flags"] = {r["product_name"]: float(r["commission_pct"])
+                                 for r in rows}
+        _POPUP_CACHE["at"] = _t.time()
+    except Exception:
+        pass
+    return _POPUP_CACHE["flags"]
+
+def _catalog():
+    """get_catalog() + overlay popup : le coût d'un produit flaggé devient
+    net × (1 − commission) — la facture attendue du chef — si bien que la
+    marge % affichée est exactement le taux de commission."""
+    catalog = get_catalog() or {}
+    flags = _load_popup_flags()
+    if not flags:
+        return catalog
+    for name, pct in flags.items():
+        c = catalog.get(name)
+        if not c:
+            continue
+        c["popup"] = True
+        c["commission_pct"] = pct
+        net = float(c.get("net") or 0)
+        if net:
+            c["cost"] = round(net * (1 - pct / 100), 4)
+    return catalog
+
+@app.route("/api/popup-flag", methods=["POST"])
+def api_popup_flag():
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name required"}), 400
+    if data.get("popup"):
+        try:
+            pct = float(data.get("commission_pct"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "commission_pct invalide"}), 400
+        if not 0 < pct < 100:
+            return jsonify({"error": "commission_pct doit être entre 0 et 100"}), 400
+        ok, err = _supa_upsert("popup_products",
+                               {"product_name": name, "commission_pct": pct})
+        if not ok:
+            return jsonify({"error": err or "upsert failed"}), 502
+    else:
+        _supa_delete("popup_products", "product_name", name)
+    _POPUP_CACHE["at"] = 0.0
+    return jsonify({"ok": True})
+
 # ── Helpers lecture / écriture (abstraction Supabase) ─────────────────────────
 def _load_ingredients():
     rows = _supa_get("ingredients")
@@ -2989,7 +3051,8 @@ def _products_list(merged, catalog, n=10):
     """Format top_products depuis un dict fusionné."""
     rows = []
     for name, s in merged.items():
-        cost = catalog.get(name, {}).get("cost")
+        centry = catalog.get(name, {})
+        cost = centry.get("cost")
         cost_ht = round(cost * s["qty"], 2) if cost else None
         rev_ht  = round(s["rev_ht"], 2)
         margin  = round((rev_ht - cost_ht) / rev_ht * 100, 1) if rev_ht and cost_ht else None
@@ -3000,6 +3063,8 @@ def _products_list(merged, catalog, n=10):
             "cost_ht": cost_ht, "margin_pct": margin,
             "days_sold": s.get("days", 0),
             "avg_day": round(s["rev_ttc"] / s["days"], 2) if s.get("days") else 0,
+            "popup": bool(centry.get("popup")),
+            "commission_pct": centry.get("commission_pct"),
         })
     rows.sort(key=lambda x: x["qty"], reverse=True)
     return rows[:n] if n else rows
@@ -3292,7 +3357,7 @@ def api_inventory_usage():
         from_date, to_date = to_date, from_date
     to_date = min(to_date, today)
 
-    catalog = get_catalog() or {}
+    catalog = _catalog()
     past_to = min(to_date, today - timedelta(1))
     rows = _ensure_summaries(from_date, past_to, catalog) if from_date <= past_to else []
     if from_date <= today <= to_date:
