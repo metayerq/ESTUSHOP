@@ -330,7 +330,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260831i"
+ASSET_VERSION = "20260831j"
 
 @app.context_processor
 def _inject_asset_version():
@@ -796,9 +796,11 @@ def api_data():
     }
 
     # ── Économie : COGS depuis le cache (multi-jours) ou les items (jour) ─────
-    result["economics"] = daily_economics(docs_main, catalog, n_days,
-                                           from_date=from_date, to_date=to_date,
-                                           cogs_agg=cogs_agg)
+    result["economics"] = _apply_commissions(
+        daily_economics(docs_main, catalog, n_days,
+                        from_date=from_date, to_date=to_date,
+                        cogs_agg=cogs_agg),
+        from_date.isoformat(), to_date.isoformat())
     if result["economics"].get("charges_source") == "indisponible":
         warnings.append("Supabase costs unreachable — costs and break-even not computed")
 
@@ -1165,19 +1167,28 @@ def api_cashflow():
         if e.get("category") != "works":
             exp_by_month_excl[mk] = exp_by_month_excl.get(mk, 0.0) + amt
 
-    months = sorted(set(rev_by_month) | set(exp_by_month))
+    com_by_month = {}
+    for c in _commissions_rows():
+        mk = (c.get("date") or "")[:7]
+        if mk:
+            com_by_month[mk] = com_by_month.get(mk, 0.0) + float(c.get("amount") or 0)
+
+    months = sorted(set(rev_by_month) | set(exp_by_month) | set(com_by_month))
     cum = cum_excl = 0.0
     out = []
     for mk in months:
         rev      = round(rev_by_month.get(mk, 0.0), 2)
+        com      = round(com_by_month.get(mk, 0.0), 2)
+        cash_in  = round(rev + com, 2)
         exp      = round(exp_by_month.get(mk, 0.0), 2)
         exp_excl = round(exp_by_month_excl.get(mk, 0.0), 2)
-        net      = round(rev - exp, 2)
-        net_excl = round(rev - exp_excl, 2)
+        net      = round(cash_in - exp, 2)
+        net_excl = round(cash_in - exp_excl, 2)
         cum      += net
         cum_excl += net_excl
         out.append({
             "month": mk, "revenue": rev,
+            "commissions": com, "cash_in": cash_in,
             "expenses": exp, "expenses_excl_capex": exp_excl,
             "net": net, "net_excl_capex": net_excl,
             "cum_net": round(cum, 2), "cum_net_excl_capex": round(cum_excl, 2),
@@ -2297,6 +2308,59 @@ def api_popup_flag():
     else:
         _supa_delete("popup_products", "product_name", name)
     _POPUP_CACHE["at"] = 0.0
+    return jsonify({"ok": True})
+
+# ── Commissions reçues (popup inversé) ────────────────────────────────────────
+# Le chef encaisse lui-même et reverse une commission par virement : un revenu
+# qui n'existe nulle part dans Vendus. Saisi à la main, il s'ajoute en marge
+# pure (100 %, aucun coût en face) à l'EBITDA et au cashflow du mois.
+
+def _commissions_rows():
+    try:
+        rows = _supa_get("commissions_received", {"order": "date.desc"})
+        return rows if isinstance(rows, list) else []
+    except Exception:
+        return []
+
+def _commissions_total(from_iso, to_iso):
+    return round(sum(float(r.get("amount") or 0) for r in _commissions_rows()
+                     if from_iso <= (r.get("date") or "") <= to_iso), 2)
+
+def _apply_commissions(eco, from_iso, to_iso):
+    """Injecte les commissions de la période dans un dict daily_economics."""
+    com = _commissions_total(from_iso, to_iso)
+    eco["commissions_ht"] = com
+    if com and eco.get("ebitda_ht") is not None:
+        eco["ebitda_ht"] = round(eco["ebitda_ht"] + com, 2)
+    return eco
+
+@app.route("/api/commissions", methods=["GET", "POST"])
+def api_commissions():
+    if request.method == "GET":
+        return jsonify({"rows": _commissions_rows()})
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    data = request.get_json(silent=True) or {}
+    day   = (data.get("date") or "").strip()
+    label = (data.get("label") or "").strip()
+    try:
+        amount = round(float(data.get("amount")), 2)
+    except (TypeError, ValueError):
+        return jsonify({"error": "montant invalide"}), 400
+    if not day or amount <= 0:
+        return jsonify({"error": "date et montant > 0 requis"}), 400
+    ok, err = _supa_upsert("commissions_received",
+                           {"date": day, "label": label or "Comissão popup",
+                            "amount": amount})
+    if not ok:
+        return jsonify({"error": err or "insert failed"}), 502
+    return jsonify({"ok": True})
+
+@app.route("/api/commissions/<cid>", methods=["DELETE"])
+def api_commissions_delete(cid):
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    _supa_delete("commissions_received", "id", cid)
     return jsonify({"ok": True})
 
 # ── Helpers lecture / écriture (abstraction Supabase) ─────────────────────────

@@ -179,13 +179,22 @@ function fluxSteps(eco) {
   if (ebitda === null)       return { ok: false, reason: 'no-ebitda' };
 
   const est = e.marge_is_estimated === true;
+  // Commissions reçues (popup inversé) : marge pure injectée après la matière —
+  // le serveur les inclut déjà dans ebitda_ht, la cascade doit donc les montrer
+  // pour retomber sur son chiffre.
+  const com = num(e.commissions_ht) || 0;
   const steps = [
     { key: 'revenue',  label: 'CA TTC',      amount: caTtc,        after: caTtc, kind: 'in'  },
     { key: 'vat',      label: '− TVA',       amount: caTtc - caHt, after: caHt,  kind: 'tax' },
     { key: 'cogs',     label: '− matière',   amount: caHt - marge, after: marge, kind: 'out', estimated: est },
-    { key: 'fixed',    label: '− charges',   amount: fixe,         after: marge - fixe,        kind: 'out' },
-    { key: 'staff',    label: '− personnel', amount: perso,        after: marge - fixe - perso, kind: 'out' },
   ];
+  if (com > 0)
+    steps.push({ key: 'commission', label: '+ commissions', amount: com, after: marge + com, kind: 'in' });
+  const base = marge + com;
+  steps.push(
+    { key: 'fixed',    label: '− charges',   amount: fixe,         after: base - fixe,         kind: 'out' },
+    { key: 'staff',    label: '− personnel', amount: perso,        after: base - fixe - perso, kind: 'out' },
+  );
 
   // Le dernier palier DOIT être l'EBITDA du serveur. S'il ne l'est pas, un poste manque au
   // modèle : mieux vaut ne rien dessiner que dessiner une cascade qui ment d'un écart muet.
@@ -197,6 +206,8 @@ function fluxSteps(eco) {
   const laid = steps.map((s, i) => {
     const from = i === 0 ? 0 : steps[i - 1].after;
     const to   = s.after;
+    if (i > 0 && s.kind === 'in')          // palier entrant : la barre monte
+      return { ...s, left: pct(top - to), width: pct(to - from) };
     return { ...s,
       left:  i === 0 ? 0 : pct(top - from),
       width: i === 0 ? pct(s.amount) : pct(from - to) };
@@ -235,7 +246,7 @@ function renderFlux(d) {
         <span class="flux-seg${s.estimated ? ' is-estimated' : ''}"
               style="left:${s.left}%;width:${s.width}%;background:${colour[s.kind]}"></span>
       </span>
-      <span class="flux-amount${s.kind === 'in' ? '' : ' dim'}">${s.kind === 'in' ? '' : '−'}${fmt(s.amount)}</span>
+      <span class="flux-amount${s.kind === 'in' ? '' : ' dim'}">${s.kind === 'in' ? (s.key === 'commission' ? '+' : '') : '−'}${fmt(s.amount)}</span>
     </div>`).join('');
 
   const neg = f.ebitda < 0;
@@ -1280,7 +1291,7 @@ function switchDashView(view) {
   document.getElementById('view-cashflow').style.display = view === 'cashflow' ? '' : 'none';
   document.getElementById('tab-view-overview').classList.toggle('active', view === 'overview');
   document.getElementById('tab-view-cashflow').classList.toggle('active', view === 'cashflow');
-  if (view === 'cashflow' && !cashflowData) loadCashflow();
+  if (view === 'cashflow' && !cashflowData) { loadCashflow(); loadCommissions(); }
 }
 
 async function loadCashflow() {
@@ -1299,6 +1310,48 @@ async function loadCashflow() {
   }
 }
 
+// ── Commissions reçues : liste + saisie (vue Cashflow) ──────────────────────
+async function loadCommissions() {
+  try {
+    const r = await fetch('/api/commissions');
+    const j = await r.json();
+    const rows = j.rows || [];
+    document.getElementById('com-body').innerHTML = rows.length ? rows.map(c => `
+      <tr>
+        <td>${c.date}</td>
+        <td>${c.label || ''}</td>
+        <td class="amount">${fmt(c.amount)}</td>
+        <td style="text-align:right;"><button onclick="deleteCommission('${c.id}')"
+            style="border:none;background:none;color:var(--faint);cursor:pointer;font-size:13px;">✕</button></td>
+      </tr>`).join('')
+      : '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:16px;">Aucune commission saisie.</td></tr>';
+  } catch (e) { /* section optionnelle */ }
+}
+async function addCommission() {
+  const day = document.getElementById('com-date').value;
+  const label = document.getElementById('com-label').value.trim();
+  const amount = parseFloat(document.getElementById('com-amount').value);
+  const err = document.getElementById('com-error');
+  err.style.display = 'none';
+  if (!day || !(amount > 0)) {
+    err.textContent = 'Date et montant requis.'; err.style.display = ''; return;
+  }
+  const r = await fetch('/api/commissions', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({date: day, label, amount})});
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    err.textContent = 'Erreur : ' + (j.error || r.status); err.style.display = ''; return;
+  }
+  document.getElementById('com-label').value = '';
+  document.getElementById('com-amount').value = '';
+  cashflowData = null; loadCashflow(); loadCommissions(); loadData(true);
+}
+async function deleteCommission(id) {
+  await fetch('/api/commissions/' + id, {method: 'DELETE'});
+  cashflowData = null; loadCashflow(); loadCommissions(); loadData(true);
+}
+
 function renderCashflow() {
   if (!cashflowData) return;
   const excl = document.getElementById('cf-excl-capex').checked;
@@ -1313,7 +1366,7 @@ function renderCashflow() {
   const netKey = excl ? 'net_excl_capex'      : 'net';
   const cumKey = excl ? 'cum_net_excl_capex'  : 'cum_net';
 
-  const totalIn  = months.reduce((s, m) => s + m.revenue, 0);
+  const totalIn  = months.reduce((s, m) => s + (m.cash_in ?? m.revenue), 0);
   const totalOut = months.reduce((s, m) => s + m[outKey], 0);
   const net      = totalIn - totalOut;
   document.getElementById('cf-total-in').textContent  = fmt(totalIn);
@@ -1336,7 +1389,7 @@ function renderCashflow() {
     data: {
       labels: months.map(m => fmtMonth(m.month)),
       datasets: [
-        { type: 'bar', label: 'Cash in',  data: months.map(m => m.revenue),
+        { type: 'bar', label: 'Cash in',  data: months.map(m => m.cash_in ?? m.revenue),
           backgroundColor: 'rgba(68,131,97,.75)', borderRadius: 3, yAxisID: 'y' },
         { type: 'bar', label: 'Cash out', data: months.map(m => m[outKey]),
           backgroundColor: 'rgba(196,85,77,.7)', borderRadius: 3, yAxisID: 'y' },
@@ -1365,7 +1418,7 @@ function renderCashflow() {
     const cumVal = m[cumKey];
     return `<tr>
       <td>${fmtMonth(m.month)}</td>
-      <td class="amount">${fmt(m.revenue)}</td>
+      <td class="amount">${fmt(m.cash_in ?? m.revenue)}${m.commissions ? ` <span data-tip="dont ${fmt(m.commissions)} de commissions reçues" style="color:#7c4dbe;font-size:11px;">◆</span>` : ''}</td>
       <td class="amount">${fmt(m[outKey])}</td>
       <td class="amount" style="color:${netVal >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:500;">${fmt(netVal)}</td>
       <td class="amount" style="color:${cumVal >= 0 ? 'var(--green)' : 'var(--red)'};">${fmt(cumVal)}</td>
