@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contabilidade · Quiet Frequency</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#EDEAE3;--card:#fff;--border:#DBD7CB;--text:#26241E;--muted:#6E6A5E;
+      --faint:#A29D8F;--green:#448361;--spec:#2554C7;
+      --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+body{font-family:'Inter',ui-sans-serif,system-ui,sans-serif;font-size:14px;background:var(--bg);
+     color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
+.page{max-width:900px;margin:0 auto;padding:44px 28px 90px}
+h1{font-size:23px;font-weight:700;letter-spacing:-.4px}
+h1::before{content:"◳ ";color:var(--spec)}
+.sub{font-size:13px;color:var(--muted);margin:4px 0 26px}
+.label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+       color:var(--muted);margin:26px 0 10px}
+.label::before{content:"— ";color:var(--faint)}
+.twrap{border:1px solid var(--border);border-radius:10px;overflow-x:auto;background:var(--card)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+   color:var(--faint);text-align:right;padding:11px 13px;border-bottom:1px solid var(--border);white-space:nowrap}
+th:first-child{text-align:left}
+td{padding:11px 13px;text-align:right;font-variant-numeric:tabular-nums;
+   border-bottom:1px solid var(--border);white-space:nowrap}
+td:first-child{text-align:left;font-weight:600}
+tr:last-child td{border-bottom:none}
+tr.total td{font-weight:700;background:var(--bg);border-top:2px solid var(--border)}
+tr.mrow{cursor:pointer}
+tr.mrow:hover td{background:rgba(38,36,30,.04)}
+tr.mrow td:first-child::before{content:"▸ ";color:var(--faint);font-size:11px}
+tr.mrow.open td:first-child::before{content:"▾ "}
+.gorj{color:var(--green);font-weight:600}
+.prov{font-size:10px;color:#b06a1f;background:#fdf3e3;border-radius:10px;padding:1px 7px;margin-left:6px}
+.daytable td{font-size:12px;color:var(--muted);padding:6px 13px;font-weight:400}
+.btn{font-family:inherit;font-size:13px;font-weight:500;border:1px solid var(--border);
+     background:var(--card);color:var(--text);padding:8px 15px;border-radius:8px;cursor:pointer;
+     text-decoration:none;display:inline-block}
+.btn:hover{border-color:var(--text)}
+.btn.primary{background:var(--text);color:var(--card);border-color:var(--text)}
+.note{background:var(--card);border:1px solid var(--border);border-radius:10px;
+      padding:13px 17px;font-size:12.5px;color:var(--muted);margin-bottom:14px}
+.note b{color:var(--text)}
+.loading{padding:34px;text-align:center;color:var(--muted)}
+.bar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:16px 0 6px}
+footer{margin-top:36px;font-size:11px;color:var(--faint);display:flex;justify-content:space-between}
+footer a{color:var(--faint)}
+@media(max-width:640px){.page{padding:22px 12px 60px}}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Contabilidade — Quiet Frequency, Unipessoal LDA</h1>
+  <div class="sub">Café Estudantina · Vendas, comissões do terminal Revolut e gorjetas, por mês
+    · atualizado <span id="ger">…</span></div>
+
+  <div class="note">
+    <b>Vendas faturadas</b> — total faturado no Vendus (software certificado AT), todas as caixas.<br>
+    <b>Comissões Revolut</b> — valor da fatura mensal de comissões emitida pela Revolut Bank UAB (IVA 0 %).
+    Enquanto a fatura do mês não é emitida, mostra-se o acumulado provisório.<br>
+    <b>Gorjetas</b> — cobradas no terminal, <b>não constituem faturação</b>: estão incluídas no TPA bruto
+    e no líquido creditado, mas não nas vendas.
+  </div>
+
+  <div class="bar">
+    <a class="btn primary" href="/api/contabilidade/excel">⇩ Excel — todos os meses</a>
+    <select id="msel" class="btn" style="padding:8px 10px;"></select>
+    <a class="btn" id="btn-mes" href="#">⇩ Excel — mês selecionado</a>
+  </div>
+
+  <div class="label">Resumo mensal</div>
+  <div class="twrap">
+    <table>
+      <thead><tr>
+        <th>Mês</th><th>Vendas faturadas</th><th>TPA bruto</th><th>Gorjetas</th>
+        <th>Comissões</th><th>Líquido creditado</th><th>Transações</th>
+      </tr></thead>
+      <tbody id="tb"><tr><td colspan="7" class="loading">A carregar…</td></tr></tbody>
+    </table>
+  </div>
+  <div style="font-size:11.5px;color:var(--faint);margin-top:9px;">
+    Clique num mês para ver o detalhe diário. TPA bruto = vendas por cartão + gorjetas.
+  </div>
+
+  <footer>
+    <span>Dados gerados a partir do Vendus e dos extratos oficiais Revolut. Acesso reservado.</span>
+    <a href="/logout">Sair</a>
+  </footer>
+</div>
+
+<script>
+const fmt = v => new Intl.NumberFormat('pt-PT',{style:'currency',currency:'EUR'}).format(v||0);
+let DATA=null;
+
+async function load(){
+  try{
+    const r = await fetch('/api/contabilidade/data');
+    DATA = await r.json();
+    document.getElementById('ger').textContent = DATA.gerado || '';
+    render();
+  }catch(e){
+    document.getElementById('tb').innerHTML =
+      '<tr><td colspan="7" class="loading">Erro ao carregar — recarregue a página.</td></tr>';
+  }
+}
+
+function render(){
+  const ms = DATA.months || [];
+  const sel = document.getElementById('msel');
+  sel.innerHTML = ms.map(m=>`<option value="${m.month}">${m.label}</option>`).join('');
+  if (ms.length) sel.value = ms[ms.length-1].month;
+  syncBtn();
+
+  const g = {vendas:0,tpa:0,gorjetas:0,comissoes:0,liquido:0,tx:0};
+  let html='';
+  for(const m of ms){
+    for(const k in g) g[k]+=m[k]||0;
+    const prov = m.comissoes_fonte==='provisorio' ? '<span class="prov">provisório</span>' : '';
+    html += `<tr class="mrow" data-m="${m.month}" onclick="toggle('${m.month}')">
+      <td>${m.label}</td><td>${fmt(m.vendas)}</td><td>${fmt(m.tpa)}</td>
+      <td class="gorj">${fmt(m.gorjetas)}</td><td>${fmt(m.comissoes)}${prov}</td>
+      <td>${fmt(m.liquido)}</td><td>${m.tx}</td></tr>`;
+    html += `<tr class="drow" data-m="${m.month}" style="display:none"><td colspan="7" style="padding:0">
+      <table class="daytable">${m.days.map(d=>`<tr>
+        <td style="padding-left:32px">${d.day}</td><td>${fmt(d.vendas)}</td><td>${fmt(d.tpa)}</td>
+        <td>${fmt(d.gorjetas)}</td><td>${fmt(d.comissoes)}</td><td>${fmt(d.liquido)}</td><td>${d.tx||''}</td>
+      </tr>`).join('')}</table></td></tr>`;
+  }
+  html += `<tr class="total"><td>TOTAL</td><td>${fmt(g.vendas)}</td><td>${fmt(g.tpa)}</td>
+    <td>${fmt(g.gorjetas)}</td><td>${fmt(g.comissoes)}</td><td>${fmt(g.liquido)}</td><td>${g.tx}</td></tr>`;
+  document.getElementById('tb').innerHTML = html;
+}
+
+function toggle(m){
+  const row=document.querySelector(`.mrow[data-m="${m}"]`);
+  const d=document.querySelector(`.drow[data-m="${m}"]`);
+  const open=d.style.display!=='none';
+  d.style.display=open?'none':''; row.classList.toggle('open',!open);
+}
+function syncBtn(){
+  const m=document.getElementById('msel').value;
+  document.getElementById('btn-mes').href='/api/contabilidade/excel?month='+m;
+}
+document.getElementById('msel').addEventListener('change', syncBtn);
+load();
+</script>
+</body>
+</html>

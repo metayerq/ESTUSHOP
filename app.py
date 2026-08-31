@@ -344,6 +344,9 @@ def _inject_asset_version():
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
 INVESTOR_PASSWORD  = os.environ.get("INVESTOR_PASSWORD", "")
 STAFF_PASSWORD     = os.environ.get("STAFF_PASSWORD", "")
+# ACCOUNTANT_PASSWORD → accès à la SEULE page /contabilidade (ventes, comissões,
+# gorjetas par mois + export Excel). Le rôle ne voit rien d'autre de l'app.
+ACCOUNTANT_PASSWORD = os.environ.get("ACCOUNTANT_PASSWORD", "")
 AUTH_SECRET        = os.environ.get("AUTH_SECRET", DASHBOARD_PASSWORD)
 
 # Chemins autorisés pour le rôle staff : COGS et Stock (recettes + appro).
@@ -357,6 +360,9 @@ STAFF_ALLOWED_PREFIXES = (
 # Chemins fermés au rôle investisseur : détail dépenses, congés staff,
 # réconciliation (montre l'écart de caisse). Le reste (dashboard, COGS,
 # stock, coûts) reste accessible en lecture seule.
+# Rôle comptable : uniquement sa page et son API (+ déconnexion).
+ACCOUNTANT_ALLOWED_PREFIXES = ("/contabilidade", "/api/contabilidade", "/logout", "/static/")
+
 INVESTOR_BLOCKED_PREFIXES = (
     "/expenses", "/api/expenses",
     "/holidays", "/api/time_off",
@@ -369,7 +375,7 @@ def _auth_token(role):
                     hashlib.sha256).hexdigest()
 
 def _current_role():
-    """'admin', 'investor', 'staff' ou None."""
+    """'admin', 'investor', 'staff', 'accountant' ou None."""
     cookie = request.cookies.get("estu_auth", "")
     if not cookie:
         return None
@@ -379,6 +385,8 @@ def _current_role():
         return "investor"
     if STAFF_PASSWORD and hmac.compare_digest(cookie, _auth_token("staff")):
         return "staff"
+    if ACCOUNTANT_PASSWORD and hmac.compare_digest(cookie, _auth_token("accountant")):
+        return "accountant"
     return None
 
 @app.before_request
@@ -412,6 +420,14 @@ def _require_auth():
         if request.path.startswith("/api/"):
             return jsonify({"error": "restricted — recipes only"}), 403
         return redirect("/cogs")
+    # Comptable : la page /contabilidade et rien d'autre, en lecture seule.
+    if role == "accountant":
+        if not request.path.startswith(ACCOUNTANT_ALLOWED_PREFIXES):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "restricted — accounting only"}), 403
+            return redirect("/contabilidade")
+        if request.method not in ("GET", "HEAD"):
+            return jsonify({"error": "read-only"}), 403
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -425,8 +441,10 @@ def login():
             role = "investor"
         elif STAFF_PASSWORD and hmac.compare_digest(pw, STAFF_PASSWORD):
             role = "staff"
+        elif ACCOUNTANT_PASSWORD and hmac.compare_digest(pw, ACCOUNTANT_PASSWORD):
+            role = "accountant"
         if role:
-            dest = "/cogs" if role == "staff" else "/"
+            dest = {"staff": "/cogs", "accountant": "/contabilidade"}.get(role, "/")
             resp = make_response(redirect(dest))
             resp.set_cookie("estu_auth", _auth_token(role),
                             max_age=30*24*3600, httponly=True,
@@ -1864,6 +1882,174 @@ def api_tpa_upload():
                         "from": min(agg), "to": max(agg)})
     except Exception as e:
         return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 400
+
+
+# ── Página da contabilista ────────────────────────────────────────────────────
+# Ce que la comptable demande chaque mois : ventes facturées, comissões du
+# terminal Revolut, gorjetas. Rien d'autre. Accès par ACCOUNTANT_PASSWORD.
+#
+# Deux bases de dates coexistent et ne doivent pas être confondues :
+#   · gorjetas/TPA  → date de CAPTURE (le jour où le client a payé)
+#   · comissões     → la FACTURE mensuelle Revolut, émise sur base règlement.
+# On affiche la facture officielle quand elle existe (c'est la pièce comptable),
+# et à défaut le cumul des commissions par capture, clairement étiqueté.
+
+MESES_PT = {1:"Janeiro",2:"Fevereiro",3:"Março",4:"Abril",5:"Maio",6:"Junho",
+            7:"Julho",8:"Agosto",9:"Setembro",10:"Outubro",11:"Novembro",12:"Dezembro"}
+
+def _fee_invoices():
+    """{'YYYY-MM': {fees, transactions, gross, invoice}} — factures Revolut."""
+    try:
+        rows = _supa_get("revolut_fee_invoices", {"order": "month.asc"})
+    except Exception:
+        rows = None
+    return {r["month"]: r for r in rows} if isinstance(rows, list) and rows else {}
+
+def _contabilidade_months():
+    today = date.today()
+    # Ventes facturées Vendus, par jour (cache journalier + jour courant en live)
+    vendus_day = {}
+    try:
+        for r in _fetch_summaries(OPENING_DAY, (today - timedelta(1)).isoformat()):
+            vendus_day[r["day"]] = float(r.get("ca_ttc") or 0)
+    except Exception:
+        pass
+    try:
+        td = _get_today_docs_cached()
+        if td:
+            vendus_day[today.isoformat()] = round(
+                sum(float(d.get("amount_gross") or 0) for d in td), 2)
+    except Exception:
+        pass
+
+    rev = _load_revolut_days()
+    invoices = _fee_invoices()
+    months = {}
+    for day in sorted(set(vendus_day) | set(rev)):
+        m = day[:7]
+        r = rev.get(day) or {}
+        e = months.setdefault(m, {"days": [], "vendas": 0.0, "tpa": 0.0,
+                                  "gorjetas": 0.0, "comissoes": 0.0, "liquido": 0.0, "tx": 0})
+        row = {"day": day,
+               "vendas":    round(vendus_day.get(day, 0.0), 2),
+               "tpa":       round(float(r.get("gross") or 0), 2),
+               "gorjetas":  round(float(r.get("tips") or 0), 2),
+               "comissoes": round(float(r.get("fees") or 0), 2),
+               "liquido":   round(float(r.get("net") or 0), 2),
+               "tx":        int(r.get("tx") or 0)}
+        e["days"].append(row)
+        for k in ("vendas", "tpa", "gorjetas", "comissoes", "liquido", "tx"):
+            e[k] += row[k]
+
+    out = []
+    for m in sorted(months):
+        e = months[m]
+        inv = invoices.get(m)
+        y, mm = int(m[:4]), int(m[5:7])
+        out.append({
+            "month": m,
+            "label": f"{MESES_PT[mm]} {y}",
+            "vendas":    round(e["vendas"], 2),
+            "tpa":       round(e["tpa"], 2),
+            "gorjetas":  round(e["gorjetas"], 2),
+            # Comissões : la facture fait foi ; sinon cumul par capture (provisoire)
+            "comissoes": round(float(inv["fees"]) if inv else e["comissoes"], 2),
+            "comissoes_fonte": "fatura" if inv else "provisorio",
+            "fatura_num": (inv or {}).get("invoice") or "",
+            "liquido":   round(e["liquido"], 2),
+            "tx":        e["tx"],
+            "days":      e["days"],
+        })
+    return out
+
+@app.route("/contabilidade")
+def contabilidade_page():
+    if _current_role() not in ("accountant", "admin"):
+        return redirect("/login")
+    return render_template("contabilidade.html")
+
+@app.route("/api/contabilidade/data")
+def api_contabilidade_data():
+    if _current_role() not in ("accountant", "admin"):
+        return jsonify({"error": "unauthorized"}), 403
+    return jsonify({"months": _contabilidade_months(),
+                    "gerado": datetime.now().strftime("%d/%m/%Y %H:%M")})
+
+@app.route("/api/contabilidade/excel")
+def api_contabilidade_excel():
+    """Export .xlsx : une feuille de synthèse + une feuille par mois (détail
+    journalier). Un seul mois si ?month=YYYY-MM."""
+    if _current_role() not in ("accountant", "admin"):
+        return jsonify({"error": "unauthorized"}), 403
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill
+    except Exception:
+        return jsonify({"error": "openpyxl indisponível"}), 500
+    import io
+
+    months = _contabilidade_months()
+    want = request.args.get("month")
+    if want:
+        months = [m for m in months if m["month"] == want]
+        if not months:
+            return jsonify({"error": "mês sem dados"}), 404
+
+    EUR = '#,##0.00\\ "€"'
+    bold = Font(bold=True)
+    head_fill = PatternFill("solid", fgColor="EDEAE3")
+
+    def _head(ws, cols, widths):
+        ws.append(cols)
+        for i, w in enumerate(widths, 1):
+            ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
+            c = ws.cell(row=1, column=i)
+            c.font = bold; c.fill = head_fill
+            c.alignment = Alignment(horizontal="center")
+
+    wb = Workbook()
+    ws = wb.active; ws.title = "Resumo"
+    _head(ws, ["Mês", "Vendas faturadas", "TPA bruto", "Gorjetas",
+               "Comissões Revolut", "Origem comissões", "Líquido creditado", "Transações"],
+          [16, 18, 14, 12, 18, 17, 18, 12])
+    for m in months:
+        ws.append([m["label"], m["vendas"], m["tpa"], m["gorjetas"], m["comissoes"],
+                   "Fatura " + m["fatura_num"] if m["comissoes_fonte"] == "fatura" else "Provisório",
+                   m["liquido"], m["tx"]])
+    tot_row = ws.max_row + 1
+    ws.append(["TOTAL",
+               sum(m["vendas"] for m in months), sum(m["tpa"] for m in months),
+               sum(m["gorjetas"] for m in months), sum(m["comissoes"] for m in months), "",
+               sum(m["liquido"] for m in months), sum(m["tx"] for m in months)])
+    for c in ws[tot_row]:
+        c.font = bold
+    for row in ws.iter_rows(min_row=2, min_col=2, max_col=5):
+        for c in row: c.number_format = EUR
+    for row in ws.iter_rows(min_row=2, min_col=7, max_col=7):
+        for c in row: c.number_format = EUR
+
+    for m in months:
+        s = wb.create_sheet(m["label"][:31])
+        _head(s, ["Data", "Vendas faturadas", "TPA bruto", "Gorjetas",
+                  "Comissões (captura)", "Líquido creditado", "Transações"],
+              [14, 18, 14, 12, 19, 18, 12])
+        for d in m["days"]:
+            s.append([d["day"], d["vendas"], d["tpa"], d["gorjetas"],
+                      d["comissoes"], d["liquido"], d["tx"]])
+        r = s.max_row + 1
+        s.append(["TOTAL", m["vendas"], m["tpa"], m["gorjetas"],
+                  sum(d["comissoes"] for d in m["days"]), m["liquido"], m["tx"]])
+        for c in s[r]: c.font = bold
+        for row in s.iter_rows(min_row=2, min_col=2, max_col=6):
+            for c in row: c.number_format = EUR
+
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    name = f"contabilidade_{want or 'todos_os_meses'}.xlsx"
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"] = ("application/vnd.openxmlformats-"
+                                    "officedocument.spreadsheetml.sheet")
+    resp.headers["Content-Disposition"] = f'attachment; filename="{name}"'
+    return resp
 
 
 @app.route("/api/cash")

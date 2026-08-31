@@ -4,3 +4,4 @@ requests
 # /usr/share/zoneinfo, mais on ne peut pas le vérifier depuis ici : sans base,
 # ZoneInfo("Europe/Lisbon") lèverait au premier appel. Roue pure-python, ~350 ko.
 tzdata
+openpyxl
