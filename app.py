@@ -330,7 +330,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260831b"
+ASSET_VERSION = "20260831c"
 
 @app.context_processor
 def _inject_asset_version():
@@ -1905,6 +1905,13 @@ def _fee_invoices():
         rows = None
     return {r["month"]: r for r in rows} if isinstance(rows, list) and rows else {}
 
+# Mai 2026 n'a aucune faturação Vendus : jusqu'au début juin les commandes
+# passaient par le POS Revolut (non certifié AT) et ont été ressaisies dans
+# Vendus EN JUIN. Isolé, mai affiche donc un numerário négatif et juin un
+# numerário gonflé du même montant. Les deux mois ne sont lisibles qu'ensemble.
+MESES_FUNDIDOS = {"2026-05": "2026-06"}
+LABELS_FUNDIDOS = {"2026-06": "Maio–Junho 2026"}
+
 def _contabilidade_months():
     today = date.today()
     # Ventes facturées Vendus, par jour (cache journalier + jour courant en live)
@@ -1926,7 +1933,7 @@ def _contabilidade_months():
     invoices = _fee_invoices()
     months = {}
     for day in sorted(set(vendus_day) | set(rev)):
-        m = day[:7]
+        m = MESES_FUNDIDOS.get(day[:7], day[:7])
         r = rev.get(day) or {}
         e = months.setdefault(m, {"days": [], "vendas": 0.0, "tpa": 0.0,
                                   "gorjetas": 0.0, "cartao": 0.0, "numerario": 0.0,
@@ -1956,20 +1963,25 @@ def _contabilidade_months():
     out = []
     for m in sorted(months):
         e = months[m]
-        inv = invoices.get(m)
+        # Un mois fusionné agrège aussi les factures de commissions des mois
+        # sources — sinon août de mai passerait à la trappe.
+        srcs = [m] + [s for s, d in MESES_FUNDIDOS.items() if d == m]
+        invs = [invoices[s] for s in srcs if invoices.get(s)]
+        inv = invs[0] if len(invs) == len(srcs) else None
         y, mm = int(m[:4]), int(m[5:7])
         out.append({
             "month": m,
-            "label": f"{MESES_PT[mm]} {y}",
+            "label": LABELS_FUNDIDOS.get(m) or f"{MESES_PT[mm]} {y}",
             "vendas":    round(e["vendas"], 2),
             "tpa":       round(e["tpa"], 2),
             "gorjetas":  round(e["gorjetas"], 2),
             "cartao":    round(e["cartao"], 2),
             "numerario": round(e["numerario"], 2),
             # Comissões : la facture fait foi ; sinon cumul par capture (provisoire)
-            "comissoes": round(float(inv["fees"]) if inv else e["comissoes"], 2),
+            "comissoes": round(sum(float(i["fees"]) for i in invs)
+                               if inv else e["comissoes"], 2),
             "comissoes_fonte": "fatura" if inv else "provisorio",
-            "fatura_num": (inv or {}).get("invoice") or "",
+            "fatura_num": " + ".join(i.get("invoice") or "" for i in invs) if inv else "",
             "liquido":   round(e["liquido"], 2),
             "tx":        e["tx"],
             "days":      e["days"],
