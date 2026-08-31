@@ -330,7 +330,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260831h"
+ASSET_VERSION = "20260831i"
 
 @app.context_processor
 def _inject_asset_version():
@@ -1110,7 +1110,7 @@ def api_summary_rebuild():
     data      = request.get_json(silent=True) or {}
     from_iso  = data.get("from", OPENING_DAY)
     to_iso    = data.get("to", (today_lisbon() - timedelta(1)).isoformat())
-    catalog   = _catalog()
+    catalog   = get_catalog() or {}
     if not catalog:
         return jsonify({"ok": False, "error": "catalogue Vendus indisponible"}), 502
     docs = get_documents_with_items(from_iso, to_iso)
@@ -2358,6 +2358,48 @@ def _fetch_summaries(from_iso, to_iso):
                             ("order", "day.asc")])
     return rows.json() if rows.ok else []
 
+def _popup_adjust_rows(rows):
+    """Réécrit COGS/couverture des lignes daily_summary pour les produits popup.
+
+    Les lignes STOCKÉES sont toujours calculées avec le catalogue de base
+    (coût fournisseur Vendus) : un flag popup ne demande donc AUCUN rebuild —
+    la ligne porte le détail par produit (qty, rev_ht), on retire à la lecture
+    la contribution de base du produit flaggé et on ajoute celle de la
+    commission. Flagger/déflagger est instantané sur tout l'historique.
+    (Le rebuild déclenché côté client à chaque Save dépassait le timeout
+    serverless et échouait en silence — l'EBITDA ne bougeait jamais.)"""
+    flags = _load_popup_flags()
+    if not flags or not rows:
+        return rows
+    base = get_catalog() or {}
+    out = []
+    for r in rows:
+        prods = r.get("products") or {}
+        hit = [n for n in flags if n in prods]
+        if not hit:
+            out.append(r)
+            continue
+        r = dict(r)
+        cogs    = float(r.get("cogs_ht") or 0)
+        covered = float(r.get("covered_ht") or 0)
+        for n in hit:
+            p   = prods[n]
+            qty = float(p.get("qty") or 0)
+            ht  = float(p.get("rev_ht") or 0)
+            c   = base.get(n) or {}
+            old = float(c.get("cost") or 0)
+            if old:                     # contribution de base à retirer
+                cogs    -= old * qty
+                covered -= ht
+            net = float(c.get("net") or 0)
+            if net:                     # contribution popup : coût = part du chef
+                cogs    += net * (1 - flags[n] / 100) * qty
+                covered += ht
+        r["cogs_ht"]    = round(cogs, 2)
+        r["covered_ht"] = round(covered, 2)
+        out.append(r)
+    return out
+
 def _get_summaries(from_iso, to_iso):
     """Lecture du cache journalier, mutualisée sur la durée de la requête HTTP.
 
@@ -2376,8 +2418,9 @@ def _get_summaries(from_iso, to_iso):
         except RuntimeError:
             pass          # hors contexte de requête (cron, script) → pas de mémo
     if store is None:
-        return _fetch_summaries(from_iso, to_iso)
-    return [store[d] for d in sorted(store) if from_iso <= d <= to_iso]
+        return _popup_adjust_rows(_fetch_summaries(from_iso, to_iso))
+    return _popup_adjust_rows(
+        [store[d] for d in sorted(store) if from_iso <= d <= to_iso])
 
 def _summaries_cache_put(day_iso, row):
     """Garde le mémo de requête cohérent après construction d'un jour manquant."""
@@ -3030,12 +3073,16 @@ def _ensure_summaries(from_date, to_date, catalog):
         for doc in docs:
             day = (doc.get("date") or doc.get("local_time", ""))[:10]
             by_day.setdefault(day, []).append(doc)
+        # ⚠️ Catalogue de BASE, pas l'overlay popup : les lignes stockées sont
+        # neutres, l'ajustement popup vit à la lecture (_popup_adjust_rows).
+        # Figer un coût popup ici le ferait compter deux fois.
+        base_catalog = get_catalog() or catalog
         for day in missing:
-            s = _summarize_docs_items(by_day.get(day, []), catalog)
+            s = _summarize_docs_items(by_day.get(day, []), base_catalog)
             _upsert_summary(day, s)
             row = {"day": day, **s}
-            rows.append(row)
-            _summaries_cache_put(day, row)   # cohérence du mémo de requête
+            rows.append(_popup_adjust_rows([{**row}])[0])
+            _summaries_cache_put(day, row)   # cohérence du mémo (version stockée)
     rows.sort(key=lambda r: r["day"])
     return rows
 
