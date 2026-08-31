@@ -1476,8 +1476,14 @@ async function saveProductPopup() {
     });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || r.status);
+    // L'historique daily_summary a été calculé avec l'ancien coût : sans
+    // rebuild, l'EBITDA des périodes passées ignorerait le flag.
+    btn.textContent = 'Recalcul de l\u2019historique\u2026';
+    try {
+      await fetch('/api/summary/rebuild', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+    } catch (e) { /* le live est déjà juste ; l'historique se rattrapera au prochain rebuild */ }
     closeProductPopup();
-    loadData(true);   // recharge : badge, marge et COGS reflètent le flag
+    loadData(true);   // recharge : badge, marge, COGS et EBITDA reflètent le flag
   } catch (e) {
     errEl.textContent = 'Erreur : ' + e.message;
     errEl.style.display = '';

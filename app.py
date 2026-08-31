@@ -330,7 +330,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260831f"
+ASSET_VERSION = "20260831g"
 
 @app.context_processor
 def _inject_asset_version():
@@ -2259,15 +2259,19 @@ def _catalog():
     flags = _load_popup_flags()
     if not flags:
         return catalog
+    # Copie les entrées touchées : le catalogue vient d'un cache TTL partagé,
+    # le muter ferait survivre l'ancien coût à un dé-flag jusqu'à expiration.
+    catalog = dict(catalog)
     for name, pct in flags.items():
-        c = catalog.get(name)
-        if not c:
+        if name not in catalog:
             continue
+        c = dict(catalog[name])
         c["popup"] = True
         c["commission_pct"] = pct
         net = float(c.get("net") or 0)
         if net:
             c["cost"] = round(net * (1 - pct / 100), 4)
+        catalog[name] = c
     return catalog
 
 @app.route("/api/popup-flag", methods=["POST"])
