@@ -330,7 +330,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260831a"
+ASSET_VERSION = "20260831b"
 
 @app.context_processor
 def _inject_asset_version():
@@ -1929,16 +1929,28 @@ def _contabilidade_months():
         m = day[:7]
         r = rev.get(day) or {}
         e = months.setdefault(m, {"days": [], "vendas": 0.0, "tpa": 0.0,
-                                  "gorjetas": 0.0, "comissoes": 0.0, "liquido": 0.0, "tx": 0})
+                                  "gorjetas": 0.0, "cartao": 0.0, "numerario": 0.0,
+                                  "comissoes": 0.0, "liquido": 0.0, "tx": 0})
+        vendas = round(vendus_day.get(day, 0.0), 2)
+        tpa    = round(float(r.get("gross") or 0), 2)
+        gorj   = round(float(r.get("tips") or 0), 2)
+        # Vendas por cartão = ce que le client a payé pour des VENTES : le TPA
+        # brut moins les gorjetas, qui transitent par le terminal sans être de
+        # la faturação. Le numerário s'en déduit — c'est LE chiffre que la
+        # comptable recompose à la main chaque mois, et se trompe de base.
+        cartao = round(tpa - gorj, 2)
         row = {"day": day,
-               "vendas":    round(vendus_day.get(day, 0.0), 2),
-               "tpa":       round(float(r.get("gross") or 0), 2),
-               "gorjetas":  round(float(r.get("tips") or 0), 2),
+               "vendas":    vendas,
+               "tpa":       tpa,
+               "gorjetas":  gorj,
+               "cartao":    cartao,
+               "numerario": round(vendas - cartao, 2),
                "comissoes": round(float(r.get("fees") or 0), 2),
                "liquido":   round(float(r.get("net") or 0), 2),
                "tx":        int(r.get("tx") or 0)}
         e["days"].append(row)
-        for k in ("vendas", "tpa", "gorjetas", "comissoes", "liquido", "tx"):
+        for k in ("vendas", "tpa", "gorjetas", "cartao", "numerario",
+                  "comissoes", "liquido", "tx"):
             e[k] += row[k]
 
     out = []
@@ -1952,6 +1964,8 @@ def _contabilidade_months():
             "vendas":    round(e["vendas"], 2),
             "tpa":       round(e["tpa"], 2),
             "gorjetas":  round(e["gorjetas"], 2),
+            "cartao":    round(e["cartao"], 2),
+            "numerario": round(e["numerario"], 2),
             # Comissões : la facture fait foi ; sinon cumul par capture (provisoire)
             "comissoes": round(float(inv["fees"]) if inv else e["comissoes"], 2),
             "comissoes_fonte": "fatura" if inv else "provisorio",
@@ -2009,38 +2023,41 @@ def api_contabilidade_excel():
 
     wb = Workbook()
     ws = wb.active; ws.title = "Resumo"
-    _head(ws, ["Mês", "Vendas faturadas", "TPA bruto", "Gorjetas",
-               "Comissões Revolut", "Origem comissões", "Líquido creditado", "Transações"],
-          [16, 18, 14, 12, 18, 17, 18, 12])
+    _head(ws, ["Mês", "Vendas faturadas", "Vendas por cartão", "Numerário",
+               "TPA bruto", "Gorjetas", "Comissões Revolut", "Origem comissões",
+               "Líquido creditado", "Transações"],
+          [16, 18, 18, 14, 14, 12, 18, 17, 18, 12])
     for m in months:
-        ws.append([m["label"], m["vendas"], m["tpa"], m["gorjetas"], m["comissoes"],
+        ws.append([m["label"], m["vendas"], m["cartao"], m["numerario"],
+                   m["tpa"], m["gorjetas"], m["comissoes"],
                    "Fatura " + m["fatura_num"] if m["comissoes_fonte"] == "fatura" else "Provisório",
                    m["liquido"], m["tx"]])
     tot_row = ws.max_row + 1
-    ws.append(["TOTAL",
-               sum(m["vendas"] for m in months), sum(m["tpa"] for m in months),
-               sum(m["gorjetas"] for m in months), sum(m["comissoes"] for m in months), "",
-               sum(m["liquido"] for m in months), sum(m["tx"] for m in months)])
+    S = lambda k: sum(m[k] for m in months)
+    ws.append(["TOTAL", S("vendas"), S("cartao"), S("numerario"), S("tpa"),
+               S("gorjetas"), S("comissoes"), "", S("liquido"), S("tx")])
     for c in ws[tot_row]:
         c.font = bold
-    for row in ws.iter_rows(min_row=2, min_col=2, max_col=5):
+    for row in ws.iter_rows(min_row=2, min_col=2, max_col=7):
         for c in row: c.number_format = EUR
-    for row in ws.iter_rows(min_row=2, min_col=7, max_col=7):
+    for row in ws.iter_rows(min_row=2, min_col=9, max_col=9):
         for c in row: c.number_format = EUR
 
     for m in months:
         s = wb.create_sheet(m["label"][:31])
-        _head(s, ["Data", "Vendas faturadas", "TPA bruto", "Gorjetas",
-                  "Comissões (captura)", "Líquido creditado", "Transações"],
-              [14, 18, 14, 12, 19, 18, 12])
+        _head(s, ["Data", "Vendas faturadas", "Vendas por cartão", "Numerário",
+                  "TPA bruto", "Gorjetas", "Comissões (captura)",
+                  "Líquido creditado", "Transações"],
+              [14, 18, 18, 14, 14, 12, 19, 18, 12])
         for d in m["days"]:
-            s.append([d["day"], d["vendas"], d["tpa"], d["gorjetas"],
-                      d["comissoes"], d["liquido"], d["tx"]])
+            s.append([d["day"], d["vendas"], d["cartao"], d["numerario"],
+                      d["tpa"], d["gorjetas"], d["comissoes"], d["liquido"], d["tx"]])
         r = s.max_row + 1
-        s.append(["TOTAL", m["vendas"], m["tpa"], m["gorjetas"],
-                  sum(d["comissoes"] for d in m["days"]), m["liquido"], m["tx"]])
+        s.append(["TOTAL", m["vendas"], m["cartao"], m["numerario"], m["tpa"],
+                  m["gorjetas"], sum(d["comissoes"] for d in m["days"]),
+                  m["liquido"], m["tx"]])
         for c in s[r]: c.font = bold
-        for row in s.iter_rows(min_row=2, min_col=2, max_col=6):
+        for row in s.iter_rows(min_row=2, min_col=2, max_col=8):
             for c in row: c.number_format = EUR
 
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
