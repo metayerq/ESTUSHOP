@@ -1477,11 +1477,26 @@ async function saveProductPopup() {
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || r.status);
     // L'historique daily_summary a été calculé avec l'ancien coût : sans
-    // rebuild, l'EBITDA des périodes passées ignorerait le flag.
-    btn.textContent = 'Recalcul de l\u2019historique\u2026';
+    // rebuild, l'EBITDA des périodes passées ignorerait le flag. Un rebuild
+    // de tout l'historique en une requête dépasse le timeout Vercel — on
+    // découpe donc mois par mois, du plus récent au plus ancien.
     try {
-      await fetch('/api/summary/rebuild', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
-    } catch (e) { /* le live est déjà juste ; l'historique se rattrapera au prochain rebuild */ }
+      const today = new Date();
+      let cur = new Date(today.getFullYear(), today.getMonth(), 1);
+      const opening = new Date(2026, 4, 27);   // 27 mai 2026
+      let n = 0;
+      while (cur >= new Date(2026, 4, 1)) {
+        const from = cur < opening ? opening : cur;
+        const to = new Date(Math.min(new Date(cur.getFullYear(), cur.getMonth()+1, 0), today - 864e5));
+        n++; btn.textContent = `Recalcul\u2026 (${n})`;
+        if (to >= from) {
+          const iso = d => d.toISOString().slice(0,10);
+          await fetch('/api/summary/rebuild', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                      body: JSON.stringify({from: iso(from), to: iso(to)})});
+        }
+        cur = new Date(cur.getFullYear(), cur.getMonth()-1, 1);
+      }
+    } catch (e) { /* le live est déjà juste ; relancer un Save reprendra l'historique */ }
     closeProductPopup();
     loadData(true);   // recharge : badge, marge, COGS et EBITDA reflètent le flag
   } catch (e) {
