@@ -33,7 +33,9 @@
 
   /* Sémantique propre au trajet. `leave` et `tax` ne sont PAS des gris neutres :
      ils portent une information (ce qui sort), et doivent se distinguer du fond
-     sans attirer l'œil plus que le solde. */
+     sans attirer l'œil plus que le solde. Nommées d'après la cascade « Le trajet »
+     qui les a introduites ; elle a été retirée, elles restent utilisées par la
+     barre prime cost, la sparkline et la page transactions. */
   --flux-keep:  #4FA36F;
   --flux-leave: #C3CBD2;
   --flux-tax:   #AEB8C0;
@@ -553,88 +555,6 @@ td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 
 @media (max-width: 480px) {
   .period-pills, .filters, .month-pills { gap: 6px; }
   .pill, .filter-btn { padding: 7px 12px; font-size: 12px; }
-}
-
-/* ══ Le trajet ═══════════════════════════════════════════════════════════════
-   Un poste, une barre, un montant. La LARGEUR est la seule grandeur : pas de
-   hauteur variable, pas d'aire, pas de pourcentage écrit à côté de la barre — le
-   pourcentage se lit déjà dans la longueur.
-
-   Les segments partent tous du niveau atteint par le précédent, ce qui rend le
-   décalage visible : chaque barre commence là où la précédente s'est arrêtée. */
-
-.flux { margin: 0 0 32px; }
-
-.flux-head {
-  display: flex; align-items: baseline; justify-content: space-between;
-  gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
-}
-.flux-title {
-  font-size: 10px; font-weight: 600; letter-spacing: .14em;
-  text-transform: uppercase; color: var(--faint); font-family: var(--mono);
-}
-.flux-scope { font-size: 11px; color: var(--faint); font-family: var(--mono); }
-
-.flux-rows { display: flex; flex-direction: column; }
-
-.flux-row {
-  display: grid;
-  grid-template-columns: 8.5rem minmax(0, 1fr) 6rem;
-  align-items: center; gap: 12px; padding: 4px 0;
-}
-.flux-label {
-  font-family: var(--mono); font-size: 11.5px; line-height: 1.3;
-  color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.flux-track { position: relative; height: 20px; }
-.flux-seg {
-  position: absolute; top: 0; height: 100%; border-radius: 1px; min-width: 2px;
-}
-/* Extrapolé : hachures. La notation est la même partout — plein = mesuré,
-   hachuré = extrapolé, et l'absence de barre = inconnu, jamais une barre nulle. */
-.flux-seg.is-estimated {
-  background-image: repeating-linear-gradient(
-    -45deg, rgba(255,255,255,.34) 0 3px, transparent 3px 6px);
-}
-.flux-amount {
-  text-align: right; font-size: 13px; font-weight: 600; letter-spacing: -.01em;
-  font-variant-numeric: tabular-nums;
-}
-.flux-amount.dim { color: var(--muted); font-weight: 400; }
-.flux-amount.neg { color: var(--red); }
-
-.flux-row.is-total { margin-top: 5px; padding-top: 9px; border-top: 1px solid var(--border); }
-.flux-row.is-total .flux-label { color: var(--text); font-weight: 600; }
-.flux-row.is-total .flux-amount { font-size: 15px; }
-
-.flux-zero {
-  position: absolute; top: -2px; bottom: -2px; width: 1px;
-  background: var(--border); pointer-events: none;
-}
-
-.flux-note {
-  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);
-  font-size: 12px; line-height: 1.55; color: var(--muted);
-}
-.flux-note b { color: var(--text); font-weight: 600; }
-.flux-note .est { color: var(--amber); }
-
-.flux-empty {
-  padding: 18px 0; font-size: 13px; color: var(--muted);
-  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
-}
-
-.flux-legend {
-  display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px;
-  font-family: var(--mono); font-size: 10px; color: var(--faint);
-}
-.flux-legend span { display: inline-flex; align-items: center; gap: 5px; }
-.flux-legend i { width: 9px; height: 9px; border-radius: 1px; flex: none; }
-
-@media (max-width: 560px) {
-  .flux-row { grid-template-columns: 7rem minmax(0, 1fr) 5rem; gap: 8px; }
-  .flux-label { font-size: 10.5px; }
-  .flux-amount { font-size: 12px; }
 }
 
 /* ── KPI cliquable ────────────────────────────────────────────────────────────

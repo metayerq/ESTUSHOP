@@ -330,7 +330,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260831j"
+ASSET_VERSION = "20260904a"
 
 @app.context_processor
 def _inject_asset_version():
@@ -796,11 +796,32 @@ def api_data():
     }
 
     # ── Économie : COGS depuis le cache (multi-jours) ou les items (jour) ─────
+    # ── L'économie de la période s'arrête à HIER ─────────────────────────────
+    # Le jour courant apporte une recette partielle mais une journée ENTIÈRE de
+    # charges : à 9 h, un mois à 3 jours ouvrés imputait 189 € de charges à un
+    # jour qui n'avait encore rien vendu, et l'EBITDA du mois basculait dans le
+    # rouge pour cette seule raison. Les KPI du jour vivent dans leur propre
+    # bandeau ; ici on ne compare que des journées terminées.
+    # Un jour isolé (« Today ») garde son économie : l'exclure ne laisserait rien.
+    eco_from, eco_to = from_date, to_date
+    eco_docs, eco_agg = docs_main, cogs_agg
+    excludes_today = False
+    if not is_single and from_date <= today_real <= to_date and from_date < today_real:
+        eco_to = today_real - timedelta(1)
+        eco_rows = [r for r in period_rows if r["day"] != today_iso]
+        eco_agg = (round(sum(r.get("cogs_ht",    0) for r in eco_rows), 2),
+                   round(sum(r.get("covered_ht", 0) for r in eco_rows), 2),
+                   round(sum(r.get("items_ht",   0) for r in eco_rows), 2))
+        eco_docs = [d for d in docs_main
+                    if (d.get("date") or d.get("local_time", ""))[:10] != today_iso]
+        excludes_today = True
+
     result["economics"] = _apply_commissions(
-        daily_economics(docs_main, catalog, n_days,
-                        from_date=from_date, to_date=to_date,
-                        cogs_agg=cogs_agg),
-        from_date.isoformat(), to_date.isoformat())
+        daily_economics(eco_docs, catalog, (eco_to - eco_from).days + 1,
+                        from_date=eco_from, to_date=eco_to,
+                        cogs_agg=eco_agg),
+        eco_from.isoformat(), eco_to.isoformat())
+    result["economics"]["excludes_today"] = excludes_today
     if result["economics"].get("charges_source") == "indisponible":
         warnings.append("Supabase costs unreachable — costs and break-even not computed")
 
@@ -2459,6 +2480,16 @@ def _popup_adjust_rows(rows):
             if net:                     # contribution popup : coût = part du chef
                 cogs    += net * (1 - flags[n] / 100) * qty
                 covered += ht
+        # ⚠️ UNE COUVERTURE > 100 % EST IMPOSSIBLE, DONC C'EST UN DOUBLE COMPTE.
+        # Les lignes écrites pendant la brève fenêtre où le cache journalier
+        # recevait le catalogue AVEC overlay portent déjà le coût popup : le
+        # rajouter ici gonflait le COGS, écrasait la marge (40 % au lieu de 75 %)
+        # et faisait exploser le point mort. On laisse alors la ligne stockée
+        # intacte plutôt que d'afficher un chiffre qu'aucune vente ne justifie.
+        items = float(r.get("items_ht") or 0)
+        if items and covered > items + 0.01:
+            out.append(r)
+            continue
         r["cogs_ht"]    = round(cogs, 2)
         r["covered_ht"] = round(covered, 2)
         out.append(r)
