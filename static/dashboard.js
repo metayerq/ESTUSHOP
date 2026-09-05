@@ -188,8 +188,12 @@ function render(d) {
   // ── KPIs ─────────────────────────────────────────────────────────────────
   document.getElementById('kpi-ca').textContent = fmt(d.today.ca);
   if (d.economics) {
-    document.getElementById('kpi-ca-ht').textContent =
-      `${fmt(d.economics.ca_ht)} excl. VAT · VAT ${fmt(d.economics.tva_collectee)}`;
+    // Le brut reste écrit : c'est lui qui coïncide avec Vendus, la trésorerie
+    // et la page comptable. Le net est ce que le café gagne réellement.
+    const chef = d.today.popup_chef;
+    document.getElementById('kpi-ca-ht').innerHTML =
+      `${fmt(d.economics.ca_ht)} excl. VAT · VAT ${fmt(d.economics.tva_collectee)}`
+      + (chef ? `<br><span style="color:#7c4dbe;">${fmt(d.today.ca_gross)} facturé · ${fmt(chef)} reversé au chef</span>` : '');
   } else {
     document.getElementById('kpi-ca-ht').textContent = '';
   }

@@ -330,7 +330,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260904a"
+ASSET_VERSION = "20260904b"
 
 @app.context_processor
 def _inject_asset_version():
@@ -679,15 +679,34 @@ def api_data():
             heatmap_payload = None
 
     today_iso = today_real.isoformat()
-    today_sum = _summarize_docs_items(today_docs or [], catalog)
+    # ⚠️ TOUTE LIGNE DE RÉSUMÉ SE CONSTRUIT AVEC LE CATALOGUE DE BASE.
+    # Bâtie avec l'overlay popup, elle porterait déjà le coût du chef ; l'ajout
+    # à la lecture le comptait alors deux fois — c'est ce qui avait donné une
+    # couverture de 117 % et un point mort du double. Le popup entre toujours
+    # par _popup_adjust_rows, jamais par le catalogue qui sert au calcul.
+    base_catalog   = get_catalog() or {}
+    today_sum_base = _summarize_docs_items(today_docs or [], base_catalog)
+    today_sum      = _popup_adjust_rows([dict(today_sum_base)])[0]
+    # Lignes de la période de comparaison : le CA comparé doit être net du popup
+    # lui aussi, sinon la variation compare des périmètres différents.
+    try:
+        comp_rows_for_stats = (_ensure_summaries(comp_from, comp_to, catalog)
+                               if comp_from <= comp_to else [])
+    except Exception:
+        comp_rows_for_stats = []
     ts        = calc_stats(today_docs or [])   # CA/nb du jour — sparkline & WoW
 
     # ── Agrégats item-level : cache pour les jours passés + live aujourd'hui ──
     if is_single:
-        day_summary = today_sum if is_today_single else _summarize_docs_items(docs_main, catalog)
-        # Cache opportuniste : une journée passée consultée = summary persisté
-        if to_date < today_real and catalog:
-            _upsert_summary(to_date.isoformat(), day_summary)
+        if is_today_single:
+            day_base, day_summary = today_sum_base, today_sum
+        else:
+            day_base    = _summarize_docs_items(docs_main, base_catalog)
+            day_summary = _popup_adjust_rows([dict(day_base)])[0]
+        # Cache opportuniste : une journée passée consultée = summary persisté.
+        # On écrit la version NEUTRE, jamais celle vue à l'écran.
+        if to_date < today_real and base_catalog:
+            _upsert_summary(to_date.isoformat(), day_base)
         period_rows = [{"day": to_date.isoformat(), **day_summary}]
     else:
         past_to     = min(to_date, today_real - timedelta(1))
@@ -770,8 +789,8 @@ def api_data():
         "comp_label":    comp_label,
         "comp_sofar":    comp_is_sofar,
         # Stats globales
-        "today":         calc_stats(docs_main),
-        "yesterday":     calc_stats(docs_comp),
+        "today":         _stats_net_popup(calc_stats(docs_main), period_rows),
+        "yesterday":     _stats_net_popup(calc_stats(docs_comp), comp_rows_for_stats),
         "seuil":         SEUIL_TRANSACTIONS,
         # Graphe temporel
         "daily":         daily_breakdown(docs_main),
@@ -804,7 +823,7 @@ def api_data():
     # bandeau ; ici on ne compare que des journées terminées.
     # Un jour isolé (« Today ») garde son économie : l'exclure ne laisserait rien.
     eco_from, eco_to = from_date, to_date
-    eco_docs, eco_agg = docs_main, cogs_agg
+    eco_docs, eco_agg, eco_rows = docs_main, cogs_agg, period_rows
     excludes_today = False
     if not is_single and from_date <= today_real <= to_date and from_date < today_real:
         eco_to = today_real - timedelta(1)
@@ -816,12 +835,15 @@ def api_data():
                     if (d.get("date") or d.get("local_time", ""))[:10] != today_iso]
         excludes_today = True
 
+    eco_pop = _popup_split(eco_rows if excludes_today else period_rows)
     result["economics"] = _apply_commissions(
         daily_economics(eco_docs, catalog, (eco_to - eco_from).days + 1,
                         from_date=eco_from, to_date=eco_to,
-                        cogs_agg=eco_agg),
-        eco_from.isoformat(), eco_to.isoformat())
+                        cogs_agg=eco_agg,
+                        revenue_deduct=(eco_pop["chef_ttc"], eco_pop["chef_ht"])),
+        eco_from.isoformat(), eco_to.isoformat(), popup_com=eco_pop["com_ht"])
     result["economics"]["excludes_today"] = excludes_today
+    result["economics"]["popup_chef_ttc"] = eco_pop["chef_ttc"]
     if result["economics"].get("charges_source") == "indisponible":
         warnings.append("Supabase costs unreachable — costs and break-even not computed")
 
@@ -831,7 +853,7 @@ def api_data():
     # donc cette évolution reflète surtout les changements de MARGE (mix/prix).
     try:
         comp_days = (comp_to - comp_from).days + 1
-        comp_rows = _ensure_summaries(comp_from, comp_to, catalog) if comp_from <= comp_to else []
+        comp_rows = comp_rows_for_stats
         if comp_rows:
             comp_cogs_agg = (
                 round(sum(r.get("cogs_ht",    0) for r in comp_rows), 2),
@@ -2347,12 +2369,27 @@ def _commissions_total(from_iso, to_iso):
     return round(sum(float(r.get("amount") or 0) for r in _commissions_rows()
                      if from_iso <= (r.get("date") or "") <= to_iso), 2)
 
-def _apply_commissions(eco, from_iso, to_iso):
-    """Injecte les commissions de la période dans un dict daily_economics."""
-    com = _commissions_total(from_iso, to_iso)
-    eco["commissions_ht"] = com
-    if com and eco.get("ebitda_ht") is not None:
-        eco["ebitda_ht"] = round(eco["ebitda_ht"] + com, 2)
+def _apply_commissions(eco, from_iso, to_iso, popup_com=0.0):
+    """Injecte les commissions de la période dans un dict daily_economics.
+
+    Deux sources, même nature : les commissions virées par un chef qui a
+    encaissé lui-même (saisies à la main) et celles prélevées sur des ventes
+    popup passées par notre caisse. Aucune n'a de coût en face : c'est de la
+    marge brute, donc elles remontent la marge ET l'EBITDA."""
+    com   = _commissions_total(from_iso, to_iso)
+    popup = round(float(popup_com or 0), 2)
+    eco["commissions_ht"]       = com
+    eco["popup_commission_ht"]  = popup
+    total = round(com + popup, 2)
+    if not total:
+        return eco
+    if eco.get("marge_brute_ht") is not None:
+        eco["marge_brute_ht"] = round(eco["marge_brute_ht"] + total, 2)
+        if eco.get("ca_ht"):
+            eco["marge_brute_ht_pct"] = round(
+                eco["marge_brute_ht"] / eco["ca_ht"] * 100, 1)
+    if eco.get("ebitda_ht") is not None:
+        eco["ebitda_ht"] = round(eco["ebitda_ht"] + total, 2)
     return eco
 
 @app.route("/api/commissions", methods=["GET", "POST"])
@@ -2443,16 +2480,61 @@ def _fetch_summaries(from_iso, to_iso):
                             ("order", "day.asc")])
     return rows.json() if rows.ok else []
 
+def _stats_net_popup(stats, rows):
+    """Retire du CA affiché la part des ventes popup qui revient au chef.
+
+    Le brut est conservé sous `ca_gross` : c'est lui qui doit continuer à
+    coïncider avec Vendus, la trésorerie et la page comptable."""
+    pop = _popup_split(rows or [])
+    if not pop["chef_ttc"]:
+        return stats
+    ca    = round(stats["ca"]    - pop["chef_ttc"], 2)
+    ca_ht = round(stats["ca_ht"] - pop["chef_ht"],  2)
+    nb    = stats.get("nb") or 0
+    return {**stats, "ca": ca, "ca_ht": ca_ht,
+            "ticket":     round(ca    / nb, 2) if nb else 0.0,
+            "ticket_ht":  round(ca_ht / nb, 2) if nb else 0.0,
+            "ca_gross":   stats["ca"],
+            "popup_chef": pop["chef_ttc"]}
+
+def _popup_split(rows):
+    """Ventile les ventes popup d'un lot de lignes : ce qui revient au chef,
+    ce qui nous reste. La commission porte sur le TTC, et le chef facture le
+    reste hors TVA — les deux assiettes donnent la même proportion, donc le
+    même pourcentage s'applique au TTC comme au HT."""
+    out = {"chef_ttc": 0.0, "chef_ht": 0.0,
+           "com_ttc": 0.0, "com_ht": 0.0, "gross_ttc": 0.0}
+    flags = _load_popup_flags()
+    if not flags:
+        return out
+    for r in rows:
+        for name, p in (r.get("products") or {}).items():
+            pct = flags.get(name)
+            if pct is None:
+                continue
+            ttc = float(p.get("rev_ttc") or 0)
+            ht  = float(p.get("rev_ht")  or 0)
+            out["gross_ttc"] += ttc
+            out["chef_ttc"]  += ttc * (1 - pct / 100)
+            out["chef_ht"]   += ht  * (1 - pct / 100)
+            out["com_ttc"]   += ttc * pct / 100
+            out["com_ht"]    += ht  * pct / 100
+    return {k: round(v, 2) for k, v in out.items()}
+
 def _popup_adjust_rows(rows):
     """Réécrit COGS/couverture des lignes daily_summary pour les produits popup.
 
-    Les lignes STOCKÉES sont toujours calculées avec le catalogue de base
-    (coût fournisseur Vendus) : un flag popup ne demande donc AUCUN rebuild —
-    la ligne porte le détail par produit (qty, rev_ht), on retire à la lecture
-    la contribution de base du produit flaggé et on ajoute celle de la
-    commission. Flagger/déflagger est instantané sur tout l'historique.
-    (Le rebuild déclenché côté client à chaque Save dépassait le timeout
-    serverless et échouait en silence — l'EBITDA ne bougeait jamais.)"""
+    Un produit popup n'est pas vendu pour notre compte : sa recette revient au
+    chef, à la commission près. Il sort donc entièrement du P&L matière — ni
+    coût, ni CA couvert, ni CA d'items — pour que le taux de marge mesuré reste
+    celui de NOTRE carte, comparable d'un mois à l'autre. La commission est
+    réinjectée comme marge pure par l'appelant (_popup_split), et la recette
+    brute est déduite du CA de gestion.
+
+    Les lignes STOCKÉES restent calculées avec le catalogue de base : un flag
+    popup ne demande donc AUCUN rebuild — la ligne porte le détail par produit
+    (qty, rev_ht) et tout se joue à la lecture. Flagger ou déflagger est
+    instantané sur tout l'historique."""
     flags = _load_popup_flags()
     if not flags or not rows:
         return rows
@@ -2465,33 +2547,21 @@ def _popup_adjust_rows(rows):
             out.append(r)
             continue
         r = dict(r)
-        cogs    = float(r.get("cogs_ht") or 0)
+        cogs    = float(r.get("cogs_ht")    or 0)
         covered = float(r.get("covered_ht") or 0)
+        items   = float(r.get("items_ht")   or 0)
         for n in hit:
             p   = prods[n]
             qty = float(p.get("qty") or 0)
             ht  = float(p.get("rev_ht") or 0)
-            c   = base.get(n) or {}
-            old = float(c.get("cost") or 0)
-            if old:                     # contribution de base à retirer
-                cogs    -= old * qty
+            cost = float((base.get(n) or {}).get("cost") or 0)
+            if cost:                    # le produit pesait dans le COGS mesuré
+                cogs    -= cost * qty
                 covered -= ht
-            net = float(c.get("net") or 0)
-            if net:                     # contribution popup : coût = part du chef
-                cogs    += net * (1 - flags[n] / 100) * qty
-                covered += ht
-        # ⚠️ UNE COUVERTURE > 100 % EST IMPOSSIBLE, DONC C'EST UN DOUBLE COMPTE.
-        # Les lignes écrites pendant la brève fenêtre où le cache journalier
-        # recevait le catalogue AVEC overlay portent déjà le coût popup : le
-        # rajouter ici gonflait le COGS, écrasait la marge (40 % au lieu de 75 %)
-        # et faisait exploser le point mort. On laisse alors la ligne stockée
-        # intacte plutôt que d'afficher un chiffre qu'aucune vente ne justifie.
-        items = float(r.get("items_ht") or 0)
-        if items and covered > items + 0.01:
-            out.append(r)
-            continue
-        r["cogs_ht"]    = round(cogs, 2)
-        r["covered_ht"] = round(covered, 2)
+            items -= ht                 # et dans le CA servant de base au taux
+        r["cogs_ht"]    = round(max(0.0, cogs), 2)
+        r["covered_ht"] = round(max(0.0, covered), 2)
+        r["items_ht"]   = round(max(0.0, items), 2)
         out.append(r)
     return out
 
