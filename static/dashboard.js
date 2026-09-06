@@ -112,10 +112,24 @@ function fmtDate(iso) {
 // ── Chargement (stale-while-revalidate) ──────────────────────────────────────
 // Affiche instantanément les dernières données connues (localStorage), puis
 // rafraîchit en arrière-plan. force=true (bouton ↻) bypasse les caches serveur.
+// Journée en cours dans l'économie de la période. Par défaut NON : elle
+// n'apporte qu'une recette partielle mais une journée entière de charges.
+let inclToday = false;
+try { inclToday = localStorage.getItem('estu_incl_today') === '1'; } catch (e) {}
+
+function toggleInclToday() {
+  inclToday = document.getElementById('incl-today').checked;
+  try { localStorage.setItem('estu_incl_today', inclToday ? '1' : '0'); } catch (e) {}
+  loadData(true);
+}
+
 async function loadData(force = false) {
   const preset = currentPreset;
   const isCustom = preset === 'custom' && customStart && customEnd;
-  const cacheKey = 'estu_data_' + preset + (isCustom ? '_' + customStart + '_' + customEnd : '');
+  // La clé de cache porte le choix : sans lui, basculer le bouton réaffichait
+  // les chiffres de l'autre périmètre le temps d'un aller-retour.
+  const cacheKey = 'estu_data_' + preset + (inclToday ? '_incl' : '')
+                 + (isCustom ? '_' + customStart + '_' + customEnd : '');
   if (!force) {
     try {
       const cached = localStorage.getItem(cacheKey);
@@ -124,9 +138,10 @@ async function loadData(force = false) {
   }
   if (window.uiLoadStart) uiLoadStart();
   try {
+    const incl = inclToday ? '&incl_today=1' : '';
     const url = isCustom
-      ? `/api/data?preset=custom&start_date=${customStart}&end_date=${customEnd}${force ? '&fresh=1' : ''}`
-      : '/api/data?preset=' + preset + (force ? '&fresh=1' : '');
+      ? `/api/data?preset=custom&start_date=${customStart}&end_date=${customEnd}${incl}${force ? '&fresh=1' : ''}`
+      : '/api/data?preset=' + preset + incl + (force ? '&fresh=1' : '');
     const r = await fetch(url);
     if (!r.ok) throw new Error(await r.text());
     const d = await r.json();
@@ -184,6 +199,19 @@ function render(d) {
   // Label comparaison — en vue "aujourd'hui live", comparaison à la même heure
   // du dernier jour ouvré (sinon la métrique est faussée avant la fermeture).
   const compLabel = d.comp_label || (d.is_single_day ? 'vs yesterday' : 'vs prev. period');
+
+  // Bouton « journée en cours » : visible seulement là où il change quelque chose
+  const inclBar = document.getElementById('incl-today-bar');
+  if (inclBar) {
+    const can = !!(d.economics && d.economics.today_toggleable);
+    inclBar.style.display = can ? 'flex' : 'none';
+    if (can) {
+      document.getElementById('incl-today').checked = inclToday;
+      document.getElementById('incl-today-hint').textContent = inclToday
+        ? '— charges d\u2019une journée entière face à une recette partielle'
+        : '';
+    }
+  }
 
   // ── KPIs ─────────────────────────────────────────────────────────────────
   document.getElementById('kpi-ca').textContent = fmt(d.today.ca);

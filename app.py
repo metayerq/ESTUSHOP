@@ -330,7 +330,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260904c"
+ASSET_VERSION = "20260904d"
 
 @app.context_processor
 def _inject_asset_version():
@@ -822,10 +822,14 @@ def api_data():
     # rouge pour cette seule raison. Les KPI du jour vivent dans leur propre
     # bandeau ; ici on ne compare que des journées terminées.
     # Un jour isolé (« Today ») garde son économie : l'exclure ne laisserait rien.
+    # Le choix reste réversible : `incl_today=1` remet la journée en cours dans
+    # le calcul, pour qui veut lire la période telle qu'elle est à l'instant.
+    want_today = request.args.get("incl_today") == "1"
     eco_from, eco_to = from_date, to_date
     eco_docs, eco_agg, eco_rows = docs_main, cogs_agg, period_rows
     excludes_today = False
-    if not is_single and from_date <= today_real <= to_date and from_date < today_real:
+    if (not want_today and not is_single
+            and from_date <= today_real <= to_date and from_date < today_real):
         eco_to = today_real - timedelta(1)
         eco_rows = [r for r in period_rows if r["day"] != today_iso]
         eco_agg = (round(sum(r.get("cogs_ht",    0) for r in eco_rows), 2),
@@ -843,6 +847,9 @@ def api_data():
                         revenue_deduct=(eco_pop["chef_ttc"], eco_pop["chef_ht"])),
         eco_from.isoformat(), eco_to.isoformat(), popup_com=eco_pop["com_ht"])
     result["economics"]["excludes_today"] = excludes_today
+    # Le bouton n'a de sens que sur une période multi-jours contenant aujourd'hui.
+    result["economics"]["today_toggleable"] = (
+        not is_single and from_date <= today_real <= to_date and from_date < today_real)
     result["economics"]["popup_chef_ttc"] = eco_pop["chef_ttc"]
     if result["economics"].get("charges_source") == "indisponible":
         warnings.append("Supabase costs unreachable — costs and break-even not computed")

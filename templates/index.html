@@ -232,6 +232,16 @@
     <button class="pill"        data-preset="custom"    onclick="openCustomRange()">Custom…</button>
   </div>
 
+  <!-- Le jour en cours dans l'économie de la période : masqué quand la période
+       n'en contient pas, où le choix n'aurait rien à changer. -->
+  <label id="incl-today-bar" style="display:none;align-items:center;gap:7px;margin:-8px 0 18px;
+         font-size:12.5px;color:var(--muted);cursor:pointer;user-select:none;">
+    <input type="checkbox" id="incl-today" onchange="toggleInclToday()"
+           style="width:15px;height:15px;cursor:pointer;">
+    <span>Inclure la journée en cours dans l'économie de la période</span>
+    <span id="incl-today-hint" style="color:var(--faint);"></span>
+  </label>
+
   <div id="custom-range-bar" style="display:none; align-items:center; gap:8px; margin:-8px 0 20px;">
     <input type="date" id="custom-start" style="padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px;">
     <span style="color:var(--muted); font-size:13px;">to</span>
