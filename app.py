@@ -330,7 +330,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260904b"
+ASSET_VERSION = "20260904c"
 
 @app.context_processor
 def _inject_asset_version():
@@ -3225,7 +3225,16 @@ def _ensure_summaries(from_date, to_date, catalog):
         return []
     from_iso, to_iso = from_date.isoformat(), to_date.isoformat()
     rows = _get_summaries(from_iso, to_iso)
-    have = {r["day"] for r in rows}
+    # ⚠️ UNE LIGNE INCOHÉRENTE COMPTE COMME MANQUANTE, ET SE RECONSTRUIT.
+    # Le CA couvert est par construction un sous-ensemble du CA des items : le
+    # voir le dépasser prouve que la ligne stockée a été écrite avec un
+    # catalogue qui portait déjà le coût popup, et qu'on le compte deux fois.
+    # Ces lignes-là ne peuvent pas être réparées par le calcul — on les refait
+    # depuis Vendus. Le tour d'après elles sont saines, donc pas de boucle.
+    stale = {r["day"] for r in rows
+             if float(r.get("covered_ht") or 0) > float(r.get("items_ht") or 0) + 0.01}
+    have = {r["day"] for r in rows} - stale
+    rows = [r for r in rows if r["day"] not in stale]
     all_days = []
     cur = from_date
     while cur <= to_date:

@@ -190,9 +190,12 @@ function render(d) {
   if (d.economics) {
     // Le brut reste écrit : c'est lui qui coïncide avec Vendus, la trésorerie
     // et la page comptable. Le net est ce que le café gagne réellement.
+    // ⚠️ MÊME PÉRIMÈTRE QUE LE GRAND CHIFFRE. `economics` s'arrête à hier ;
+    // reprendre son ca_ht ici affichait un HT + TVA qui ne recomposait pas le
+    // total affiché juste au-dessus. Les stats couvrent la période entière.
     const chef = d.today.popup_chef;
     document.getElementById('kpi-ca-ht').innerHTML =
-      `${fmt(d.economics.ca_ht)} excl. VAT · VAT ${fmt(d.economics.tva_collectee)}`
+      `${fmt(d.today.ca_ht)} excl. VAT · VAT ${fmt(d.today.ca - d.today.ca_ht)}`
       + (chef ? `<br><span style="color:#7c4dbe;">${fmt(d.today.ca_gross)} facturé · ${fmt(chef)} reversé au chef</span>` : '');
   } else {
     document.getElementById('kpi-ca-ht').textContent = '';
@@ -229,7 +232,12 @@ function render(d) {
   const perDayEl  = document.getElementById('kpi-ca-perday');
   const nbPerDayEl = document.getElementById('kpi-nb-perday');
   if (!d.is_single_day && openDays > 1) {
-    const caDay    = d.today.ca / openDays;
+    // Confronté au point mort, donc calculé sur la MÊME base que lui : quand
+    // l'économie exclut le jour courant, sa recette sort aussi du numérateur —
+    // sinon on divisait 4 jours de recette par 3 jours de charges.
+    const caBase   = d.economics?.excludes_today && d.economics?.ca_ttc != null
+                     ? d.economics.ca_ttc : d.today.ca;
+    const caDay    = caBase / openDays;
     const seuilDay = d.economics?.seuil_ca_ttc_jour;
     let verdict = '';
     if (seuilDay > 0) {
