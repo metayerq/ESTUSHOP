@@ -50,3 +50,29 @@ brutes restent hors du repo.
 
 Identification nominative, programme de fidélité, croisement avec les NIF des
 factures Vendus.
+
+## P1 — page /clientes (validé le 16/09, « go P1 »)
+
+Le dashboard garde la bande de quatre tuiles (pouls, suit la période) ; la
+quatrième devient « At risk », en ambre — le seul chiffre qui appelle une
+action. Chaque tuile mène à `/clientes`, sur le modèle Transactions →
+/transactions. La page détaillée n'a pas de sélecteur de période : cohortes,
+Pareto et rythme n'ont de sens que depuis l'ouverture, et sa base est
+affichée en tête.
+
+Trois panneaux (`/api/customers`) : nouveaux vs récurrents par semaine ISO
+(12 dernières, semaine en cours en retrait) ; CA carte par tranche de
+fréquence avec ticket et part des 20 % les plus assidus ; histogramme des
+intervalles entre visites avec médiane et quartiles.
+
+« À risque » (décision Quentin) : habitué (≥ 4 visites) absent depuis plus de
+3 × son intervalle médian personnel, plancher 7 jours (le café ferme deux
+jours par semaine). La carte à 71 visites est un client, pas le staff —
+aucune exclusion.
+
+Couleurs propres à la page : bleu des nouvelles cartes et rampe verte
+ordinale, validées CVD clair/sombre (ΔE 24 / 20) ; `--spec` ne convenait pas,
+il vaut le même vert que `--green` en mode sombre.
+
+P2 (cohortes, profil jour × créneau) et P3 (sources, liste à reconquérir,
+boucle Mesa) restent à faire.

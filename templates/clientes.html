@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/static/icons/favicon-32.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Estudantina">
+<meta name="theme-color" content="#EDEAE3">
+<title>Estudantina · Clientes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<style>
+/* ══ /clientes — habillage ═══════════════════════════════════════════════════
+   Tokens de style.css partout, plus deux couleurs propres à cette page : le
+   BLEU des nouvelles cartes et la rampe verte ordinale des fréquences. --spec
+   ne convient pas au bleu : en mode sombre il vaut le même vert que --green,
+   et « nouveaux » se confondrait avec « récurrents ». Paire validée CVD
+   (ΔE 24 clair / 20 sombre). AMBRE réservé à « à risque » : c'est le seul
+   chiffre de la page qui appelle une action. */
+:root { --c-new:#2554C7; --c-ret:#2E8B57; --o1:#86BE9C; --o2:#5BA279; --o3:#3D825C; --o4:#27593F; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --c-new:#5F86E8; --c-ret:#4FA36F; --o1:#3A6A50; --o2:#4F8C69; --o3:#6BB388; --o4:#9ADBB4; } }
+:root[data-theme="dark"] { --c-new:#5F86E8; --c-ret:#4FA36F; --o1:#3A6A50; --o2:#4F8C69; --o3:#6BB388; --o4:#9ADBB4; }
+.cl-basis { font-family:var(--mono); font-size:11px; color:var(--faint); margin:-12px 0 24px; }
+.cl-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.cl-panel { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:18px 20px 16px; display:flex; flex-direction:column; gap:10px; }
+.cl-panel.wide { grid-column:1/-1; }
+.cl-ph { display:flex; justify-content:space-between; align-items:baseline; gap:12px; }
+.cl-ph h2 { font-size:14px; font-weight:600; margin:0; }
+.cl-ph .q { font-size:12px; color:var(--faint); }
+.cl-chart { width:100%; height:auto; display:block; }
+.t-val { font-family:var(--mono); font-size:11px; fill:var(--text); }
+.t-ax  { font-family:var(--mono); font-size:10.5px; fill:var(--muted); }
+.cl-legend { display:flex; gap:16px; font-size:12px; color:var(--muted); flex-wrap:wrap; }
+.cl-legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; }
+.cl-so { font-size:12.5px; color:var(--muted); border-top:1px solid var(--border); padding-top:10px; margin-top:2px; }
+.cl-so b { color:var(--text); font-weight:600; }
+.cl-table { width:100%; border-collapse:collapse; font-size:12.5px; font-variant-numeric:tabular-nums; }
+.cl-table th { font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); text-align:right; padding:6px 8px; border-bottom:1px solid var(--border); font-weight:500; }
+.cl-table th:first-child, .cl-table td:first-child { text-align:left; }
+.cl-table td { padding:7px 8px; text-align:right; border-bottom:1px solid var(--border); }
+.cl-table tr:last-child td { border-bottom:none; }
+.cl-stat { display:flex; align-items:center; gap:14px; background:color-mix(in srgb, var(--amber) 10%, transparent); border:1px solid color-mix(in srgb, var(--amber) 35%, transparent); border-radius:10px; padding:10px 14px; }
+.cl-stat .n { font-family:var(--mono); font-size:22px; font-weight:600; color:var(--amber); white-space:nowrap; }
+.cl-stat .d { font-size:12.5px; } .cl-stat .d b { font-weight:600; }
+.cl-empty { padding:34px; text-align:center; color:var(--muted); border:1px dashed var(--border); border-radius:12px; }
+.cl-note { font-size:12px; color:var(--faint); margin-top:26px; max-width:80ch; }
+@media (max-width:760px) { .cl-grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <style>
+/* ── Nav groupée (menus déroulants) ── */
+.topnav { display:flex; gap:4px; margin-bottom:28px; border-bottom:1px solid var(--border); position:relative; flex-wrap:wrap; }
+.nav-link, .nav-btn { display:flex; align-items:center; gap:8px; padding:11px 16px; font-size:13px; font-weight:500;
+  color:var(--muted); text-decoration:none; border-radius:8px 8px 0 0; border:1px solid transparent; border-bottom:none;
+  margin-bottom:-1px; white-space:nowrap; background:none; cursor:pointer; font-family:inherit; }
+.nav-link svg, .nav-btn svg { width:16px; height:16px; flex-shrink:0; }
+.nav-link:hover, .nav-btn:hover { color:var(--text); background:var(--bg-hover); }
+.nav-link.active, .nav-btn.active { color:var(--text); background:var(--bg-card); border-color:var(--border); font-weight:600; }
+.nav-group { position:relative; }
+.caret { font-style:normal; font-size:10px; opacity:.55; margin-left:1px; }
+.nav-menu { position:absolute; top:100%; left:0; min-width:190px; background:var(--bg-card); border:1px solid var(--border);
+  border-radius:0 10px 10px 10px; box-shadow:0 10px 28px rgba(20,18,14,.14); padding:6px; display:none; z-index:60; }
+.nav-group:hover .nav-menu, .nav-group.open .nav-menu { display:block; }
+.nav-menu a { display:block; padding:9px 12px; font-size:13px; color:var(--text); text-decoration:none; border-radius:7px; white-space:nowrap; }
+.nav-menu a:hover { background:var(--bg-hover); }
+.nav-menu a.active { background:var(--bg-hover); font-weight:600; color:var(--spec); }
+@media (max-width:760px){ .topnav { overflow-x:auto; } .nav-link span, .nav-btn span { display:inline; } }
+</style>
+<nav class="topnav" id="topnav">
+  <a href="/" class="nav-link" data-path="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg><span>Dashboard</span></a>
+  <div class="nav-group">
+    <button class="nav-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5-9 4.5-9-4.5Z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg><span>Carte &amp; Stock</span><i class="caret">&#9662;</i></button>
+    <div class="nav-menu">
+      <a href="/cogs" data-path="/cogs">COGS &mdash; recettes &amp; co&ucirc;ts</a>
+      <a href="/stock" data-path="/stock">Stock &mdash; inventaire</a>
+    </div>
+  </div>
+  <div class="nav-group">
+    <button class="nav-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1" fill="currentColor" stroke="none"/></svg><span>Finances</span><i class="caret">&#9662;</i></button>
+    <div class="nav-menu">
+      <a href="/charges" data-path="/charges">Costs &mdash; charges fixes</a>
+      <a href="/expenses" data-path="/expenses">Expenses &mdash; d&eacute;penses</a>
+      <a href="/reconciliation" data-path="/reconciliation">Reconciliation &mdash; caisse</a>
+      <a href="/contabilidade" data-path="/contabilidade">Contabilidade &mdash; comptable</a>
+    </div>
+  </div>
+  <div class="nav-group">
+    <button class="nav-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>Op&eacute;rations</span><i class="caret">&#9662;</i></button>
+    <div class="nav-menu">
+      <a href="/sop" data-path="/sop">SOP &mdash; checklists</a>
+      <a href="/holidays" data-path="/holidays">Holidays &mdash; cong&eacute;s</a>
+      <a href="/events" data-path="/events">Events &mdash; pop-ups</a>
+    </div>
+  </div>
+</nav>
+<script>
+(function(){
+  var path=(location.pathname.replace(/\/+$/,'')||'/');
+  var nav=document.getElementById('topnav'); if(!nav) return;
+  nav.querySelectorAll('a[data-path]').forEach(function(a){
+    var p=a.getAttribute('data-path');
+    if(p===path||(p!=='/'&&path.indexOf(p)===0)){
+      a.classList.add('active');
+      var g=a.closest('.nav-group'); if(g) g.querySelector('.nav-btn').classList.add('active');
+    }
+  });
+  nav.querySelectorAll('.nav-group .nav-btn').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      var g=btn.parentElement, wasOpen=g.classList.contains('open');
+      nav.querySelectorAll('.nav-group').forEach(function(x){x.classList.remove('open');});
+      if(!wasOpen) g.classList.add('open');
+    });
+  });
+  document.addEventListener('click',function(){ nav.querySelectorAll('.nav-group').forEach(function(x){x.classList.remove('open');}); });
+})();
+</script>
+
+  <div class="header" style="margin-bottom:20px;">
+    <div>
+      <div class="header-title">Clientes</div>
+      <div class="header-sub">What the terminal's cards say about loyalty · <span id="cl-scope" style="color:var(--faint)">since opening</span></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn-secondary" onclick="loadCustomers()" title="Reload">↻</button>
+      <a href="/logout" title="Log out" style="font-size:12px;color:var(--faint);text-decoration:none;padding:5px 8px;">⎋</a>
+    </div>
+  </div>
+  <div class="cl-basis" id="cl-basis"></div>
+
+  <div id="cl-empty" class="cl-empty" style="display:none;"></div>
+
+  <div class="cl-grid" id="cl-grid" style="display:none;">
+    <div class="cl-panel wide">
+      <div class="cl-ph"><h2>The engine: new vs returning, by week</h2><span class="q">Is the base still growing?</span></div>
+      <div id="ch-weekly"></div>
+      <div class="cl-legend"><span><i style="background:var(--c-new)"></i>New cards</span><span><i style="background:var(--c-ret)"></i>Cards already seen</span><span style="color:var(--faint)">* current week</span></div>
+      <div class="cl-so" id="so-weekly"></div>
+    </div>
+
+    <div class="cl-panel">
+      <div class="cl-ph"><h2>Who pays the bills</h2><span class="q">Card revenue by customer type</span></div>
+      <div id="ch-types"></div>
+      <table class="cl-table"><thead><tr><th>Visits</th><th>Cards</th><th>Payments</th><th>Ticket</th></tr></thead><tbody id="tb-types"></tbody></table>
+      <div class="cl-so" id="so-types"></div>
+    </div>
+
+    <div class="cl-panel">
+      <div class="cl-ph"><h2>The rhythm — and who is slipping away</h2><span class="q">Days between two visits</span></div>
+      <div id="ch-gaps"></div>
+      <div class="cl-stat"><div class="n" id="st-risk">—</div><div class="d" id="st-risk-d"></div></div>
+      <div class="cl-so" id="so-gaps"></div>
+    </div>
+  </div>
+
+  <p class="cl-note">Every figure rests on card payments (cash is invisible, about 5%) and on a fingerprint that merges two cards of the same type ending in the same four digits (5–9% of cards) while a phone wallet counts as a second card. Read each number at ±5 points; trends and comparisons between groups hold — that is where the decisions are.</p>
+</div>
+
+<script src="/static/ui.js?v={{ v }}"></script>
+<script>
+const fmtE = v => new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR'}).format(v||0);
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+
+// ── Barres empilées hebdo : nouveaux (bleu) sous récurrents (vert), 2 px d'écart,
+//    le % de récurrents en étiquette directe, la semaine en cours en retrait.
+function svgWeekly(weeks){
+  const W=560,H=190,pl=8,pb=26,pt=22,n=weeks.length,bw=Math.min(44,(W-2*pl)/n-6),gap=(W-2*pl-n*bw)/Math.max(1,n-1);
+  const mx=Math.max(...weeks.map(w=>w.new+w.returning),1),sc=(H-pb-pt)/mx; let s=`<svg viewBox="0 0 ${W} ${H}" class="cl-chart" role="img" aria-label="Card payments per week, new and returning">`;
+  weeks.forEach((w,i)=>{const x=pl+i*(bw+gap),hn=w.new*sc,hr=w.returning*sc,y0=H-pb,tot=w.new+w.returning,pct=tot?Math.round(w.returning/tot*100):0;
+    s+=`<g${w.partial?' opacity=".45"':''}><title>${w.week} (${w.start}) · ${w.new} new · ${w.returning} returning${w.partial?' · current week':''}</title>`+
+       `<rect x="${x.toFixed(1)}" y="${(y0-hn).toFixed(1)}" width="${bw.toFixed(1)}" height="${hn.toFixed(1)}" fill="var(--c-new)"/>`+
+       `<rect x="${x.toFixed(1)}" y="${(y0-hn-2-hr).toFixed(1)}" width="${bw.toFixed(1)}" height="${hr.toFixed(1)}" fill="var(--c-ret)" rx="3"/>`+
+       `<text x="${(x+bw/2).toFixed(1)}" y="${(y0-hn-hr-8).toFixed(1)}" text-anchor="middle" class="t-val">${pct}%</text>`+
+       `<text x="${(x+bw/2).toFixed(1)}" y="${H-8}" text-anchor="middle" class="t-ax">${w.week}${w.partial?'*':''}</text></g>`;});
+  return s+'</svg>';
+}
+// ── Une barre 100 % : part du CA par tranche de fréquence, rampe ordinale.
+function svgTypes(types){
+  const W=560,H=54; let x=0,s=`<svg viewBox="0 0 ${W} ${H}" class="cl-chart" role="img" aria-label="Share of card revenue by customer type">`;
+  types.forEach((t,i)=>{const w=t.revenue_pct/100*(W-6);
+    s+=`<g><title>${t.type} visit${t.type==='1'?'':'s'}: ${t.cards} cards · ${t.visits} payments · ${fmtE(t.revenue)} (${t.revenue_pct}%)</title>`+
+       `<rect x="${x.toFixed(1)}" y="6" width="${w.toFixed(1)}" height="22" fill="var(--o${i+1})" rx="3"/>`+
+       `<text x="${(x+w/2).toFixed(1)}" y="47" text-anchor="middle" class="t-ax">${t.type} · ${Math.round(t.revenue_pct)}%</text></g>`; x+=w+2;});
+  return s+'</svg>';
+}
+// ── Histogramme des intervalles : une série, teinte médiane de la rampe.
+function svgGaps(r){
+  const W=560,H=150,pb=26,pt=18,n=r.hist.length,bw=70,gap=(W-n*bw)/(n-1),mx=Math.max(...r.hist.map(h=>h.n),1),sc=(H-pb-pt)/mx,tot=r.intervals||1;
+  let s=`<svg viewBox="0 0 ${W} ${H}" class="cl-chart" role="img" aria-label="Days between two visits">`;
+  r.hist.forEach((h,i)=>{const x=i*(bw+gap),hh=h.n*sc,y=H-pb-hh;
+    s+=`<g><title>${h.bucket} days: ${h.n} intervals (${Math.round(h.n/tot*100)}%)</title><rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw}" height="${hh.toFixed(1)}" fill="var(--o3)" rx="3"/>`+
+       `<text x="${(x+bw/2).toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" class="t-val">${Math.round(h.n/tot*100)}%</text><text x="${(x+bw/2).toFixed(1)}" y="${H-8}" text-anchor="middle" class="t-ax">${h.bucket} d</text></g>`;});
+  return s+'</svg>';
+}
+
+async function loadCustomers(){
+  if (window.uiLoadStart) uiLoadStart();
+  try{
+    const r=await fetch('/api/customers'); const m=await r.json();
+    const empty=document.getElementById('cl-empty'), grid=document.getElementById('cl-grid');
+    if(!m.enabled||m.empty){ empty.style.display=''; grid.style.display='none';
+      empty.textContent = m.enabled ? 'No card visits yet — open the dashboard and click "Rebuild history" in Returning customers.' : 'Revolut Merchant key not configured.'; return; }
+    empty.style.display='none'; grid.style.display='';
+    document.getElementById('cl-scope').textContent=`${m.since} → ${m.until}`;
+    document.getElementById('cl-basis').textContent=`${m.visits.toLocaleString('en-IE')} card payments · ${m.cards.toLocaleString('en-IE')} distinct cards · fingerprint = last four digits + chip label, hashed · ±5 pts`;
+
+    // Moteur
+    document.getElementById('ch-weekly').innerHTML=svgWeekly(m.weekly);
+    const done=m.weekly.filter(w=>!w.partial), last4=done.slice(-4), first4=done.slice(0,4);
+    const avgNew=a=>Math.round(a.reduce((s,w)=>s+w.new,0)/Math.max(1,a.length));
+    const pct=a=>Math.round(a.reduce((s,w)=>s+w.returning,0)/Math.max(1,a.reduce((s,w)=>s+w.new+w.returning,0))*100);
+    document.getElementById('so-weekly').innerHTML=`<b>${avgNew(last4)} new cards a week</b> over the last four full weeks (${avgNew(first4)} at the start of the window), while the returning share moved from ${pct(first4)}% to ${pct(last4)}%. The base grows by accumulation, not substitution — the week the blue bar shrinks is the signal to watch.`;
+
+    // Qui paie
+    document.getElementById('ch-types').innerHTML=svgTypes(m.types);
+    document.getElementById('tb-types').innerHTML=m.types.map(t=>`<tr><td>${t.type}</td><td>${t.cards}</td><td>${t.visits}</td><td>${t.ticket!=null?fmtE(t.ticket):'—'}</td></tr>`).join('');
+    const tk=m.types.map(t=>t.ticket).filter(Boolean), spread=Math.max(...tk)-Math.min(...tk);
+    document.getElementById('so-types').innerHTML=`<b>The most assiduous 20% of cards bring ${m.pareto_top20_pct}% of card revenue.</b> `+(spread<1.5?`And the ticket barely moves with loyalty (${fmtE(Math.min(...tk))}–${fmtE(Math.max(...tk))}): a regular is worth their frequency, not their basket — loyalty work is about visits, never upsell.`:`The ticket differs by type (${fmtE(Math.min(...tk))}–${fmtE(Math.max(...tk))}).`);
+
+    // Rythme + à risque
+    document.getElementById('ch-gaps').innerHTML=svgGaps(m.rhythm);
+    const k=m.at_risk;
+    document.getElementById('st-risk').textContent=`${k.count} / ${k.regulars}`;
+    document.getElementById('st-risk-d').innerHTML=`<b>regulars you have stopped seeing</b> — ${k.pct}% of the core, ${fmtE(k.revenue_hist)} of past spend, typically absent ${k.absent_median??'—'} days. Absent longer than 3× their own usual interval (7 days minimum, the café closes two days a week).`;
+    const q=m.rhythm;
+    document.getElementById('so-gaps').innerHTML=`<b>Median ${q.median} days between two visits</b>; a quarter come back within ${q.q1} day${q.q1>1?'s':''}, three quarters within ${q.q3}. That is what makes "at risk" non-arbitrary: each regular is measured against their own rhythm.`;
+  }catch(e){
+    const empty=document.getElementById('cl-empty'); empty.style.display=''; empty.textContent='Could not load: '+e.message;
+  }finally{ if (window.uiLoadEnd) uiLoadEnd(); }
+}
+loadCustomers();
+</script>
+</body>
+</html>

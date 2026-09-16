@@ -330,7 +330,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260916a"
+ASSET_VERSION = "20260916b"
 
 @app.context_processor
 def _inject_asset_version():
@@ -2348,11 +2348,52 @@ def api_card_visits_sync():
         return jsonify({"ok": False, "error": str(e)}), 502
     return jsonify({"ok": True, "from": f.isoformat(), "to": to.isoformat(), "visits": n})
 
+def _load_card_visits():
+    return _supa_get_all("card_visits",
+                         {"select": "day,ts,fp,amount", "order": "ts.asc"})
+
+def _at_risk(rows, today_iso):
+    """Habitués (≥ 4 visites) qu'on ne voit plus.
+
+    Le seuil est PERSONNEL : 3 × l'intervalle médian de la carte entre deux
+    jours de visite. Un client hebdomadaire est à risque après trois semaines,
+    un quotidien après quelques jours — un seuil fixe traiterait les deux
+    pareil. Plancher à 7 jours : le café ferme deux jours par semaine, un
+    quotidien absent un mardi n'est pas parti.
+    """
+    from collections import defaultdict
+    from datetime import date as _d
+    per = defaultdict(list)
+    for r in rows:
+        per[r["fp"]].append(r)
+    today = _d.fromisoformat(today_iso)
+    regulars = at_risk = 0
+    lost_cents = 0
+    absent_days = []
+    for fp, vs in per.items():
+        if len(vs) < 4:
+            continue
+        regulars += 1
+        days = sorted({_d.fromisoformat(v["day"]) for v in vs})
+        gaps = sorted((b - a).days for a, b in zip(days, days[1:]))
+        median = gaps[len(gaps) // 2] if gaps else 7
+        threshold = max(7, 3 * median)
+        absent = (today - days[-1]).days
+        if absent > threshold:
+            at_risk += 1
+            lost_cents += sum(int(v.get("amount") or 0) for v in vs)
+            absent_days.append(absent)
+    return {"count": at_risk, "regulars": regulars,
+            "pct": round(at_risk / regulars * 100) if regulars else 0,
+            "revenue_hist": round(lost_cents / 100, 2),
+            "absent_median": sorted(absent_days)[len(absent_days) // 2] if absent_days else None,
+            "rule": "absent > max(7 j, 3 × intervalle médian)"}
+
 def _returning_metrics(from_iso, to_iso):
     """Ce que les cartes disent de la fidélité, sur une période et depuis
     l'ouverture. « Récurrente » = carte déjà vue AVANT ce ticket, sur tout
     l'historique — pas seulement dans la période."""
-    rows = _supa_get_all("card_visits", {"select": "day,ts,fp", "order": "ts.asc"})
+    rows = _load_card_visits()
     if not rows:
         return {"enabled": _rm.enabled(), "empty": True}
     from collections import Counter, defaultdict
@@ -2398,7 +2439,93 @@ def _returning_metrics(from_iso, to_iso):
                 "since": rows[0]["day"], "until": rows[-1]["day"]},
         "monthly": [{"month": m, "visits": v, "returning_pct": round(r / v * 100, 1)}
                     for m, (v, r) in sorted(monthly.items())],
+        "at_risk": _at_risk(rows, today_lisbon().isoformat()),
     }
+
+def _customers_detail():
+    """Les trois panneaux de /clientes : le moteur hebdomadaire, qui fait le
+    chiffre, le rythme et ceux qui décrochent. Tout depuis l'ouverture — les
+    cohortes et le Pareto n'ont pas de sens sur une semaine."""
+    rows = _load_card_visits()
+    if not rows:
+        return {"enabled": _rm.enabled(), "empty": True}
+    from collections import Counter, defaultdict
+    from datetime import date as _d
+    today = today_lisbon()
+
+    # Moteur : nouveaux vs récurrents par semaine ISO, 12 dernières
+    seen = set()
+    weeks = defaultdict(lambda: {"new": 0, "returning": 0, "start": None})
+    per = defaultdict(list)
+    for r in rows:
+        d = _d.fromisoformat(r["day"])
+        y, w, _ = d.isocalendar()
+        k = (y, w)
+        if weeks[k]["start"] is None:
+            weeks[k]["start"] = (d - timedelta(d.weekday())).isoformat()
+        weeks[k]["returning" if r["fp"] in seen else "new"] += 1
+        seen.add(r["fp"])
+        per[r["fp"]].append(r)
+    cur = today.isocalendar()[:2]
+    weekly = [{"week": f"S{w}", "start": v["start"], "new": v["new"],
+               "returning": v["returning"], "partial": (y, w) == cur}
+              for (y, w), v in sorted(weeks.items())][-12:]
+
+    # Qui fait le chiffre : par tranche de fréquence, avec CA et ticket
+    def bucket(c):
+        return "1" if c == 1 else "2-3" if c <= 3 else "4-9" if c <= 9 else "10+"
+    agg = {b: {"cards": 0, "visits": 0, "cents": 0} for b in ("1", "2-3", "4-9", "10+")}
+    for vs in per.values():
+        b = agg[bucket(len(vs))]
+        b["cards"] += 1
+        b["visits"] += len(vs)
+        b["cents"] += sum(int(v.get("amount") or 0) for v in vs)
+    total_cents = sum(b["cents"] for b in agg.values()) or 1
+    types = [{"type": k, "cards": b["cards"], "visits": b["visits"],
+              "revenue": round(b["cents"] / 100, 2),
+              "revenue_pct": round(b["cents"] / total_cents * 100, 1),
+              "ticket": round(b["cents"] / b["visits"] / 100, 2) if b["visits"] else None}
+             for k, b in agg.items()]
+    rev_sorted = sorted((sum(int(v.get("amount") or 0) for v in vs) for vs in per.values()),
+                        reverse=True)
+    top20 = int(len(rev_sorted) * 0.2)
+    pareto_top20_pct = round(sum(rev_sorted[:top20]) / total_cents * 100)
+
+    # Rythme : jours entre deux visites (cartes revenues)
+    gaps = []
+    for vs in per.values():
+        days = sorted({_d.fromisoformat(v["day"]) for v in vs})
+        gaps += [(b - a).days for a, b in zip(days, days[1:])]
+    gaps.sort()
+    hist = Counter("1-3" if g <= 3 else "4-7" if g <= 7 else "8-14" if g <= 14
+                   else "15-30" if g <= 30 else "30+" for g in gaps)
+    rhythm = {"intervals": len(gaps),
+              "median": gaps[len(gaps) // 2] if gaps else None,
+              "q1": gaps[len(gaps) // 4] if gaps else None,
+              "q3": gaps[3 * len(gaps) // 4] if gaps else None,
+              "hist": [{"bucket": k, "n": hist.get(k, 0)}
+                       for k in ("1-3", "4-7", "8-14", "15-30", "30+")]}
+
+    return {"enabled": True, "empty": False,
+            "since": rows[0]["day"], "until": rows[-1]["day"],
+            "visits": len(rows), "cards": len(per),
+            "weekly": weekly, "types": types, "pareto_top20_pct": pareto_top20_pct,
+            "rhythm": rhythm, "at_risk": _at_risk(rows, today.isoformat())}
+
+@app.route("/api/customers")
+def api_customers():
+    try:
+        return jsonify(_customers_detail())
+    except SupabaseSchemaError as e:
+        return jsonify({"enabled": _rm.enabled(), "empty": True, "error": str(e)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+@app.route("/clientes")
+def clientes_page():
+    """Page « clients » : ce que les cartes du terminal disent de la fidélité.
+    Tout vient de /api/customers côté navigateur."""
+    return render_template("clientes.html")
 
 @app.route("/api/returning")
 def api_returning():

@@ -362,27 +362,29 @@
        Aucune identité : un hash salé de (4 derniers chiffres + libellé puce). -->
   <div id="returning-section" style="display:none;margin-bottom:32px;">
     <div class="section-label" id="returning-label">Returning customers</div>
+    <!-- Chaque tuile mène à /clientes, comme Transactions mène à /transactions :
+         le dashboard donne le pouls, la page détaillée donne l'analyse. -->
     <div class="kpi-grid">
-      <div class="kpi-cell" data-tip="Share of card payments in the period made with a card already seen before that ticket, anywhere in the history. Cards only — cash is invisible. Two people with the same card type and last four digits are counted as one, and a phone wallet counts as a second card: read it as ±5 points.">
-        <div class="kpi-label">Returning visits</div>
+      <a href="/clientes" class="kpi-link"><div class="kpi-cell" data-tip="Share of card payments in the period made with a card already seen before that ticket, anywhere in the history. Cards only — cash is invisible. Read it as ±5 points: two people with the same card type and last four digits are merged, and a phone wallet counts as a second card. Click to open the customer analysis.">
+        <div class="kpi-label">Returning visits <span class="kpi-go">→</span></div>
         <div class="kpi-value" id="ret-pct">—</div>
         <div class="kpi-delta" id="ret-sub" style="color:var(--muted)"></div>
-      </div>
-      <div class="kpi-cell" data-tip="Distinct cards seen in the period, split between cards first seen before the period (known) and cards never seen before (new).">
-        <div class="kpi-label">Cards this period</div>
+      </div></a>
+      <a href="/clientes" class="kpi-link"><div class="kpi-cell" data-tip="Distinct cards seen in the period: first seen before the period (known) versus never seen before (new). Click to open the customer analysis.">
+        <div class="kpi-label">Cards this period <span class="kpi-go">→</span></div>
         <div class="kpi-value" id="ret-cards">—</div>
         <div class="kpi-delta" id="ret-cards-sub" style="color:var(--muted)"></div>
-      </div>
-      <div class="kpi-cell" data-tip="Regulars = cards with 4 or more visits since opening. Their share of this period's card payments says how much of your business rests on a core of habitués.">
-        <div class="kpi-label">Regulars (4+ visits)</div>
+      </div></a>
+      <a href="/clientes" class="kpi-link"><div class="kpi-cell" data-tip="Regulars = cards with 4 or more visits since opening. Their share of this period's card payments says how much of your business rests on a core of habitués. Click to open the customer analysis.">
+        <div class="kpi-label">Regulars (4+ visits) <span class="kpi-go">→</span></div>
         <div class="kpi-value" id="ret-regulars">—</div>
         <div class="kpi-delta" id="ret-regulars-sub" style="color:var(--muted)"></div>
-      </div>
-      <div class="kpi-cell" data-tip="Since opening: share of all distinct cards that came back at least once, and how visits spread across one-timers and regulars.">
-        <div class="kpi-label">Came back at least once</div>
-        <div class="kpi-value" id="ret-repeat">—</div>
-        <div class="kpi-delta" id="ret-repeat-sub" style="color:var(--muted)"></div>
-      </div>
+      </div></a>
+      <a href="/clientes" class="kpi-link"><div class="kpi-cell" data-tip="Regulars you have stopped seeing: absent for longer than 3× their own usual interval between visits (at least 7 days, because the café closes two days a week). The one number here that calls for action. Click to open the customer analysis.">
+        <div class="kpi-label">At risk <span class="kpi-go">→</span></div>
+        <div class="kpi-value" id="ret-risk" style="color:var(--amber)">—</div>
+        <div class="kpi-delta" id="ret-risk-sub" style="color:var(--muted)"></div>
+      </div></a>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--faint);margin-top:8px;">
       <span id="ret-note"></span>

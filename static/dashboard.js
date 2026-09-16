@@ -174,7 +174,7 @@ async function loadReturning(d) {
     if (!m.enabled || m.empty) {
       sec.style.display = m.enabled ? '' : 'none';
       if (m.enabled) {
-        ['ret-pct','ret-cards','ret-regulars','ret-repeat'].forEach(id => document.getElementById(id).textContent = '—');
+        ['ret-pct','ret-cards','ret-regulars','ret-risk'].forEach(id => document.getElementById(id).textContent = '—');
         document.getElementById('ret-note').textContent = 'No card visits yet — rebuild the history to start.';
         document.getElementById('ret-rebuild').style.display = '';
       }
@@ -192,9 +192,10 @@ async function loadReturning(d) {
     document.getElementById('ret-regulars').textContent = p.regulars;
     document.getElementById('ret-regulars-sub').textContent =
       p.regulars_visit_pct != null ? `${p.regulars_visit_pct}% of the period's card payments` : '';
-    document.getElementById('ret-repeat').textContent = `${a.repeat_cards_pct}%`;
-    document.getElementById('ret-repeat-sub').textContent =
-      `${a.repeat_cards} of ${a.cards} cards since opening · ${a.buckets['10+']} at 10+ visits`;
+    const k = m.at_risk || {};
+    document.getElementById('ret-risk').textContent = k.count != null ? k.count : '—';
+    document.getElementById('ret-risk-sub').textContent = k.regulars
+      ? `of ${k.regulars} regulars · absent > 3× their usual interval` : '';
     document.getElementById('ret-note').textContent =
       `Card payments only · ${a.since} → ${a.until} · ±5 pts (same card type + last four digits are merged; phone wallets count as a second card)`;
     document.getElementById('ret-rebuild').style.display = '';
