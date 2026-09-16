@@ -358,6 +358,38 @@
     <div id="rush-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
   </div>
 
+  <!-- Clients récurrents — empreintes de cartes du terminal Revolut.
+       Aucune identité : un hash salé de (4 derniers chiffres + libellé puce). -->
+  <div id="returning-section" style="display:none;margin-bottom:32px;">
+    <div class="section-label" id="returning-label">Returning customers</div>
+    <div class="kpi-grid">
+      <div class="kpi-cell" data-tip="Share of card payments in the period made with a card already seen before that ticket, anywhere in the history. Cards only — cash is invisible. Two people with the same card type and last four digits are counted as one, and a phone wallet counts as a second card: read it as ±5 points.">
+        <div class="kpi-label">Returning visits</div>
+        <div class="kpi-value" id="ret-pct">—</div>
+        <div class="kpi-delta" id="ret-sub" style="color:var(--muted)"></div>
+      </div>
+      <div class="kpi-cell" data-tip="Distinct cards seen in the period, split between cards first seen before the period (known) and cards never seen before (new).">
+        <div class="kpi-label">Cards this period</div>
+        <div class="kpi-value" id="ret-cards">—</div>
+        <div class="kpi-delta" id="ret-cards-sub" style="color:var(--muted)"></div>
+      </div>
+      <div class="kpi-cell" data-tip="Regulars = cards with 4 or more visits since opening. Their share of this period's card payments says how much of your business rests on a core of habitués.">
+        <div class="kpi-label">Regulars (4+ visits)</div>
+        <div class="kpi-value" id="ret-regulars">—</div>
+        <div class="kpi-delta" id="ret-regulars-sub" style="color:var(--muted)"></div>
+      </div>
+      <div class="kpi-cell" data-tip="Since opening: share of all distinct cards that came back at least once, and how visits spread across one-timers and regulars.">
+        <div class="kpi-label">Came back at least once</div>
+        <div class="kpi-value" id="ret-repeat">—</div>
+        <div class="kpi-delta" id="ret-repeat-sub" style="color:var(--muted)"></div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--faint);margin-top:8px;">
+      <span id="ret-note"></span>
+      <button id="ret-rebuild" onclick="rebuildCardVisits()" style="display:none;border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:6px;padding:3px 9px;font-size:11px;cursor:pointer;">Rebuild history</button>
+    </div>
+  </div>
+
   <!-- Revenue by hour — pleine largeur -->
   <div class="chart-block" style="margin-bottom:12px;">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">

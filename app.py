@@ -330,7 +330,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260904d"
+ASSET_VERSION = "20260916a"
 
 @app.context_processor
 def _inject_asset_version():
@@ -1089,9 +1089,17 @@ def api_cron_refresh():
             hm_warm = _warm_heatmap_cache()
         except Exception:
             pass
+        # Visites carte : hier + aujourd'hui, idempotent (upsert sur pid).
+        visits = None
+        if _rm.enabled():
+            try:
+                td = today_lisbon()
+                visits = _card_visits_sync(td - timedelta(1), td)
+            except Exception:
+                pass
         return jsonify({"ok": True, "day": today_lisbon().isoformat(),
                         "docs_cached": len(docs), "heatmap_warm": hm_warm,
-                        "at": _utc_iso()})
+                        "card_visits": visits, "at": _utc_iso()})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -2235,6 +2243,7 @@ def api_expenses_bulk():
 
 # ── Supabase ──────────────────────────────────────────────────────────────────
 import requests as _req
+import revolut_merchant as _rm
 
 SUPA_URL = os.environ.get("SUPABASE_URL", "")
 SUPA_KEY = os.environ.get("SUPABASE_KEY", "")
@@ -2292,6 +2301,115 @@ def _supa_delete(table, col, val):
                     headers=_supa_headers(),
                     params={col: f"eq.{val}"})
     return r.ok
+
+# ── Visites carte (Revolut Merchant) : clients récurrents ────────────────────
+# Voir revolut_merchant.py pour ce qu'est une empreinte et ce qu'elle ne dit pas.
+
+def _supa_get_all(table, params=None, page=1000):
+    """PostgREST plafonne à 1 000 lignes par réponse : on pagine par offset."""
+    out, off = [], 0
+    while True:
+        rows = _supa_get(table, {**(params or {}), "limit": page, "offset": off})
+        if not isinstance(rows, list):
+            break
+        out.extend(rows)
+        if len(rows) < page:
+            break
+        off += page
+    return out
+
+def _card_visits_sync(from_day, to_day):
+    """Tire les visites d'une plage et les écrit (upsert sur pid : rejouable)."""
+    rows = _rm.fetch_range(from_day, to_day)
+    for i in range(0, len(rows), 500):
+        ok, err = _supa_upsert("card_visits", rows[i:i + 500])
+        if not ok:
+            raise RuntimeError(err or "upsert card_visits failed")
+    return len(rows)
+
+@app.route("/api/card-visits/sync", methods=["POST"])
+def api_card_visits_sync():
+    """Reconstruction d'une plage — admin. Plafonnée à 10 jours par appel pour
+    tenir dans le timeout serverless ; le client enchaîne les plages."""
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    if not _rm.enabled():
+        return jsonify({"error": "REVOLUT_MERCHANT_KEY absente"}), 503
+    data = request.get_json(silent=True) or {}
+    try:
+        f = date.fromisoformat(data.get("from", ""))
+        to = date.fromisoformat(data.get("to", ""))
+    except ValueError:
+        return jsonify({"error": "from/to (YYYY-MM-DD) requis"}), 400
+    to = min(to, f + timedelta(9))
+    try:
+        n = _card_visits_sync(f, to)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+    return jsonify({"ok": True, "from": f.isoformat(), "to": to.isoformat(), "visits": n})
+
+def _returning_metrics(from_iso, to_iso):
+    """Ce que les cartes disent de la fidélité, sur une période et depuis
+    l'ouverture. « Récurrente » = carte déjà vue AVANT ce ticket, sur tout
+    l'historique — pas seulement dans la période."""
+    rows = _supa_get_all("card_visits", {"select": "day,ts,fp", "order": "ts.asc"})
+    if not rows:
+        return {"enabled": _rm.enabled(), "empty": True}
+    from collections import Counter, defaultdict
+    seen, first_seen = set(), {}
+    per_fp = Counter()
+    period = []
+    monthly = defaultdict(lambda: [0, 0])
+    for r in rows:
+        fp, day = r["fp"], r["day"]
+        known = fp in seen
+        m = day[:7]
+        monthly[m][0] += 1
+        if known:
+            monthly[m][1] += 1
+        if from_iso <= day <= to_iso:
+            period.append((fp, known))
+        seen.add(fp)
+        first_seen.setdefault(fp, day)
+        per_fp[fp] += 1
+
+    n = len(period)
+    ret = sum(1 for _, k in period if k)
+    cards = {fp for fp, _ in period}
+    known_cards = {fp for fp in cards if first_seen[fp] < from_iso}
+    regulars = {fp for fp in cards if per_fp[fp] >= 4}
+    reg_visits = sum(1 for fp, _ in period if fp in regulars)
+    total = len(rows)
+    buckets = Counter("1" if c == 1 else "2-3" if c <= 3 else "4-9" if c <= 9 else "10+"
+                      for c in per_fp.values())
+    return {
+        "enabled": True, "empty": False,
+        "period": {"visits": n, "returning": ret,
+                   "returning_pct": round(ret / n * 100, 1) if n else None,
+                   "cards": len(cards), "known_cards": len(known_cards),
+                   "new_cards": len(cards) - len(known_cards),
+                   "regulars": len(regulars),
+                   "regulars_visit_pct": round(reg_visits / n * 100, 1) if n else None},
+        "all": {"visits": total, "cards": len(per_fp),
+                "repeat_cards": sum(1 for c in per_fp.values() if c >= 2),
+                "repeat_cards_pct": round(sum(1 for c in per_fp.values() if c >= 2)
+                                          / len(per_fp) * 100, 1),
+                "buckets": {k: buckets.get(k, 0) for k in ("1", "2-3", "4-9", "10+")},
+                "since": rows[0]["day"], "until": rows[-1]["day"]},
+        "monthly": [{"month": m, "visits": v, "returning_pct": round(r / v * 100, 1)}
+                    for m, (v, r) in sorted(monthly.items())],
+    }
+
+@app.route("/api/returning")
+def api_returning():
+    f  = request.args.get("from") or OPENING_DAY
+    to = request.args.get("to") or today_lisbon().isoformat()
+    try:
+        return jsonify(_returning_metrics(f, to))
+    except SupabaseSchemaError as e:
+        return jsonify({"enabled": _rm.enabled(), "empty": True, "error": str(e)}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
 
 # ── Produits popup (chef partenaire) ──────────────────────────────────────────
 # Le chef fournit le produit, Quentin encaisse la vente TTC et garde une

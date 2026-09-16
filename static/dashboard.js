@@ -158,8 +158,82 @@ async function loadData(force = false) {
   }
 }
 
+// ── Clients récurrents (empreintes de cartes, voir revolut_merchant.py) ──────
+// Chargé à part : petite table Supabase, inutile d'alourdir /api/data.
+let _retReq = 0;
+async function loadReturning(d) {
+  const sec = document.getElementById('returning-section');
+  if (!sec) return;
+  const from = d.from_date || d.date, to = d.to_date || d.date;
+  if (!from || !to) return;
+  const my = ++_retReq;
+  try {
+    const r = await fetch(`/api/returning?from=${from}&to=${to}`);
+    const m = await r.json();
+    if (my !== _retReq) return;                 // période changée entre-temps
+    if (!m.enabled || m.empty) {
+      sec.style.display = m.enabled ? '' : 'none';
+      if (m.enabled) {
+        ['ret-pct','ret-cards','ret-regulars','ret-repeat'].forEach(id => document.getElementById(id).textContent = '—');
+        document.getElementById('ret-note').textContent = 'No card visits yet — rebuild the history to start.';
+        document.getElementById('ret-rebuild').style.display = '';
+      }
+      return;
+    }
+    sec.style.display = '';
+    const p = m.period, a = m.all;
+    document.getElementById('returning-label').textContent =
+      'Returning customers' + (d.period_label ? ` — ${d.period_label.toLowerCase()}` : '');
+    document.getElementById('ret-pct').textContent = p.returning_pct != null ? `${p.returning_pct}%` : '—';
+    document.getElementById('ret-sub').textContent =
+      p.visits ? `${p.returning} of ${p.visits} card payments` : 'no card payments';
+    document.getElementById('ret-cards').textContent = p.cards;
+    document.getElementById('ret-cards-sub').textContent = `${p.known_cards} known · ${p.new_cards} new`;
+    document.getElementById('ret-regulars').textContent = p.regulars;
+    document.getElementById('ret-regulars-sub').textContent =
+      p.regulars_visit_pct != null ? `${p.regulars_visit_pct}% of the period's card payments` : '';
+    document.getElementById('ret-repeat').textContent = `${a.repeat_cards_pct}%`;
+    document.getElementById('ret-repeat-sub').textContent =
+      `${a.repeat_cards} of ${a.cards} cards since opening · ${a.buckets['10+']} at 10+ visits`;
+    document.getElementById('ret-note').textContent =
+      `Card payments only · ${a.since} → ${a.until} · ±5 pts (same card type + last four digits are merged; phone wallets count as a second card)`;
+    document.getElementById('ret-rebuild').style.display = '';
+  } catch (e) { /* section optionnelle */ }
+}
+
+// Reconstruction : 10 jours par appel (timeout serverless), de l'ouverture à
+// aujourd'hui. Admin seulement — un 403 arrête tout et le dit.
+async function rebuildCardVisits() {
+  const btn = document.getElementById('ret-rebuild');
+  const note = document.getElementById('ret-note');
+  btn.disabled = true;
+  const iso = x => x.toISOString().slice(0, 10);
+  let cur = new Date('2026-05-27T12:00:00Z'), today = new Date(), total = 0, n = 0;
+  try {
+    while (cur <= today) {
+      const to = new Date(Math.min(cur.getTime() + 9 * 864e5, today.getTime()));
+      n++; btn.textContent = `Rebuilding… ${iso(cur)}`;
+      const r = await fetch('/api/card-visits/sync', {method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({from: iso(cur), to: iso(to)})});
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || r.status);
+      total += j.visits || 0;
+      cur = new Date(to.getTime() + 864e5);
+    }
+    note.textContent = `History rebuilt: ${total} card payments in ${n} batches.`;
+    if (window._lastData) loadReturning(window._lastData);
+  } catch (e) {
+    note.textContent = 'Rebuild failed: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Rebuild history';
+  }
+}
+
 // ── Rendu principal ───────────────────────────────────────────────────────────
 function render(d) {
+  window._lastData = d;
+  loadReturning(d);
   // Bandeau warnings — sources de données en échec
   const warnBanner = document.getElementById('warn-banner');
   if (d.warnings && d.warnings.length) {
