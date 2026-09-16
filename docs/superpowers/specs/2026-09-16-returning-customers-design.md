@@ -90,4 +90,23 @@ celles devenues habituées), « habitués » = toutes les visites des cartes
 après-midi < 18 h, soir), en heure de Lisbonne. La lecture nomme le jour
 des habitués, le jour des nouveaux, et leurs créneaux.
 
-P3 (sources par événement, liste à reconquérir, boucle Mesa) reste à faire.
+## P3 — d'où viennent les habitués (« go P3 », 16/09)
+
+Sources lues dans la table `events` (statut ≠ annulé, date ≤ aujourd'hui,
+plage date → end_date). Une nouvelle carte « d'un événement » = première
+visite un jour de l'événement, à partir de son heure de début quand elle est
+renseignée — sinon un popup du soir hérite des nouveaux de la matinée.
+Mesure comparable : revenu sous 14 jours ; immature tant que 14 jours ne se
+sont pas écoulés, et l'écran le dit. Référence : nouveaux des jours sans
+événement. Canal implicite « soirées » : premières visites après 19 h, avec
+la part de leurs visites suivantes faites en journée.
+
+Correction d'une lecture de la maquette : « seulement 17 % des clients du
+soir reviennent en journée » rapportait les revenus-en-journée à TOUTES les
+cartes du soir. Rapportés à celles qui reviennent, c'est plus de la moitié,
+et 63 % de leurs visites suivantes ont lieu avant 18 h : les soirées
+nourrissent le café de jour, ce n'est pas une clientèle à part.
+
+La « liste à reconquérir » du plan initial n'existe pas : sans identité, une
+liste d'empreintes ne sert à personne. La reconquête se fait au terminal,
+quand la carte repasse — c'est la boucle fidélité de Mesa.

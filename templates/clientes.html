@@ -184,6 +184,12 @@
       <div class="cl-legend"><span><i style="background:var(--c-ret)"></i>Regulars (4+ visits)</span><span><i style="background:var(--c-new)"></i>First visit of a card</span></div>
       <div class="cl-so" id="so-profile"></div>
     </div>
+
+    <div class="cl-panel wide">
+      <div class="cl-ph"><h2>Where regulars come from</h2><span class="q">Do an event's newcomers come back?</span></div>
+      <table class="cl-table"><thead><tr><th style="text-align:left">Source of the first visit</th><th>New cards</th><th>Back within 14 days</th><th style="text-align:left">Reading</th></tr></thead><tbody id="tb-sources"></tbody></table>
+      <div class="cl-so" id="so-sources"></div>
+    </div>
   </div>
 
   <p class="cl-note">Every figure rests on card payments (cash is invisible, about 5%) and on a fingerprint that merges two cards of the same type ending in the same four digits (5–9% of cards) while a phone wallet counts as a second card. Read each number at ±5 points; trends and comparisons between groups hold — that is where the decisions are.</p>
@@ -292,6 +298,22 @@ async function loadCustomers(){
     const diff=DAYS.map(d=>({d,v:(pr.weekday.regulars[d]||0)-(pr.weekday.first[d]||0)})).sort((a,b)=>b.v-a.v);
     const regDay=diff[0], newDay=diff[diff.length-1], LONG={mon:'Monday',thu:'Thursday',fri:'Friday',sat:'Saturday',sun:'Sunday'};
     const slotDiff=['morning','midday','afternoon','evening'].map(s=>({s,v:(pr.daypart.regulars[s]||0)-(pr.daypart.first[s]||0)})).sort((a,b)=>b.v-a.v);
+    // Sources
+    const S=m.sources||{}, B=S.baseline||{}, E=S.evenings||{};
+    const pill=(txt)=>`<span style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.05em;padding:2px 8px;border-radius:10px;background:var(--bg-hover);color:var(--muted);vertical-align:1px;margin-left:6px">${txt}</span>`;
+    const rows=[];
+    rows.push(`<tr><td>Reference — newcomers on days without an event</td><td>${B.new_cards??'—'}</td><td>${B.returned_14d_pct!=null?B.returned_14d_pct+'%':'—'}</td><td style="text-align:left;color:var(--muted)">the bar to beat</td></tr>`);
+    if(E.new_cards) rows.push(`<tr><td>Evening first visits (after 19:00)</td><td>${E.new_cards}</td><td>${E.returned_14d_pct!=null?E.returned_14d_pct+'%':'—'}</td><td style="text-align:left;color:var(--muted)">${E.returned_ever_pct!=null?`${E.returned_ever_pct}% ever come back — `:''}${E.later_daytime_share!=null?`<b style="color:var(--text)">${E.later_daytime_share}%</b> of their later visits are in daytime`:''}</td></tr>`);
+    (S.events||[]).forEach(e=>{
+      const when=e.end_date?`${e.date} → ${e.end_date.slice(5)}`:e.date, st=e.start_time?` from ${e.start_time}`:'';
+      const read=!e.mature?`too young to conclude — ${e.days_elapsed} of 14 days`:(B.returned_14d_pct!=null&&e.returned_14d_pct!=null?(e.returned_14d_pct>=B.returned_14d_pct+5?'<b style="color:var(--text)">better than the reference</b>':e.returned_14d_pct<=B.returned_14d_pct-5?'below the reference':'in line with the reference'):'');
+      rows.push(`<tr><td>${esc(e.title)} <span style="color:var(--faint)">· ${when}${st}</span>${e.mature?'':pill(e.days_elapsed+' d')}</td><td>${e.new_cards}</td><td${e.mature?'':' style="color:var(--faint)"'}>${e.returned_14d_pct!=null?e.returned_14d_pct+'%':'—'}</td><td style="text-align:left;color:var(--muted)">${read}</td></tr>`);
+    });
+    if(!(S.events||[]).length) rows.push(`<tr><td colspan="4" style="text-align:left;color:var(--faint)">No past event recorded yet — add your popups and evenings in Events, with their date and start time.</td></tr>`);
+    document.getElementById('tb-sources').innerHTML=rows.join('');
+    const mature=(S.events||[]).filter(e=>e.mature&&e.new_cards>=10), best=mature.slice().sort((a,b)=>b.returned_14d_pct-a.returned_14d_pct)[0];
+    document.getElementById('so-sources').innerHTML=(E.later_daytime_share!=null?`<b>Evenings feed the daytime café</b>: ${E.later_daytime_share}% of the later visits of evening newcomers happen before 18:00 — not a separate clientele. `:'')+(best?`<b>${esc(best.title)}</b> is the event that recruited best (${best.returned_14d_pct}% back within 14 days${B.returned_14d_pct!=null?` vs ${B.returned_14d_pct}% reference`:''}). `:'')+`"Back within 14 days" is the one measure comparable from one event to the next; an event is judged only once those 14 days have passed.`;
+
     document.getElementById('so-profile').innerHTML=`<b>${LONG[regDay.d]} is the regulars' day</b> (${pr.weekday.regulars[regDay.d]}% of their visits vs ${pr.weekday.first[regDay.d]}% of first visits); <b>${LONG[newDay.d]} brings the newcomers</b> (${pr.weekday.first[newDay.d]}% vs ${pr.weekday.regulars[newDay.d]}%). Regulars are ${slotDiff[0].s} people — ${pr.daypart.regulars[slotDiff[0].s]}% of their visits — while first visits lean ${slotDiff[slotDiff.length-1].s} (${pr.daypart.first[slotDiff[slotDiff.length-1].s]}%). The day that holds the core is not the day that recruits.`;
   }catch(e){
     const empty=document.getElementById('cl-empty'); empty.style.display=''; empty.textContent='Could not load: '+e.message;

@@ -330,7 +330,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260916c"
+ASSET_VERSION = "20260916d"
 
 @app.context_processor
 def _inject_asset_version():
@@ -2560,7 +2560,75 @@ def _customers_detail():
             "visits": len(rows), "cards": len(per),
             "weekly": weekly, "types": types, "pareto_top20_pct": pareto_top20_pct,
             "rhythm": rhythm, "at_risk": _at_risk(rows, today.isoformat()),
-            "cohorts": cohorts, "profile": profile}
+            "cohorts": cohorts, "profile": profile,
+            "sources": _acquisition_sources(per, today)}
+
+def _acquisition_sources(per, today):
+    """D'où viennent les habitués : les nouveaux d'un événement reviennent-ils ?
+
+    Une « nouvelle carte » d'un événement = première visite un jour de
+    l'événement, à partir de son heure de début quand elle est renseignée —
+    sinon un popup du soir hériterait des nouveaux de la matinée. La mesure
+    comparable d'un événement à l'autre est « revenu sous 14 jours » ; tant
+    que 14 jours ne se sont pas écoulés, le chiffre est annoncé immature.
+    Référence : les nouveaux des jours sans événement, même fenêtre.
+    """
+    from datetime import date as _d, datetime as _dt
+    from collections import defaultdict
+    def _local(r):
+        return _dt.fromisoformat(r["ts"].replace("Z", "+00:00")).astimezone(_rm.LISBON)
+    cards = []   # (first_day, first_local_dt, later_days, later_daytime)
+    for vs in per.values():
+        f = vs[0]; fd = _d.fromisoformat(f["day"])
+        later = [(_d.fromisoformat(v["day"]), _local(v).hour) for v in vs[1:]]
+        cards.append((fd, _local(f), later))
+    def _stats(sel, is_evening=False):
+        n = len(sel)
+        back = [c for c in sel if any(0 < (d - c[0]).days <= 14 for d, _ in c[2])]
+        out = {"new_cards": n, "returned_14d": len(back),
+               "returned_14d_pct": round(len(back) / n * 100) if n else None}
+        if is_evening:
+            # Où reviennent-ils ? Sur TOUTES les visites suivantes, pas seulement
+            # sous 14 jours : c'est la question « le soir nourrit-il le jour ? »,
+            # et un petit effectif sous 14 jours la déformerait.
+            ever = [c for c in sel if c[2]]
+            later = [(d, h) for c in ever for d, h in c[2]]
+            out["returned_ever_pct"] = round(len(ever) / n * 100) if n else None
+            out["later_daytime_share"] = (round(sum(1 for _, h in later if h < 18) / len(later) * 100)
+                                          if later else None)
+        return out
+
+    try:
+        events = _supa_get("events", {"active": "eq.true", "order": "date.asc"})
+    except Exception:
+        events = []
+    event_days = set()
+    sources = []
+    for e in (events if isinstance(events, list) else []):
+        if e.get("status") == "cancelled" or not e.get("date"):
+            continue
+        d0 = _d.fromisoformat(e["date"][:10])
+        d1 = _d.fromisoformat((e.get("end_date") or e["date"])[:10])
+        if d0 > today:
+            continue
+        days = {d0 + timedelta(i) for i in range((d1 - d0).days + 1)}
+        event_days |= days
+        st = (e.get("start_time") or "")[:5]
+        evening = bool(st) and st >= "18:00"
+        sel = [c for c in cards if c[0] in days and (not st or c[1].strftime("%H:%M") >= st)]
+        s = _stats(sel, evening)
+        s.update({"title": e.get("title") or "Event", "date": d0.isoformat(),
+                  "end_date": d1.isoformat() if d1 != d0 else None,
+                  "start_time": st or None,
+                  "mature": today > d1 + timedelta(14),
+                  "days_elapsed": (today - d1).days})
+        sources.append(s)
+
+    mature_cut = today - timedelta(14)
+    base = [c for c in cards if c[0] not in event_days and c[0] <= mature_cut]
+    baseline = _stats(base)
+    evenings = _stats([c for c in cards if c[1].hour >= 19 and c[0] <= mature_cut], True)
+    return {"events": sources, "baseline": baseline, "evenings": evenings}
 
 @app.route("/api/customers")
 def api_customers():
