@@ -74,5 +74,20 @@ Couleurs propres à la page : bleu des nouvelles cartes et rampe verte
 ordinale, validées CVD clair/sombre (ΔE 24 / 20) ; `--spec` ne convenait pas,
 il vaut le même vert que `--green` en mode sombre.
 
-P2 (cohortes, profil jour × créneau) et P3 (sources, liste à reconquérir,
-boucle Mesa) restent à faire.
+## P2 — cohortes et profil (« go P2 », 16/09)
+
+Deux panneaux de plus sur `/clientes`, mêmes données.
+
+Cohortes : mois de première visite → % de la cohorte revue en M+1…M+4. Un
+mois pas encore commencé vaut null, le mois en cours est marqué partiel et
+affiché en retrait. Le mois d'ouverture se lit à part (amis, curieux) ; la
+phrase de lecture moyenne M+1 sur les autres mois — c'est la pente qui
+dira si une action fidélité a un effet.
+
+Profil : « première visite » = le premier ticket de CHAQUE carte (y compris
+celles devenues habituées), « habitués » = toutes les visites des cartes
+≥ 4. Répartition par jour ouvré et par créneau (matin < 12 h, midi < 15 h,
+après-midi < 18 h, soir), en heure de Lisbonne. La lecture nomme le jour
+des habitués, le jour des nouveaux, et leurs créneaux.
+
+P3 (sources par événement, liste à reconquérir, boucle Mesa) reste à faire.

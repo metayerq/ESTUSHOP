@@ -330,7 +330,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260916b"
+ASSET_VERSION = "20260916c"
 
 @app.context_processor
 def _inject_asset_version():
@@ -2506,11 +2506,61 @@ def _customers_detail():
               "hist": [{"bucket": k, "n": hist.get(k, 0)}
                        for k in ("1-3", "4-7", "8-14", "15-30", "30+")]}
 
+    # Cohortes : mois de première visite → % revu en M+1…M+4. Un mois qui
+    # n'a pas commencé vaut None ; le mois en cours est annoncé partiel.
+    def _add_months(ym, n):
+        y, m = int(ym[:4]), int(ym[5:7]) - 1 + n
+        return f"{y + m // 12}-{m % 12 + 1:02d}"
+    first_month, months_of = {}, defaultdict(set)
+    for r in rows:
+        m = r["day"][:7]
+        first_month.setdefault(r["fp"], m)
+        months_of[r["fp"]].add(m)
+    cur_month = today.isoformat()[:7]
+    cohorts = []
+    for cm in sorted(set(first_month.values())):
+        members = [fp for fp, m in first_month.items() if m == cm]
+        cells = []
+        for n in range(1, 5):
+            tm = _add_months(cm, n)
+            if tm > cur_month:
+                cells.append(None)
+            else:
+                back = sum(1 for fp in members if tm in months_of[fp])
+                cells.append({"pct": round(back / len(members) * 100),
+                              "partial": tm == cur_month})
+        cohorts.append({"month": cm, "size": len(members), "cells": cells})
+
+    # Profil : quand viennent les habitués, quand arrivent les nouveaux.
+    # « Première visite » = le premier ticket de CHAQUE carte (y compris celles
+    # devenues habituées) ; « habitués » = toutes les visites des cartes ≥ 4.
+    from datetime import datetime as _dt
+    def _local(r):
+        return _dt.fromisoformat(r["ts"].replace("Z", "+00:00")).astimezone(_rm.LISBON)
+    def _slot(h):
+        return "morning" if h < 12 else "midday" if h < 15 else "afternoon" if h < 18 else "evening"
+    first_visits = [vs[0] for vs in per.values()]
+    reg_visits   = [v for vs in per.values() if len(vs) >= 4 for v in vs]
+    def _dist(visits, key, keys):
+        c = Counter(key(_local(v)) for v in visits)
+        tot = sum(c.values()) or 1
+        return {k: round(c.get(k, 0) / tot * 100) for k in keys}
+    WD = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+    SLOTS = ["morning", "midday", "afternoon", "evening"]
+    profile = {
+        "weekday": {"regulars": _dist(reg_visits, lambda d: WD[d.weekday()], WD),
+                    "first":    _dist(first_visits, lambda d: WD[d.weekday()], WD)},
+        "daypart": {"regulars": _dist(reg_visits, lambda d: _slot(d.hour), SLOTS),
+                    "first":    _dist(first_visits, lambda d: _slot(d.hour), SLOTS)},
+        "n_regular_visits": len(reg_visits), "n_first_visits": len(first_visits),
+    }
+
     return {"enabled": True, "empty": False,
             "since": rows[0]["day"], "until": rows[-1]["day"],
             "visits": len(rows), "cards": len(per),
             "weekly": weekly, "types": types, "pareto_top20_pct": pareto_top20_pct,
-            "rhythm": rhythm, "at_risk": _at_risk(rows, today.isoformat())}
+            "rhythm": rhythm, "at_risk": _at_risk(rows, today.isoformat()),
+            "cohorts": cohorts, "profile": profile}
 
 @app.route("/api/customers")
 def api_customers():

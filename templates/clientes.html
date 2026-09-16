@@ -47,6 +47,15 @@
 .cl-stat { display:flex; align-items:center; gap:14px; background:color-mix(in srgb, var(--amber) 10%, transparent); border:1px solid color-mix(in srgb, var(--amber) 35%, transparent); border-radius:10px; padding:10px 14px; }
 .cl-stat .n { font-family:var(--mono); font-size:22px; font-weight:600; color:var(--amber); white-space:nowrap; }
 .cl-stat .d { font-size:12.5px; } .cl-stat .d b { font-weight:600; }
+.cohort th[scope=row] { font-family:inherit; font-size:12.5px; text-transform:none; letter-spacing:0; color:var(--text); font-weight:500; padding:8px; text-align:left; }
+.cohort .sz { display:block; font-family:var(--mono); font-size:10px; color:var(--faint); }
+.c-cell { padding:0 !important; text-align:center !important; }
+.c-cell span { display:block; margin:3px; padding:9px 0; border-radius:6px; font-family:var(--mono); font-size:12px; font-weight:600; }
+.c-cell.o1 span { background:var(--o1); color:#14281C; } .c-cell.o2 span { background:var(--o2); color:#0F2417; }
+.c-cell.o3 span { background:var(--o3); color:#fff; }    .c-cell.o4 span { background:var(--o4); color:#fff; }
+.c-cell.partial span { opacity:.55; }
+.c-na { text-align:center !important; color:var(--faint); }
+.cl-eyebrow { font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
 .cl-empty { padding:34px; text-align:center; color:var(--muted); border:1px dashed var(--border); border-radius:12px; }
 .cl-note { font-size:12px; color:var(--faint); margin-top:26px; max-width:80ch; }
 @media (max-width:760px) { .cl-grid { grid-template-columns:1fr; } }
@@ -159,6 +168,22 @@
       <div class="cl-stat"><div class="n" id="st-risk">—</div><div class="d" id="st-risk-d"></div></div>
       <div class="cl-so" id="so-gaps"></div>
     </div>
+
+    <div class="cl-panel">
+      <div class="cl-ph"><h2>Cohorts — do they come back?</h2><span class="q">% of the cohort seen again in month M+n</span></div>
+      <table class="cl-table cohort"><thead><tr><th style="text-align:left">First visit</th><th>M+1</th><th>M+2</th><th>M+3</th><th>M+4</th></tr></thead><tbody id="tb-cohorts"></tbody></table>
+      <div class="cl-so" id="so-cohorts"></div>
+    </div>
+
+    <div class="cl-panel">
+      <div class="cl-ph"><h2>Regulars vs first visits</h2><span class="q">When do they come?</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div><div class="cl-eyebrow">Day</div><div id="ch-weekday"></div></div>
+        <div><div class="cl-eyebrow">Time of day</div><div id="ch-daypart"></div></div>
+      </div>
+      <div class="cl-legend"><span><i style="background:var(--c-ret)"></i>Regulars (4+ visits)</span><span><i style="background:var(--c-new)"></i>First visit of a card</span></div>
+      <div class="cl-so" id="so-profile"></div>
+    </div>
   </div>
 
   <p class="cl-note">Every figure rests on card payments (cash is invisible, about 5%) and on a fingerprint that merges two cards of the same type ending in the same four digits (5–9% of cards) while a phone wallet counts as a second card. Read each number at ±5 points; trends and comparisons between groups hold — that is where the decisions are.</p>
@@ -201,6 +226,25 @@ function svgGaps(r){
   return s+'</svg>';
 }
 
+// ── Barres groupées, deux séries, 2 px entre les barres d'un groupe.
+function svgGrouped(labels, a, b, aria){
+  const W=270,H=150,pb=26,pt=18,n=labels.length,gw=40,bw=17,gap=(W-n*gw)/Math.max(1,n-1);
+  const mx=Math.max(1,...labels.map(l=>Math.max(a[l]||0,b[l]||0))),sc=(H-pb-pt)/mx;
+  let s=`<svg viewBox="0 0 ${W} ${H}" class="cl-chart" role="img" aria-label="${aria}">`;
+  labels.forEach((l,i)=>{const x=i*(gw+gap),va=a[l]||0,vb=b[l]||0;
+    s+=`<g><title>${l}: regulars ${va}% · first visits ${vb}%</title>`+
+       `<rect x="${x.toFixed(1)}" y="${(H-pb-va*sc).toFixed(1)}" width="${bw}" height="${(va*sc).toFixed(1)}" fill="var(--c-ret)" rx="3"/>`+
+       `<rect x="${(x+bw+2).toFixed(1)}" y="${(H-pb-vb*sc).toFixed(1)}" width="${bw}" height="${(vb*sc).toFixed(1)}" fill="var(--c-new)" rx="3"/>`+
+       `<text x="${(x+gw/2).toFixed(1)}" y="${H-8}" text-anchor="middle" class="t-ax">${l}</text></g>`;});
+  return s+'</svg>';
+}
+function cohortCell(c){
+  if(!c) return '<td class="c-na">·</td>';
+  const step=c.pct>=25?4:c.pct>=14?3:c.pct>=9?2:1;
+  return `<td class="c-cell o${step}${c.partial?' partial':''}"><span title="${c.partial?'current month, partial':''}">${c.pct}%${c.partial?'*':''}</span></td>`;
+}
+const MONTHS={'01':'Jan','02':'Feb','03':'Mar','04':'Apr','05':'May','06':'Jun','07':'Jul','08':'Aug','09':'Sep','10':'Oct','11':'Nov','12':'Dec'};
+
 async function loadCustomers(){
   if (window.uiLoadStart) uiLoadStart();
   try{
@@ -232,6 +276,23 @@ async function loadCustomers(){
     document.getElementById('st-risk-d').innerHTML=`<b>regulars you have stopped seeing</b> — ${k.pct}% of the core, ${fmtE(k.revenue_hist)} of past spend, typically absent ${k.absent_median??'—'} days. Absent longer than 3× their own usual interval (7 days minimum, the café closes two days a week).`;
     const q=m.rhythm;
     document.getElementById('so-gaps').innerHTML=`<b>Median ${q.median} days between two visits</b>; a quarter come back within ${q.q1} day${q.q1>1?'s':''}, three quarters within ${q.q3}. That is what makes "at risk" non-arbitrary: each regular is measured against their own rhythm.`;
+
+    // Cohortes
+    const coh=(m.cohorts||[]).filter(c=>c.cells.some(x=>x));   // le mois en cours n'a encore rien à montrer
+    document.getElementById('tb-cohorts').innerHTML=coh.map(c=>`<tr><th scope="row">${MONTHS[c.month.slice(5)]} ${c.month.slice(0,4)}<span class="sz">${c.size} cards</span></th>${c.cells.map(cohortCell).join('')}</tr>`).join('');
+    const full=coh.filter(c=>c.cells[0]&&!c.cells[0].partial&&c.month!==m.since.slice(0,7));   // hors mois d'ouverture
+    const m1=full.map(c=>c.cells[0].pct), m1avg=m1.length?Math.round(m1.reduce((s,v)=>s+v,0)/m1.length):null;
+    const open=coh.find(c=>c.month===m.since.slice(0,7));
+    document.getElementById('so-cohorts').innerHTML=(m1avg!=null?`<b>About ${m1avg}% of a month's new cards are seen again the next month</b>${full.length>1?` (${Math.min(...m1)}–${Math.max(...m1)}% across ${full.length} months)`:''}, then the share halves every month or two. `:'')+(open?`${MONTHS[open.month.slice(5)]} is the opening crowd — friends and the curious — and reads apart. `:'')+`This table is where a loyalty action will show, or not: the slope is the metric.`+` <span style="color:var(--faint)">* current month, partial</span>`;
+
+    // Profil
+    const pr=m.profile, DAYS=['mon','thu','fri','sat','sun'].filter(d=>(pr.weekday.regulars[d]||0)+(pr.weekday.first[d]||0)>2);
+    document.getElementById('ch-weekday').innerHTML=svgGrouped(DAYS,pr.weekday.regulars,pr.weekday.first,'Share of visits by weekday');
+    document.getElementById('ch-daypart').innerHTML=svgGrouped(['morning','midday','afternoon','evening'],pr.daypart.regulars,pr.daypart.first,'Share of visits by time of day');
+    const diff=DAYS.map(d=>({d,v:(pr.weekday.regulars[d]||0)-(pr.weekday.first[d]||0)})).sort((a,b)=>b.v-a.v);
+    const regDay=diff[0], newDay=diff[diff.length-1], LONG={mon:'Monday',thu:'Thursday',fri:'Friday',sat:'Saturday',sun:'Sunday'};
+    const slotDiff=['morning','midday','afternoon','evening'].map(s=>({s,v:(pr.daypart.regulars[s]||0)-(pr.daypart.first[s]||0)})).sort((a,b)=>b.v-a.v);
+    document.getElementById('so-profile').innerHTML=`<b>${LONG[regDay.d]} is the regulars' day</b> (${pr.weekday.regulars[regDay.d]}% of their visits vs ${pr.weekday.first[regDay.d]}% of first visits); <b>${LONG[newDay.d]} brings the newcomers</b> (${pr.weekday.first[newDay.d]}% vs ${pr.weekday.regulars[newDay.d]}%). Regulars are ${slotDiff[0].s} people — ${pr.daypart.regulars[slotDiff[0].s]}% of their visits — while first visits lean ${slotDiff[slotDiff.length-1].s} (${pr.daypart.first[slotDiff[slotDiff.length-1].s]}%). The day that holds the core is not the day that recruits.`;
   }catch(e){
     const empty=document.getElementById('cl-empty'); empty.style.display=''; empty.textContent='Could not load: '+e.message;
   }finally{ if (window.uiLoadEnd) uiLoadEnd(); }
