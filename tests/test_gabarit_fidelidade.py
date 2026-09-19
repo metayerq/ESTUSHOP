@@ -110,3 +110,44 @@ def test_le_message_de_reparation_est_en_HAUT_du_bloc_reglages():
     manque = SOURCE.index('id="r-manque"', bloc)
     champs = SOURCE.index('id="r-start"', bloc)
     assert manque < champs, "le message doit précéder les champs qu'il explique"
+
+
+def test_chaque_colonne_triable_sait_vraiment_se_trier():
+    """
+    ⚠️ UNE COLONNE QUI NE FAIT RIEN QUAND ON CLIQUE EST PIRE QU'UNE COLONNE NON TRIABLE. Elle a
+    l'air interactive, elle change même la flèche, et l'ordre ne bouge pas — on croit que les
+    données sont déjà triées. L'en-tête déclare une clé ; le comparateur doit la connaître.
+    """
+    entetes = set(re.findall(r'<th[^>]*data-tri="([a-z_]+)"', SOURCE))
+    assert entetes, "plus aucune colonne triable — relire le gabarit"
+
+    bloc = SOURCE[SOURCE.index("var VALEUR = {"):SOURCE.index("function comparer(")]
+    connues = set(re.findall(r"^\s{4}([a-z_]+):\s*function", bloc, re.M))
+
+    assert not (entetes - connues), (
+        f"colonnes cliquables que le comparateur ignore : {sorted(entetes - connues)}")
+    assert not (connues - entetes), (
+        f"clés de tri qu'aucun en-tête n'expose : {sorted(connues - entetes)}")
+
+
+def test_les_valeurs_absentes_restent_en_bas_dans_les_deux_sens():
+    """
+    ⚠️ UN VIDE N'EST PAS UN ZÉRO. Un client inscrit qui n'a encore rien payé n'a pas de dernier
+    passage. Le traiter comme 0 le placerait en tête du classement « vu le plus récemment » —
+    le seul endroit où il n'a rien à faire.
+    """
+    bloc = SOURCE[SOURCE.index("function comparer("):SOURCE.index("E('clients').tHead")]
+    assert "null" in bloc and "undefined" in bloc, "le comparateur ne teste pas l'absence"
+    # Le signe du tri ne doit PAS s'appliquer au cas absent, sinon les vides remontent en tête
+    # dès qu'on inverse l'ordre.
+    absent = bloc[bloc.index("var xv"):bloc.index("if (typeof x")]
+    assert "tri.sens" not in absent, "les valeurs absentes suivent le sens du tri — elles remonteront"
+
+
+def test_le_tri_ne_reordonne_pas_les_listes_d_urgence():
+    """
+    Les blocs « bientôt récompensés » et « pas revenus » ont leur propre ordre. Trier le tableau
+    en place réordonnerait aussi ces listes, qui partagent les mêmes objets.
+    """
+    bloc = SOURCE[SOURCE.index("function tableau(){"):SOURCE.index("E('compte').textContent")]
+    assert ".slice().sort(" in bloc, "le tri s'applique au tableau partagé, pas à une copie"

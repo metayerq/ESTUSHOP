@@ -355,8 +355,12 @@
     <div class="tablewrap">
       <table id="clients">
         <thead><tr>
-          <th>Client</th><th class="num">Solde</th><th class="num">Dues</th>
-          <th class="num">Passages</th><th>Dernier</th><th>&Eacute;tat</th>
+          <th data-tri="nom"><button type="button">Client</button></th>
+          <th class="num" data-tri="solde"><button type="button">Solde</button></th>
+          <th class="num" data-tri="dues"><button type="button">Dues</button></th>
+          <th class="num" data-tri="passages"><button type="button">Passages</button></th>
+          <th data-tri="dernier"><button type="button">Dernier</button></th>
+          <th data-tri="etat"><button type="button">&Eacute;tat</button></th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -453,7 +457,21 @@
 .tablewrap { overflow-x:auto; }
 table { border-collapse:collapse; width:100%; font-size:13.5px; }
 th,td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--border); white-space:nowrap; }
-thead th { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:600; }
+thead th { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:600; padding:0; }
+/* L'en-tête EST le bouton : toute la case est cliquable, pas seulement le mot. Sur un écran
+   tactile, viser sept lettres au lieu d'une colonne entière est une frustration gratuite. */
+thead th button { font-family:inherit; font-size:inherit; letter-spacing:inherit; text-transform:inherit;
+  color:inherit; font-weight:inherit; background:none; border:none; cursor:pointer; width:100%;
+  padding:9px 12px; text-align:inherit; display:flex; align-items:center; gap:5px; }
+th.num button { justify-content:flex-end; }
+thead th button:hover { color:var(--text); }
+thead th button:focus-visible { outline:2px solid var(--spec); outline-offset:-2px; }
+/* La flèche n'apparaît que sur la colonne triée : six flèches grises ne disent plus laquelle
+   commande l'ordre. */
+thead th button::after { content:""; font-size:9px; opacity:0; }
+thead th[aria-sort="descending"] button::after { content:"▼"; opacity:.75; }
+thead th[aria-sort="ascending"]  button::after { content:"▲"; opacity:.75; }
+thead th[aria-sort] button { color:var(--text); }
 td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 tbody tr { cursor:pointer; }
 tbody tr:hover { background:var(--bg-hover); }
@@ -559,6 +577,53 @@ tbody tr:hover { background:var(--bg-hover); }
     }).join('');
   }
 
+  /**
+   * LE TRI DES COLONNES.
+   *
+   * ⚠️ « DERNIER » PEUT ÊTRE VIDE, ET UN VIDE N'EST PAS UN ZÉRO. Un client inscrit qui n'a
+   * encore rien payé n'a pas de dernier passage. Le traiter comme 0 le placerait en tête du
+   * classement « vu le plus récemment » — le seul endroit où il n'a rien à faire. Les absences
+   * descendent donc en bas quel que soit le sens du tri.
+   */
+  var tri = { cle: null, sens: -1 };
+
+  var VALEUR = {
+    // `localeCompare` gère les accents : « Álvaro » se range avant « Ana », pas après « Zé ».
+    nom:      function(c){ return (c.name || c.phone_masked || ('~' + c.short)).toLowerCase(); },
+    solde:    function(c){ return c.state.balance_points; },
+    dues:     function(c){ return c.state.rewards_due; },
+    passages: function(c){ return c.state.visits; },
+    dernier:  function(c){ return c.days_since_last; },
+    // ⚠️ « ÉTAT » SE TRIE PAR URGENCE, PAS PAR ALPHABET. Une colonne de pastilles n'a pas
+    // d'ordre naturel ; celui qui sert, c'est « qu'est-ce que je dois faire en premier ».
+    etat:     function(c){
+      return (c.state.rewards_due ? 8 : 0) + (c.at_risk ? 4 : 0) +
+             (c.orphan ? 2 : 0) + (c.opted_out ? 1 : 0);
+    }
+  };
+
+  function comparer(a, b){
+    var f = VALEUR[tri.cle], x = f(a), y = f(b);
+    // Les valeurs manquantes tombent toujours en bas, dans les deux sens.
+    var xv = (x === null || x === undefined), yv = (y === null || y === undefined);
+    if (xv || yv) return xv && yv ? 0 : (xv ? 1 : -1);
+    if (typeof x === 'string') return x.localeCompare(y, 'fr') * tri.sens;
+    return (x - y) * tri.sens;
+  }
+
+  E('clients').tHead.addEventListener('click', function(e){
+    var th = e.target.closest('th[data-tri]'); if (!th) return;
+    var cle = th.dataset.tri;
+    // Même colonne : on inverse. Nouvelle colonne : on commence par le PLUS GRAND — c'est ce
+    // qu'on cherche neuf fois sur dix (qui a le plus de points, qui doit le plus de boissons).
+    tri = { cle: cle, sens: (tri.cle === cle && tri.sens === -1) ? 1 : -1 };
+    [].forEach.call(E('clients').tHead.querySelectorAll('th[data-tri]'), function(x){
+      if (x === th) x.setAttribute('aria-sort', tri.sens === -1 ? 'descending' : 'ascending');
+      else x.removeAttribute('aria-sort');
+    });
+    tableau();
+  });
+
   function tableau(){
     var q = E('q').value.trim().toLowerCase();
     var vus = comptes.filter(function(c){
@@ -571,6 +636,10 @@ tbody tr:hover { background:var(--bg-hover); }
           || (c.phone_masked||'').indexOf(q) >= 0
           || c.short.indexOf(q) >= 0;
     });
+    // ⚠️ LE TRI S'APPLIQUE APRÈS LE FILTRE, ET SUR UNE COPIE. Trier `comptes` en place
+    // réordonnerait aussi les listes « bientôt récompensés » et « pas revenus », qui ont leur
+    // propre ordre — celui de l'urgence, pas celui de la colonne cliquée.
+    if (tri.cle) vus = vus.slice().sort(comparer);
     E('compte').textContent = vus.length + ' sur ' + comptes.length;
     E('clients').tBodies[0].innerHTML = vus.map(function(c){
       var p = [];
