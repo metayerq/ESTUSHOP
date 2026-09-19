@@ -21,6 +21,11 @@ from concurrent.futures import ThreadPoolExecutor
 # l'horloge UTC du serveur Vercel. Voir config.py pour le pourquoi.
 from config import today_lisbon, now_lisbon, TVA_MOYENNE_BLENDED
 
+# Le programme de points. `points.py` est une traduction vérifiée du calcul qui tourne à la
+# caisse ; `programme.py` regroupe les lignes brutes en clients. Ni l'un ni l'autre ne touche
+# à Supabase : c'est ce qui permet de tester la règle sans base de données.
+from programme import build_accounts, programme_summary
+
 from flask import Flask, jsonify, render_template, request, redirect, make_response, g
 from vendus import (
     DRINK_CAT_IDS,
@@ -364,6 +369,11 @@ INVESTOR_BLOCKED_PREFIXES = (
     "/holidays", "/api/time_off",
     "/reconciliation", "/api/reconciliation", "/api/cash",
     "/api/cashflow",
+    # ⚠️ AJOUTÉ EN SEPTEMBRE 2026 : LE FICHIER CLIENTS N'ÉTAIT PAS FERMÉ. L'ancienne page
+    # fidélité montrait prénoms, numéros de téléphone, e-mails et NIF à quiconque avait le mot
+    # de passe investisseur — un accès pensé pour des chiffres, pas pour des personnes. Ce n'est
+    # pas une donnée d'actionnaire ; c'est une donnée personnelle de client.
+    "/loyalty", "/api/fidelidade",
 )
 
 def _auth_token(role):
@@ -396,15 +406,16 @@ def _require_auth():
     # route), pas par le login. Lecture seule, ne montre que la réconciliation TPA.
     if request.path.startswith("/tpa/") or request.path.startswith("/api/tpa/"):
         return
-    # API fidélité : appelée par le POS, qui n'a pas de session dashboard. Protégée par un
-    # jeton vérifié DANS chaque route (`_loyalty_authorized`), jamais ici — laisser passer sans
-    # contrôle ouvrirait l'écriture des points à n'importe qui.
-    if request.path.startswith("/api/loyalty/"):
-        return
-    # Carte personnelle d'un client : protégée par un JETON imprévisible dans l'URL, vérifié
-    # dans la route. Lecture seule, et ne montre que prénom, numéro et solde.
-    if request.path.startswith("/carte/"):
-        return
+    # ⚠️ DEUX PORTES ONT ÉTÉ REFERMÉES ICI EN SEPTEMBRE 2026, ET IL NE FAUT PAS LES ROUVRIR.
+    # `/api/loyalty/` et `/carte/` échappaient au login : la première parce qu'un POS l'appelait
+    # avec un jeton partagé, la seconde parce qu'un client lisait sa carte sans compte. Les deux
+    # appartenaient à l'ancien programme « neuf boissons », supprimé. Plus personne ne les
+    # franchissait — et c'est exactement ainsi qu'un fichier clients finit par être public : une
+    # exception ouverte pour un besoin réel, puis le besoin disparaît, pas l'exception.
+    #
+    # La carte du client vit désormais chez Mesa (`pontos`), avec son propre jeton ; le POS n'a
+    # plus rien à demander ici. Toute nouvelle route de fidélité passe sous le login, sans
+    # exception : elle lit un fichier de clients nominatif.
     role = _current_role()
     if role is None:
         if request.path.startswith("/api/"):
@@ -1162,1056 +1173,203 @@ def api_summary_rebuild():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FIDÉLITÉ — dix boissons, la onzième offerte
+# FIDÉLITÉ — 1 € dépensé, 1 point ; 50 points, une boisson offerte
 # ══════════════════════════════════════════════════════════════════════════════
 #
-# POURQUOI DES BOISSONS ET NON DES EUROS. Un livre à 25 € laisse 10 € de marge (40 %), un café
-# à 4 € en laisse 3,30 (82 %). Avec « 1 € = 1 point », un seul livre vaudrait la moitié d'une
-# récompense sur des euros deux fois moins margés : les cafés offerts seraient financés par la
-# librairie. Compter les boissons adosse la récompense à ce qui la finance — et « dix boissons,
-# la onzième offerte » se comprend sans explication au comptoir.
+# ⚠️ LE BARÈME N'EST PAS CALCULÉ ICI. Le solde d'un client sort de `points.py`, qui est une
+# traduction VÉRIFIÉE de `mesa/apps/pos/lib/loyalty.ts` — le code qui tourne au comptoir et sur
+# la page du client. Les deux implémentations rejouent les mêmes vecteurs figés
+# (`tests/vectors/loyalty_state.json`) : une divergence est un test rouge, pas une dispute
+# devant la tasse de quelqu'un.
 #
-# POURQUOI LA DÉFINITION DE « BOISSON » VIT ICI. Le POS pourrait compter lui-même, mais il y
-# aurait alors deux définitions de ce qu'est une boisson, et un jour elles divergeraient sans que
-# personne ne le voie. `DRINK_CAT_IDS` est déjà la référence pour l'estimation des couverts ;
-# elle le reste ici.
+# ⚠️ ET SI CE FICHIER SEMBLE PRUDENT, C'EST QU'IL A UNE RAISON DE L'ÊTRE. Jusqu'en septembre
+# 2026, ESTUSHOP portait un SECOND programme de fidélité — neuf boissons, la dixième offerte —
+# avec ses propres tables, sa propre carte client, son propre backoffice et 106 tests. Il a
+# coexisté un mois avec celui-ci sans que rien ne le signale : deux barèmes, deux identités,
+# deux soldes possibles pour la même personne. Il n'a jamais servi au comptoir — c'est la seule
+# raison pour laquelle sa suppression n'a coûté le solde de personne. Ce n'était pas une
+# précaution, c'était de la chance.
+#
+# Les tables `loyalty_members` et `loyalty_events` restent en base, vides d'usage. Les retirer
+# demande un `drop table` délibéré, pas un effet de bord de ce fichier.
+#
+# ── CE QU'EST UN CLIENT, ET POURQUOI CE N'EST PAS ÉVIDENT ─────────────────────────────────────
+# Une carte bancaire donne une EMPREINTE pseudonyme dès le premier passage, sans rien demander.
+# Un TÉLÉPHONE, donné volontairement, rassemble plusieurs empreintes en un seul compte. Le
+# backoffice montre les deux : ignorer les cartes non liées ferait croire que le programme
+# touche trente personnes alors qu'il en voit des centaines.
 
-# ⚠️ NEUF BOISSONS, LA DIXIÈME OFFERTE. C'était dix pour onze. Le changement est GÉNÉREUX et non
-# punitif : un client à 9 boissons, qui n'avait droit à rien, a désormais sa récompense — personne
-# ne perd de solde. Coût : à 1,40 boisson par ticket mesuré, la récompense arrive vers la sixième
-# ou septième visite au lieu de la septième ou huitième.
-LOYALTY_THRESHOLD = 9   # boissons pour une récompense
+# Le seuil, en points. ⚠️ IL N'EST PAS RÉGLABLE DEPUIS UN ÉCRAN, ET C'EST DÉLIBÉRÉ : le baisser
+# est un cadeau qu'on peut chiffrer, le relever est une promesse rompue pour tous ceux qui ont
+# déjà payé leurs points. Tant qu'aucune simulation n'existe pour le montrer avant de valider,
+# ce nombre reste ici, où le changer demande un déploiement — donc une intention.
+POINTS_THRESHOLD = 50
 
-# Bornes du coût d'une boisson offerte, mesurées sur le compte (août) : le café le plus vendu
-# part à 4,00 € et coûte 0,70 € à l'achat. Une récompense donnée à quelqu'un qui serait venu de
-# toute façon coûte le PRIX ; une qui provoque une visite ne coûte que l'ACHAT. On ne peut pas
-# trancher a posteriori — d'où deux bornes plutôt qu'un chiffre faussement précis.
-LOYALTY_COST_EUR = 0.70
-LOYALTY_PRICE_EUR = 4.00
+# Ce que coûte RÉELLEMENT une boisson offerte : sa matière, pas son prix de carte. Mesuré sur le
+# compte d'août — le café le plus vendu part à 4,00 € et coûte 0,70 € à l'achat.
+# ⚠️ VALORISER LA DETTE AU PRIX DE VENTE LA MULTIPLIERAIT PAR CINQ et ferait paraître effrayant
+# un programme qui coûte quelques dizaines d'euros par mois.
+REWARD_COST_CENTS = 70
+
+# Plafond de lecture. ⚠️ ET QUAND IL EST ATTEINT, LA PAGE LE DIT. Un tableau de bord qui tronque
+# en silence affiche des chiffres faux avec l'aplomb des vrais.
+FIDELIDADE_MAX_ROWS = 60000
+
+# Nombre d'événements montrés sur une fiche. Au-delà, personne ne fait défiler.
+FIDELIDADE_MAX_EVENTS = 80
 
 
-def _loyalty_authorized():
+def _supa_all(table, params, page=1000, cap=FIDELIDADE_MAX_ROWS):
     """
-    Le POS n'a pas de session dashboard : il présente un jeton partagé.
+    Lit une table ENTIÈRE, par pages.
 
-    ⚠️ REFUSE QUAND LE JETON N'EST PAS CONFIGURÉ. Un secret absent ne doit pas valoir « accès
-    libre » — ce serait exactement la panne qu'on ne remarque jamais, jusqu'au jour où quelqu'un
-    s'offre des cafés.
+    ⚠️ POSTGREST NE REND PAS TOUT, ET NE PRÉVIENT PAS. Une limite implicite tronque la réponse
+    sans erreur : on croit lire 2 500 visites, on en lit 1 000, et tous les soldes affichés sont
+    faux — en défaveur du client, ce qui est la pire direction. Le même piège a déjà coûté douze
+    produits invisibles côté Vendus.
+
+    Renvoie `(lignes, tronqué)`.
     """
-    # ⚠️ ESPACES RETIRÉS DES DEUX CÔTÉS. `openssl rand -hex` produit un retour à la ligne, et
-    # l'interface de Vercel conserve ce qu'on lui colle : un secret correct suivi d'un « \n »
-    # produisait un refus indiscernable d'un mauvais jeton. Un blanc de bord n'est pas un secret
-    # différent, c'est un artefact de copie — et faire chercher ça à quelqu'un est cruel.
-    attendu = (os.environ.get("LOYALTY_TOKEN") or "").strip()
-    if not attendu:
-        return False
-    presente = (request.headers.get("X-Loyalty-Token") or "").strip()
-    # Comparaison à temps constant : le jeton ne doit pas se deviner caractère par caractère.
-    #
-    # ⚠️ EN OCTETS, PAS EN CHAÎNES. `compare_digest` lève sur une chaîne non-ASCII : un jeton
-    # contenant un accent aurait fait planter l'endpoint (500) au lieu de refuser proprement —
-    # et une caisse qui reçoit une erreur serveur sur chaque crédit ressemble à une panne, pas
-    # à un secret mal configuré.
-    return hmac.compare_digest(presente.encode("utf-8"), attendu.encode("utf-8"))
+    lignes, decalage = [], 0
+    while True:
+        lot = _supa_get(table, {**params, "limit": page, "offset": decalage})
+        lignes.extend(lot)
+        if len(lot) < page:
+            return lignes, False
+        decalage += page
+        if decalage >= cap:
+            return lignes, True
 
 
-def _loyalty_count_drinks(items, catalog):
+def _masque_tel(tel):
+    """« +351912345678 » → « ••• 5678 ». Assez pour confirmer, trop peu pour composer."""
+    t = (tel or "").strip()
+    return "••• " + t[-4:] if len(t) >= 4 else t
+
+
+def _fidelidade_donnees(now):
     """
-    Combien de BOISSONS dans un panier.
+    Les quatre tables du programme, regroupées en comptes.
 
-    `items` : [{"title": ..., "qty": ...}] — la même forme que les lignes d'un document Vendus.
-
-    ⚠️ UN ARTICLE INCONNU DU CATALOGUE NE COMPTE PAS. Le créditer « au cas où » offrirait des
-    cafés sur des ventes qui n'en sont pas ; ne pas le compter est le sens sûr de l'erreur.
+    ⚠️ ON LIT `card_visits` EN ENTIER, ET C'EST VOULU. Les points valent douze mois et se
+    consomment par les plus anciens : filtrer sur une fenêtre récente donnerait des soldes faux
+    pour quiconque a un lot ancien encore vivant, et l'erreur serait invisible.
     """
-    n = 0
-    for i in (items or []):
-        titre = (i.get("title") or "").strip()
-        fiche = catalog.get(titre) or {}
-        if fiche.get("category_id") in DRINK_CAT_IDS:
-            try:
-                q = float(i.get("qty") or 0)
-            except (TypeError, ValueError):
-                continue
-            if q > 0:
-                n += int(round(q))
-    return n
-
-
-def _loyalty_rewards_available(drinks):
-    """Combien de récompenses le solde permet aujourd'hui."""
-    return max(0, int(drinks or 0)) // LOYALTY_THRESHOLD
-
-
-def _loyalty_next_number(rows):
-    """
-    Le prochain numéro à attribuer.
-
-    ⚠️ TOUJOURS AU-DESSUS DU PLUS GRAND DÉJÀ ATTRIBUÉ, jamais un trou rebouché. Recycler le
-    numéro d'un membre supprimé rattacherait les points d'hier à quelqu'un d'autre — et le
-    client concerné réciterait un numéro qui n'est plus le sien sans que rien ne l'indique.
-    """
-    return max([int(r.get("number") or 0) for r in (rows or [])] + [0]) + 1
-
-
-def _loyalty_number_taken(rows, numero):
-    """
-    Le numéro est-il déjà attribué ?
-
-    ⚠️ REFUSER PLUTÔT QU'ÉCRASER. Reprendre le numéro d'un membre existant rattacherait ses
-    points à quelqu'un d'autre, et les deux réciteraient le même numéro au comptoir sans que
-    rien ne l'indique — jusqu'au jour où l'un réclame une récompense que l'autre a consommée.
-    """
-    return any(int(r.get("number") or 0) == int(numero) for r in (rows or []))
-
-
-def _loyalty_apply_adjust(drinks, delta):
-    """
-    Nouveau solde après correction, jamais négatif.
-
-    ⚠️ UN SOLDE NÉGATIF N'A AUCUN SENS et se propagerait : `_loyalty_rewards_available` le
-    ramènerait à zéro, mais le client verrait « −3 / 10 » sans comprendre, et le prochain crédit
-    partirait d'un trou qu'il n'a pas creusé. On borne à zéro et la correction reste tracée pour
-    ce qu'elle vaut.
-    """
-    return max(0, int(drinks or 0) + int(delta))
-
-
-def _loyalty_stats(members, events, today):
-    """
-    Le programme marche-t-il, et combien coûte-t-il ?
-
-    ⚠️ AUCUNE MOYENNE SUR MOINS DE DEUX VISITES. Un membre vu une seule fois n'a pas de
-    « fréquence de retour » : l'inclure à zéro écraserait la moyenne vers le bas et ferait
-    conclure que le programme ne fait revenir personne, alors qu'on n'en sait rien. Ils sont
-    comptés à part.
-
-    ⚠️ ET LE COÛT EST UNE FOURCHETTE, PAS UN NOMBRE. Une boisson offerte à quelqu'un qui serait
-    venu de toute façon coûte son PRIX ; une qui provoque une visite ne coûte que son ACHAT. On
-    ne peut pas trancher a posteriori, alors on montre les deux bornes plutôt qu'un chiffre
-    faussement précis.
-    """
-    membres = list(members or [])
-    credits = [e for e in (events or []) if e.get("kind") == "credit"]
-
-    # Visites par membre, datées.
-    par_membre = {}
-    for e in credits:
-        jour = (e.get("at") or "")[:10]
-        if jour:
-            par_membre.setdefault(int(e.get("number") or 0), []).append(jour)
-
-    ecarts = []
-    revenus = 0
-    for jours in par_membre.values():
-        uniques = sorted(set(jours))
-        if len(uniques) < 2:
-            continue
-        revenus += 1
-        d = [date.fromisoformat(x) for x in uniques]
-        ecarts += [(d[i] - d[i - 1]).days for i in range(1, len(d))]
-
-    actifs = 0
-    for m in membres:
-        vu = (m.get("last_seen") or "")[:10]
-        if vu:
-            try:
-                if (today - date.fromisoformat(vu)).days <= 30:
-                    actifs += 1
-            except ValueError:
-                pass
-
-    recompenses = sum(int(m.get("rewards") or 0) for m in membres)
-    boissons = sum(int(e.get("drinks") or 0) for e in credits)
-    # ⚠️ VISITES SANS BOISSON COMPTÉES À PART. C'est le point aveugle qu'on vient de corriger :
-    # quelqu'un qui achète un livre chaque semaine ne gagne aucune récompense et n'apparaissait
-    # nulle part. Les distinguer permet de voir si la fidélité ne parle qu'aux buveurs de café.
-    sans_boisson = sum(1 for e in credits if int(e.get("drinks") or 0) == 0)
-    cents = sum(int(e.get("amount_cents") or 0) for e in credits)
-    avec_montant = sum(1 for e in credits if e.get("amount_cents"))
-    return {
-        "members": len(membres),
-        "active_30d": actifs,
-        # Membres revenus au moins une fois — le seul sur lequel une fréquence a un sens.
-        "returned": revenus,
-        "drinks_credited": boissons,
-        "rewards_given": recompenses,
-        # `None` tant que personne n'est revenu : « 0 jour » se lirait « ils reviennent le jour
-        # même », l'inverse exact de la vérité.
-        "avg_days_between_visits": round(sum(ecarts) / len(ecarts), 1) if ecarts else None,
-        # Part des boissons créditées qui est repartie en récompenses.
-        "reward_rate_pct": (round(recompenses * LOYALTY_THRESHOLD * 100.0 / boissons, 1)
-                            if boissons else None),
-        "visits": len(credits),
-        "visits_without_drink": sans_boisson,
-        # `None` tant qu'aucun montant n'est remonté : « 0 € dépensé » se lirait comme une
-        # clientèle qui ne consomme rien, alors qu'on n'a simplement pas la donnée.
-        "spent_eur": round(cents / 100.0, 2) if avec_montant else None,
-        "avg_ticket_eur": round(cents / 100.0 / avec_montant, 2) if avec_montant else None,
-        "cost_low_eur": round(recompenses * LOYALTY_COST_EUR, 2),
-        "cost_high_eur": round(recompenses * LOYALTY_PRICE_EUR, 2),
-    }
-
-
-def _loyalty_amount_cents(raw):
-    """
-    Montant d'un ticket, en CENTIMES entiers, ou None.
-
-    ⚠️ EN CENTIMES ET PAS EN EUROS. Un montant en virgule flottante dérive à l'addition : sur des
-    centaines de tickets, le cumul finit par ne plus tomber juste, et la dérive reste invisible
-    jusqu'au jour où on la compare à la comptabilité. Les entiers ne dérivent pas.
-
-    ⚠️ REND None PLUTÔT QUE 0 quand rien n'est fourni. Un ticket à zéro euro n'existe pas ; le
-    compter comme tel ferait chuter une dépense moyenne au lieu de laisser la donnée absente.
-    """
-    if raw is None or raw == "":
-        return None
-    try:
-        v = float(raw)
-    except (TypeError, ValueError):
-        return None
-    if v <= 0 or v != v:      # v != v attrape NaN
-        return None
-    return int(round(v * 100))
-
-
-def _loyalty_clean_nif(raw):
-    """
-    Valide un NIF portugais, ou l'efface.
-
-    ⚠️ JUMEAU DE `apps/pos/lib/nif.ts`. Les deux dépôts vérifient la même clé de contrôle :
-    somme pondérée des huit premiers chiffres par 9…2, modulo 11 ; la clé vaut 0 si le reste est
-    0 ou 1, sinon 11 − reste. Algorithme confirmé sur un NIF réel du compte (517659328).
-
-    ⚠️ VALIDE NE VEUT PAS DIRE EXISTANT. La formule ne dit rien de l'existence du contribuable.
-    Mais elle attrape la faute de frappe — et un NIF stocké faux repartirait sur TOUTES les
-    factures suivantes sans que personne ne le retape.
-    """
-    v = _re.sub(r"[\s.\-]", "", (raw or ""))
-    if v == "":
-        return None, None
-    if not v.isdigit() or len(v) != 9 or v[0] not in "12356789":
-        return None, "nif_invalid"
-    somme = sum(int(v[i]) * (9 - i) for i in range(8))
-    reste = somme % 11
-    cle = 0 if reste < 2 else 11 - reste
-    if cle != int(v[8]):
-        return None, "nif_invalid"
-    return v, None
-
-
-def _loyalty_clean_birthday(day, month):
-    """
-    Valide un anniversaire, ou l'efface.
-
-    ⚠️ JOUR ET MOIS SEULEMENT, JAMAIS L'ANNÉE. On n'a aucun usage de l'âge d'un client, et s'en
-    passer retire à cette donnée l'essentiel de sa sensibilité — c'est une date de fête, pas un
-    élément d'identité.
-
-    Les deux champs vides EFFACENT : c'est le geste « retirer l'anniversaire ».
-    """
-    if day in (None, "", 0) and month in (None, "", 0):
-        return None, None, None
-    try:
-        d, m = int(day), int(month)
-    except (TypeError, ValueError):
-        return None, None, "birthday_invalid"
-    if not (1 <= m <= 12):
-        return None, None, "birthday_invalid"
-    # Un 31 février n'est l'anniversaire de personne. On refuse plutôt que de corriger en
-    # silence : une date fausse ferait fêter quelqu'un le mauvais jour, tous les ans.
-    jours = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1]
-    if not (1 <= d <= jours):
-        return None, None, "birthday_invalid"
-    return d, m, None
-
-
-def _loyalty_is_birthday(row, today):
-    """
-    Est-ce l'anniversaire de cette personne aujourd'hui ?
-
-    ⚠️ LE 29 FÉVRIER SE FÊTE LE 28 LES ANNÉES NON BISSEXTILES. Sans cette règle, un client né
-    ce jour-là ne serait jamais fêté — trois années sur quatre, son anniversaire n'existerait
-    pas. Le décaler d'un jour vaut mieux que de l'oublier.
-    """
-    d, m = row.get("birth_day"), row.get("birth_month")
-    if not d or not m:
-        return False
-    d, m = int(d), int(m)
-    if (today.month, today.day) == (m, d):
-        return True
-    if (m, d) == (2, 29) and (today.month, today.day) == (2, 28):
-        # Année non bissextile : le 29 février n'existe pas, on fête la veille.
-        try:
-            date(today.year, 2, 29)
-            return False
-        except ValueError:
-            return True
-    return False
-
-
-def _loyalty_is_deleted(row):
-    """Une fiche anonymisée n'est plus un membre : elle ne réserve plus qu'un numéro."""
-    return (row or {}).get("status") in ("deleted", "merged")
-
-
-def _loyalty_anonymise(row):
-    """
-    Ce qu'écrit une suppression.
-
-    ⚠️ ON N'EFFACE PAS LA LIGNE. Le prochain numéro vaut « le plus grand attribué, plus un » :
-    supprimer le DERNIER membre libérerait son numéro pour le suivant, et deux personnes
-    réciteraient le même au comptoir à des mois d'intervalle — les points de la première iraient
-    à la seconde. Un trou au MILIEU ne pose pas ce problème, ce qui explique que le défaut soit
-    passé inaperçu.
-
-    ⚠️ MAIS LES DONNÉES PERSONNELLES PARTENT VRAIMENT. Prénom, téléphone, e-mail, notes,
-    anniversaire : effacés. C'est ce qu'exige une demande d'effacement, et ça laisse un numéro
-    réservé qui n'identifie plus personne.
-    """
-    return {
-        "number": int(row["number"]),
-        "first_name": "—",
-        "phone": None, "email": None, "notes": None, "fiscal_id": None, "country": None,
-        "birth_day": None, "birth_month": None, "consent_at": None,
-        "status": "deleted",
-        # Les compteurs restent : l'historique du programme ne doit pas se réécrire.
-        "drinks": int(row.get("drinks") or 0),
-        "rewards": int(row.get("rewards") or 0),
-    }
-
-
-def _loyalty_clean_email(raw):
-    """
-    ⚠️ VÉRIFICATION MINIMALE, ASSUMÉE. Une arobase et un point après. Prétendre valider une
-    adresse serait faux — seule la boîte du destinataire peut le dire — et un contrôle strict
-    refuserait des adresses légitimes. Rend `None` pour un champ vidé, ce qui EFFACE.
-    """
-    v = (raw or "").strip()
-    if v == "":
-        return None, None
-    if not _re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", v):
-        return None, "email_invalid"
-    return v[:120], None
-
-
-# Bornes des trois listes. Nommées plutôt que semées dans le code : ce sont des choix
-# discutables, et on doit pouvoir les discuter sans lire une fonction.
-LOYALTY_ALMOST = 2      # boissons restantes pour figurer dans « bientôt »
-LOYALTY_LAPSED_DAYS = 30
-LOYALTY_NEW_DAYS = 7
-
-
-# Combien de lignes on conserve par ticket. Un ticket de café en porte une poignée ; la borne
-# existe pour qu'une requête anormale ne fasse pas grossir la base sans limite.
-LOYALTY_MAX_ITEMS = 30
-
-
-def _loyalty_clean_items(items):
-    """
-    Les lignes d'un ticket, nettoyées pour être conservées — ou `None`.
-
-    ⚠️ ON GARDE LE TITRE ET LA QUANTITÉ, RIEN D'AUTRE. Ni prix, ni identifiant : le prix change
-    et se relit sur le document, l'identifiant ne dit rien à un humain. Ce qu'on veut savoir,
-    c'est « quoi », pas « combien ça coûtait ce jour-là ».
-
-    Rend `None` plutôt qu'une liste vide : une absence de lignes n'est pas un ticket vide, c'est
-    une requête qui n'en portait pas.
-    """
-    propres = []
-    for i in (items or [])[:LOYALTY_MAX_ITEMS]:
-        titre = (str(i.get("title") or "")).strip()[:80]
-        try:
-            q = int(round(float(i.get("qty") or 0)))
-        except (TypeError, ValueError):
-            continue
-        if titre and q > 0:
-            propres.append({"t": titre, "q": q})
-    return propres or None
-
-
-def _loyalty_top_products(events, limit=8):
-    """
-    Ce qui revient le plus, sur un lot de visites.
-
-    ⚠️ COMPTE LES QUANTITÉS, PAS LES TICKETS. Quelqu'un qui prend deux cafés à chaque fois en
-    boit deux — le dire « une visite avec du café » effacerait la moitié de sa consommation.
-
-    ⚠️ ET LES ÉVÉNEMENTS SANS LIGNES SONT IGNORÉS, jamais comptés comme des achats vides : les
-    visites d'avant cette collecte n'en portent pas, et les faire peser à zéro ferait croire à
-    des clients qui ne prennent rien.
-    """
-    compte = {}
-    for e in (events or []):
-        for i in (e.get("items") or []):
-            titre = i.get("t")
-            if not titre:
-                continue
-            compte[titre] = compte.get(titre, 0) + int(i.get("q") or 0)
-    ordonne = sorted(compte.items(), key=lambda kv: (-kv[1], kv[0]))
-    return [{"title": t, "qty": q} for t, q in ordonne[:limit]]
-
-
-def _loyalty_member_stats(member, events, today):
-    """
-    Les chiffres d'UN client, tels que sa fiche les montre.
-
-    ⚠️ AUCUN ZÉRO INVENTÉ. Un client sans montant enregistré n'a pas « dépensé 0 € » — les
-    visites d'avant la collecte n'en portent pas. Une moyenne sur zéro ticket n'existe pas non
-    plus. Chaque valeur non calculable rend `None`, et l'écran affiche un tiret plutôt qu'un
-    chiffre qui se lirait comme une mesure.
-
-    ⚠️ ET LES VISITES SE COMPTENT PAR JOUR. Deux tickets d'affilée, c'est une visite : les
-    additionner ferait paraître un client deux fois plus assidu qu'il ne l'est.
-    """
-    credits = [e for e in (events or []) if e.get("kind") == "credit"]
-    jours = {(e.get("at") or "")[:10] for e in credits if e.get("at")}
-    montants = [int(e.get("amount_cents") or 0) for e in credits if e.get("amount_cents")]
-
-    def depuis(iso):
-        if not iso:
-            return None
-        try:
-            return (today - date.fromisoformat(str(iso)[:10])).days
-        except ValueError:
-            return None
-
-    return {
-        "visits": len(jours) or None,
-        "tickets": len(credits) or None,
-        "visits_without_drink": sum(1 for e in credits if int(e.get("drinks") or 0) == 0),
-        "spent_eur": round(sum(montants) / 100.0, 2) if montants else None,
-        "avg_ticket_eur": round(sum(montants) / 100.0 / len(montants), 2) if montants else None,
-        "days_since_last": depuis(member.get("last_seen")),
-        "member_since_days": depuis(member.get("created_at")),
-    }
-
-
-def _loyalty_merge_payload(source, cible):
-    """
-    Ce que devient la carte CONSERVÉE après absorption d'un doublon.
-
-    ⚠️ POURQUOI CETTE FONCTION EXISTE. Quelqu'un oublie son numéro, on cherche par prénom, on ne
-    trouve pas — orthographe, diminutif, prénom courant — et une seconde carte est créée. Les
-    points se répartissent alors sur deux numéros et le client n'atteint JAMAIS dix. Les deux
-    cartes sont valides, les deux soldes progressent, et c'est le client le plus assidu qui en
-    fait les frais. Rien ne le signale.
-
-    ⚠️ ON ADDITIONNE, ON N'ÉCRASE PAS. Boissons, récompenses déjà offertes et dépense se
-    cumulent : effacer l'un des deux soldes retirerait au client des visites qu'il a réellement
-    faites.
-
-    ⚠️ ET UN CONTACT PRÉSENT N'EST JAMAIS REMPLACÉ. Si la carte conservée porte déjà un
-    téléphone, celui du doublon ne l'écrase pas — on ne peut pas savoir lequel est le bon, et le
-    plus récent n'est pas forcément le meilleur. Un champ VIDE, en revanche, se remplit : c'est
-    du gain sans risque.
-    """
-    fusion = {
-        "number": int(cible["number"]),
-        "first_name": cible.get("first_name") or source.get("first_name") or "—",
-        "drinks": int(cible.get("drinks") or 0) + int(source.get("drinks") or 0),
-        "rewards": int(cible.get("rewards") or 0) + int(source.get("rewards") or 0),
-        "spent_cents": int(cible.get("spent_cents") or 0) + int(source.get("spent_cents") or 0),
-    }
-    # Le plus RÉCENT des deux derniers passages, et le plus ANCIEN des deux inscriptions : le
-    # client est là depuis la première, et il est venu la dernière fois qu'il est venu.
-    vues = [v for v in (cible.get("last_seen"), source.get("last_seen")) if v]
-    if vues:
-        fusion["last_seen"] = max(vues)
-    crees = [v for v in (cible.get("created_at"), source.get("created_at")) if v]
-    if crees:
-        fusion["created_at"] = min(crees)
-    for champ in ("phone", "email", "fiscal_id", "country", "notes", "birth_day", "birth_month",
-                  "consent_at"):
-        garde = cible.get(champ)
-        fusion[champ] = garde if garde not in (None, "") else source.get(champ)
-    return fusion
-
-
-def _loyalty_lists(members, today):
-    """
-    Trois listes qui font AGIR, plutôt qu'un classement qui fait regarder.
-
-    ⚠️ POURQUOI PAS DE PALMARÈS. Un classement de clients par dépense ne fait prendre aucune
-    décision, et c'est exactement la donnée qu'on ne veut pas afficher sur un écran visible du
-    comptoir. Ces trois-là appellent chacune une phrase à dire ou un geste à faire.
-
-      · « bientôt » — à dire en servant : « encore une et elle est offerte ». C'est ce qui fait
-        revenir, et ça ne coûte rien.
-      · « perdus de vue » — le seul signal d'un client qui décroche, tant qu'il est rattrapable.
-      · « nouveaux » — pour savoir si le programme recrute, ou s'il tourne en vase clos.
-
-    ⚠️ UN MEMBRE JAMAIS VU N'EST PAS « PERDU DE VUE ». Il n'est jamais revenu, ce qui est un
-    autre problème : le compter comme un client qui décroche mêlerait deux populations et
-    gonflerait l'alarme d'inscrits qui n'ont jamais rien acheté.
-    """
-    vivants = [m for m in (members or []) if not _loyalty_is_deleted(m)]
-
-    def jours_depuis(iso):
-        if not iso:
-            return None
-        try:
-            return (today - date.fromisoformat(str(iso)[:10])).days
-        except ValueError:
-            return None
-
-    bientot, perdus, nouveaux = [], [], []
-    for m in vivants:
-        vue = _loyalty_public(m)
-        restant = LOYALTY_THRESHOLD - (int(m.get("drinks") or 0) % LOYALTY_THRESHOLD)
-        # Une récompense DÉJÀ due ne figure pas dans « bientôt » : elle est due, pas proche.
-        if _loyalty_rewards_available(m.get("drinks")) == 0 and 0 < restant <= LOYALTY_ALMOST:
-            bientot.append({**vue, "missing": restant})
-
-        d = jours_depuis(m.get("last_seen"))
-        if d is not None and d > LOYALTY_LAPSED_DAYS:
-            perdus.append({**vue, "days": d})
-
-        n = jours_depuis(m.get("created_at"))
-        if n is not None and n <= LOYALTY_NEW_DAYS:
-            nouveaux.append({**vue, "days": n})
-
-    bientot.sort(key=lambda x: x["missing"])
-    perdus.sort(key=lambda x: -x["days"])
-    nouveaux.sort(key=lambda x: x["days"])
-    return {"almost": bientot, "lapsed": perdus, "new": nouveaux,
-            "almost_threshold": LOYALTY_ALMOST, "lapsed_days": LOYALTY_LAPSED_DAYS,
-            "new_days": LOYALTY_NEW_DAYS}
-
-
-def _loyalty_new_token():
-    """
-    Jeton d'adresse personnelle : 32 caractères imprévisibles.
-
-    ⚠️ `secrets`, PAS `random`. Un générateur pseudo-aléatoire ordinaire est reproductible : qui
-    connaît deux jetons peut deviner les suivants, et le fichier clients devient énumérable —
-    exactement ce que ce jeton existe pour empêcher.
-    """
-    return _secrets.token_urlsafe(24)
-
-
-def _loyalty_member_by_token(token):
-    """La fiche correspondant à un jeton, ou None. Jamais de recherche approximative."""
-    t = (token or "").strip()
-    if len(t) < 16:
-        # Trop court pour être un vrai jeton : on n'interroge même pas la base.
-        return None
-    rows = _supa_get("loyalty_members", {"public_token": f"eq.{t}", "limit": 1})
-    return rows[0] if rows else None
-
-
-def _loyalty_member(number):
-    """Une fiche membre, ou None."""
-    rows = _supa_get("loyalty_members", {"number": f"eq.{int(number)}", "limit": 1})
-    return rows[0] if rows else None
-
-def _loyalty_public(row):
-    """Ce que le POS reçoit d'une fiche. Le téléphone n'en fait pas partie : il ne lui sert à rien."""
-    drinks = int(row.get("drinks") or 0)
-    return {
-        "number": int(row["number"]),
-        "first_name": row.get("first_name") or "",
-        "drinks": drinks,
-        "threshold": LOYALTY_THRESHOLD,
-        "rewards_available": _loyalty_rewards_available(drinks),
-        "rewards": int(row.get("rewards") or 0),
-        # ⚠️ UN BOOLÉEN, PAS UNE DATE. Le POS n'a aucun usage de la date de naissance : ce qu'il
-        # ne reçoit pas ne peut pas s'afficher par mégarde sur un écran de comptoir. Le calcul
-        # se fait ici, avec l'heure de Lisbonne.
-        "birthday_today": _loyalty_is_birthday(row, today_lisbon()),
-        # ⚠️ LE NIF, LUI, DESCEND JUSQU'À LA CAISSE — contrairement au téléphone. Elle en a un
-        # usage précis : le pré-remplir sur la facture, pour que le client n'ait plus à réciter
-        # neuf chiffres à chaque visite. Un champ sans usage ne descend pas ; celui-ci en a un.
-        "fiscal_id": row.get("fiscal_id") or None,
-        # ⚠️ L'E-MAIL DESCEND AUSSI, POUR LA MÊME RAISON QUE LE NIF : la caisse en a un USAGE
-        # précis — le pré-remplir sur la facture, que Vendus envoie ensuite au client. Un champ
-        # sans usage ne descend pas (le téléphone n'est toujours pas transmis) ; celui-ci en a un.
-        "email": row.get("email") or None,
-    }
-
-
-@app.route("/api/loyalty/member/<int:number>")
-def api_loyalty_member(number):
-    """Le solde d'un membre, pour affichage AVANT de valider — c'est ce qui attrape le 47/74."""
-    if not _loyalty_authorized():
-        return jsonify({"error": "unauthorized"}), 401
-    row = _loyalty_member(number)
-    # ⚠️ Une fiche anonymisée n'est plus un membre : la caisse ne doit pas pouvoir y créditer
-    # des points, ni afficher « — » comme un prénom à confronter au visage.
-    if not row or _loyalty_is_deleted(row):
-        return jsonify({"error": "no_member", "number": number}), 404
-    return jsonify(_loyalty_public(row))
-
-
-@app.route("/api/loyalty/search")
-def api_loyalty_search():
-    """
-    Cherche des membres par PRÉNOM.
-
-    ⚠️ LA PORTE DE SECOURS DU SYSTÈME. On oublie son numéro — c'est la faiblesse assumée d'un
-    code qu'on récite. Sans cette recherche, on bloque au comptoir devant quelqu'un qui a bien
-    une carte, et le programme devient un irritant au lieu d'un service.
-
-    Recherche insensible à la casse et aux accents (`ilike` avec un joker de fin) : on tape deux
-    lettres, on obtient les Maria et les María. Bornée à huit résultats — au-delà, la liste ne
-    se lit plus d'un coup d'œil et il vaut mieux taper une lettre de plus.
-    """
-    if not _loyalty_authorized():
-        return jsonify({"error": "unauthorized"}), 401
-    q = (request.args.get("q") or "").strip()
-    if not q:
-        # Une requête vide ne rend PAS tout le fichier : ce serait déverser la liste des clients
-        # sur un écran de comptoir, et ça n'aide personne à retrouver quelqu'un.
-        return jsonify({"members": []})
-    rows = _supa_get("loyalty_members",
-                     {"first_name": f"ilike.{q}*", "order": "last_seen.desc.nullslast",
-                      "limit": 8})
-    rows = [r for r in rows if not _loyalty_is_deleted(r)]
-    return jsonify({"members": [_loyalty_public(r) for r in rows]})
-
-
-@app.route("/api/loyalty/members", methods=["POST"])
-def api_loyalty_create():
-    """Inscrit un membre et lui attribue son numéro."""
-    if not _loyalty_authorized():
-        return jsonify({"error": "unauthorized"}), 401
-    data = request.get_json(silent=True) or {}
-    prenom = (data.get("first_name") or "").strip()
-    if not prenom:
-        # Le prénom sert à confirmer de visu qu'on a tapé le bon numéro : sans lui, la garde
-        # contre la faute de frappe disparaît.
-        return jsonify({"error": "first_name_required"}), 400
-    tel = (data.get("phone") or "").strip() or None
-
-    # ⚠️ UN NUMÉRO PEUT ÊTRE IMPOSÉ, mais jamais volé. Reprendre celui d'un membre existant
-    # rattacherait ses points à quelqu'un d'autre, et les deux réciteraient le même numéro sans
-    # que rien ne l'indique. On refuse en le disant, plutôt que d'écraser.
-    demande = data.get("number")
-    existants = _supa_get("loyalty_members", {"select": "number"})
-    if demande is not None:
-        try:
-            numero = int(demande)
-        except (TypeError, ValueError):
-            return jsonify({"error": "number_invalid"}), 400
-        if numero <= 0:
-            return jsonify({"error": "number_invalid"}), 400
-        if _loyalty_number_taken(existants, numero):
-            return jsonify({"error": "number_taken", "number": numero}), 409
-    else:
-        numero = _loyalty_next_number(existants)
-    ligne = {"number": numero, "first_name": prenom[:40], "drinks": 0, "rewards": 0}
-
-    # Tout ce qui suit est FACULTATIF. L'inscription est le seul moment qui coûte du temps au
-    # client : chaque champ exigé s'y ajoute. Un refus ne doit donc jamais bloquer la création —
-    # sauf si la donnée est fausse, auquel cas la garder serait pire.
-    mail, err = _loyalty_clean_email(data.get("email"))
-    if err:
-        return jsonify({"error": err}), 400
-    if mail:
-        ligne["email"] = mail
-    pays = (data.get("country") or "").strip()
-    if pays:
-        ligne["country"] = pays[:60]
-    nif, err = _loyalty_clean_nif(data.get("fiscal_id"))
-    if err:
-        return jsonify({"error": err}), 400
-    if nif:
-        ligne["fiscal_id"] = nif
-    d, m, err = _loyalty_clean_birthday(data.get("birth_day"), data.get("birth_month"))
-    if err:
-        return jsonify({"error": err}), 400
-    if d and m:
-        ligne["birth_day"], ligne["birth_month"] = d, m
-    if tel:
-        # Le téléphone n'est enregistré QU'AVEC un consentement horodaté. Sans lui, on garde
-        # une fiche sans contact — ce qui reste parfaitement fonctionnel pour les points.
-        ligne["phone"] = tel[:32]
-        ligne["consent_at"] = now_lisbon().isoformat()
-    ok, err = _supa_upsert("loyalty_members", ligne)
-    if not ok:
-        return jsonify({"error": "write_failed", "detail": str(err)}), 502
-    return jsonify(_loyalty_public(ligne))
-
-
-@app.route("/api/loyalty/credit", methods=["POST"])
-def api_loyalty_credit():
-    """
-    Crédite les boissons d'un ticket encaissé.
-
-    ⚠️ APPELÉ APRÈS L'ÉMISSION DU DOCUMENT, JAMAIS AVANT. Créditer une vente qui échoue ensuite
-    offrirait des cafés sur des tickets qui n'existent pas.
-    """
-    if not _loyalty_authorized():
-        return jsonify({"error": "unauthorized"}), 401
-    data = request.get_json(silent=True) or {}
-    try:
-        numero = int(data.get("number"))
-    except (TypeError, ValueError):
-        return jsonify({"error": "number_required"}), 400
-    row = _loyalty_member(numero)
-    if not row:
-        return jsonify({"error": "no_member", "number": numero}), 404
-
-    catalog = get_catalog() or {}
-    if not catalog:
-        # Sans catalogue on ne sait pas ce qui est une boisson. Créditer au hasard serait pire
-        # que de ne rien créditer : le client repartirait avec des points qu'il n'a pas gagnés.
-        return jsonify({"error": "catalog_unavailable"}), 502
-    n = _loyalty_count_drinks(data.get("items"), catalog)
-    cents = _loyalty_amount_cents(data.get("amount"))
-
-    # ⚠️ LA VISITE EST ENREGISTRÉE MÊME SANS BOISSON. Un ticket sans boisson ne laissait aucune
-    # trace : ni passage, ni date, ni montant. Quelqu'un qui vient acheter un livre chaque
-    # semaine était invisible — et cet historique ne se reconstruit pas, chaque jour passé est
-    # perdu définitivement. Zéro boisson n'est pas « rien à dire », c'est une visite sans café.
-    nouveau = int(row.get("drinks") or 0) + n
-    depense = int(row.get("spent_cents") or 0) + (cents or 0)
-    ok, err = _supa_upsert("loyalty_members", {
-        "number": numero, "first_name": row.get("first_name"), "drinks": nouveau,
-        "rewards": int(row.get("rewards") or 0), "last_seen": now_lisbon().isoformat(),
-        "spent_cents": depense,
-    })
-    if not ok:
-        return jsonify({"error": "write_failed", "detail": str(err)}), 502
-    _supa_upsert("loyalty_events", {"number": numero, "kind": "credit", "drinks": n,
-                                    "amount_cents": cents,
-                                    # ⚠️ On ne jette plus les lignes : c'est la seule donnée
-                                    # neuve qui vaille, et elle ne se reconstruit pas.
-                                    "items": _loyalty_clean_items(data.get("items")),
-                                    "document": (data.get("document") or None)})
-    return jsonify({**_loyalty_public({**row, "drinks": nouveau}), "credited": n})
-
-
-@app.route("/api/loyalty/redeem", methods=["POST"])
-def api_loyalty_redeem():
-    """
-    Consomme une récompense : dix boissons retirées du solde.
-
-    ⚠️ REFUSE SI LE SOLDE NE SUFFIT PAS, plutôt que de passer à zéro. Un solde qui descend sans
-    récompense rendue est indétectable pour le client, et indéfendable ensuite.
-    """
-    if not _loyalty_authorized():
-        return jsonify({"error": "unauthorized"}), 401
-    data = request.get_json(silent=True) or {}
-    try:
-        numero = int(data.get("number"))
-    except (TypeError, ValueError):
-        return jsonify({"error": "number_required"}), 400
-    row = _loyalty_member(numero)
-    if not row:
-        return jsonify({"error": "no_member", "number": numero}), 404
-    solde = int(row.get("drinks") or 0)
-    if solde < LOYALTY_THRESHOLD:
-        return jsonify({"error": "not_enough", "drinks": solde,
-                        "threshold": LOYALTY_THRESHOLD}), 409
-
-    reste = solde - LOYALTY_THRESHOLD
-    ok, err = _supa_upsert("loyalty_members", {
-        "number": numero, "first_name": row.get("first_name"), "drinks": reste,
-        "rewards": int(row.get("rewards") or 0) + 1, "last_seen": now_lisbon().isoformat(),
-    })
-    if not ok:
-        return jsonify({"error": "write_failed", "detail": str(err)}), 502
-    _supa_upsert("loyalty_events", {"number": numero, "kind": "reward",
-                                    "drinks": -LOYALTY_THRESHOLD,
-                                    "document": (data.get("document") or None)})
-    return jsonify(_loyalty_public({**row, "drinks": reste,
-                                    "rewards": int(row.get("rewards") or 0) + 1}))
+    visites, t1 = _supa_all("card_visits", {"select": "fp,ts,amount", "order": "ts.asc"})
+    recompenses, t2 = _supa_all("card_rewards", {"select": "fp,ts,points_spent,amount_cents,label"})
+    liens, t3 = _supa_all("card_links", {"select": "fp,phone"})
+    fiches, t4 = _supa_all(
+        "card_customers", {"select": "phone,name,token,consent_at,opted_out_at"})
+
+    comptes = build_accounts(
+        [{"fp": v.get("fp"), "ts": v.get("ts"), "amount_cents": v.get("amount")} for v in visites],
+        [{"fp": r.get("fp"), "ts": r.get("ts"), "points_spent": r.get("points_spent")}
+         for r in recompenses],
+        liens, fiches, POINTS_THRESHOLD, now,
+    )
+
+    # L'historique d'une fiche : passages et récompenses, du plus récent au plus ancien.
+    par_fp_v, par_fp_r = {}, {}
+    for v in visites:
+        par_fp_v.setdefault(v.get("fp"), []).append(v)
+    for r in recompenses:
+        par_fp_r.setdefault(r.get("fp"), []).append(r)
+
+    for c in comptes:
+        evts = []
+        for fp in c["fps"]:
+            for v in par_fp_v.get(fp, []):
+                evts.append({"kind": "visit", "ts": v.get("ts"),
+                             "amount_cents": v.get("amount") or 0})
+            for r in par_fp_r.get(fp, []):
+                evts.append({"kind": "reward", "ts": r.get("ts"),
+                             "points": r.get("points_spent") or 0,
+                             "label": r.get("label")})
+        evts.sort(key=lambda e: e.get("ts") or "", reverse=True)
+        c["events_total"] = len(evts)
+        c["events"] = evts[:FIDELIDADE_MAX_EVENTS]
+
+    return comptes, (t1 or t2 or t3 or t4)
 
 
 @app.route("/loyalty")
 def page_loyalty():
-    """L'onglet fidélité du dashboard. Protégé par le login, comme le reste des pages."""
-    return render_template("loyalty.html")
+    """Le backoffice du programme de points. Sous le login, comme le reste des pages."""
+    return render_template("fidelidade.html")
 
 
-@app.route("/api/loyalty/list")
-def api_loyalty_list():
+@app.route("/api/fidelidade/resumo")
+def api_fidelidade_resumo():
     """
-    La liste des membres, pour l'onglet du dashboard.
+    Tout ce dont la page a besoin, en un appel.
 
-    ⚠️ CE CHEMIN EST SOUS LE LOGIN, PAS SOUS LE JETON. Il vit sous `/api/loyalty/`, qui échappe
-    au login pour laisser passer le POS — il faut donc rétablir le contrôle ici, sinon la liste
-    des clients serait publique. Le jeton du POS ne suffit pas : il sert à créditer des points,
-    pas à lire le fichier.
+    ⚠️ CETTE ROUTE N'A AUCUN CONTOURNEMENT D'AUTHENTIFICATION, contrairement à l'ancienne API
+    fidélité qui vivait sous `/api/loyalty/` — laissée passer par `_require_auth` parce qu'un
+    POS s'en servait, et qui n'était plus appelée par personne depuis que Mesa a repris les
+    points. Une porte ouverte que plus rien ne franchissait : c'est comme ça qu'un fichier
+    clients devient public.
     """
-    if _current_role() is None:
+    role = _current_role()
+    if role is None:
         return jsonify({"error": "unauthorized"}), 401
-    rows = _supa_get("loyalty_members", {"select": "*", "order": "last_seen.desc.nullslast"})
-    membres = [{**_loyalty_public(r), "last_seen": r.get("last_seen")} for r in rows]
-    return jsonify({"threshold": LOYALTY_THRESHOLD, "members": membres})
 
-
-def _loyalty_full(row):
-    """
-    La fiche COMPLÈTE, pour le dashboard seulement.
-
-    ⚠️ ELLE PORTE LES CONTACTS, contrairement à `_loyalty_public` que reçoit la caisse. Le POS
-    n'a aucun usage d'un téléphone : ce qu'il ne reçoit pas ne peut pas s'afficher par mégarde
-    sur un écran de comptoir.
-    """
-    return {
-        **_loyalty_public(row),
-        "phone": row.get("phone"), "email": row.get("email"),
-        "notes": row.get("notes"),
-        "birth_day": row.get("birth_day"), "birth_month": row.get("birth_month"),
-        "fiscal_id": row.get("fiscal_id"), "country": row.get("country"),
-        "spent_cents": int(row.get("spent_cents") or 0),
-        "consent_at": row.get("consent_at"), "created_at": row.get("created_at"),
-        "last_seen": row.get("last_seen"), "status": row.get("status"),
-    }
-
-
-@app.route("/api/loyalty/member/<int:number>/card")
-def api_loyalty_card(number):
-    """
-    La fiche client et SON HISTORIQUE.
-
-    ⚠️ L'HISTORIQUE EXISTAIT SANS LECTEUR. Chaque crédit, chaque récompense, chaque correction y
-    est écrit depuis le début, et rien ne permettait de le lire — même situation que le journal
-    des langues avant qu'on lui fasse un écran. C'est pourtant lui qui tranche un litige :
-    « j'avais neuf cafés » ne se discute pas contre un solde nu.
-    """
-    if _current_role() is None:
-        return jsonify({"error": "unauthorized"}), 401
-    row = _loyalty_member(number)
-    if not row:
-        return jsonify({"error": "no_member"}), 404
-    events = _supa_get("loyalty_events",
-                       {"number": f"eq.{number}", "order": "at.desc", "limit": 100})
-    return jsonify({"member": _loyalty_full(row), "events": events,
-                    # Ce qu'il prend le plus — « lait d'avoine » sans avoir à le demander.
-                    "top": _loyalty_top_products(events),
-                    "stats": _loyalty_member_stats(row, events, today_lisbon())})
-
-
-@app.route("/api/loyalty/member/<int:number>", methods=["PATCH"])
-def api_loyalty_edit(number):
-    """
-    Modifie une fiche. Sous le LOGIN — c'est un geste de patron, pas de caisse.
-
-    ⚠️ UN CHAMP ABSENT N'EST PAS UN CHAMP VIDÉ. Envoyer seulement `first_name` ne doit pas
-    effacer le téléphone : on ne touche qu'à ce qui est explicitement présent. C'est la
-    différence entre corriger un prénom et perdre un contact sans s'en apercevoir.
-    """
-    if _current_role() is None:
-        return jsonify({"error": "unauthorized"}), 401
-    row = _loyalty_member(number)
-    if not row:
-        return jsonify({"error": "no_member"}), 404
-    if _loyalty_is_deleted(row):
-        return jsonify({"error": "member_deleted"}), 409
-    data = request.get_json(silent=True) or {}
-    maj = {"number": number, "first_name": row.get("first_name"),
-           "drinks": int(row.get("drinks") or 0), "rewards": int(row.get("rewards") or 0)}
-
-    if "first_name" in data:
-        prenom = (data.get("first_name") or "").strip()
-        # Le prénom est ce qui permet de confirmer de visu qu'on a tapé le bon numéro : le vider
-        # retirerait la seule garde contre la faute de frappe au comptoir.
-        if not prenom:
-            return jsonify({"error": "first_name_required"}), 400
-        maj["first_name"] = prenom[:40]
-    if "phone" in data:
-        tel = (data.get("phone") or "").strip()
-        maj["phone"] = tel[:32] or None
-        # Un contact ajouté depuis le dashboard est un contact que le patron a saisi lui-même :
-        # l'horodatage du consentement suit, ou s'efface avec le numéro.
-        maj["consent_at"] = now_lisbon().isoformat() if tel else None
-    if "email" in data:
-        mail, err = _loyalty_clean_email(data.get("email"))
-        if err:
-            return jsonify({"error": err}), 400
-        maj["email"] = mail
-    if "notes" in data:
-        maj["notes"] = ((data.get("notes") or "").strip()[:500]) or None
-    if "country" in data:
-        maj["country"] = ((data.get("country") or "").strip()[:60]) or None
-    if "fiscal_id" in data:
-        nif, err = _loyalty_clean_nif(data.get("fiscal_id"))
-        if err:
-            return jsonify({"error": err}), 400
-        maj["fiscal_id"] = nif
-    if "birth_day" in data or "birth_month" in data:
-        d, m, err = _loyalty_clean_birthday(data.get("birth_day"), data.get("birth_month"))
-        if err:
-            return jsonify({"error": err}), 400
-        maj["birth_day"], maj["birth_month"] = d, m
-
-    ok, err = _supa_upsert("loyalty_members", maj)
-    if not ok:
-        return jsonify({"error": "write_failed", "detail": str(err)}), 502
-    return jsonify(_loyalty_full({**row, **maj}))
-
-
-@app.route("/api/loyalty/member/<int:number>", methods=["DELETE"])
-def api_loyalty_delete(number):
-    """Supprime une fiche : anonymisation, numéro conservé. Voir `_loyalty_anonymise`."""
-    if _current_role() is None:
-        return jsonify({"error": "unauthorized"}), 401
-    row = _loyalty_member(number)
-    if not row:
-        return jsonify({"error": "no_member"}), 404
-    ok, err = _supa_upsert("loyalty_members", _loyalty_anonymise(row))
-    if not ok:
-        return jsonify({"error": "write_failed", "detail": str(err)}), 502
-    _supa_upsert("loyalty_events", {"number": number, "kind": "adjust", "drinks": 0,
-                                    "reason": "fiche supprimée (anonymisée)"})
-    return jsonify({"ok": True, "number": number})
-
-
-@app.route("/carte/<token>")
-def page_carte(token):
-    """
-    La carte d'un client, telle qu'il la voit sur son téléphone.
-
-    ⚠️ CE QU'ELLE MONTRE, ET RIEN D'AUTRE : prénom, numéro, solde. Ni téléphone, ni e-mail, ni
-    NIF, ni historique, ni montant dépensé. Une page qu'on ouvre sans se connecter ne doit porter
-    que ce que son porteur sait déjà — et ce qu'il peut montrer à quelqu'un sans conséquence.
-
-    ⚠️ UN JETON INCONNU REND 404, PAS UNE PAGE VIDE. Une page vide laisserait croire à une carte
-    expirée ou à une panne ; le refus doit être net pour qu'on redemande le bon lien.
-    """
-    row = _loyalty_member_by_token(token)
-    if not row or _loyalty_is_deleted(row):
-        return render_template("carte_inconnue.html"), 404
-    return render_template("carte.html", membre=_loyalty_public(row),
-                           maintenant=now_lisbon().strftime("%d/%m às %H:%M"))
-
-
-@app.route("/api/loyalty/member/<int:number>/link", methods=["POST"])
-def api_loyalty_link(number):
-    """
-    Rend l'adresse personnelle d'un membre, en la créant si elle n'existe pas encore.
-
-    ⚠️ SOUS LE JETON DE LA CAISSE. C'est elle qui affichera le QR au client au comptoir : elle
-    doit pouvoir obtenir le lien sans session dashboard. Elle n'obtient QUE le lien.
-    """
-    if not _loyalty_authorized() and _current_role() is None:
-        return jsonify({"error": "unauthorized"}), 401
-    row = _loyalty_member(number)
-    if not row or _loyalty_is_deleted(row):
-        return jsonify({"error": "no_member"}), 404
-    token = (row.get("public_token") or "").strip()
-    if not token:
-        token = _loyalty_new_token()
-        ok, err = _supa_upsert("loyalty_members", {
-            "number": number, "first_name": row.get("first_name"),
-            "drinks": int(row.get("drinks") or 0), "rewards": int(row.get("rewards") or 0),
-            "public_token": token,
-        })
-        if not ok:
-            return jsonify({"error": "write_failed", "detail": str(err)}), 502
-    return jsonify({"url": f"{request.host_url.rstrip('/')}/carte/{token}"})
-
-
-@app.route("/api/loyalty/merge", methods=["POST"])
-def api_loyalty_merge():
-    """
-    Fusionne un doublon dans la carte à conserver.
-
-    ⚠️ SOUS LE LOGIN. C'est un geste de patron : la caisse crédite ce qui est vendu, elle ne
-    recompose pas des comptes.
-
-    ⚠️ LE DOUBLON N'EST PAS SUPPRIMÉ, IL EST ANONYMISÉ ET MARQUÉ. Son numéro reste réservé —
-    quelqu'un peut encore le réciter pendant des mois, et il ne doit surtout pas être réattribué
-    à un autre client. Une recherche dessus échoue proprement au lieu de tomber sur un inconnu.
-    """
-    if _current_role() is None:
-        return jsonify({"error": "unauthorized"}), 401
-    data = request.get_json(silent=True) or {}
     try:
-        depuis, vers = int(data.get("from")), int(data.get("into"))
-    except (TypeError, ValueError):
-        return jsonify({"error": "from_and_into_required"}), 400
-    if depuis == vers:
-        return jsonify({"error": "same_card"}), 400
-    motif = (data.get("reason") or "").strip()
-    if not motif:
-        return jsonify({"error": "reason_required"}), 400
+        comptes, tronque = _fidelidade_donnees(now_lisbon())
+    except SupabaseSchemaError as e:
+        # Une table absente est un déploiement incomplet, pas un programme vide.
+        return jsonify({"error": str(e)}), 500
 
-    source, cible = _loyalty_member(depuis), _loyalty_member(vers)
-    if not source or not cible:
-        return jsonify({"error": "no_member"}), 404
-    # Fusionner une fiche déjà anonymisée recomposerait un compte à partir de rien.
-    if _loyalty_is_deleted(source) or _loyalty_is_deleted(cible):
-        return jsonify({"error": "member_deleted"}), 409
+    resume = programme_summary(comptes, POINTS_THRESHOLD, REWARD_COST_CENTS)
 
-    ok, err = _supa_upsert("loyalty_members", _loyalty_merge_payload(source, cible))
-    if not ok:
-        return jsonify({"error": "write_failed", "detail": str(err)}), 502
+    # ⚠️ LE NUMÉRO COMPLET NE DESCEND QU'À L'ADMIN. Il sert à retrouver quelqu'un ; il n'a rien
+    # à faire dans un écran ouvert au rôle investisseur ou à un poste laissé déverrouillé.
+    complet = role == "admin"
 
-    # ⚠️ L'HISTORIQUE SUIT LES POINTS. Le laisser sur une fiche anonymisée le rendrait
-    # illisible : « j'avais neuf cafés » ne se tranche qu'avec les mouvements sous les yeux.
-    _supa_patch("loyalty_events", {"number": f"eq.{depuis}"}, {"number": vers})
-    _supa_upsert("loyalty_events", {"number": vers, "kind": "adjust", "drinks": 0,
-                                    "reason": f"fusion du n°{depuis} — {motif}"[:200]})
-    ok, err = _supa_upsert("loyalty_members", {**_loyalty_anonymise(source),
-                                              "drinks": 0, "rewards": 0, "status": "merged"})
-    if not ok:
-        return jsonify({"error": "write_failed", "detail": str(err)}), 502
-    return jsonify(_loyalty_full({**cible, **_loyalty_merge_payload(source, cible)}))
+    # ⚠️ UN IDENTIFIANT D'ÉCRAN, ET NON LA CLÉ INTERNE. La clé d'un compte est
+    # `phone:+351912345678` : la renvoyer telle quelle enverrait le numéro complet à tout le
+    # monde, et masquer le champ `phone` à côté n'aurait servi à rien. Le piège est que la fuite
+    # ne ressemble pas à une fuite — c'est une clé technique, pas un champ « téléphone ».
+    ids = {c["key"]: f"c{i}" for i, c in enumerate(comptes)}
 
+    def vue(c):
+        """
+        ⚠️ LISTE BLANCHE, JAMAIS `{**c}`. Un compte interne porte les empreintes complètes, le
+        jeton de la page publique et la clé nominative ; les recopier en bloc enverrait tout
+        cela au navigateur, et le prochain champ ajouté partirait avec, sans que personne ne
+        l'ait décidé.
+        """
+        return {
+            "id": ids[c["key"]],
+            "kind": c["kind"],
+            "name": c["name"],
+            "phone": c["phone"] if complet else None,
+            "phone_masked": _masque_tel(c["phone"]) if c["phone"] else None,
+            # Quatre caractères suffisent à distinguer deux lignes à l'œil ; l'empreinte
+            # entière n'aiderait personne et rattache une ligne à un moyen de paiement.
+            "short": (c["fps"][0][:4] if c["fps"] else "????"),
+            "cards": len(c["fps"]),
+            "consent_at": c["consent_at"],
+            "opted_out": c["opted_out"],
+            "orphan": c["orphan"],
+            "state": c["state"],
+            "distinct_days": c["distinct_days"],
+            "absence_threshold_days": c["absence_threshold_days"],
+            "days_since_last": c["days_since_last"],
+            "regular": c["regular"],
+            "at_risk": c["at_risk"],
+            "events": c["events"],
+            "events_total": c["events_total"],
+        }
 
-@app.route("/api/loyalty/lists")
-def api_loyalty_lists():
-    """Les trois listes actionnables. Sous le login, comme le reste du dashboard."""
-    if _current_role() is None:
-        return jsonify({"error": "unauthorized"}), 401
-    return jsonify(_loyalty_lists(_supa_get("loyalty_members", {"select": "*"}), today_lisbon()))
-
-
-@app.route("/api/loyalty/adjust", methods=["POST"])
-def api_loyalty_adjust():
-    """
-    Corrige le solde d'un membre.
-
-    ⚠️ SOUS LE LOGIN, PAS SOUS LE JETON. Corriger un solde est un geste de PATRON, pas de
-    caisse : le jeton du POS sert à créditer ce qui a été vendu, jamais à réécrire un compte.
-    `/api/loyalty/` échappant au login pour laisser passer le POS, le contrôle est rétabli ici.
-
-    ⚠️ ET LE MOTIF EST OBLIGATOIRE. Sans lui, une correction devient indiscernable d'une erreur
-    de plus : six mois plus tard, personne ne saura pourquoi un solde a bougé de −10.
-    """
-    if _current_role() is None:
-        return jsonify({"error": "unauthorized"}), 401
-    data = request.get_json(silent=True) or {}
-    try:
-        numero, delta = int(data.get("number")), int(data.get("delta"))
-    except (TypeError, ValueError):
-        return jsonify({"error": "number_and_delta_required"}), 400
-    motif = (data.get("reason") or "").strip()
-    if not motif:
-        return jsonify({"error": "reason_required"}), 400
-    if delta == 0:
-        return jsonify({"error": "delta_zero"}), 400
-    row = _loyalty_member(numero)
-    if not row:
-        return jsonify({"error": "no_member", "number": numero}), 404
-
-    nouveau = _loyalty_apply_adjust(row.get("drinks"), delta)
-    ok, err = _supa_upsert("loyalty_members", {
-        "number": numero, "first_name": row.get("first_name"), "drinks": nouveau,
-        "rewards": int(row.get("rewards") or 0),
+    return jsonify({
+        "threshold": POINTS_THRESHOLD,
+        "reward_cost_cents": REWARD_COST_CENTS,
+        "truncated": tronque,
+        "summary": {**resume,
+                    "at_risk": [vue(c) for c in resume["at_risk"]],
+                    "near_reward": [vue(c) for c in resume["near_reward"]]},
+        "accounts": [vue(c) for c in comptes],
     })
-    if not ok:
-        return jsonify({"error": "write_failed", "detail": str(err)}), 502
-    # La trace part MÊME si elle échoue à s'écrire : le solde, lui, a bougé.
-    _supa_upsert("loyalty_events", {"number": numero, "kind": "adjust",
-                                    "drinks": delta, "reason": motif[:200]})
-    return jsonify(_loyalty_public({**row, "drinks": nouveau}))
-
-
-@app.route("/api/loyalty/stats")
-def api_loyalty_stats():
-    """Le programme marche-t-il, et combien coûte-t-il ? Sous le login, comme la liste."""
-    if _current_role() is None:
-        return jsonify({"error": "unauthorized"}), 401
-    membres = _supa_get("loyalty_members", {"select": "*"})
-    events = _supa_get("loyalty_events",
-                       {"select": "number,kind,drinks,at,amount_cents,items", "limit": 5000})
-    return jsonify({**_loyalty_stats(membres, events, today_lisbon()),
-                    "top": _loyalty_top_products(events, 10)})
 
 
 @app.route("/api/cashflow")

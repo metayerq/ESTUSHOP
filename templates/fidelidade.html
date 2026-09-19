@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/static/icons/favicon-32.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Estudantina">
+<meta name="theme-color" content="#EDEAE3">
+<title>Estudantina · Fidélité</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<style>
+.app-nav { display:flex; gap:4px; margin-bottom:28px; border-bottom:1px solid var(--border); }
+.app-nav-item { display:flex; align-items:center; gap:8px; padding:11px 18px; font-size:13px; font-weight:500;
+  color:var(--muted); text-decoration:none; border-radius:8px 8px 0 0; border:1px solid transparent;
+  border-bottom:none; margin-bottom:-1px; white-space:nowrap; }
+.app-nav-item svg { width:16px; height:16px; flex-shrink:0; }
+.app-nav-item:hover { color:var(--text); background:var(--bg-hover); }
+.app-nav-item.active { color:var(--text); background:var(--bg-card); border-color:var(--border); font-weight:600; }
+@media (max-width:760px){ .app-nav { overflow-x:auto; } .app-nav-item span { display:none; } .app-nav-item { padding:11px 13px; } }
+
+.toolbar { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:20px; }
+.month-nav { display:flex; align-items:center; gap:6px; }
+.month-nav button { width:32px; height:32px; border-radius:8px; border:1px solid var(--border);
+  background:var(--bg-card); color:var(--text); cursor:pointer; font-size:15px; display:flex; align-items:center; justify-content:center; }
+.month-nav button:hover { background:var(--bg-hover); }
+.month-title { font-size:17px; font-weight:600; min-width:150px; text-transform:capitalize; }
+.seg { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+.seg button { padding:7px 14px; font-size:12.5px; font-weight:500; border:none; background:var(--bg-card);
+  color:var(--muted); cursor:pointer; }
+.seg button.on { background:var(--spec); color:#fff; }
+.btn-primary { font-family:inherit; font-size:12.5px; font-weight:600; padding:9px 16px; border-radius:8px;
+  cursor:pointer; border:none; background:var(--spec); color:#fff; margin-left:auto; }
+.btn-primary:hover { filter:brightness(1.06); }
+.today-btn { padding:7px 12px; font-size:12.5px; border:1px solid var(--border); border-radius:8px;
+  background:var(--bg-card); color:var(--text); cursor:pointer; }
+.today-btn:hover { background:var(--bg-hover); }
+
+/* ── Calendrier ── */
+.cal { border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--bg-card); }
+.cal-head { display:grid; grid-template-columns:repeat(7,1fr); background:var(--bg-hover); }
+.cal-head div { padding:9px 10px; font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--muted); text-align:left; }
+.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); }
+.cal-cell { min-height:104px; border-top:1px solid var(--border); border-left:1px solid var(--border); padding:6px;
+  cursor:pointer; position:relative; }
+.cal-cell:nth-child(7n+1){ border-left:none; }
+.cal-cell:hover { background:var(--bg-hover); }
+.cal-cell.other { background:var(--bg-page); }
+.cal-cell.other .cal-daynum { color:var(--faint); }
+.cal-daynum { font-size:12.5px; font-weight:600; color:var(--text); margin-bottom:4px; display:inline-flex;
+  align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; }
+.cal-cell.today .cal-daynum { background:var(--spec); color:#fff; }
+.ev-chip { display:flex; align-items:center; gap:5px; padding:2px 6px; border-radius:5px; font-size:11px;
+  font-weight:500; margin-bottom:3px; background:var(--bg-hover); color:var(--text); overflow:hidden;
+  white-space:nowrap; text-overflow:ellipsis; }
+.ev-chip .dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.ev-chip.cancelled { text-decoration:line-through; opacity:.5; }
+.ev-chip .tt { overflow:hidden; text-overflow:ellipsis; }
+@media (max-width:760px){ .cal-cell { min-height:74px; } .ev-chip .tt { display:none; } .ev-chip { display:inline-flex; margin-right:3px; } }
+
+/* ── Liste ── */
+.ev-list { display:flex; flex-direction:column; gap:10px; }
+.ev-card { border:1px solid var(--border); border-radius:10px; padding:14px 16px; background:var(--bg-card);
+  cursor:pointer; display:flex; gap:12px; align-items:flex-start; }
+.ev-card:hover { background:var(--bg-hover); }
+.ev-card .cbar { width:4px; align-self:stretch; border-radius:3px; }
+.ev-card h3 { font-size:14.5px; font-weight:600; margin:0 0 3px; }
+.ev-card .meta { font-size:12px; color:var(--muted); }
+.list-group-label { font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--muted); margin:18px 0 8px; }
+
+.badge { font-size:10px; font-weight:600; padding:2px 9px; border-radius:20px; white-space:nowrap; }
+.b-planned { background:var(--bg-hover); color:var(--muted); }
+.b-confirmed { background:#e7edfb; color:var(--spec); }
+.b-done { background:#e8f5e9; color:#2e7d32; }
+.b-cancelled { background:#fdeceb; color:var(--red); }
+
+/* ── Overlay (modal + drawer) ── */
+.overlay { position:fixed; inset:0; background:rgba(20,18,14,.34); z-index:100; opacity:0; pointer-events:none;
+  transition:opacity .18s; }
+.overlay.show { opacity:1; pointer-events:auto; }
+/* ⚠️ 102, AU-DESSUS DU TIROIR (101). Les deux étaient à 101 : à égalité de z-index, c'est
+   l'ordre du DOM qui tranche, et le tiroir est déclaré après le modal. Il passait donc
+   par-dessus. Sur téléphone le tiroir fait 96vw : le modal d'édition s'ouvrait intégralement
+   derrière lui et le bouton « Éditer » semblait ne rien faire. Le handler ferme désormais le
+   tiroir avant d'ouvrir le modal ; cet écart de z-index est la ceinture. */
+.modal { position:fixed; z-index:102; top:50%; left:50%; transform:translate(-50%,-48%); width:min(520px,94vw);
+  max-height:90vh; overflow:auto; background:var(--bg-card); border:1px solid var(--border); border-radius:14px;
+  padding:22px 24px; opacity:0; pointer-events:none; transition:all .18s; }
+.modal.show { opacity:1; pointer-events:auto; transform:translate(-50%,-50%); }
+.drawer { position:fixed; z-index:101; top:0; right:0; height:100%; width:min(440px,96vw); background:var(--bg-card);
+  border-left:1px solid var(--border); overflow:auto; transform:translateX(100%); transition:transform .2s; padding:22px 22px 40px; }
+.drawer.show { transform:translateX(0); }
+
+.modal h2, .drawer h2 { font-size:17px; font-weight:600; margin:0 0 16px; }
+.f-row { margin-bottom:13px; }
+.f-row2 { display:flex; gap:10px; }
+.f-row2 > div { flex:1; }
+.field-label { font-size:11px; font-weight:500; color:var(--muted); margin-bottom:5px; display:block; }
+.field-input, .field-area, select.field-input { width:100%; font-family:inherit; font-size:13px; padding:8px 10px;
+  border:1px solid var(--border); border-radius:7px; background:var(--bg-page); color:var(--text); box-sizing:border-box; }
+.field-area { resize:vertical; min-height:66px; }
+.ordinals { display:flex; gap:8px 14px; flex-wrap:wrap; }
+.ordinals label { display:flex; align-items:center; gap:5px; font-size:12.5px; color:var(--text); cursor:pointer; }
+.ordinals input { width:15px; height:15px; accent-color:var(--spec); }
+.swatches { display:flex; gap:8px; }
+.swatch { width:24px; height:24px; border-radius:50%; cursor:pointer; border:2px solid transparent; }
+.swatch.on { border-color:var(--text); }
+.modal-actions { display:flex; gap:10px; justify-content:space-between; align-items:center; margin-top:20px; }
+.btn { font-family:inherit; font-size:12.5px; font-weight:500; padding:9px 16px; border-radius:8px; cursor:pointer;
+  border:1px solid var(--border); background:var(--bg-card); color:var(--text); }
+.btn:hover { background:var(--bg-hover); }
+.btn-danger { color:var(--red); border-color:transparent; background:transparent; }
+.btn-danger:hover { background:#fdeceb; }
+
+/* ── Drawer sections ── */
+.dr-meta { font-size:12.5px; color:var(--muted); margin-bottom:6px; }
+.dr-sec { margin-top:22px; }
+.dr-sec-h { font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--muted); margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; }
+.task { display:flex; align-items:center; gap:9px; padding:7px 0; border-bottom:1px solid var(--border); }
+.task:last-child { border-bottom:none; }
+.task input[type=checkbox]{ width:16px; height:16px; accent-color:var(--spec); cursor:pointer; flex-shrink:0; }
+.task .tlabel { flex:1; font-size:13px; }
+.task.done .tlabel { text-decoration:line-through; color:var(--faint); }
+.task .tdel { color:var(--faint); cursor:pointer; font-size:15px; border:none; background:none; }
+.task .tdel:hover { color:var(--red); }
+.addrow { display:flex; gap:8px; margin-top:9px; }
+.addrow input { flex:1; font-family:inherit; font-size:12.5px; padding:7px 9px; border:1px solid var(--border);
+  border-radius:7px; background:var(--bg-page); color:var(--text); }
+.addrow button { padding:7px 12px; border-radius:7px; border:none; background:var(--spec); color:#fff; cursor:pointer; font-size:13px; }
+.note { padding:9px 11px; background:var(--bg-hover); border-radius:8px; margin-bottom:8px; }
+.note .ntext { font-size:13px; white-space:pre-wrap; }
+.note .nts { font-family:var(--mono); font-size:9.5px; color:var(--faint); margin-top:4px; letter-spacing:.04em; }
+.empty-mini { font-size:12.5px; color:var(--faint); padding:6px 0; }
+.progress { font-family:var(--mono); font-size:11px; color:var(--muted); }
+
+.toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--text);
+  color:#fff; padding:10px 18px; border-radius:8px; font-size:13px; opacity:0; transition:all .25s; z-index:200; }
+.toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
+</style>
+  <!-- ⚠️ SANS CECI LE THÈME N'EST PAS APPLIQUÉ. Le gabarit a été extrait d'events.html
+       avant cette ligne : la page restait en clair pendant que le reste du dashboard
+       était en sombre, et le contraste devenait imprévisible. -->
+  <script src="/static/ui.js?v={{ v }}"></script>
+</head>
+<body>
+<div class="page">
+
+  <style>
+/* ── Nav groupée (menus déroulants) ── */
+.topnav { display:flex; gap:4px; margin-bottom:28px; border-bottom:1px solid var(--border); position:relative; flex-wrap:wrap; }
+.nav-link, .nav-btn { display:flex; align-items:center; gap:8px; padding:11px 16px; font-size:13px; font-weight:500;
+  color:var(--muted); text-decoration:none; border-radius:8px 8px 0 0; border:1px solid transparent; border-bottom:none;
+  margin-bottom:-1px; white-space:nowrap; background:none; cursor:pointer; font-family:inherit; }
+.nav-link svg, .nav-btn svg { width:16px; height:16px; flex-shrink:0; }
+.nav-link:hover, .nav-btn:hover { color:var(--text); background:var(--bg-hover); }
+.nav-link.active, .nav-btn.active { color:var(--text); background:var(--bg-card); border-color:var(--border); font-weight:600; }
+.nav-group { position:relative; }
+.caret { font-style:normal; font-size:10px; opacity:.55; margin-left:1px; }
+.nav-menu { position:absolute; top:100%; left:0; min-width:190px; background:var(--bg-card); border:1px solid var(--border);
+  border-radius:0 10px 10px 10px; box-shadow:0 10px 28px rgba(20,18,14,.14); padding:6px; display:none; z-index:60; }
+.nav-group:hover .nav-menu, .nav-group.open .nav-menu { display:block; }
+.nav-menu a { display:block; padding:9px 12px; font-size:13px; color:var(--text); text-decoration:none; border-radius:7px; white-space:nowrap; }
+.nav-menu a:hover { background:var(--bg-hover); }
+.nav-menu a.active { background:var(--bg-hover); font-weight:600; color:var(--spec); }
+@media (max-width:760px){ .topnav { overflow-x:auto; } .nav-link span, .nav-btn span { display:inline; } }
+</style>
+<nav class="topnav" id="topnav">
+  <a href="/" class="nav-link" data-path="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg><span>Dashboard</span></a>
+  <div class="nav-group">
+    <button class="nav-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5-9 4.5-9-4.5Z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg><span>Carte &amp; Stock</span><i class="caret">&#9662;</i></button>
+    <div class="nav-menu">
+      <a href="/cogs" data-path="/cogs">COGS &mdash; recettes &amp; co&ucirc;ts</a>
+      <a href="/stock" data-path="/stock">Stock &mdash; inventaire</a>
+    </div>
+  </div>
+  <div class="nav-group">
+    <button class="nav-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1" fill="currentColor" stroke="none"/></svg><span>Finances</span><i class="caret">&#9662;</i></button>
+    <div class="nav-menu">
+      <a href="/charges" data-path="/charges">Costs &mdash; charges fixes</a>
+      <a href="/expenses" data-path="/expenses">Expenses &mdash; d&eacute;penses</a>
+      <a href="/reconciliation" data-path="/reconciliation">Reconciliation &mdash; caisse</a>
+    </div>
+  </div>
+  <div class="nav-group">
+    <button class="nav-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>Op&eacute;rations</span><i class="caret">&#9662;</i></button>
+    <div class="nav-menu">
+      <a href="/sop" data-path="/sop">SOP &mdash; checklists</a>
+      <a href="/holidays" data-path="/holidays">Holidays &mdash; cong&eacute;s</a>
+      <a href="/events" data-path="/events">Events &mdash; pop-ups</a>
+      <a href="/loyalty" data-path="/loyalty">Loyalty &mdash; fid&eacute;lit&eacute;</a>
+    </div>
+  </div>
+</nav>
+<script>
+(function(){
+  var path=(location.pathname.replace(/\/+$/,'')||'/');
+  var nav=document.getElementById('topnav'); if(!nav) return;
+  nav.querySelectorAll('a[data-path]').forEach(function(a){
+    var p=a.getAttribute('data-path');
+    if(p===path||(p!=='/'&&path.indexOf(p)===0)){
+      a.classList.add('active');
+      var g=a.closest('.nav-group'); if(g) g.querySelector('.nav-btn').classList.add('active');
+    }
+  });
+  nav.querySelectorAll('.nav-group .nav-btn').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      var g=btn.parentElement, wasOpen=g.classList.contains('open');
+      nav.querySelectorAll('.nav-group').forEach(function(x){x.classList.remove('open');});
+      if(!wasOpen) g.classList.add('open');
+    });
+  });
+  document.addEventListener('click',function(){ nav.querySelectorAll('.nav-group').forEach(function(x){x.classList.remove('open');}); });
+})();
+</script>
+<main class="wrap" style="max-width:1180px;margin:0 auto;padding:24px 16px 64px">
+  <h1 style="font-size:22px;margin:0 0 4px">Fid&eacute;lit&eacute;</h1>
+  <p class="muted" style="margin:0 0 6px;max-width:760px">
+    <strong>1&nbsp;&euro; d&eacute;pens&eacute; = 1 point. 50 points = une boisson au choix.</strong>
+    Les points valent douze mois et se consomment par les plus anciens.
+    La caisse reconna&icirc;t la carte bancaire ; le num&eacute;ro de t&eacute;l&eacute;phone regroupe
+    plusieurs cartes en un seul compte.
+  </p>
+  <p class="muted" style="margin:0 0 20px;font-size:12px;max-width:760px">
+    Le solde affich&eacute; ici est calcul&eacute; par le m&ecirc;me code que le comptoir et que la page du
+    client&nbsp;&mdash; une divergence entre les trois est un test rouge, pas une surprise au comptoir.
+  </p>
+
+  <div id="alerte" style="display:none"></div>
+
+  <!-- ── Les chiffres qui d&eacute;cident quelque chose ─────────────────────────────────────── -->
+  <div id="kpis" class="kpi-grid"><div class="muted">Chargement&hellip;</div></div>
+
+  <!-- ── Les deux listes qui font agir ──────────────────────────────────────────────────── -->
+  <div class="deux-listes">
+    <section class="bloc">
+      <h2 class="bloc-titre">Bient&ocirc;t r&eacute;compens&eacute;s</h2>
+      <p class="muted bloc-note">&Agrave; 40 points ou plus. De quoi pr&eacute;voir le co&ucirc;t du mois &mdash; et de quoi relancer quelqu'un avec quelque chose de vrai &agrave; lui dire.</p>
+      <div id="liste-proches" class="liste"></div>
+    </section>
+    <section class="bloc">
+      <h2 class="bloc-titre">Habitu&eacute;s qui ne sont pas revenus</h2>
+      <p class="muted bloc-note">Absents au-del&agrave; de <em>leur</em> rythme habituel, jamais moins de sept jours &mdash; le caf&eacute; ferme deux jours par semaine.</p>
+      <div id="liste-risque" class="liste"></div>
+    </section>
+  </div>
+
+  <!-- ── Tous les clients ──────────────────────────────────────────────────────────────── -->
+  <section class="bloc" style="margin-top:22px">
+    <div class="barre">
+      <h2 class="bloc-titre" style="margin:0">Clients</h2>
+      <input id="q" type="search" placeholder="Pr&eacute;nom, num&eacute;ro, empreinte&hellip;" autocomplete="off">
+      <div class="seg" id="filtres">
+        <button data-f="tous" class="on">Tous</button>
+        <button data-f="lies">Avec num&eacute;ro</button>
+        <button data-f="cartes">Cartes seules</button>
+        <button data-f="dus">Boisson due</button>
+      </div>
+      <span id="compte" class="muted" style="margin-left:auto;font-size:12.5px"></span>
+    </div>
+    <div class="tablewrap">
+      <table id="clients">
+        <thead><tr>
+          <th>Client</th><th class="num">Solde</th><th class="num">Dues</th>
+          <th class="num">Passages</th><th>Dernier</th><th>&Eacute;tat</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<!-- ── La fiche d'un client ────────────────────────────────────────────────────────────── -->
+<div id="fiche-fond" class="fiche-fond" hidden>
+  <aside id="fiche" class="fiche" role="dialog" aria-modal="true" aria-labelledby="fiche-nom">
+    <button id="fermer" class="fermer" type="button" aria-label="Fermer">&times;</button>
+    <div id="fiche-corps"></div>
+  </aside>
+</div>
+
+<style>
+.kpi-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; margin-bottom:22px; }
+.kpi { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:13px 15px; }
+.kpi-l { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:5px; }
+.kpi-v { font-size:23px; font-weight:600; font-variant-numeric:tabular-nums; line-height:1.1; }
+.kpi-s { font-size:11.5px; color:var(--muted); margin-top:3px; }
+.kpi.vedette { border-color:var(--spec); }
+.kpi.vedette .kpi-v { color:var(--spec); }
+
+.deux-listes { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px; }
+.bloc { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:16px 18px; }
+.bloc-titre { font-size:14px; font-weight:600; margin:0 0 3px; }
+.bloc-note { font-size:11.5px; margin:0 0 12px; }
+.liste { display:flex; flex-direction:column; gap:2px; }
+.ligne { display:flex; align-items:baseline; gap:10px; padding:7px 8px; border-radius:7px; cursor:pointer; text-align:left;
+  background:none; border:none; font-family:inherit; font-size:13.5px; color:var(--text); width:100%; }
+.ligne:hover { background:var(--bg-hover); }
+.ligne .nom { font-weight:500; }
+.ligne .det { color:var(--muted); font-size:12px; margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.vide { color:var(--muted); font-size:13px; padding:8px 2px; }
+
+.barre { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+#q { font-family:inherit; font-size:13px; padding:7px 11px; border:1px solid var(--border); border-radius:8px;
+  background:var(--bg); color:var(--text); min-width:210px; }
+.seg { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+.seg button { padding:6px 12px; font-size:12px; font-weight:500; border:none; background:var(--bg-card);
+  color:var(--muted); cursor:pointer; font-family:inherit; }
+.seg button.on { background:var(--spec); color:#fff; }
+
+.tablewrap { overflow-x:auto; }
+table { border-collapse:collapse; width:100%; font-size:13.5px; }
+th,td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--border); white-space:nowrap; }
+thead th { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:600; }
+td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+tbody tr { cursor:pointer; }
+tbody tr:hover { background:var(--bg-hover); }
+.puce { display:inline-block; font-size:11px; padding:2px 7px; border-radius:20px; border:1px solid var(--border); color:var(--muted); }
+.puce.due { border-color:var(--spec); color:var(--spec); font-weight:600; }
+.puce.risque { border-color:#b4552f; color:#b4552f; }
+.puce.stop { border-color:var(--muted); }
+.anon { color:var(--muted); font-family:ui-monospace,Menlo,monospace; font-size:12px; }
+
+.fiche-fond { position:fixed; inset:0; background:rgba(20,18,14,.34); z-index:80; display:flex; justify-content:flex-end; }
+.fiche { background:var(--bg-card); width:min(520px,100%); height:100%; overflow-y:auto; padding:22px 24px 48px;
+  border-left:1px solid var(--border); position:relative; }
+.fermer { position:absolute; top:12px; right:14px; background:none; border:none; font-size:26px; line-height:1;
+  color:var(--muted); cursor:pointer; }
+.fiche h2 { font-size:19px; margin:0 0 2px; }
+.fiche h3 { font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); margin:22px 0 8px; font-weight:600; }
+.paire { display:flex; justify-content:space-between; gap:12px; padding:5px 0; font-size:13.5px; border-bottom:1px solid var(--border); }
+.paire span:last-child { font-variant-numeric:tabular-nums; }
+.evt { display:flex; justify-content:space-between; gap:10px; font-size:13px; padding:5px 0; border-bottom:1px solid var(--border); }
+.evt .q { color:var(--muted); font-variant-numeric:tabular-nums; }
+.evt.rec { color:var(--spec); font-weight:500; }
+.avert { background:var(--bg-hover); border:1px solid var(--border); border-left:3px solid #b4552f; border-radius:0 8px 8px 0;
+  padding:10px 13px; font-size:12.5px; margin:14px 0; }
+</style>
+
+<script>
+(function(){
+  var E = document.getElementById.bind(document);
+  var S = null, comptes = [], filtre = 'tous';
+
+  function eur(c){ return (c/100).toFixed(2).replace('.',',') + ' €'; }
+  function nb(n){ return (n===null||n===undefined) ? '—' : n; }
+  function jour(iso){ return iso ? iso.slice(0,10).split('-').reverse().join('/') : '—'; }
+
+  function nom(c){
+    if (c.name) return c.name;
+    if (c.phone) return c.phone_masked;
+    // ⚠️ AUCUNE EMPREINTE ENTIÈRE À L'ÉCRAN. Elle n'aide personne à reconnaître quelqu'un, et
+    // c'est la seule chose qui rattache une ligne à un moyen de paiement.
+    return '<span class="anon">carte ' + c.short + '</span>';
+  }
+
+  function kpis(s){
+    var t = [
+      ['Comptes', s.accounts, s.linked + ' avec numéro · ' + s.cards_unlinked + ' cartes seules', false],
+      ['Taux de liaison', s.link_rate_pct===null ? '—' : s.link_rate_pct + ' %',
+       'des ' + s.returning + ' clients revenus au moins deux fois', true],
+      ['Points en circulation', s.points_outstanding,
+       'soit ' + eur(s.liability_cents) + ' de matière si tout était réclamé', false],
+      ['Boissons dues', s.rewards_due_now, 'réclamables dès maintenant', false],
+      ['Points consommés', s.redemption_rate_pct===null ? '—' : s.redemption_rate_pct + ' %',
+       s.points_spent + ' bus · ' + s.points_expired + ' périmés', false],
+      ['Habitués', s.regulars, s.at_risk.length + ' ne sont pas revenus', false]
+    ];
+    E('kpis').innerHTML = t.map(function(k){
+      return '<div class="kpi' + (k[3] ? ' vedette' : '') + '"><div class="kpi-l">' + k[0] +
+             '</div><div class="kpi-v">' + k[1] + '</div><div class="kpi-s">' + k[2] + '</div></div>';
+    }).join('');
+  }
+
+  function petiteListe(el, arr, detail, vide){
+    if (!arr.length){ el.innerHTML = '<div class="vide">' + vide + '</div>'; return; }
+    el.innerHTML = arr.slice(0,12).map(function(c){
+      return '<button class="ligne" data-k="' + c.id + '"><span class="nom">' + nom(c) +
+             '</span><span class="det">' + detail(c) + '</span></button>';
+    }).join('');
+  }
+
+  function tableau(){
+    var q = E('q').value.trim().toLowerCase();
+    var vus = comptes.filter(function(c){
+      if (filtre==='lies'   && c.kind!=='phone') return false;
+      if (filtre==='cartes' && c.kind!=='card')  return false;
+      if (filtre==='dus'    && !c.state.rewards_due) return false;
+      if (!q) return true;
+      return (c.name||'').toLowerCase().indexOf(q) >= 0
+          || (c.phone||'').indexOf(q) >= 0
+          || (c.phone_masked||'').indexOf(q) >= 0
+          || c.short.indexOf(q) >= 0;
+    });
+    E('compte').textContent = vus.length + ' sur ' + comptes.length;
+    E('clients').tBodies[0].innerHTML = vus.map(function(c){
+      var p = [];
+      if (c.state.rewards_due) p.push('<span class="puce due">boisson due</span>');
+      if (c.at_risk) p.push('<span class="puce risque">pas revenu</span>');
+      if (c.opted_out) p.push('<span class="puce stop">STOP</span>');
+      if (c.orphan) p.push('<span class="puce risque">sans fiche</span>');
+      return '<tr data-k="' + c.id + '"><td>' + nom(c) + '</td>' +
+        '<td class="num">' + c.state.balance_points + '</td>' +
+        '<td class="num">' + (c.state.rewards_due || '') + '</td>' +
+        '<td class="num">' + c.state.visits + '</td>' +
+        '<td>' + (c.days_since_last===null ? '—' : c.days_since_last + ' j') + '</td>' +
+        '<td>' + (p.join(' ') || '') + '</td></tr>';
+    }).join('') || '<tr><td colspan="6" class="vide">Personne ne correspond.</td></tr>';
+  }
+
+  function fiche(key){
+    var c = comptes.filter(function(x){ return x.id===key; })[0];
+    if (!c) return;
+    var s = c.state, h = [];
+    h.push('<h2 id="fiche-nom">' + nom(c) + '</h2>');
+    h.push('<div class="muted" style="font-size:12.5px">' +
+      (c.kind==='phone' ? c.cards + ' carte(s) rattachée(s)' : 'carte non rattachée à un numéro') +
+      (c.consent_at ? ' · inscrit le ' + jour(c.consent_at) : '') + '</div>');
+
+    if (c.orphan) h.push('<div class="avert"><strong>Num&eacute;ro sans fiche client.</strong> ' +
+      'Le lien existe mais la fiche a disparu : ce client ne reçoit plus de SMS et n\'a plus de page. ' +
+      'À réparer.</div>');
+    if (c.opted_out) h.push('<div class="avert">Ce client s\'est <strong>désabonné des SMS</strong>. ' +
+      'Ses points continuent de courir ; il ne reçoit plus rien.</div>');
+
+    h.push('<h3>Points</h3>');
+    h.push('<div class="paire"><span>Solde</span><span><strong>' + s.balance_points + '</strong></span></div>');
+    h.push('<div class="paire"><span>Boissons dues</span><span>' + s.rewards_due + '</span></div>');
+    if (!s.rewards_due) h.push('<div class="paire"><span>Avant la prochaine</span><span>' + s.points_to_next + '</span></div>');
+    h.push('<div class="paire"><span>Déjà consommés</span><span>' + s.spent_points + '</span></div>');
+    h.push('<div class="paire"><span>Périmés</span><span>' + s.expired_points + '</span></div>');
+    if (s.expiring_soon_points) h.push('<div class="paire"><span>Périment sous 30 jours</span><span>' +
+      s.expiring_soon_points + ' &mdash; le ' + jour(s.next_expiry) + '</span></div>');
+    else if (s.next_expiry) h.push('<div class="paire"><span>Première expiration</span><span>' + jour(s.next_expiry) + '</span></div>');
+
+    h.push('<h3>Rythme</h3>');
+    h.push('<div class="paire"><span>Passages</span><span>' + s.visits + ' sur ' + c.distinct_days + ' jours</span></div>');
+    h.push('<div class="paire"><span>Dernier</span><span>' + (c.days_since_last===null ? '—' : 'il y a ' + c.days_since_last + ' jours') + '</span></div>');
+    h.push('<div class="paire"><span>Son rythme habituel</span><span>' +
+      (c.absence_threshold_days===null ? 'pas encore mesurable' : 'alerte au-delà de ' + c.absence_threshold_days + ' j') + '</span></div>');
+
+    h.push('<h3>Historique</h3>');
+    h.push('<p class="muted" style="font-size:11.5px;margin:0 0 8px">Les montants, pas les points : ' +
+      'les centimes s\'accumulent et ne sont arrondis qu\'une fois, sur le total. ' +
+      'Un « +9 pts » par ligne ne s\'additionnerait pas au solde.</p>');
+    if (!c.events.length) h.push('<div class="vide">Aucun passage enregistré.</div>');
+    h.push(c.events.map(function(e){
+      return e.kind==='reward'
+        ? '<div class="evt rec"><span>' + jour(e.ts) + ' &mdash; boisson offerte</span><span class="q">−' + e.points + ' pts</span></div>'
+        : '<div class="evt"><span>' + jour(e.ts) + '</span><span class="q">' + eur(e.amount_cents) + '</span></div>';
+    }).join(''));
+
+    E('fiche-corps').innerHTML = h.join('');
+    E('fiche-fond').hidden = false;
+    E('fermer').focus();
+  }
+
+  function fermer(){ E('fiche-fond').hidden = true; }
+
+  E('fermer').addEventListener('click', fermer);
+  E('fiche-fond').addEventListener('click', function(e){ if (e.target===E('fiche-fond')) fermer(); });
+  document.addEventListener('keydown', function(e){ if (e.key==='Escape') fermer(); });
+  E('q').addEventListener('input', tableau);
+  E('filtres').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-f]'); if (!b) return;
+    filtre = b.dataset.f;
+    [].forEach.call(E('filtres').children, function(x){ x.classList.toggle('on', x===b); });
+    tableau();
+  });
+  document.addEventListener('click', function(e){
+    var el = e.target.closest('[data-k]'); if (el) fiche(el.dataset.k);
+  });
+
+  fetch('/api/fidelidade/resumo').then(function(r){
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then(function(d){
+    if (d.error) throw new Error(d.error);
+    S = d.summary; comptes = d.accounts;
+    kpis(S);
+    petiteListe(E('liste-proches'), S.near_reward,
+      function(c){ return c.state.balance_points + ' pts · ' + c.state.points_to_next + ' à faire'; },
+      'Personne n\'approche des 50 points.');
+    petiteListe(E('liste-risque'), S.at_risk,
+      function(c){ return 'absent depuis ' + c.days_since_last + ' j'; },
+      'Aucun habitué ne manque à l\'appel.');
+    tableau();
+    if (d.truncated) {
+      // ⚠️ UNE PAGE QUI CACHE CE QU'ELLE N'A PAS LU MENT PAR OMISSION. Mieux vaut un bandeau
+      // laid qu'un chiffre faux qu'on croit complet.
+      E('alerte').style.display = 'block';
+      E('alerte').innerHTML = '<div class="avert"><strong>Lecture incomplète.</strong> ' +
+        'Le plafond de lecture a été atteint : les chiffres ci-dessous sont partiels.</div>';
+    }
+  }).catch(function(err){
+    E('kpis').innerHTML = '';
+    E('alerte').style.display = 'block';
+    E('alerte').innerHTML = '<div class="avert"><strong>Impossible de lire le programme.</strong> ' +
+      String(err.message || err) + '</div>';
+  });
+})();
+</script>
+</div>
+</body>
+</html>

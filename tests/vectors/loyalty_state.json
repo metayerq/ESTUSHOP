@@ -1,0 +1,732 @@
+{
+  "note": "Généré par scripts/gen-loyalty-vectors.ts depuis lib/loyalty.ts. Rejoué par Mesa (lib/loyalty.vectors.test.ts) ET par ESTUSHOP (tests/test_points.py). Ne pas éditer à la main.",
+  "pointsPerEuro": 1,
+  "expiryWarningDays": 30,
+  "states": [
+    {
+      "name": "carte vide",
+      "why": "Aucune visite ne doit produire ni solde, ni récompense, ni date d'expiration.",
+      "visits": [],
+      "rewards": [],
+      "thresholdPoints": 50,
+      "now": "2026-09-19T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 0,
+        "earnedPoints": 0,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 0,
+        "rewardsDue": 0,
+        "pointsToNext": 50,
+        "expiringSoonPoints": 0,
+        "nextExpiry": null,
+        "visits": 0,
+        "lastSeen": null
+      }
+    },
+    {
+      "name": "les centimes s'additionnent avant l'arrondi",
+      "why": "Cinq tickets à 9,59 € font 47 points, pas 45. Arrondir chaque ticket volerait 6 % des points du client sans qu'aucun écran ne le montre.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-08-01T10:00:00.000Z",
+          "amountCents": 959
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-08-05T10:00:00.000Z",
+          "amountCents": 959
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-08-09T10:00:00.000Z",
+          "amountCents": 959
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-08-14T10:00:00.000Z",
+          "amountCents": 959
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-08-20T10:00:00.000Z",
+          "amountCents": 959
+        }
+      ],
+      "rewards": [],
+      "thresholdPoints": 50,
+      "now": "2026-09-19T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 4795,
+        "earnedPoints": 47,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 47,
+        "rewardsDue": 0,
+        "pointsToNext": 3,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-08-01T10:00:00.000Z",
+        "visits": 5,
+        "lastSeen": "2026-08-20T10:00:00.000Z"
+      }
+    },
+    {
+      "name": "une récompense retranche le seuil, elle ne remet pas à zéro",
+      "why": "Un client à 62 points qui en perd 12 serait puni d'avoir trop dépensé. Il doit rester 12 points après une récompense à 50.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-03-01T10:00:00.000Z",
+          "amountCents": 3000
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-03-10T10:00:00.000Z",
+          "amountCents": 3200
+        }
+      ],
+      "rewards": [
+        {
+          "fp": "c1",
+          "ts": "2026-04-01T10:00:00.000Z",
+          "pointsSpent": 50
+        }
+      ],
+      "thresholdPoints": 50,
+      "now": "2026-09-19T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 1200,
+        "earnedPoints": 12,
+        "spentPoints": 50,
+        "expiredPoints": 0,
+        "balancePoints": 12,
+        "rewardsDue": 0,
+        "pointsToNext": 38,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-03-10T10:00:00.000Z",
+        "visits": 2,
+        "lastSeen": "2026-03-10T10:00:00.000Z"
+      }
+    },
+    {
+      "name": "deux récompenses dues en même temps",
+      "why": "Si personne n'a vu le bandeau pendant un mois, le client en vaut deux. N'en accorder qu'une ferait disparaître l'autre.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-05-02T10:00:00.000Z",
+          "amountCents": 10500
+        }
+      ],
+      "rewards": [],
+      "thresholdPoints": 50,
+      "now": "2026-09-19T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 10500,
+        "earnedPoints": 105,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 105,
+        "rewardsDue": 2,
+        "pointsToNext": 0,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-05-02T10:00:00.000Z",
+        "visits": 1,
+        "lastSeen": "2026-05-02T10:00:00.000Z"
+      }
+    },
+    {
+      "name": "les plus anciens points partent les premiers",
+      "why": "Consommer les récents laisserait périmer ceux qui allaient expirer : le client perdrait deux fois. Le lot d'octobre 2025 doit être mangé avant celui de juin 2026.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2025-10-01T10:00:00.000Z",
+          "amountCents": 4000
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-06-01T10:00:00.000Z",
+          "amountCents": 4000
+        }
+      ],
+      "rewards": [
+        {
+          "fp": "c1",
+          "ts": "2026-06-15T10:00:00.000Z",
+          "pointsSpent": 50
+        }
+      ],
+      "thresholdPoints": 50,
+      "now": "2026-09-19T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 3000,
+        "earnedPoints": 30,
+        "spentPoints": 50,
+        "expiredPoints": 0,
+        "balancePoints": 30,
+        "rewardsDue": 0,
+        "pointsToNext": 20,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-06-01T10:00:00.000Z",
+        "visits": 2,
+        "lastSeen": "2026-06-01T10:00:00.000Z"
+      }
+    },
+    {
+      "name": "un lot périmé avant maintenant ne compte plus",
+      "why": "Douze mois, c'est douze mois. Le lot de juillet 2025 est mort le 1er juillet 2026.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2025-07-01T10:00:00.000Z",
+          "amountCents": 6000
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-09-01T10:00:00.000Z",
+          "amountCents": 1200
+        }
+      ],
+      "rewards": [],
+      "thresholdPoints": 50,
+      "now": "2026-09-19T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 1200,
+        "earnedPoints": 12,
+        "spentPoints": 0,
+        "expiredPoints": 60,
+        "balancePoints": 12,
+        "rewardsDue": 0,
+        "pointsToNext": 38,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-09-01T10:00:00.000Z",
+        "visits": 2,
+        "lastSeen": "2026-09-01T10:00:00.000Z"
+      }
+    },
+    {
+      "name": "l'expiration se rejoue dans l'ordre, avant la récompense",
+      "why": "⚠️ LE CAS QUI CASSE LES IMPLÉMENTATIONS NAÏVES. La récompense de septembre 2026 ne peut pas consommer un lot mort en juillet 2026. Calculer l'expiration seulement à la fin ferait consommer, rétroactivement, des points qui n'existaient plus.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2025-07-01T10:00:00.000Z",
+          "amountCents": 6000
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-08-01T10:00:00.000Z",
+          "amountCents": 6000
+        }
+      ],
+      "rewards": [
+        {
+          "fp": "c1",
+          "ts": "2026-09-01T10:00:00.000Z",
+          "pointsSpent": 50
+        }
+      ],
+      "thresholdPoints": 50,
+      "now": "2026-09-19T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 1000,
+        "earnedPoints": 10,
+        "spentPoints": 50,
+        "expiredPoints": 60,
+        "balancePoints": 10,
+        "rewardsDue": 0,
+        "pointsToNext": 40,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-08-01T10:00:00.000Z",
+        "visits": 2,
+        "lastSeen": "2026-08-01T10:00:00.000Z"
+      }
+    },
+    {
+      "name": "une récompense qu'aucun lot ne précède reste due",
+      "why": "Horloges décalées, ligne rejouée dans le désordre : la boisson a été offerte. Oublier la dette laisserait les points au compteur et la récompense serait offerte deux fois.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-09-10T10:00:00.000Z",
+          "amountCents": 8000
+        }
+      ],
+      "rewards": [
+        {
+          "fp": "c1",
+          "ts": "2026-09-01T10:00:00.000Z",
+          "pointsSpent": 50
+        }
+      ],
+      "thresholdPoints": 50,
+      "now": "2026-09-19T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 3000,
+        "earnedPoints": 30,
+        "spentPoints": 50,
+        "expiredPoints": 0,
+        "balancePoints": 30,
+        "rewardsDue": 0,
+        "pointsToNext": 20,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-09-10T10:00:00.000Z",
+        "visits": 1,
+        "lastSeen": "2026-09-10T10:00:00.000Z"
+      }
+    },
+    {
+      "name": "des points périment dans les trente jours",
+      "why": "C'est ce qui fait revenir quelqu'un cette semaine plutôt que le mois prochain.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2025-10-05T10:00:00.000Z",
+          "amountCents": 2500
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-09-01T10:00:00.000Z",
+          "amountCents": 1000
+        }
+      ],
+      "rewards": [],
+      "thresholdPoints": 50,
+      "now": "2026-09-19T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 3500,
+        "earnedPoints": 35,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 35,
+        "rewardsDue": 0,
+        "pointsToNext": 15,
+        "expiringSoonPoints": 25,
+        "nextExpiry": "2026-10-05T10:00:00.000Z",
+        "visits": 2,
+        "lastSeen": "2026-09-01T10:00:00.000Z"
+      }
+    },
+    {
+      "name": "le 29 février se replie sur le 28",
+      "why": "Douze mois après le 29 février 2024, le 29 février n'existe pas. Le jour se ramène au dernier valide du mois — le client ne perd pas une journée à cause du calendrier.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2024-02-29T10:00:00.000Z",
+          "amountCents": 5000
+        }
+      ],
+      "rewards": [],
+      "thresholdPoints": 50,
+      "now": "2025-02-28T09:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 5000,
+        "earnedPoints": 50,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 50,
+        "rewardsDue": 1,
+        "pointsToNext": 0,
+        "expiringSoonPoints": 50,
+        "nextExpiry": "2025-02-28T10:00:00.000Z",
+        "visits": 1,
+        "lastSeen": "2024-02-29T10:00:00.000Z"
+      }
+    },
+    {
+      "name": "le 31 mars se replie sur le 28 février",
+      "why": "Même règle, l'autre sens : +11 mois depuis le 31 mars tombe sur un mois de 28 jours.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-03-31T10:00:00.000Z",
+          "amountCents": 5000
+        }
+      ],
+      "rewards": [],
+      "thresholdPoints": 50,
+      "now": "2027-02-01T09:00:00.000Z",
+      "expiryMonths": 11,
+      "expected": {
+        "spentCents": 5000,
+        "earnedPoints": 50,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 50,
+        "rewardsDue": 1,
+        "pointsToNext": 0,
+        "expiringSoonPoints": 50,
+        "nextExpiry": "2027-02-28T10:00:00.000Z",
+        "visits": 1,
+        "lastSeen": "2026-03-31T10:00:00.000Z"
+      }
+    },
+    {
+      "name": "un montant absurde ne retire pas de points",
+      "why": "Un remboursement ou une ligne corrompue ne doit pas amputer un solde acquis. La visite compte quand même dans le nombre de passages : elle a eu lieu.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-08-01T10:00:00.000Z",
+          "amountCents": 5000
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-08-02T10:00:00.000Z",
+          "amountCents": -2000
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-08-03T10:00:00.000Z",
+          "amountCents": 0
+        }
+      ],
+      "rewards": [],
+      "thresholdPoints": 50,
+      "now": "2026-09-19T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 5000,
+        "earnedPoints": 50,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 50,
+        "rewardsDue": 1,
+        "pointsToNext": 0,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-08-01T10:00:00.000Z",
+        "visits": 3,
+        "lastSeen": "2026-08-03T10:00:00.000Z"
+      }
+    },
+    {
+      "name": "un horodatage illisible est ignoré, mais la visite est comptée",
+      "why": "Une ligne abîmée ne doit ni fabriquer de points, ni faire disparaître le passage.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-08-01T10:00:00.000Z",
+          "amountCents": 5000
+        },
+        {
+          "fp": "c1",
+          "ts": "pas une date",
+          "amountCents": 9999
+        }
+      ],
+      "rewards": [],
+      "thresholdPoints": 50,
+      "now": "2026-09-19T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 5000,
+        "earnedPoints": 50,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 50,
+        "rewardsDue": 1,
+        "pointsToNext": 0,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-08-01T10:00:00.000Z",
+        "visits": 2,
+        "lastSeen": "2026-08-01T10:00:00.000Z"
+      }
+    },
+    {
+      "name": "les visites arrivent dans le désordre",
+      "why": "Supabase ne garantit pas l'ordre. Le registre doit être trié avant d'être consommé, sinon la règle du plus ancien d'abord ne veut plus rien dire.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-06-01T10:00:00.000Z",
+          "amountCents": 4000
+        },
+        {
+          "fp": "c1",
+          "ts": "2025-10-01T10:00:00.000Z",
+          "amountCents": 4000
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-02-01T10:00:00.000Z",
+          "amountCents": 1000
+        }
+      ],
+      "rewards": [
+        {
+          "fp": "c1",
+          "ts": "2026-06-15T10:00:00.000Z",
+          "pointsSpent": 50
+        }
+      ],
+      "thresholdPoints": 50,
+      "now": "2026-09-19T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 4000,
+        "earnedPoints": 40,
+        "spentPoints": 50,
+        "expiredPoints": 0,
+        "balancePoints": 40,
+        "rewardsDue": 0,
+        "pointsToNext": 10,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-06-01T10:00:00.000Z",
+        "visits": 3,
+        "lastSeen": "2026-06-01T10:00:00.000Z"
+      }
+    },
+    {
+      "name": "un seuil nul n'offre rien",
+      "why": "Une configuration absurde ne doit pas distribuer des boissons à l'infini.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-09-01T10:00:00.000Z",
+          "amountCents": 20000
+        }
+      ],
+      "rewards": [],
+      "thresholdPoints": 0,
+      "now": "2026-09-19T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 20000,
+        "earnedPoints": 200,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 200,
+        "rewardsDue": 0,
+        "pointsToNext": 0,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-09-01T10:00:00.000Z",
+        "visits": 1,
+        "lastSeen": "2026-09-01T10:00:00.000Z"
+      }
+    },
+    {
+      "name": "deux récompenses hors d'ordre, de part et d'autre d'une expiration",
+      "why": "⚠️ LE CAS QUI PROUVE QUE LE TRI DES RÉCOMPENSES SERT. Supabase ne garantit aucun ordre. Traitée d'abord, la récompense de novembre fait périmer un lot que celle de mai avait le droit de consommer — et le client perd 30 points auxquels il avait droit. Sans ce vecteur, retirer le tri ne casse aucun test.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2025-10-01T10:00:00.000Z",
+          "amountCents": 5000
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-06-01T10:00:00.000Z",
+          "amountCents": 5000
+        }
+      ],
+      "rewards": [
+        {
+          "fp": "c1",
+          "ts": "2026-11-01T10:00:00.000Z",
+          "pointsSpent": 20
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-05-01T10:00:00.000Z",
+          "pointsSpent": 30
+        }
+      ],
+      "thresholdPoints": 50,
+      "now": "2026-11-15T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 3000,
+        "earnedPoints": 30,
+        "spentPoints": 50,
+        "expiredPoints": 20,
+        "balancePoints": 30,
+        "rewardsDue": 0,
+        "pointsToNext": 20,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-06-01T10:00:00.000Z",
+        "visits": 2,
+        "lastSeen": "2026-06-01T10:00:00.000Z"
+      }
+    },
+    {
+      "name": "un lot qui périme à la seconde exacte",
+      "why": "⚠️ LA FRONTIÈRE EST FERMÉE : à l'instant précis des douze mois, les points sont morts. Sans ce vecteur, remplacer `<=` par `<` ne casse rien — et les deux implémentations trancheraient différemment le cas le plus litigieux qui soit, celui du client qui arrive le jour même.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2025-09-19T12:00:00.000Z",
+          "amountCents": 5000
+        }
+      ],
+      "rewards": [],
+      "thresholdPoints": 50,
+      "now": "2026-09-19T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 0,
+        "earnedPoints": 0,
+        "spentPoints": 0,
+        "expiredPoints": 50,
+        "balancePoints": 0,
+        "rewardsDue": 0,
+        "pointsToNext": 50,
+        "expiringSoonPoints": 0,
+        "nextExpiry": null,
+        "visits": 1,
+        "lastSeen": "2025-09-19T12:00:00.000Z"
+      }
+    },
+    {
+      "name": "récompenses dans le désordre, et une partielle",
+      "why": "Les récompenses aussi doivent être rejouées dans l'ordre chronologique, et une récompense peut avoir coûté un nombre de points différent du seuil actuel.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-01-05T10:00:00.000Z",
+          "amountCents": 3000
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-03-05T10:00:00.000Z",
+          "amountCents": 3000
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-05-05T10:00:00.000Z",
+          "amountCents": 3000
+        }
+      ],
+      "rewards": [
+        {
+          "fp": "c1",
+          "ts": "2026-06-01T10:00:00.000Z",
+          "pointsSpent": 40
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-04-01T10:00:00.000Z",
+          "pointsSpent": 30
+        }
+      ],
+      "thresholdPoints": 50,
+      "now": "2026-09-19T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 2000,
+        "earnedPoints": 20,
+        "spentPoints": 70,
+        "expiredPoints": 0,
+        "balancePoints": 20,
+        "rewardsDue": 0,
+        "pointsToNext": 30,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-05-05T10:00:00.000Z",
+        "visits": 3,
+        "lastSeen": "2026-05-05T10:00:00.000Z"
+      }
+    }
+  ],
+  "absence": [
+    {
+      "name": "un seul jour",
+      "why": "Aucun écart ne se mesure sur un point unique : il n'y a pas de seuil à donner.",
+      "days": [
+        "2026-09-01"
+      ],
+      "expected": null
+    },
+    {
+      "name": "jours en double",
+      "why": "Deux paiements le même jour ne créent pas un écart de zéro.",
+      "days": [
+        "2026-09-01",
+        "2026-09-01",
+        "2026-09-08"
+      ],
+      "expected": 21
+    },
+    {
+      "name": "client hebdomadaire",
+      "why": "Sept jours d'écart médian donnent un seuil de 21 jours.",
+      "days": [
+        "2026-08-04",
+        "2026-08-11",
+        "2026-08-18",
+        "2026-08-25"
+      ],
+      "expected": 21
+    },
+    {
+      "name": "client quotidien",
+      "why": "⚠️ LE PLANCHER À SEPT JOURS. Un habitué quotidien absent un mardi de fermeture ne doit pas être signalé comme perdu : 3 × 1 jour ferait 3, on garde 7.",
+      "days": [
+        "2026-09-01",
+        "2026-09-02",
+        "2026-09-03",
+        "2026-09-04"
+      ],
+      "expected": 7
+    },
+    {
+      "name": "écarts irréguliers",
+      "why": "La médiane, pas la moyenne : un long trou isolé ne doit pas emporter le seuil.",
+      "days": [
+        "2026-01-01",
+        "2026-01-03",
+        "2026-01-06",
+        "2026-06-01"
+      ],
+      "expected": 9
+    },
+    {
+      "name": "désordre",
+      "why": "L'ordre d'arrivée des lignes ne doit rien changer au seuil.",
+      "days": [
+        "2026-09-08",
+        "2026-08-25",
+        "2026-09-01"
+      ],
+      "expected": 21
+    }
+  ],
+  "expiry": [
+    {
+      "at": "2026-01-31T08:30:00.000Z",
+      "months": 1,
+      "expected": "2026-02-28T08:30:00.000Z"
+    },
+    {
+      "at": "2024-02-29T10:00:00.000Z",
+      "months": 12,
+      "expected": "2025-02-28T10:00:00.000Z"
+    },
+    {
+      "at": "2026-03-31T10:00:00.000Z",
+      "months": 11,
+      "expected": "2027-02-28T10:00:00.000Z"
+    },
+    {
+      "at": "2026-12-15T23:59:59.000Z",
+      "months": 12,
+      "expected": "2027-12-15T23:59:59.000Z"
+    },
+    {
+      "at": "2026-05-31T00:00:00.000Z",
+      "months": 3,
+      "expected": "2026-08-31T00:00:00.000Z"
+    }
+  ]
+}
