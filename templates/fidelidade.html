@@ -281,6 +281,8 @@
       sur <strong>tes vrais clients</strong> &agrave; chaque changement.
     </p>
 
+    <div id="r-manque" style="display:none"></div>
+
     <div class="reg-grille">
       <div class="reg-champs">
         <div class="reg-groupe">
@@ -668,10 +670,24 @@ tbody tr:hover { background:var(--bg-hover); }
       var el = document.querySelector('[data-k="' + k + '"]');
       el.value = (st[k] === null || st[k] === undefined) ? '' : st[k];
     });
+    /**
+     * ⚠️ UN CHAMP DÉSACTIVÉ SANS EXPLICATION EST UN BOGUE, MÊME QUAND LE CODE A RAISON. La
+     * première version disait pourquoi — en petit, en gris, tout en bas du panneau. Quentin a
+     * simplement constaté qu'il ne pouvait « ni cliquer ni saisir » : il avait raison, et
+     * l'écran ne l'aidait pas. La cause se dit maintenant EN HAUT du bloc, avec le geste exact
+     * qui la répare.
+     */
     if (st.missing) {
-      E('r-etat').textContent = 'La table des réglages n\'existe pas encore : ' +
-        'la migration 20260919_card_settings.sql n\'a pas été exécutée. Lecture seule.';
       CHAMPS.forEach(function(k){ document.querySelector('[data-k="' + k + '"]').disabled = true; });
+      E('r-motif').disabled = true;
+      E('r-manque').style.display = 'block';
+      E('r-manque').innerHTML = '<div class="avert-fort">' +
+        '<strong>Les champs sont gris parce que la table des réglages n\'existe pas encore.</strong><br>' +
+        'Ouvre <strong>Supabase → projet ESTUSHOP → SQL Editor</strong>, colle le contenu de ' +
+        '<code>migrations/20260919_card_settings.sql</code> (dans le dépôt, ou ' +
+        '<a href="https://github.com/metayerq/ESTUSHOP/blob/main/migrations/20260919_card_settings.sql" ' +
+        'target="_blank" rel="noopener">sur GitHub</a>), exécute, puis recharge cette page.<br>' +
+        'Tant que ce n\'est pas fait, le programme compte tout l\'historique depuis mai.</div>';
     }
   }
 

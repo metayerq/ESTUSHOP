@@ -78,3 +78,35 @@ def test_aucun_marqueur_de_conflit_ne_traine_dans_le_gabarit():
     """Un `<<<<<<<` dans un gabarit s'affiche tel quel au client : le rendu ne le rejette pas."""
     for marqueur in ("<<<<<<<", ">>>>>>>", "\n=======\n"):
         assert marqueur not in SOURCE
+
+
+def test_un_champ_desactive_dit_pourquoi_et_ou_le_reparer():
+    """
+    ⚠️ UN CHAMP GRIS SANS EXPLICATION EST UN BOGUE, MÊME QUAND LE CODE A RAISON. Les réglages
+    se désactivent tant que la table `card_settings` n'existe pas — c'est correct, écrire
+    échouerait. Mais la première version disait pourquoi en petit, en gris, tout en bas du
+    panneau : Quentin a simplement constaté qu'il ne pouvait « ni cliquer ni saisir ». Il avait
+    raison, et l'écran ne l'aidait pas.
+
+    Ce test exige que toute désactivation soit accompagnée, dans la même branche, d'un message
+    VISIBLE et du geste qui la répare.
+    """
+    debut = SOURCE.index("if (st.missing) {")
+    branche = SOURCE[debut:SOURCE.index("\n    }", debut)]
+
+    assert "disabled = true" in branche, "la branche ne désactive plus rien — relire le gabarit"
+    assert "r-manque" in branche, "la désactivation n'affiche aucun message visible"
+    assert "style.display = 'block'" in branche, "le message reste caché"
+    # Le geste exact, pas une plainte : où aller, quoi coller.
+    for indice in ("Supabase", "SQL Editor", "card_settings.sql", "recharge"):
+        assert indice in branche, f"le message n'explique pas « {indice} »"
+    # Et l'élément qui le porte existe vraiment dans la page.
+    assert 'id="r-manque"' in SOURCE
+
+
+def test_le_message_de_reparation_est_en_HAUT_du_bloc_reglages():
+    """En bas, sous le bouton, il n'aurait pas été lu — c'est exactement ce qui vient d'arriver."""
+    bloc = SOURCE.index('<section class="bloc" id="reglages"')
+    manque = SOURCE.index('id="r-manque"', bloc)
+    champs = SOURCE.index('id="r-start"', bloc)
+    assert manque < champs, "le message doit précéder les champs qu'il explique"
