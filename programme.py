@@ -51,7 +51,7 @@ def _jour(ts):
 
 
 def build_accounts(visits, rewards, links, customers, threshold, now,
-                   expiry_months=EXPIRY_MONTHS):
+                   expiry_months=EXPIRY_MONTHS, options=None):
     """
     Regroupe les lignes brutes en comptes, chacun avec son solde et son état.
 
@@ -59,6 +59,7 @@ def build_accounts(visits, rewards, links, customers, threshold, now,
     `rewards`   : {fp, ts, points_spent, ...}     — table `card_rewards`
     `links`     : {fp, phone}                     — table `card_links`
     `customers` : {phone, name, token, consent_at, opted_out_at} — table `card_customers`
+    `options`   : date de lancement et crédit d'ancienneté — voir `points.loyalty_state`
 
     ⚠️ UNE CARTE LIÉE À UN TÉLÉPHONE INCONNU RESTE UN COMPTE. Une ligne de `card_links` sans
     `card_customers` en face — migration à moitié passée, suppression partielle — ne doit pas
@@ -110,7 +111,7 @@ def build_accounts(visits, rewards, links, customers, threshold, now,
 
     comptes = []
     for (kind, ident), g in groupes.items():
-        etat = loyalty_state(g["visits"], g["rewards"], threshold, now, expiry_months)
+        etat = loyalty_state(g["visits"], g["rewards"], threshold, now, expiry_months, options)
 
         jours = sorted({j for j in (_jour(v.get("ts")) for v in g["visits"]) if j})
         seuil_absence = absence_threshold_days(jours)

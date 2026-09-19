@@ -28,6 +28,7 @@ l'autre — ce qui est précisément arrivé la première fois, en silence, pend
 """
 
 import calendar
+import math
 from datetime import datetime, timezone
 
 # 1 € = 1 point. Le seuil s'exprime en points ; le calcul vit en centimes.
@@ -115,7 +116,8 @@ def _expire_ms(at_ms, months):
     return int(expires_at(_from_ms(at_ms), months).timestamp() * 1000)
 
 
-def loyalty_state(visits, rewards, threshold_points, now, expiry_months=EXPIRY_MONTHS):
+def loyalty_state(visits, rewards, threshold_points, now, expiry_months=EXPIRY_MONTHS,
+                  options=None):
     """
     L'état de fidélité d'un client, à une date donnée.
 
@@ -123,15 +125,31 @@ def loyalty_state(visits, rewards, threshold_points, now, expiry_months=EXPIRY_M
     `rewards` : dicts avec `ts` et `points_spent`.
     `now`     : datetime. ⚠️ C'EST UN PARAMÈTRE, JAMAIS UNE LECTURE D'HORLOGE — sinon
                 l'expiration est intestable et un client perd ses points à une seconde près.
+    `options` : `start_date` (AAAA-MM-JJ), `legacy_rate_pct`, `legacy_cap_points`.
 
     ⚠️ LES CENTIMES S'ADDITIONNENT AVANT L'ARRONDI. Arrondir chaque ticket ferait perdre au
     client environ 6 % de ses points, sans qu'aucun écran ne le montre.
+
+    ── LE LANCEMENT, ET POURQUOI IL NE PEUT PAS ÊTRE RÉTROACTIF ──────────────────────────────
+    `card_visits` enregistre depuis mai 2026 ; le programme date de septembre. Sans date de
+    lancement, un habitué se présente avec 1 400 points — vingt-neuf boissons dues, sur un
+    programme dont il n'a jamais entendu parler. Ce n'est pas une dette, c'est un accident de
+    comptage. Mais repartir sèchement de zéro serait ingrat : d'où un CRÉDIT D'ANCIENNETÉ,
+    proportionnel à ce qui a été dépensé avant, et PLAFONNÉ.
     """
+    o = options or {}
     maintenant = int(now.astimezone(timezone.utc).timestamp() * 1000)
+
+    # ⚠️ MINUIT UTC, ET LE JOUR DU LANCEMENT COMPTE. Dire à quelqu'un « vous avez payé trois
+    # heures trop tôt » est la première chose qui décrédibilise un programme de fidélité.
+    debut = parse_ts(f"{o['start_date']}T00:00:00Z") if o.get("start_date") else None
+    taux = o.get("legacy_rate_pct") or 0
+    plafond = o.get("legacy_cap_points") or 0
 
     # Les lots, dans l'ordre d'acquisition. Un montant absurde ne retire pas de points.
     lots = []
     last_seen = None
+    pre_start_cents = 0
     for v in visits:
         ts = v.get("ts")
         at = parse_ts(ts)
@@ -139,11 +157,24 @@ def loyalty_state(visits, rewards, threshold_points, now, expiry_months=EXPIRY_M
             continue
         cents = v.get("amount_cents")
         if isinstance(cents, (int, float)) and not isinstance(cents, bool) and cents > 0:
-            lots.append([at, int(cents)])
+            if debut is not None and at < debut:
+                pre_start_cents += int(cents)
+            else:
+                lots.append([at, int(cents)])
+        # ⚠️ LE PASSAGE RESTE COMPTÉ, MÊME S'IL NE RAPPORTE PLUS. Quelqu'un qui vient depuis mai
+        # est un habitué le jour du lancement : l'oublier viderait les listes de relance.
+        #
         # ⚠️ COMPARAISON DE CHAÎNES, comme côté Mesa. Sur des ISO de même forme c'est l'ordre
-        # chronologique ; le reproduire garantit le même `lastSeen` des deux côtés.
+        # chronologique ; le reproduire garantit le même `last_seen` des deux côtés.
         if isinstance(ts, str) and (last_seen is None or ts > last_seen):
             last_seen = ts
+
+    # ⚠️ LE CRÉDIT EST DATÉ DU LANCEMENT, PAS DE L'ACHAT D'ORIGINE. Le rattacher à des paiements
+    # de mai le ferait périmer dès mai prochain — un cadeau qui meurt avant d'avoir servi.
+    legacy_points = min(plafond, math.floor((pre_start_cents / 100) * (taux / 100)))
+    if legacy_points > 0:
+        lots.append([debut, legacy_points * 100])
+
     lots.sort(key=lambda l: l[0])
 
     expired_cents = 0
@@ -152,11 +183,18 @@ def loyalty_state(visits, rewards, threshold_points, now, expiry_months=EXPIRY_M
     # ⚠️ ON REJOUE L'HISTOIRE DANS L'ORDRE. Une récompense prise en mars ne peut consommer que
     # des points acquis avant mars ET non encore périmés à cette date. Calculer l'expiration
     # seulement à la fin ferait consommer, rétroactivement, des points qui n'existaient plus.
+    # ⚠️ AVANT LE LANCEMENT, NI LES POINTS NI LES BOISSONS NE COMPTENT — ET LA SYMÉTRIE EST LE
+    # POINT. Ignorer les paiements antérieurs tout en gardant les récompenses prises avant
+    # punirait deux fois : plus de points rétroactifs, ET une dette pour une boisson offerte sur
+    # ces mêmes points. « Tout ce qui précède le lancement est de l'histoire » tient en une
+    # phrase et ne se retourne contre personne.
     prises = []
     for r in rewards:
         at = parse_ts(r.get("ts"))
         pts = r.get("points_spent")
         if at is None or not isinstance(pts, (int, float)) or isinstance(pts, bool) or pts <= 0:
+            continue
+        if debut is not None and at < debut:
             continue
         prises.append((at, int(pts)))
     prises.sort(key=lambda p: p[0])
@@ -236,6 +274,8 @@ def loyalty_state(visits, rewards, threshold_points, now, expiry_months=EXPIRY_M
         "next_expiry": next_expiry,
         "visits": len(visits),
         "last_seen": last_seen,
+        "legacy_points": legacy_points,
+        "pre_start_cents": pre_start_cents,
     }
 
 

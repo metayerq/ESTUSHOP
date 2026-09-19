@@ -253,10 +253,23 @@ def test_le_gabarit_ne_lit_que_des_champs_qui_existent(client, monkeypatch):
     debut_cv = js.index("cv.weeks.map(function(w, i){")
     bloc_sem = js[debut_cv:js.index("}).join('')", debut_cv)]
 
+    # La simulation des réglages.
+    sim = client.get("/api/fidelidade/simulation").get_json()
+    assert sim["after"]["top"], "la simulation ne renvoie aucun gros solde"
+    debut_sim = js.index("function simulation(d){")
+    bloc_sim = js[debut_sim:js.index("function simuler()", debut_sim)]
+    debut_top = bloc_sim.index("a.top.slice(0,5).map(function(t){")
+    bloc_top = bloc_sim[debut_top:bloc_sim.index("}).join('')", debut_top)]
+
     manquants = {
         "compte (c.)": lus("c") - set(compte) - {"state", "events"},
         "conversion (cv.)": lus("cv") - set(cv),
         "semaine (w.)": lus("w", bloc_sem) - set(semaine),
+        # Les réglages et la simulation : mêmes noms des deux côtés, ou l'écran affiche des
+        # cases vides à l'endroit précis où l'on décide de dépenser de l'argent.
+        "simulation avant (b.)": lus("b", bloc_sim) - set(sim["before"]),
+        "simulation après (a.)": lus("a", bloc_sim) - set(sim["after"]),
+        "gros solde (t.)": lus("t", bloc_top) - set(sim["after"]["top"][0]),
         "état (c.state.)": {m for m in re.findall(r"\bs\.(?:state\.)?([a-z_]+)\b(?!\s*\()", js)}
                            - set(resume) - set(etat),
         "ligne « récompense » (e.)": lus("e", recompense) - genres["reward"],

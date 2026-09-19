@@ -37,7 +37,7 @@ VECTEURS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vectors", "
 # ⚠️ L'EMPREINTE EST ÉCRITE DES DEUX CÔTÉS. Mesa la vérifie aussi, sur le fichier d'origine.
 # Régénérer les vecteurs casse les deux suites : c'est le seul moyen qu'une modification du
 # barème ne puisse pas passer d'un seul côté sans que personne ne le remarque.
-EMPREINTE = "1500e12303cc79d7a81d37c02dc3038a9d6aec9136335e42d87ed2d55c12a7d2"
+EMPREINTE = "31a910582dc70358bba36c1a917bfec5d457711b0273689065c1c1db37ba2170"
 
 
 def _vecteurs():
@@ -71,7 +71,19 @@ CHAMPS = {
     "nextExpiry": "next_expiry",
     "visits": "visits",
     "lastSeen": "last_seen",
+    "legacyPoints": "legacy_points",
+    "preStartCents": "pre_start_cents",
 }
+
+
+def _options(cas):
+    """Les réglages de lancement, traduits du camelCase des vecteurs."""
+    o = cas.get("options") or {}
+    return {
+        "start_date": o.get("startDate"),
+        "legacy_rate_pct": o.get("legacyRatePct"),
+        "legacy_cap_points": o.get("legacyCapPoints"),
+    }
 
 
 def test_le_fichier_de_vecteurs_est_celui_de_mesa():
@@ -105,6 +117,7 @@ def test_le_solde_est_identique_a_celui_de_la_caisse(cas):
         cas["thresholdPoints"],
         _dt(cas["now"]),
         cas["expiryMonths"],
+        _options(cas),
     )
     attendu = cas["expected"]
     ecarts = {

@@ -1336,13 +1336,70 @@ def _masque_tel(tel):
     return "••• " + t[-4:] if len(t) >= 4 else t
 
 
-def _fidelidade_donnees(now):
+# Les réglages, quand la table n'existe pas encore ou qu'une colonne manque. ⚠️ `start_date` À
+# `None` EST L'ÉTAT D'AVANT : tout l'historique compte. C'est le repli le plus généreux, donc le
+# seul qui ne retire rien à personne par accident — mais c'est aussi celui qui doit sauter dès
+# que la migration est passée.
+FIDELIDADE_DEFAUTS = {
+    "start_date": None,
+    "legacy_rate_pct": 0,
+    "legacy_cap_points": 0,
+    "threshold_points": 50,
+    "expiry_months": 12,
+    "welcome_bonus_points": 0,
+}
+
+
+def _entier(v, defaut):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return defaut
+
+
+def _fidelidade_reglages():
     """
-    Les quatre tables du programme, regroupées en comptes.
+    Les réglages du programme, lus en base.
+
+    ⚠️ LA CAISSE LIT LA MÊME LIGNE. Une constante en dur ici et une autre chez Mesa, c'est la
+    garantie qu'un jour l'une sera modifiée et pas l'autre — et le client entendrait deux
+    chiffres différents selon l'écran qu'on regarde.
+
+    ⚠️ ET UNE TABLE ABSENTE NE DOIT PAS TOUT ARRÊTER. Tant que la migration n'est pas passée, on
+    sert les valeurs par défaut et on le DIT (`missing`), plutôt que d'afficher une page en
+    erreur : les soldes restent lisibles, seul le réglage manque.
+    """
+    try:
+        lignes = _supa_get("card_settings", {"select": "*", "limit": 1})
+    except SupabaseSchemaError:
+        return {**FIDELIDADE_DEFAUTS, "missing": True}
+    if not lignes:
+        return {**FIDELIDADE_DEFAUTS, "missing": False}
+    r = lignes[0]
+    return {
+        "start_date": r.get("start_date") or None,
+        "legacy_rate_pct": _entier(r.get("legacy_rate_pct"), 0),
+        "legacy_cap_points": _entier(r.get("legacy_cap_points"), 0),
+        "threshold_points": _entier(r.get("threshold_points"), 50),
+        "expiry_months": _entier(r.get("expiry_months"), 12),
+        "welcome_bonus_points": _entier(r.get("welcome_bonus_points"), 0),
+        "updated_at": r.get("updated_at"),
+        "updated_by": r.get("updated_by"),
+        "missing": False,
+    }
+
+
+def _fidelidade_tables():
+    """
+    Les quatre tables du programme, brutes.
 
     ⚠️ ON LIT `card_visits` EN ENTIER, ET C'EST VOULU. Les points valent douze mois et se
     consomment par les plus anciens : filtrer sur une fenêtre récente donnerait des soldes faux
     pour quiconque a un lot ancien encore vivant, et l'erreur serait invisible.
+
+    ⚠️ ET ON NE LES RELIT PAS POUR CHAQUE SIMULATION. L'écran de réglages rejoue le calcul à
+    chaque mouvement de curseur : recharger 2 500 visites à chaque fois rendrait le réglage
+    inutilisable — et c'est précisément l'écran où il faut pouvoir essayer.
     """
     visites, t1 = _supa_all("card_visits", {"select": "fp,ts,amount", "order": "ts.asc"})
     recompenses, t2 = _supa_all("card_rewards", {"select": "fp,ts,points_spent,amount_cents,label"})
@@ -1352,13 +1409,34 @@ def _fidelidade_donnees(now):
     liens, t3 = _supa_all("card_links", {"select": "fp,phone,linked_at"})
     fiches, t4 = _supa_all(
         "card_customers", {"select": "phone,name,token,consent_at,opted_out_at"})
+    return visites, recompenses, liens, fiches, (t1 or t2 or t3 or t4)
 
-    comptes = build_accounts(
+
+def _options(reglages):
+    """Ce que le calcul des points attend, extrait des réglages."""
+    return {
+        "start_date": reglages.get("start_date"),
+        "legacy_rate_pct": reglages.get("legacy_rate_pct"),
+        "legacy_cap_points": reglages.get("legacy_cap_points"),
+    }
+
+
+def _fidelidade_comptes(tables, reglages, now):
+    """Les lignes brutes, regroupées en comptes selon les réglages donnés."""
+    visites, recompenses, liens, fiches, _ = tables
+    return build_accounts(
         [{"fp": v.get("fp"), "ts": v.get("ts"), "amount_cents": v.get("amount")} for v in visites],
         [{"fp": r.get("fp"), "ts": r.get("ts"), "points_spent": r.get("points_spent")}
          for r in recompenses],
-        liens, fiches, POINTS_THRESHOLD, now,
+        liens, fiches, reglages["threshold_points"], now,
+        reglages["expiry_months"], _options(reglages),
     )
+
+
+def _fidelidade_donnees(now, reglages):
+    visites, recompenses, liens, fiches, tronque = _fidelidade_tables()
+    comptes = _fidelidade_comptes(
+        (visites, recompenses, liens, fiches, tronque), reglages, now)
 
     # L'historique d'une fiche : passages et récompenses, du plus récent au plus ancien.
     par_fp_v, par_fp_r = {}, {}
@@ -1385,7 +1463,7 @@ def _fidelidade_donnees(now):
         [{"fp": v.get("fp"), "ts": v.get("ts")} for v in visites],
         liens, fiches, now, FIDELIDADE_WEEKS,
     )
-    return comptes, conversion, (t1 or t2 or t3 or t4)
+    return comptes, conversion, tronque
 
 
 @app.route("/loyalty")
@@ -1410,12 +1488,13 @@ def api_fidelidade_resumo():
         return jsonify({"error": "unauthorized"}), 401
 
     try:
-        comptes, conversion, tronque = _fidelidade_donnees(now_lisbon())
+        reglages = _fidelidade_reglages()
+        comptes, conversion, tronque = _fidelidade_donnees(now_lisbon(), reglages)
     except SupabaseSchemaError as e:
         # Une table absente est un déploiement incomplet, pas un programme vide.
         return jsonify({"error": str(e)}), 500
 
-    resume = programme_summary(comptes, POINTS_THRESHOLD, REWARD_COST_CENTS)
+    resume = programme_summary(comptes, reglages["threshold_points"], REWARD_COST_CENTS)
 
     # ⚠️ LE NUMÉRO COMPLET NE DESCEND QU'À L'ADMIN. Il sert à retrouver quelqu'un ; il n'a rien
     # à faire dans un écran ouvert au rôle investisseur ou à un poste laissé déverrouillé.
@@ -1458,8 +1537,9 @@ def api_fidelidade_resumo():
         }
 
     return jsonify({
-        "threshold": POINTS_THRESHOLD,
+        "threshold": reglages["threshold_points"],
         "reward_cost_cents": REWARD_COST_CENTS,
+        "settings": reglages,
         "truncated": tronque,
         "conversion": conversion,
         "summary": {**resume,
@@ -1467,6 +1547,203 @@ def api_fidelidade_resumo():
                     "near_reward": [vue(c) for c in resume["near_reward"]]},
         "accounts": [vue(c) for c in comptes],
     })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LES RÉGLAGES — et la simulation qui doit précéder toute décision
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Ce que l'écran a le droit de modifier, et les bornes de chaque valeur.
+#
+# ⚠️ LES BORNES NE SONT PAS DE LA PARANOÏA DE SAISIE. Un seuil à 5 000 points rend la récompense
+# inatteignable et vide le programme de son sens sans qu'aucune erreur ne s'affiche ; une
+# expiration à 1 mois tue des points acquis. Ce sont des réglages dont on ne revient pas en une
+# journée : la borne est ce qui transforme une faute de frappe en refus.
+FIDELIDADE_BORNES = {
+    "legacy_rate_pct":      (0, 100),
+    "legacy_cap_points":    (0, 500),
+    "threshold_points":     (1, 1000),
+    "expiry_months":        (1, 120),
+    "welcome_bonus_points": (0, 500),
+}
+
+
+def _reglages_du_formulaire(source, base):
+    """Valide ce qui arrive de l'écran. Renvoie `(reglages, erreurs)`."""
+    sortie, erreurs = dict(base), []
+
+    if "start_date" in source:
+        brut = (source.get("start_date") or "").strip()
+        if not brut:
+            sortie["start_date"] = None
+        elif _re.fullmatch(r"\d{4}-\d{2}-\d{2}", brut):
+            try:
+                date.fromisoformat(brut)
+                sortie["start_date"] = brut
+            except ValueError:
+                erreurs.append(f"date de lancement invalide : {brut}")
+        else:
+            erreurs.append(f"date de lancement invalide : {brut}")
+
+    for champ, (mini, maxi) in FIDELIDADE_BORNES.items():
+        if champ not in source:
+            continue
+        v = _entier(source.get(champ), None)
+        if v is None:
+            erreurs.append(f"{champ} doit être un nombre entier")
+        elif not (mini <= v <= maxi):
+            erreurs.append(f"{champ} doit être entre {mini} et {maxi}")
+        else:
+            sortie[champ] = v
+
+    return sortie, erreurs
+
+
+def _simulation(comptes, reglages):
+    """
+    Ce que les réglages proposés donneraient, sur les clients RÉELS.
+
+    ⚠️ UN ÉCRAN DE RÉGLAGES SANS SIMULATION EST UN PIÈGE. « Plafond : 50 » ne dit rien ; « 23
+    clients recevront une boisson, 16,10 € de matière » dit tout. C'est la différence entre
+    régler un paramètre et prendre une décision.
+    """
+    seuil = reglages["threshold_points"]
+    credits = [c for c in comptes if c["state"]["legacy_points"] > 0]
+    dues = sum(c["state"]["rewards_due"] for c in comptes)
+    en_circulation = sum(c["state"]["balance_points"] for c in comptes)
+
+    # ⚠️ CEUX QUI TOUCHENT LE PLAFOND SONT CEUX QUE LA RÈGLE BRIDE. Leur nombre dit si le plafond
+    # mord sur quelques habitués ou sur tout le monde — donc si la règle est un geste ciblé ou
+    # une distribution générale.
+    au_plafond = sum(1 for c in credits
+                     if c["state"]["legacy_points"] >= reglages["legacy_cap_points"] > 0)
+
+    # Les plus gros soldes : c'est là qu'on voit si un compte est une personne ou une collision.
+    gros = sorted(comptes, key=lambda c: -c["state"]["balance_points"])[:8]
+
+    return {
+        "accounts": len(comptes),
+        "credited": len(credits),
+        "at_cap": au_plafond,
+        "legacy_points_total": sum(c["state"]["legacy_points"] for c in credits),
+        "points_outstanding": en_circulation,
+        "rewards_due_now": dues,
+        "cost_cents": dues * REWARD_COST_CENTS,
+        "pre_start_cents": sum(c["state"]["pre_start_cents"] for c in comptes),
+        "top": [{
+            "kind": c["kind"],
+            "short": (c["fps"][0][:4] if c["fps"] else "????"),
+            "name": c["name"],
+            "balance_points": c["state"]["balance_points"],
+            "legacy_points": c["state"]["legacy_points"],
+            "pre_start_cents": c["state"]["pre_start_cents"],
+            "rewards_due": c["state"]["rewards_due"],
+            "visits": c["state"]["visits"],
+            # ⚠️ LES PASSAGES À CÔTÉ DU SOLDE, ET CE N'EST PAS DÉCORATIF. Un solde de 1 400 points
+            # sur 150 passages est un habitué ; sur 12 passages, c'est une COLLISION d'empreintes
+            # — plusieurs personnes derrière la même carte. 5 à 9 % des cartes se confondent.
+            "distinct_days": c["distinct_days"],
+        } for c in gros],
+        "threshold_points": seuil,
+    }
+
+
+@app.route("/api/fidelidade/config")
+def api_fidelidade_config():
+    """Les réglages courants, leurs bornes, et le journal des changements."""
+    if _current_role() is None:
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        journal = _supa_get("card_settings_log",
+                            {"select": "at,by,before,after,reason", "order": "at.desc",
+                             "limit": 40})
+    except SupabaseSchemaError:
+        journal = []
+    return jsonify({"settings": _fidelidade_reglages(),
+                    "bounds": {k: list(v) for k, v in FIDELIDADE_BORNES.items()},
+                    "reward_cost_cents": REWARD_COST_CENTS,
+                    "log": journal})
+
+
+@app.route("/api/fidelidade/simulation")
+def api_fidelidade_simulation():
+    """
+    Ce que donneraient des réglages qu'on n'a PAS encore enregistrés.
+
+    ⚠️ RIEN N'EST ÉCRIT ICI. C'est ce qui permet d'essayer un taux, un plafond, une date, et de
+    revenir en arrière sans conséquence — le contraire d'une campagne de crédits inscrits en
+    base, qu'il aurait fallu défaire ligne à ligne.
+    """
+    if _current_role() is None:
+        return jsonify({"error": "unauthorized"}), 401
+
+    base = _fidelidade_reglages()
+    reglages, erreurs = _reglages_du_formulaire(request.args, base)
+    if erreurs:
+        return jsonify({"error": " · ".join(erreurs)}), 400
+
+    try:
+        tables = _fidelidade_tables()
+    except SupabaseSchemaError as e:
+        return jsonify({"error": str(e)}), 500
+
+    now = now_lisbon()
+    avant = _fidelidade_comptes(tables, base, now)
+    apres = _fidelidade_comptes(tables, reglages, now)
+    return jsonify({"settings": reglages,
+                    "before": _simulation(avant, base),
+                    "after": _simulation(apres, reglages),
+                    "truncated": tables[4]})
+
+
+@app.route("/api/fidelidade/config", methods=["PUT"])
+def api_fidelidade_config_save():
+    """
+    Enregistre les réglages — et garde une trace de qui a changé quoi, et pourquoi.
+
+    ⚠️ LE MOTIF EST OBLIGATOIRE. Certains de ces réglages touchent des gens qui ont déjà payé :
+    relever le seuil fait reculer tous les soldes d'un coup. Un changement sans raison écrite est
+    un changement que personne ne saura expliquer dans six mois — à commencer par celui qui l'a
+    fait.
+    """
+    role = _current_role()
+    if role != "admin":
+        return jsonify({"error": "admin only"}), 403
+
+    corps = request.get_json(silent=True) or {}
+    motif = (corps.get("reason") or "").strip()
+    if len(motif) < 3:
+        return jsonify({"error": "un motif est obligatoire"}), 400
+
+    base = _fidelidade_reglages()
+    if base.get("missing"):
+        return jsonify({"error": "table card_settings absente — migration non exécutée"}), 500
+
+    reglages, erreurs = _reglages_du_formulaire(corps, base)
+    if erreurs:
+        return jsonify({"error": " · ".join(erreurs)}), 400
+
+    ligne = {k: reglages[k] for k in FIDELIDADE_DEFAUTS}
+    ligne.update({"id": 1, "updated_at": _utc_iso(), "updated_by": role})
+    ok, err = _supa_upsert("card_settings", ligne)
+    if not ok:
+        return jsonify({"error": err or "écriture refusée"}), 502
+
+    # ⚠️ LE JOURNAL NE DOIT PAS POUVOIR ANNULER L'ENREGISTREMENT. Si son écriture échoue, le
+    # réglage est déjà en base : renvoyer une erreur ferait croire que rien n'a changé, et le
+    # prochain geste serait de recommencer.
+    trace = "écrit"
+    try:
+        propre = {k: base.get(k) for k in FIDELIDADE_DEFAUTS}
+        ok2, _ = _supa_upsert("card_settings_log",
+                              {"by": role, "before": propre,
+                               "after": {k: reglages[k] for k in FIDELIDADE_DEFAUTS},
+                               "reason": motif})
+        trace = "écrit" if ok2 else "non écrit"
+    except Exception:
+        trace = "non écrit"
+
+    return jsonify({"ok": True, "settings": _fidelidade_reglages(), "log": trace})
 
 
 @app.route("/api/cashflow")

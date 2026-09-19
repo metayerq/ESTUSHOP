@@ -22,7 +22,9 @@
         "expiringSoonPoints": 0,
         "nextExpiry": null,
         "visits": 0,
-        "lastSeen": null
+        "lastSeen": null,
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -70,7 +72,9 @@
         "expiringSoonPoints": 0,
         "nextExpiry": "2027-08-01T10:00:00.000Z",
         "visits": 5,
-        "lastSeen": "2026-08-20T10:00:00.000Z"
+        "lastSeen": "2026-08-20T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -109,7 +113,9 @@
         "expiringSoonPoints": 0,
         "nextExpiry": "2027-03-10T10:00:00.000Z",
         "visits": 2,
-        "lastSeen": "2026-03-10T10:00:00.000Z"
+        "lastSeen": "2026-03-10T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -137,7 +143,9 @@
         "expiringSoonPoints": 0,
         "nextExpiry": "2027-05-02T10:00:00.000Z",
         "visits": 1,
-        "lastSeen": "2026-05-02T10:00:00.000Z"
+        "lastSeen": "2026-05-02T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -176,7 +184,9 @@
         "expiringSoonPoints": 0,
         "nextExpiry": "2027-06-01T10:00:00.000Z",
         "visits": 2,
-        "lastSeen": "2026-06-01T10:00:00.000Z"
+        "lastSeen": "2026-06-01T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -209,7 +219,9 @@
         "expiringSoonPoints": 0,
         "nextExpiry": "2027-09-01T10:00:00.000Z",
         "visits": 2,
-        "lastSeen": "2026-09-01T10:00:00.000Z"
+        "lastSeen": "2026-09-01T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -248,7 +260,9 @@
         "expiringSoonPoints": 0,
         "nextExpiry": "2027-08-01T10:00:00.000Z",
         "visits": 2,
-        "lastSeen": "2026-08-01T10:00:00.000Z"
+        "lastSeen": "2026-08-01T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -282,7 +296,9 @@
         "expiringSoonPoints": 0,
         "nextExpiry": "2027-09-10T10:00:00.000Z",
         "visits": 1,
-        "lastSeen": "2026-09-10T10:00:00.000Z"
+        "lastSeen": "2026-09-10T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -315,7 +331,9 @@
         "expiringSoonPoints": 25,
         "nextExpiry": "2026-10-05T10:00:00.000Z",
         "visits": 2,
-        "lastSeen": "2026-09-01T10:00:00.000Z"
+        "lastSeen": "2026-09-01T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -343,7 +361,9 @@
         "expiringSoonPoints": 50,
         "nextExpiry": "2025-02-28T10:00:00.000Z",
         "visits": 1,
-        "lastSeen": "2024-02-29T10:00:00.000Z"
+        "lastSeen": "2024-02-29T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -371,7 +391,9 @@
         "expiringSoonPoints": 50,
         "nextExpiry": "2027-02-28T10:00:00.000Z",
         "visits": 1,
-        "lastSeen": "2026-03-31T10:00:00.000Z"
+        "lastSeen": "2026-03-31T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -409,7 +431,9 @@
         "expiringSoonPoints": 0,
         "nextExpiry": "2027-08-01T10:00:00.000Z",
         "visits": 3,
-        "lastSeen": "2026-08-03T10:00:00.000Z"
+        "lastSeen": "2026-08-03T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -442,7 +466,9 @@
         "expiringSoonPoints": 0,
         "nextExpiry": "2027-08-01T10:00:00.000Z",
         "visits": 2,
-        "lastSeen": "2026-08-01T10:00:00.000Z"
+        "lastSeen": "2026-08-01T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -486,7 +512,9 @@
         "expiringSoonPoints": 0,
         "nextExpiry": "2027-06-01T10:00:00.000Z",
         "visits": 3,
-        "lastSeen": "2026-06-01T10:00:00.000Z"
+        "lastSeen": "2026-06-01T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -514,7 +542,9 @@
         "expiringSoonPoints": 0,
         "nextExpiry": "2027-09-01T10:00:00.000Z",
         "visits": 1,
-        "lastSeen": "2026-09-01T10:00:00.000Z"
+        "lastSeen": "2026-09-01T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -558,7 +588,9 @@
         "expiringSoonPoints": 0,
         "nextExpiry": "2027-06-01T10:00:00.000Z",
         "visits": 2,
-        "lastSeen": "2026-06-01T10:00:00.000Z"
+        "lastSeen": "2026-06-01T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -586,7 +618,326 @@
         "expiringSoonPoints": 0,
         "nextExpiry": null,
         "visits": 1,
-        "lastSeen": "2025-09-19T12:00:00.000Z"
+        "lastSeen": "2025-09-19T12:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
+      }
+    },
+    {
+      "name": "le lancement remet les compteurs à zéro",
+      "why": "⚠️ LE CAS QUI COÛTE DE L'ARGENT. `card_visits` enregistre depuis mai, le programme date de septembre : sans date de lancement, un habitué arrive avec 140 € d'historique et réclame deux boissons qu'on ne lui avait jamais promises. Sans crédit d'ancienneté, son solde est nul — mais ses passages restent comptés, sinon il cesserait d'être un habitué.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-06-01T10:00:00.000Z",
+          "amountCents": 7000
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-07-01T10:00:00.000Z",
+          "amountCents": 7000
+        }
+      ],
+      "rewards": [],
+      "thresholdPoints": 50,
+      "now": "2026-09-25T12:00:00.000Z",
+      "expiryMonths": 12,
+      "options": {
+        "startDate": "2026-09-22",
+        "legacyRatePct": 0,
+        "legacyCapPoints": 0
+      },
+      "expected": {
+        "spentCents": 0,
+        "earnedPoints": 0,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 0,
+        "rewardsDue": 0,
+        "pointsToNext": 50,
+        "expiringSoonPoints": 0,
+        "nextExpiry": null,
+        "visits": 2,
+        "lastSeen": "2026-07-01T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 14000
+      }
+    },
+    {
+      "name": "le crédit d'ancienneté est plafonné",
+      "why": "⚠️ LE PLAFOND EST CE QUI REND LA RÈGLE TENABLE. 1 400 € dépensés avant le lancement font 140 points à 10 % — presque trois boissons. Le plafond à 50 en rend UNE, et la phrase au comptoir reste vraie pour tout le monde : « merci d'être là depuis le début, la prochaine est offerte ».",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-06-01T10:00:00.000Z",
+          "amountCents": 140000
+        }
+      ],
+      "rewards": [],
+      "thresholdPoints": 50,
+      "now": "2026-09-25T12:00:00.000Z",
+      "expiryMonths": 12,
+      "options": {
+        "startDate": "2026-09-22",
+        "legacyRatePct": 10,
+        "legacyCapPoints": 50
+      },
+      "expected": {
+        "spentCents": 5000,
+        "earnedPoints": 50,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 50,
+        "rewardsDue": 1,
+        "pointsToNext": 0,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-09-22T00:00:00.000Z",
+        "visits": 1,
+        "lastSeen": "2026-06-01T10:00:00.000Z",
+        "legacyPoints": 50,
+        "preStartCents": 140000
+      }
+    },
+    {
+      "name": "sous le plafond, le crédit reste proportionnel",
+      "why": "Celui qui est passé trois fois ne reçoit pas la même chose que l'habitué de six mois. 200 € à 10 % font 20 points : un début, pas une boisson.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-06-01T10:00:00.000Z",
+          "amountCents": 20000
+        }
+      ],
+      "rewards": [],
+      "thresholdPoints": 50,
+      "now": "2026-09-25T12:00:00.000Z",
+      "expiryMonths": 12,
+      "options": {
+        "startDate": "2026-09-22",
+        "legacyRatePct": 10,
+        "legacyCapPoints": 50
+      },
+      "expected": {
+        "spentCents": 2000,
+        "earnedPoints": 20,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 20,
+        "rewardsDue": 0,
+        "pointsToNext": 30,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-09-22T00:00:00.000Z",
+        "visits": 1,
+        "lastSeen": "2026-06-01T10:00:00.000Z",
+        "legacyPoints": 20,
+        "preStartCents": 20000
+      }
+    },
+    {
+      "name": "le jour du lancement compte normalement",
+      "why": "⚠️ LA FRONTIÈRE EST OUVERTE DU BON CÔTÉ. Dire à quelqu'un « vous avez payé trois heures trop tôt » est la première chose qui décrédibilise un programme. Un paiement du jour même donne ses points pleins.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-09-21T23:00:00.000Z",
+          "amountCents": 5000
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-09-22T00:00:00.000Z",
+          "amountCents": 5000
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-09-22T10:00:00.000Z",
+          "amountCents": 3000
+        }
+      ],
+      "rewards": [],
+      "thresholdPoints": 50,
+      "now": "2026-09-25T12:00:00.000Z",
+      "expiryMonths": 12,
+      "options": {
+        "startDate": "2026-09-22",
+        "legacyRatePct": 10,
+        "legacyCapPoints": 50
+      },
+      "expected": {
+        "spentCents": 8500,
+        "earnedPoints": 85,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 85,
+        "rewardsDue": 1,
+        "pointsToNext": 0,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-09-22T00:00:00.000Z",
+        "visits": 3,
+        "lastSeen": "2026-09-22T10:00:00.000Z",
+        "legacyPoints": 5,
+        "preStartCents": 5000
+      }
+    },
+    {
+      "name": "le crédit d'ancienneté vit douze mois À PARTIR DU LANCEMENT",
+      "why": "⚠️ LE RATTACHER AUX ACHATS D'ORIGINE LE FERAIT MOURIR AVANT D'AVOIR SERVI. Un crédit calculé sur des paiements de juin 2025 et daté de juin 2025 serait déjà périmé le jour où on l'offre. Daté du lancement, il vaut douze mois comme le reste.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2025-06-01T10:00:00.000Z",
+          "amountCents": 50000
+        }
+      ],
+      "rewards": [],
+      "thresholdPoints": 50,
+      "now": "2026-09-25T12:00:00.000Z",
+      "expiryMonths": 12,
+      "options": {
+        "startDate": "2026-09-22",
+        "legacyRatePct": 10,
+        "legacyCapPoints": 50
+      },
+      "expected": {
+        "spentCents": 5000,
+        "earnedPoints": 50,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 50,
+        "rewardsDue": 1,
+        "pointsToNext": 0,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-09-22T00:00:00.000Z",
+        "visits": 1,
+        "lastSeen": "2025-06-01T10:00:00.000Z",
+        "legacyPoints": 50,
+        "preStartCents": 50000
+      }
+    },
+    {
+      "name": "un crédit sans plafond configuré n'offre rien",
+      "why": "Un plafond à zéro est la position de repli honnête : on ne crédite rien tant que personne n'a décidé combien. Mieux vaut ne rien donner que donner par défaut.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-06-01T10:00:00.000Z",
+          "amountCents": 140000
+        }
+      ],
+      "rewards": [],
+      "thresholdPoints": 50,
+      "now": "2026-09-25T12:00:00.000Z",
+      "expiryMonths": 12,
+      "options": {
+        "startDate": "2026-09-22",
+        "legacyRatePct": 10,
+        "legacyCapPoints": 0
+      },
+      "expected": {
+        "spentCents": 0,
+        "earnedPoints": 0,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 0,
+        "rewardsDue": 0,
+        "pointsToNext": 50,
+        "expiringSoonPoints": 0,
+        "nextExpiry": null,
+        "visits": 1,
+        "lastSeen": "2026-06-01T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 140000
+      }
+    },
+    {
+      "name": "une récompense prise AVANT le lancement ne suit pas",
+      "why": "⚠️ LA SYMÉTRIE, ET ELLE PROTÈGE LE CLIENT. Ignorer ses paiements d'avant tout en gardant la boisson qu'on lui a offerte dessus le punirait deux fois : plus de points, et une dette de 50. Après le lancement, le registre repart vide des deux côtés — seuls les 10 € du 23 septembre et son crédit d'ancienneté comptent.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-06-01T10:00:00.000Z",
+          "amountCents": 8000
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-09-23T10:00:00.000Z",
+          "amountCents": 1000
+        }
+      ],
+      "rewards": [
+        {
+          "fp": "c1",
+          "ts": "2026-07-01T10:00:00.000Z",
+          "pointsSpent": 50
+        }
+      ],
+      "thresholdPoints": 50,
+      "now": "2026-09-25T12:00:00.000Z",
+      "expiryMonths": 12,
+      "options": {
+        "startDate": "2026-09-22",
+        "legacyRatePct": 10,
+        "legacyCapPoints": 50
+      },
+      "expected": {
+        "spentCents": 1800,
+        "earnedPoints": 18,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 18,
+        "rewardsDue": 0,
+        "pointsToNext": 32,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-09-22T00:00:00.000Z",
+        "visits": 2,
+        "lastSeen": "2026-09-23T10:00:00.000Z",
+        "legacyPoints": 8,
+        "preStartCents": 8000
+      }
+    },
+    {
+      "name": "une récompense prise APRÈS le lancement compte normalement",
+      "why": "Le pendant du cas précédent : ce qui se passe après le lancement suit la règle ordinaire, sinon on aurait rendu le programme gratuit pour tout le monde.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-06-01T10:00:00.000Z",
+          "amountCents": 8000
+        },
+        {
+          "fp": "c1",
+          "ts": "2026-09-23T10:00:00.000Z",
+          "amountCents": 6000
+        }
+      ],
+      "rewards": [
+        {
+          "fp": "c1",
+          "ts": "2026-09-24T10:00:00.000Z",
+          "pointsSpent": 50
+        }
+      ],
+      "thresholdPoints": 50,
+      "now": "2026-09-25T12:00:00.000Z",
+      "expiryMonths": 12,
+      "options": {
+        "startDate": "2026-09-22",
+        "legacyRatePct": 10,
+        "legacyCapPoints": 50
+      },
+      "expected": {
+        "spentCents": 1800,
+        "earnedPoints": 18,
+        "spentPoints": 50,
+        "expiredPoints": 0,
+        "balancePoints": 18,
+        "rewardsDue": 0,
+        "pointsToNext": 32,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-09-23T10:00:00.000Z",
+        "visits": 2,
+        "lastSeen": "2026-09-23T10:00:00.000Z",
+        "legacyPoints": 8,
+        "preStartCents": 8000
       }
     },
     {
@@ -635,7 +986,9 @@
         "expiringSoonPoints": 0,
         "nextExpiry": "2027-05-05T10:00:00.000Z",
         "visits": 3,
-        "lastSeen": "2026-05-05T10:00:00.000Z"
+        "lastSeen": "2026-05-05T10:00:00.000Z",
+        "legacyPoints": 0,
+        "preStartCents": 0
       }
     }
   ],

@@ -235,6 +235,7 @@
   </p>
 
   <div id="alerte" style="display:none"></div>
+  <div id="alerte-lancement" style="display:none"></div>
 
   <!-- ── Les chiffres qui d&eacute;cident quelque chose ─────────────────────────────────────── -->
   <div id="kpis" class="kpi-grid"><div class="muted">Chargement&hellip;</div></div>
@@ -271,6 +272,70 @@
       <div id="liste-risque" class="liste"></div>
     </section>
   </div>
+
+  <!-- ── Les r&eacute;glages, et ce qu'ils co&ucirc;tent ───────────────────────────────────────────── -->
+  <section class="bloc" id="reglages" style="margin-top:22px">
+    <h2 class="bloc-titre">R&eacute;glages du programme</h2>
+    <p class="muted bloc-note">
+      Rien n'est enregistr&eacute; tant que tu n'as pas valid&eacute;. Les chiffres &agrave; droite se recalculent
+      sur <strong>tes vrais clients</strong> &agrave; chaque changement.
+    </p>
+
+    <div class="reg-grille">
+      <div class="reg-champs">
+        <div class="reg-groupe">
+          <h3 class="reg-titre">Lancement</h3>
+          <label class="reg-l" for="r-start">Le programme commence le</label>
+          <input class="reg-i" type="date" id="r-start" data-k="start_date">
+          <p class="reg-aide">Les paiements ant&eacute;rieurs ne donnent plus de points&nbsp;: ils alimentent le
+            cr&eacute;dit d'anciennet&eacute; ci-dessous. Laisser vide = tout l'historique compte.</p>
+        </div>
+
+        <div class="reg-groupe">
+          <h3 class="reg-titre">Cr&eacute;dit d'anciennet&eacute;</h3>
+          <p class="reg-aide" style="margin-top:0">Pour remercier ceux qui venaient d&eacute;j&agrave;&nbsp;:
+            une part de ce qu'ils ont d&eacute;pens&eacute; avant, <strong>plafonn&eacute;e</strong>.</p>
+          <label class="reg-l" for="r-rate">Part de l'historique cr&eacute;dit&eacute;e (%)</label>
+          <input class="reg-i" type="number" id="r-rate" data-k="legacy_rate_pct" min="0" max="100" step="1">
+          <label class="reg-l" for="r-cap">Au maximum (points)</label>
+          <input class="reg-i" type="number" id="r-cap" data-k="legacy_cap_points" min="0" max="500" step="10">
+          <p class="reg-aide">50 points = une boisson. C'est le plafond qui rend la r&egrave;gle tenable&nbsp;:
+            sans lui, un client &agrave; 1&nbsp;400&nbsp;&euro; d'historique en recevrait presque trois.</p>
+        </div>
+
+        <div class="reg-groupe">
+          <h3 class="reg-titre">Bar&egrave;me</h3>
+          <label class="reg-l" for="r-seuil">Points pour une boisson</label>
+          <input class="reg-i" type="number" id="r-seuil" data-k="threshold_points" min="1" max="1000" step="5">
+          <label class="reg-l" for="r-exp">Validit&eacute; des points (mois)</label>
+          <input class="reg-i" type="number" id="r-exp" data-k="expiry_months" min="1" max="120" step="1">
+          <label class="reg-l" for="r-bonus">Bonus &agrave; l'inscription (points)</label>
+          <input class="reg-i" type="number" id="r-bonus" data-k="welcome_bonus_points" min="0" max="500" step="5">
+          <p class="reg-aide"><strong>Baisser le seuil est un cadeau&nbsp;; le relever est une promesse
+            rompue</strong> pour tous ceux qui ont d&eacute;j&agrave; pay&eacute; leurs points.</p>
+        </div>
+      </div>
+
+      <div class="reg-effet">
+        <h3 class="reg-titre">Ce que &ccedil;a donnerait</h3>
+        <div id="sim"><p class="muted" style="font-size:13px">Chargement&hellip;</p></div>
+        <div class="reg-valider">
+          <label class="reg-l" for="r-motif">Pourquoi ce changement&nbsp;?</label>
+          <input class="reg-i" type="text" id="r-motif" maxlength="180"
+                 placeholder="ex. lancement du programme, cr&eacute;dit plafonn&eacute; &agrave; une boisson">
+          <button class="btn-appliquer" id="r-ok" type="button" disabled>Enregistrer</button>
+          <p class="reg-aide" id="r-etat"></p>
+          <p class="reg-aide">La caisse relit ces r&eacute;glages au plus tard une minute apr&egrave;s
+            l'enregistrement&nbsp;: le comptoir et le bureau annoncent alors le m&ecirc;me solde.</p>
+        </div>
+      </div>
+    </div>
+
+    <details id="r-journal" style="margin-top:18px">
+      <summary class="muted" style="font-size:12.5px;cursor:pointer">Journal des changements</summary>
+      <div id="r-journal-corps" style="margin-top:10px"></div>
+    </details>
+  </section>
 
   <!-- ── Tous les clients ──────────────────────────────────────────────────────────────── -->
   <section class="bloc" style="margin-top:22px">
@@ -345,6 +410,35 @@
 .ligne .nom { font-weight:500; }
 .ligne .det { color:var(--muted); font-size:12px; margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .vide { color:var(--muted); font-size:13px; padding:8px 2px; }
+
+/* ── Réglages ── */
+.reg-grille { display:grid; grid-template-columns:minmax(260px,1fr) minmax(300px,1.1fr); gap:24px; }
+@media (max-width:820px){ .reg-grille { grid-template-columns:1fr; } }
+.reg-champs { display:flex; flex-direction:column; gap:20px; }
+.reg-groupe { display:flex; flex-direction:column; gap:5px; }
+.reg-titre { font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--muted);
+  margin:0 0 4px; font-weight:600; }
+.reg-l { font-size:12px; color:var(--muted); margin-top:6px; }
+.reg-i { font-family:inherit; font-size:13.5px; padding:8px 10px; border:1px solid var(--border);
+  border-radius:7px; background:var(--bg-page); color:var(--text); width:100%; box-sizing:border-box; }
+.reg-aide { font-size:11.5px; color:var(--muted); margin:6px 0 0; line-height:1.45; }
+.reg-effet { background:var(--bg-hover); border:1px solid var(--border); border-radius:10px;
+  padding:16px 18px; align-self:start; }
+.sim-l { display:flex; justify-content:space-between; gap:12px; font-size:13.5px; padding:6px 0;
+  border-bottom:1px solid var(--border); }
+.sim-l span:last-child { font-variant-numeric:tabular-nums; font-weight:600; }
+.sim-l.fort span:last-child { color:var(--spec); }
+.sim-fleche { color:var(--muted); font-weight:400; }
+.sim-cout { font-size:22px; font-weight:600; font-variant-numeric:tabular-nums; margin:12px 0 2px; }
+.reg-valider { margin-top:18px; padding-top:16px; border-top:1px solid var(--border); }
+.btn-appliquer { font-family:inherit; font-size:13px; font-weight:600; padding:9px 18px; margin-top:10px;
+  border-radius:8px; border:none; background:var(--spec); color:#fff; cursor:pointer; }
+.btn-appliquer[disabled] { opacity:.45; cursor:not-allowed; }
+.avert-fort { background:#fdeceb; border:1px solid #e9b4ae; border-left:4px solid #b4552f; color:#7d2f18;
+  border-radius:0 8px 8px 0; padding:13px 16px; font-size:13px; margin:0 0 18px; line-height:1.5; }
+.avert-fort a { color:inherit; font-weight:600; }
+.jrn { font-size:12.5px; padding:8px 0; border-bottom:1px solid var(--border); }
+.jrn .q { color:var(--muted); }
 
 .barre { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
 #q { font-family:inherit; font-size:13px; padding:7px 11px; border:1px solid var(--border); border-radius:8px;
@@ -554,6 +648,141 @@ tbody tr:hover { background:var(--bg-hover); }
     var el = e.target.closest('[data-k]'); if (el) fiche(el.dataset.k);
   });
 
+  // ── Les réglages ────────────────────────────────────────────────────────────────────────
+  var CHAMPS = ['start_date','legacy_rate_pct','legacy_cap_points','threshold_points',
+                'expiry_months','welcome_bonus_points'];
+  var enregistres = null, attente = null;
+
+  function saisie(){
+    var o = {};
+    CHAMPS.forEach(function(k){
+      var el = document.querySelector('[data-k="' + k + '"]');
+      o[k] = el.value;
+    });
+    return o;
+  }
+
+  function remplir(st){
+    enregistres = st;
+    CHAMPS.forEach(function(k){
+      var el = document.querySelector('[data-k="' + k + '"]');
+      el.value = (st[k] === null || st[k] === undefined) ? '' : st[k];
+    });
+    if (st.missing) {
+      E('r-etat').textContent = 'La table des réglages n\'existe pas encore : ' +
+        'la migration 20260919_card_settings.sql n\'a pas été exécutée. Lecture seule.';
+      CHAMPS.forEach(function(k){ document.querySelector('[data-k="' + k + '"]').disabled = true; });
+    }
+  }
+
+  function modifie(){
+    if (!enregistres) return false;
+    var s = saisie();
+    return CHAMPS.some(function(k){
+      var a = enregistres[k] === null || enregistres[k] === undefined ? '' : String(enregistres[k]);
+      return a !== String(s[k]);
+    });
+  }
+
+  function ligneSim(nom, av, ap, fort){
+    var change = String(av) !== String(ap);
+    return '<div class="sim-l' + (fort && change ? ' fort' : '') + '"><span>' + nom + '</span><span>' +
+      (change ? '<span class="sim-fleche">' + av + ' → </span>' : '') + ap + '</span></div>';
+  }
+
+  function simulation(d){
+    var b = d.before, a = d.after;
+    var h = [];
+    h.push(ligneSim('Boissons dues tout de suite', b.rewards_due_now, a.rewards_due_now, true));
+    h.push(ligneSim('Points en circulation', b.points_outstanding, a.points_outstanding, false));
+    h.push(ligneSim('Clients crédités pour leur ancienneté', b.credited, a.credited, false));
+    h.push(ligneSim('… dont plafonnés', b.at_cap, a.at_cap, false));
+    // ⚠️ LE COÛT EN EUROS, PAS EN POINTS. « 28 boissons » ne se compare à rien ; « 19,60 € de
+    // matière » se compare à une journée de vente.
+    h.push('<div class="sim-cout">' + (a.cost_cents/100).toFixed(2).replace('.',',') + ' €</div>' +
+           '<p class="reg-aide" style="margin-top:0">de matière si toutes les boissons dues ' +
+           'étaient réclamées demain' +
+           (b.cost_cents !== a.cost_cents
+             ? ' — contre ' + (b.cost_cents/100).toFixed(2).replace('.',',') + ' € aujourd\'hui.'
+             : '.') + '</p>');
+
+    if (a.top && a.top.length) {
+      h.push('<h3 class="reg-titre" style="margin-top:18px">Les plus gros soldes, après</h3>');
+      h.push(a.top.slice(0,5).map(function(t){
+        return '<div class="sim-l"><span>' + (t.name || ('carte ' + t.short)) +
+          ' <span class="sim-fleche">' + t.visits + ' passages</span></span><span>' +
+          t.balance_points + ' pts</span></div>';
+      }).join(''));
+      h.push('<p class="reg-aide">Un gros solde sur peu de passages n\'est pas un habitué : ' +
+             'c\'est probablement une <strong>collision</strong> — plusieurs personnes derrière ' +
+             'la même empreinte de carte.</p>');
+    }
+    E('sim').innerHTML = h.join('');
+  }
+
+  function simuler(){
+    var s = saisie(), q = [];
+    CHAMPS.forEach(function(k){ q.push(k + '=' + encodeURIComponent(s[k])); });
+    fetch('/api/fidelidade/simulation?' + q.join('&')).then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.error){ E('sim').innerHTML = '<p class="reg-aide">' + d.error + '</p>'; return; }
+        simulation(d);
+      }).catch(function(){ E('sim').innerHTML = '<p class="reg-aide">Simulation indisponible.</p>'; });
+  }
+
+  function surChangement(){
+    E('r-ok').disabled = !modifie() || E('r-motif').value.trim().length < 3;
+    clearTimeout(attente);
+    attente = setTimeout(simuler, 350);
+  }
+
+  CHAMPS.forEach(function(k){
+    document.querySelector('[data-k="' + k + '"]').addEventListener('input', surChangement);
+  });
+  E('r-motif').addEventListener('input', function(){
+    E('r-ok').disabled = !modifie() || E('r-motif').value.trim().length < 3;
+  });
+
+  E('r-ok').addEventListener('click', function(){
+    var corps = saisie();
+    corps.reason = E('r-motif').value.trim();
+    E('r-ok').disabled = true;
+    E('r-etat').textContent = 'Enregistrement…';
+    fetch('/api/fidelidade/config', {
+      method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(corps)
+    }).then(function(r){ return r.json().then(function(d){ return {ok: r.ok, d: d}; }); })
+      .then(function(x){
+        if (!x.ok){ E('r-etat').textContent = x.d.error || 'Refusé.'; E('r-ok').disabled = false; return; }
+        E('r-etat').textContent = 'Enregistré. Les soldes sont recalculés.';
+        E('r-motif').value = '';
+        remplir(x.d.settings);
+        // ⚠️ ON RECHARGE TOUT. Le seuil et la date changent chaque solde de la page : laisser
+        // les anciens chiffres à l'écran après un enregistrement réussi serait le plus sûr moyen
+        // de prendre la décision suivante sur des nombres périmés.
+        location.reload();
+      }).catch(function(){
+        E('r-etat').textContent = 'Échec réseau — rien n\'a été enregistré.';
+        E('r-ok').disabled = false;
+      });
+  });
+
+  function journal(lignes){
+    if (!lignes.length){ E('r-journal-corps').innerHTML = '<p class="reg-aide">Aucun changement enregistré.</p>'; return; }
+    E('r-journal-corps').innerHTML = lignes.map(function(l){
+      var av = l.before || {}, ap = l.after || {};
+      var diff = Object.keys(ap).filter(function(k){ return String(av[k]) !== String(ap[k]); })
+        .map(function(k){ return k + ' : ' + av[k] + ' → ' + ap[k]; }).join(' · ');
+      return '<div class="jrn"><span class="q">' + jour(l.at) + ' · ' + (l.by || '?') + '</span> — ' +
+             (diff || 'aucun écart') + '<br><span class="q">' + (l.reason || '') + '</span></div>';
+    }).join('');
+  }
+
+  fetch('/api/fidelidade/config').then(function(r){ return r.json(); }).then(function(d){
+    remplir(d.settings);
+    journal(d.log || []);
+    simuler();
+  }).catch(function(){ E('sim').innerHTML = '<p class="reg-aide">Réglages illisibles.</p>'; });
+
   fetch('/api/fidelidade/resumo').then(function(r){
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
@@ -562,6 +791,22 @@ tbody tr:hover { background:var(--bg-hover); }
     S = d.summary; comptes = d.accounts;
     kpis(S);
     conversion(d.conversion);
+
+    /**
+     * ⚠️ TANT QU'AUCUNE DATE DE LANCEMENT N'EST POSÉE, LE PROGRAMME COMPTE DEPUIS MAI. Les
+     * paiements sont enregistrés depuis bien avant qu'il existe : la caisse annonce donc des
+     * boissons dues que personne n'a jamais promises. Ce n'est pas une dette, c'est un accident
+     * de comptage — et il coûte de l'argent réel tant qu'il n'est pas dit.
+     */
+    if (!d.settings.start_date && S.rewards_due_now > 0) {
+      E('alerte-lancement').style.display = 'block';
+      E('alerte-lancement').innerHTML = '<div class="avert-fort"><strong>Aucune date de lancement : ' +
+        'le programme compte tout l\'historique.</strong><br>' +
+        S.rewards_due_now + ' boisson(s) apparaissent comme dues — soit ' +
+        (S.rewards_due_now * d.reward_cost_cents / 100).toFixed(2).replace('.',',') + ' € de matière — ' +
+        'sur des achats faits avant que le programme existe, et dont personne n\'a jamais entendu ' +
+        'parler. <a href="#reglages">Poser la date de lancement</a>.</div>';
+    }
     petiteListe(E('liste-proches'), S.near_reward,
       function(c){ return c.state.balance_points + ' pts · ' + c.state.points_to_next + ' à faire'; },
       'Personne n\'approche des 50 points.');
