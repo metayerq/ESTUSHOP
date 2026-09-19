@@ -112,10 +112,24 @@ function fmtDate(iso) {
 // ── Chargement (stale-while-revalidate) ──────────────────────────────────────
 // Affiche instantanément les dernières données connues (localStorage), puis
 // rafraîchit en arrière-plan. force=true (bouton ↻) bypasse les caches serveur.
+// Journée en cours dans l'économie de la période. Par défaut NON : elle
+// n'apporte qu'une recette partielle mais une journée entière de charges.
+let inclToday = false;
+try { inclToday = localStorage.getItem('estu_incl_today') === '1'; } catch (e) {}
+
+function toggleInclToday() {
+  inclToday = document.getElementById('incl-today').checked;
+  try { localStorage.setItem('estu_incl_today', inclToday ? '1' : '0'); } catch (e) {}
+  loadData(true);
+}
+
 async function loadData(force = false) {
   const preset = currentPreset;
   const isCustom = preset === 'custom' && customStart && customEnd;
-  const cacheKey = 'estu_data_' + preset + (isCustom ? '_' + customStart + '_' + customEnd : '');
+  // La clé de cache porte le choix : sans lui, basculer le bouton réaffichait
+  // les chiffres de l'autre périmètre le temps d'un aller-retour.
+  const cacheKey = 'estu_data_' + preset + (inclToday ? '_incl' : '')
+                 + (isCustom ? '_' + customStart + '_' + customEnd : '');
   if (!force) {
     try {
       const cached = localStorage.getItem(cacheKey);
@@ -124,9 +138,10 @@ async function loadData(force = false) {
   }
   if (window.uiLoadStart) uiLoadStart();
   try {
+    const incl = inclToday ? '&incl_today=1' : '';
     const url = isCustom
-      ? `/api/data?preset=custom&start_date=${customStart}&end_date=${customEnd}${force ? '&fresh=1' : ''}`
-      : '/api/data?preset=' + preset + (force ? '&fresh=1' : '');
+      ? `/api/data?preset=custom&start_date=${customStart}&end_date=${customEnd}${incl}${force ? '&fresh=1' : ''}`
+      : '/api/data?preset=' + preset + incl + (force ? '&fresh=1' : '');
     const r = await fetch(url);
     if (!r.ok) throw new Error(await r.text());
     const d = await r.json();
@@ -143,141 +158,83 @@ async function loadData(force = false) {
   }
 }
 
-// ── Rendu principal ───────────────────────────────────────────────────────────
-// ══ LE TRAJET ══════════════════════════════════ testé : tests/test_flux.js ══
-//
-// L'écran n'énonce pas un résultat, il le montre se construire : ce qui entre, ce qui sort,
-// ce qui reste. Chaque poste part du niveau atteint par le précédent — la cascade rend le
-// décalage visible là où quatre KPI côte à côte le laissaient à reconstituer de tête.
-//
-// ⚠️ LA MATIÈRE N'EST PAS `cogs_ht`. `cogs_ht` est le coût mesuré sur la seule part des ventes
-// dont on connaît le prix d'achat. Ce qui est réellement retranché du CA HT pour arriver à la
-// marge brute, c'est `ca_ht − marge_brute_ht` : le taux mesuré, appliqué à tout le CA. Les deux
-// coïncident quand la couverture est de 100 % et divergent sinon — soustraire `cogs_ht` ferait
-// atterrir la cascade ailleurs que sur l'EBITDA affiché juste à côté.
-//
-// La cascade est donc construite pour tomber SUR `ebitda_ht` par construction, et non sur une
-// somme recalculée qui pourrait dériver du chiffre du serveur.
-//
-// ⚠️ ET ELLE NE S'AFFICHE PAS À MOITIÉ. Sans marge mesurable ou sans charges connues, il n'y a
-// pas de trajet : on dit lequel manque. Une cascade avec un segment à zéro se lirait « ce poste
-// ne coûte rien ».
-
-function fluxSteps(eco) {
-  const num = v => (typeof v === 'number' && isFinite(v)) ? v : null;
-  const e = eco || {};
-  const caTtc = num(e.ca_ttc), caHt = num(e.ca_ht);
-  const marge = num(e.marge_brute_ht), ebitda = num(e.ebitda_ht);
-  const fixe  = num(e.cout_fixe_periode)  ?? num(e.cout_fixe_jour);
-  const perso = num(e.cout_perso_periode) ?? num(e.cout_perso_jour);
-
-  if (!caTtc || caTtc <= 0)  return { ok: false, reason: 'no-sales' };
-  if (caHt === null)         return { ok: false, reason: 'no-net' };
-  if (marge === null)        return { ok: false, reason: 'no-margin' };
-  if (fixe === null || perso === null || (fixe + perso) <= 0)
-                             return { ok: false, reason: 'no-costs' };
-  if (ebitda === null)       return { ok: false, reason: 'no-ebitda' };
-
-  const est = e.marge_is_estimated === true;
-  const steps = [
-    { key: 'revenue',  label: 'CA TTC',      amount: caTtc,        after: caTtc, kind: 'in'  },
-    { key: 'vat',      label: '− TVA',       amount: caTtc - caHt, after: caHt,  kind: 'tax' },
-    { key: 'cogs',     label: '− matière',   amount: caHt - marge, after: marge, kind: 'out', estimated: est },
-    { key: 'fixed',    label: '− charges',   amount: fixe,         after: marge - fixe,        kind: 'out' },
-    { key: 'staff',    label: '− personnel', amount: perso,        after: marge - fixe - perso, kind: 'out' },
-  ];
-
-  // Le dernier palier DOIT être l'EBITDA du serveur. S'il ne l'est pas, un poste manque au
-  // modèle : mieux vaut ne rien dessiner que dessiner une cascade qui ment d'un écart muet.
-  if (Math.abs(steps[steps.length - 1].after - ebitda) > 0.02)
-    return { ok: false, reason: 'mismatch', drift: steps[steps.length - 1].after - ebitda };
-
-  const top = caTtc, bottom = Math.min(0, ebitda), span = (top - bottom) || 1;
-  const pct = v => (v / span) * 100;
-  const laid = steps.map((s, i) => {
-    const from = i === 0 ? 0 : steps[i - 1].after;
-    const to   = s.after;
-    return { ...s,
-      left:  i === 0 ? 0 : pct(top - from),
-      width: i === 0 ? pct(s.amount) : pct(from - to) };
-  });
-
-  return { ok: true, steps: laid, ebitda, estimated: est,
-           zeroPct: pct(top), coverage: num(e.cogs_coverage_pct) };
+// ── Clients récurrents (empreintes de cartes, voir revolut_merchant.py) ──────
+// Chargé à part : petite table Supabase, inutile d'alourdir /api/data.
+let _retReq = 0;
+async function loadReturning(d) {
+  const sec = document.getElementById('returning-section');
+  if (!sec) return;
+  const from = d.from_date || d.date, to = d.to_date || d.date;
+  if (!from || !to) return;
+  const my = ++_retReq;
+  try {
+    const r = await fetch(`/api/returning?from=${from}&to=${to}`);
+    const m = await r.json();
+    if (my !== _retReq) return;                 // période changée entre-temps
+    if (!m.enabled || m.empty) {
+      sec.style.display = m.enabled ? '' : 'none';
+      if (m.enabled) {
+        ['ret-pct','ret-cards','ret-regulars','ret-risk'].forEach(id => document.getElementById(id).textContent = '—');
+        document.getElementById('ret-note').textContent = 'No card visits yet — rebuild the history to start.';
+        document.getElementById('ret-rebuild').style.display = '';
+      }
+      return;
+    }
+    sec.style.display = '';
+    const p = m.period, a = m.all;
+    document.getElementById('returning-label').textContent =
+      'Returning customers' + (d.period_label ? ` — ${d.period_label.toLowerCase()}` : '');
+    document.getElementById('ret-pct').textContent = p.returning_pct != null ? `${p.returning_pct}%` : '—';
+    document.getElementById('ret-sub').textContent =
+      p.visits ? `${p.returning} of ${p.visits} card payments` : 'no card payments';
+    document.getElementById('ret-cards').textContent = p.cards;
+    document.getElementById('ret-cards-sub').textContent = `${p.known_cards} known · ${p.new_cards} new`;
+    document.getElementById('ret-regulars').textContent = p.regulars;
+    document.getElementById('ret-regulars-sub').textContent =
+      p.regulars_visit_pct != null ? `${p.regulars_visit_pct}% of the period's card payments` : '';
+    const k = m.at_risk || {};
+    document.getElementById('ret-risk').textContent = k.count != null ? k.count : '—';
+    document.getElementById('ret-risk-sub').textContent = k.regulars
+      ? `of ${k.regulars} regulars · absent > 3× their usual interval` : '';
+    document.getElementById('ret-note').textContent =
+      `Card payments only · ${a.since} → ${a.until} · ±5 pts (same card type + last four digits are merged; phone wallets count as a second card)`;
+    document.getElementById('ret-rebuild').style.display = '';
+  } catch (e) { /* section optionnelle */ }
 }
 
-function renderFlux(d) {
-  const el = document.getElementById('flux');
-  if (!el) return;
-  const f = fluxSteps(d && d.economics);
-  const scope = d && d.period_label ? d.period_label : '';
-
-  if (!f.ok) {
-    const why = {
-      'no-sales':  'aucune vente sur la période.',
-      'no-net':    'le CA hors taxes est indisponible.',
-      'no-margin': 'le coût matière n’est pas mesurable — complète les fiches recettes.',
-      'no-costs':  'les charges sont indisponibles — vérifie l’onglet Costs.',
-      'no-ebitda': 'le résultat n’est pas calculable.',
-      'mismatch':  'les postes ne se recomposent pas en EBITDA — un coût manque au modèle.',
-    }[f.reason] || 'données insuffisantes.';
-    el.innerHTML = `<div class="flux-head"><span class="flux-title">Le trajet</span>
-        <span class="flux-scope">${scope}</span></div>
-      <div class="flux-empty">Pas de trajet à tracer : ${why}</div>`;
-    return;
+// Reconstruction : 10 jours par appel (timeout serverless), de l'ouverture à
+// aujourd'hui. Admin seulement — un 403 arrête tout et le dit.
+async function rebuildCardVisits() {
+  const btn = document.getElementById('ret-rebuild');
+  const note = document.getElementById('ret-note');
+  btn.disabled = true;
+  const iso = x => x.toISOString().slice(0, 10);
+  let cur = new Date('2026-05-27T12:00:00Z'), today = new Date(), total = 0, n = 0;
+  try {
+    while (cur <= today) {
+      const to = new Date(Math.min(cur.getTime() + 9 * 864e5, today.getTime()));
+      n++; btn.textContent = `Rebuilding… ${iso(cur)}`;
+      const r = await fetch('/api/card-visits/sync', {method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({from: iso(cur), to: iso(to)})});
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || r.status);
+      total += j.visits || 0;
+      cur = new Date(to.getTime() + 864e5);
+    }
+    note.textContent = `History rebuilt: ${total} card payments in ${n} batches.`;
+    if (window._lastData) loadReturning(window._lastData);
+  } catch (e) {
+    note.textContent = 'Rebuild failed: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Rebuild history';
   }
-
-  const colour = { in: 'var(--flux-keep)', tax: 'var(--flux-tax)', out: 'var(--flux-leave)' };
-  const rows = f.steps.map(s => `
-    <div class="flux-row">
-      <span class="flux-label">${s.label}</span>
-      <span class="flux-track">
-        <span class="flux-seg${s.estimated ? ' is-estimated' : ''}"
-              style="left:${s.left}%;width:${s.width}%;background:${colour[s.kind]}"></span>
-      </span>
-      <span class="flux-amount${s.kind === 'in' ? '' : ' dim'}">${s.kind === 'in' ? '' : '−'}${fmt(s.amount)}</span>
-    </div>`).join('');
-
-  const neg = f.ebitda < 0;
-  const ebW = Math.abs((f.ebitda / (f.steps[0].amount - Math.min(0, f.ebitda))) * 100);
-  const ebLeft = neg ? f.zeroPct : f.zeroPct - ebW;
-  const total = `
-    <div class="flux-row is-total">
-      <span class="flux-label">= EBITDA</span>
-      <span class="flux-track"><span class="flux-zero" style="left:${f.zeroPct}%"></span>
-        <span class="flux-seg" style="left:${ebLeft}%;width:${ebW}%;
-              background:${neg ? 'var(--flux-neg)' : 'var(--flux-keep)'}"></span></span>
-      <span class="flux-amount${neg ? ' neg' : ''}">${fmt(f.ebitda)}</span>
-    </div>`;
-
-  // La lecture, écrite. Le graphique montre le décalage ; la phrase nomme le poste qui pèse.
-  const matiere = f.steps.find(s => s.key === 'cogs');
-  const charges = f.steps.filter(s => s.kind === 'out' && s.key !== 'cogs')
-                         .reduce((a, s) => a + s.amount, 0);
-  const verdict = neg
-    ? `Il manque <b>${fmt(-f.ebitda)}</b> pour couvrir la période.`
-    : `La période dégage <b>${fmt(f.ebitda)}</b>.`;
-  const poids = matiere.amount < charges
-    ? `La matière pèse <b>${fmt(matiere.amount)}</b>, les charges <b>${fmt(charges)}</b>.`
-    : `La matière pèse <b>${fmt(matiere.amount)}</b>, plus que les <b>${fmt(charges)}</b> de charges.`;
-  const reserve = f.estimated
-    ? ` <span class="est">La matière est extrapolée : le coût n’est connu que sur ${f.coverage}% des ventes.</span>`
-    : '';
-
-  el.innerHTML = `
-    <div class="flux-head"><span class="flux-title">Le trajet</span>
-      <span class="flux-scope">${scope}</span></div>
-    <div class="flux-rows">${rows}${total}</div>
-    <div class="flux-note">${poids} ${verdict}${reserve}</div>
-    <div class="flux-legend">
-      <span><i style="background:var(--flux-keep)"></i>ce qui reste</span>
-      <span><i style="background:var(--flux-leave)"></i>ce qui sort</span>
-      <span><i style="background:var(--flux-tax)"></i>TVA</span>
-      ${f.estimated ? '<span><i class="flux-seg is-estimated" style="background:var(--flux-leave)"></i>extrapolé</span>' : ''}
-    </div>`;
 }
 
+// ── Rendu principal ───────────────────────────────────────────────────────────
 function render(d) {
+  window._lastData = d;
+  loadReturning(d);
   // Bandeau warnings — sources de données en échec
   const warnBanner = document.getElementById('warn-banner');
   if (d.warnings && d.warnings.length) {
@@ -318,11 +275,31 @@ function render(d) {
   // du dernier jour ouvré (sinon la métrique est faussée avant la fermeture).
   const compLabel = d.comp_label || (d.is_single_day ? 'vs yesterday' : 'vs prev. period');
 
+  // Bouton « journée en cours » : visible seulement là où il change quelque chose
+  const inclBar = document.getElementById('incl-today-bar');
+  if (inclBar) {
+    const can = !!(d.economics && d.economics.today_toggleable);
+    inclBar.style.display = can ? 'flex' : 'none';
+    if (can) {
+      document.getElementById('incl-today').checked = inclToday;
+      document.getElementById('incl-today-hint').textContent = inclToday
+        ? '— charges d\u2019une journée entière face à une recette partielle'
+        : '';
+    }
+  }
+
   // ── KPIs ─────────────────────────────────────────────────────────────────
   document.getElementById('kpi-ca').textContent = fmt(d.today.ca);
   if (d.economics) {
-    document.getElementById('kpi-ca-ht').textContent =
-      `${fmt(d.economics.ca_ht)} excl. VAT · VAT ${fmt(d.economics.tva_collectee)}`;
+    // Le brut reste écrit : c'est lui qui coïncide avec Vendus, la trésorerie
+    // et la page comptable. Le net est ce que le café gagne réellement.
+    // ⚠️ MÊME PÉRIMÈTRE QUE LE GRAND CHIFFRE. `economics` s'arrête à hier ;
+    // reprendre son ca_ht ici affichait un HT + TVA qui ne recomposait pas le
+    // total affiché juste au-dessus. Les stats couvrent la période entière.
+    const chef = d.today.popup_chef;
+    document.getElementById('kpi-ca-ht').innerHTML =
+      `${fmt(d.today.ca_ht)} excl. VAT · VAT ${fmt(d.today.ca - d.today.ca_ht)}`
+      + (chef ? `<br><span style="color:#7c4dbe;">${fmt(d.today.ca_gross)} facturé · ${fmt(chef)} reversé au chef</span>` : '');
   } else {
     document.getElementById('kpi-ca-ht').textContent = '';
   }
@@ -358,7 +335,12 @@ function render(d) {
   const perDayEl  = document.getElementById('kpi-ca-perday');
   const nbPerDayEl = document.getElementById('kpi-nb-perday');
   if (!d.is_single_day && openDays > 1) {
-    const caDay    = d.today.ca / openDays;
+    // Confronté au point mort, donc calculé sur la MÊME base que lui : quand
+    // l'économie exclut le jour courant, sa recette sort aussi du numérateur —
+    // sinon on divisait 4 jours de recette par 3 jours de charges.
+    const caBase   = d.economics?.excludes_today && d.economics?.ca_ttc != null
+                     ? d.economics.ca_ttc : d.today.ca;
+    const caDay    = caBase / openDays;
     const seuilDay = d.economics?.seuil_ca_ttc_jour;
     let verdict = '';
     if (seuilDay > 0) {
@@ -404,7 +386,8 @@ function render(d) {
   const ecoTop = d.economics;
   const ebitdaOpenN = ecoTop && ecoTop.open_days;
   document.getElementById('kpi-ebitda-label').textContent =
-    'Est. EBITDA' + (d.is_single_day ? '' : (ebitdaOpenN ? ` · ${ebitdaOpenN} open days` : ` · ${d.n_days} days`));
+    'Est. EBITDA' + (d.is_single_day ? '' : (ebitdaOpenN ? ` · ${ebitdaOpenN} open days` : ` · ${d.n_days} days`))
+    + (ecoTop && ecoTop.excludes_today ? ' · excl. today' : '');
   if (ecoTop && ecoTop.ebitda_ht != null) {
     ebitdaEl.textContent = fmt(ecoTop.ebitda_ht);
     ebitdaEl.style.color = ecoTop.ebitda_ht > 0 ? 'var(--green)' : ecoTop.ebitda_ht < 0 ? 'var(--red)' : 'var(--text)';
@@ -426,7 +409,6 @@ function render(d) {
   // de d.week (7 derniers jours) : dernier point = aujourd'hui, jour ouvré
   // précédent = dernier point antérieur avec des ventes.
   renderTodayStrip(d);
-  renderFlux(d);
 
   // (Barre "Break-even N tx/day" supprimée : constante BP statique, redondante
   //  et parfois contradictoire avec le seuil CA réel affiché dans Economics.)
@@ -438,7 +420,8 @@ function render(d) {
   // jours calendaires — sinon "Since opening · 55 days" alors qu'on a ouvert 42j.
   const openN = (d.economics && d.economics.open_days) || null;
   const periodSuffix = d.is_single_day ? '(day)'
-    : (openN ? `· ${openN} open days` : `· ${d.n_days} days`);
+    : (openN ? `· ${openN} open days` : `· ${d.n_days} days`)
+      + (d.economics && d.economics.excludes_today ? ' · excl. today' : '');
   document.getElementById('eco-label').textContent      = `Economics ${periodSuffix}`;
   document.getElementById('eco-charges-label').textContent = `Costs ${periodSuffix}`;
   document.getElementById('eco-prime-label').textContent   = `Prime cost ${periodSuffix}`;
@@ -818,12 +801,16 @@ function render(d) {
       document.getElementById('products-body').innerHTML =
         '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">No products sold.</td></tr>';
     } else {
+      window._prodData = d.products;
       document.getElementById('products-body').innerHTML = d.products.map((p, i) => {
         const barW = Math.round(p.qty / maxQty * 100);
         const rank = i === 0 ? ' style="font-weight:600"' : '';
         const marginHtml = p.margin_pct != null ? marginBadge(p.margin_pct) : '<span style="color:var(--muted)">—</span>';
-        return `<tr>
-          <td${rank}>${p.name}</td>
+        const popupBadge = p.popup
+          ? ` <span style="font-size:10px;font-weight:600;color:#7c4dbe;background:rgba(124,77,190,.12);border-radius:9px;padding:1px 7px;vertical-align:1px;">popup ${p.commission_pct}%</span>`
+          : '';
+        return `<tr style="cursor:pointer;" onclick="openProductPopup(${i})">
+          <td${rank}>${p.name}${popupBadge}</td>
           <td class="amount">${p.qty}</td>
           <td class="amount" style="color:var(--muted)">${fmt(p.avg)}</td>
           <td class="amount">${fmt(p.revenue)}</td>
@@ -1276,7 +1263,7 @@ function switchDashView(view) {
   document.getElementById('view-cashflow').style.display = view === 'cashflow' ? '' : 'none';
   document.getElementById('tab-view-overview').classList.toggle('active', view === 'overview');
   document.getElementById('tab-view-cashflow').classList.toggle('active', view === 'cashflow');
-  if (view === 'cashflow' && !cashflowData) loadCashflow();
+  if (view === 'cashflow' && !cashflowData) { loadCashflow(); loadCommissions(); }
 }
 
 async function loadCashflow() {
@@ -1295,6 +1282,48 @@ async function loadCashflow() {
   }
 }
 
+// ── Commissions reçues : liste + saisie (vue Cashflow) ──────────────────────
+async function loadCommissions() {
+  try {
+    const r = await fetch('/api/commissions');
+    const j = await r.json();
+    const rows = j.rows || [];
+    document.getElementById('com-body').innerHTML = rows.length ? rows.map(c => `
+      <tr>
+        <td>${c.date}</td>
+        <td>${c.label || ''}</td>
+        <td class="amount">${fmt(c.amount)}</td>
+        <td style="text-align:right;"><button onclick="deleteCommission('${c.id}')"
+            style="border:none;background:none;color:var(--faint);cursor:pointer;font-size:13px;">✕</button></td>
+      </tr>`).join('')
+      : '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:16px;">Aucune commission saisie.</td></tr>';
+  } catch (e) { /* section optionnelle */ }
+}
+async function addCommission() {
+  const day = document.getElementById('com-date').value;
+  const label = document.getElementById('com-label').value.trim();
+  const amount = parseFloat(document.getElementById('com-amount').value);
+  const err = document.getElementById('com-error');
+  err.style.display = 'none';
+  if (!day || !(amount > 0)) {
+    err.textContent = 'Date et montant requis.'; err.style.display = ''; return;
+  }
+  const r = await fetch('/api/commissions', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({date: day, label, amount})});
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    err.textContent = 'Erreur : ' + (j.error || r.status); err.style.display = ''; return;
+  }
+  document.getElementById('com-label').value = '';
+  document.getElementById('com-amount').value = '';
+  cashflowData = null; loadCashflow(); loadCommissions(); loadData(true);
+}
+async function deleteCommission(id) {
+  await fetch('/api/commissions/' + id, {method: 'DELETE'});
+  cashflowData = null; loadCashflow(); loadCommissions(); loadData(true);
+}
+
 function renderCashflow() {
   if (!cashflowData) return;
   const excl = document.getElementById('cf-excl-capex').checked;
@@ -1309,7 +1338,7 @@ function renderCashflow() {
   const netKey = excl ? 'net_excl_capex'      : 'net';
   const cumKey = excl ? 'cum_net_excl_capex'  : 'cum_net';
 
-  const totalIn  = months.reduce((s, m) => s + m.revenue, 0);
+  const totalIn  = months.reduce((s, m) => s + (m.cash_in ?? m.revenue), 0);
   const totalOut = months.reduce((s, m) => s + m[outKey], 0);
   const net      = totalIn - totalOut;
   document.getElementById('cf-total-in').textContent  = fmt(totalIn);
@@ -1332,7 +1361,7 @@ function renderCashflow() {
     data: {
       labels: months.map(m => fmtMonth(m.month)),
       datasets: [
-        { type: 'bar', label: 'Cash in',  data: months.map(m => m.revenue),
+        { type: 'bar', label: 'Cash in',  data: months.map(m => m.cash_in ?? m.revenue),
           backgroundColor: 'rgba(68,131,97,.75)', borderRadius: 3, yAxisID: 'y' },
         { type: 'bar', label: 'Cash out', data: months.map(m => m[outKey]),
           backgroundColor: 'rgba(196,85,77,.7)', borderRadius: 3, yAxisID: 'y' },
@@ -1361,7 +1390,7 @@ function renderCashflow() {
     const cumVal = m[cumKey];
     return `<tr>
       <td>${fmtMonth(m.month)}</td>
-      <td class="amount">${fmt(m.revenue)}</td>
+      <td class="amount">${fmt(m.cash_in ?? m.revenue)}${m.commissions ? ` <span data-tip="dont ${fmt(m.commissions)} de commissions reçues" style="color:#7c4dbe;font-size:11px;">◆</span>` : ''}</td>
       <td class="amount">${fmt(m[outKey])}</td>
       <td class="amount" style="color:${netVal >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:500;">${fmt(netVal)}</td>
       <td class="amount" style="color:${cumVal >= 0 ? 'var(--green)' : 'var(--red)'};">${fmt(cumVal)}</td>
@@ -1407,3 +1436,77 @@ function renderCashflow() {
 // ── Init ───────────────────────────────────────────────────────────────────
 loadData();
 setInterval(() => { if (currentPreset === 'today') loadData(); }, 5 * 60 * 1000);
+
+
+// ── Produits popup (chef partenaire) ─────────────────────────────────────────
+// La commission sur le TTC est la marge brute : côté serveur, le coût du
+// produit devient net × (1 − commission), donc la marge % affichée = le taux.
+let _popupProd = null;
+
+function openProductPopup(i) {
+  const p = (window._prodData || [])[i];
+  if (!p) return;
+  _popupProd = p;
+  document.getElementById('popup-prod-name').textContent = p.name;
+  document.getElementById('popup-prod-meta').textContent =
+    `${p.qty} sold · ${fmt(p.revenue)}` + (p.margin_pct != null ? ` · margin ${p.margin_pct}%` : '');
+  const check = document.getElementById('popup-check');
+  check.checked = !!p.popup;
+  const sel = document.getElementById('popup-pct-select');
+  const custom = document.getElementById('popup-pct-custom');
+  const pct = p.commission_pct;
+  if (pct != null && ['10','15','20'].includes(String(pct))) {
+    sel.value = String(pct); custom.style.display = 'none';
+  } else if (pct != null) {
+    sel.value = 'custom'; custom.style.display = ''; custom.value = pct;
+  } else {
+    sel.value = '20'; custom.style.display = 'none'; custom.value = '';
+  }
+  document.getElementById('popup-error').style.display = 'none';
+  popupCheckChanged();
+  document.getElementById('popup-overlay').style.display = '';
+  document.getElementById('popup-modal').style.display = '';
+}
+function closeProductPopup() {
+  document.getElementById('popup-overlay').style.display = 'none';
+  document.getElementById('popup-modal').style.display = 'none';
+  _popupProd = null;
+}
+function popupCheckChanged() {
+  document.getElementById('popup-pct-row').style.display =
+    document.getElementById('popup-check').checked ? '' : 'none';
+}
+function popupPctChanged() {
+  const isCustom = document.getElementById('popup-pct-select').value === 'custom';
+  const custom = document.getElementById('popup-pct-custom');
+  custom.style.display = isCustom ? '' : 'none';
+  if (isCustom) custom.focus();
+}
+async function saveProductPopup() {
+  if (!_popupProd) return;
+  const popup = document.getElementById('popup-check').checked;
+  let pct = document.getElementById('popup-pct-select').value;
+  if (pct === 'custom') pct = document.getElementById('popup-pct-custom').value;
+  const errEl = document.getElementById('popup-error');
+  if (popup && !(parseFloat(pct) >= 0 && parseFloat(pct) < 100)) {
+    errEl.textContent = 'Commission invalide — entre 0 et 100 %.';
+    errEl.style.display = ''; return;
+  }
+  const btn = document.getElementById('popup-save');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const r = await fetch('/api/popup-flag', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name: _popupProd.name, popup, commission_pct: parseFloat(pct)})
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    closeProductPopup();
+    loadData(true);   // recharge : badge, marge, COGS et EBITDA reflètent le flag
+  } catch (e) {
+    errEl.textContent = 'Erreur : ' + e.message;
+    errEl.style.display = '';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}

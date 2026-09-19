@@ -453,6 +453,7 @@ def _fetch_catalog():
                 "category_id":   cat_id,
                 "category_name": cat_names.get(str(cat_id), ""),
                 "price":         gross,
+                "net":           net,
                 "cost":          supply,
                 "margin_pct":    margin_pct,
             }
@@ -606,7 +607,7 @@ def daily_breakdown(docs):
 
 
 def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_agg=None,
-                    open_days_override=None):
+                    open_days_override=None, revenue_deduct=None):
     """
     P&L entièrement en HT (hors taxes) — pour 1 jour ou une période.
     CA HT  = amount_net  (Vendus)
@@ -708,6 +709,14 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
     if cogs_agg is not None:
         # Agrégats pré-calculés (cache daily_summary) — pas besoin des items
         cogs_ht, covered_ht, items_ht = cogs_agg
+
+    # Recette encaissée pour le compte d'un tiers (produits popup) : elle transite
+    # par la caisse et par la faturação, mais elle n'est pas à nous. Elle sort donc
+    # du CA de gestion — seule la commission reste, injectée comme marge pure par
+    # l'appelant. La trésorerie et la page comptable, elles, gardent le brut.
+    if revenue_deduct:
+        ca_ttc = max(0.0, ca_ttc - float(revenue_deduct[0] or 0))
+        ca_ht  = max(0.0, ca_ht  - float(revenue_deduct[1] or 0))
 
     tva_col = round(ca_ttc - ca_ht, 2)
 
@@ -950,6 +959,8 @@ def product_stats_from_docs(docs_with_items, catalog):
             "qty": int(stats["qty"]), "days_sold": days_sold,
             "avg_day": round(rev_ttc / days_sold, 2) if days_sold else 0,
             "cost_ht": cost_ht, "margin_pct": margin,
+            "popup": bool((cat_info or {}).get("popup")),
+            "commission_pct": (cat_info or {}).get("commission_pct"),
         })
     return sorted(result, key=lambda x: x["revenue"], reverse=True)
 

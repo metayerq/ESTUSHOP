@@ -70,11 +70,41 @@ def test_la_garde_est_branchee_dans_app():
     s'assure que `/api/data` le porte réellement — sinon la règle serait juste et personne pour
     l'appliquer, le trou classique de ce dépôt.
     """
+    import ast
     import inspect
+    import textwrap
+
     src = inspect.getsource(app.api_data)
     assert "comp_exists" in src, "la garde a disparu de /api/data"
+
     # Elle doit conditionner l'ÉCRITURE du cache, pas seulement l'affichage.
-    assert "_ensure_summaries(comp_from, comp_to, catalog) if comp_exists" in src
+    #
+    # ⚠️ ON INTERROGE L'ARBRE, PAS LE TEXTE. La première version exigeait la ligne exacte
+    # `_ensure_summaries(comp_from, comp_to, catalog) if comp_exists`. Une fusion a déplacé cet
+    # appel vers une variable réutilisée — la garde était toujours là, correcte, et le test
+    # tombait quand même. Un test qui impose une FORMULATION plutôt qu'une PROPRIÉTÉ finit par
+    # être « réparé » en recopiant la formulation, ce qui le vide de son sens.
+    arbre = ast.parse(textwrap.dedent(src))
+
+    def porte_la_garde(noeud):
+        return any(isinstance(n, ast.Name) and n.id == "comp_exists"
+                   for n in ast.walk(noeud))
+
+    # Chaque ternaire et chaque `if` du corps, avec ce qu'ils gardent.
+    gardes = [n for n in ast.walk(arbre)
+              if isinstance(n, (ast.IfExp, ast.If)) and porte_la_garde(n.test)]
+
+    appels = [n for n in ast.walk(arbre)
+              if isinstance(n, ast.Call)
+              and getattr(n.func, "id", None) == "_ensure_summaries"
+              and [getattr(a, "id", None) for a in n.args[:2]] == ["comp_from", "comp_to"]]
+
+    assert appels, "plus aucun appel `_ensure_summaries(comp_from, comp_to, …)` dans /api/data"
+    for appel in appels:
+        assert any(appel in ast.walk(g) for g in gardes), (
+            f"l'appel `_ensure_summaries` de la ligne {appel.lineno} de /api/data n'est plus "
+            "gardé par `comp_exists` : il figera des journées antérieures à l'ouverture du café"
+        )
     # Et la lecture Vendus. ⚠️ On cible `_load_comp` NOMMÉMENT : chercher « if not comp_exists »
     # dans toute la fonction passait aussi sur la ligne qui efface le libellé, si bien que
     # débrancher la lecture laissait le test vert. Une assertion qui ne peut pas tomber ne

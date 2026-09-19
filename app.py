@@ -337,7 +337,7 @@ app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
 # Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260807a"
+ASSET_VERSION = "20260916d"
 
 @app.context_processor
 def _inject_asset_version():
@@ -351,6 +351,9 @@ def _inject_asset_version():
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
 INVESTOR_PASSWORD  = os.environ.get("INVESTOR_PASSWORD", "")
 STAFF_PASSWORD     = os.environ.get("STAFF_PASSWORD", "")
+# ACCOUNTANT_PASSWORD → accès à la SEULE page /contabilidade (ventes, comissões,
+# gorjetas par mois + export Excel). Le rôle ne voit rien d'autre de l'app.
+ACCOUNTANT_PASSWORD = os.environ.get("ACCOUNTANT_PASSWORD", "")
 AUTH_SECRET        = os.environ.get("AUTH_SECRET", DASHBOARD_PASSWORD)
 
 # Chemins autorisés pour le rôle staff : COGS et Stock (recettes + appro).
@@ -364,6 +367,9 @@ STAFF_ALLOWED_PREFIXES = (
 # Chemins fermés au rôle investisseur : détail dépenses, congés staff,
 # réconciliation (montre l'écart de caisse). Le reste (dashboard, COGS,
 # stock, coûts) reste accessible en lecture seule.
+# Rôle comptable : uniquement sa page et son API (+ déconnexion).
+ACCOUNTANT_ALLOWED_PREFIXES = ("/contabilidade", "/api/contabilidade", "/logout", "/static/")
+
 INVESTOR_BLOCKED_PREFIXES = (
     "/expenses", "/api/expenses",
     "/holidays", "/api/time_off",
@@ -381,7 +387,7 @@ def _auth_token(role):
                     hashlib.sha256).hexdigest()
 
 def _current_role():
-    """'admin', 'investor', 'staff' ou None."""
+    """'admin', 'investor', 'staff', 'accountant' ou None."""
     cookie = request.cookies.get("estu_auth", "")
     if not cookie:
         return None
@@ -391,6 +397,8 @@ def _current_role():
         return "investor"
     if STAFF_PASSWORD and hmac.compare_digest(cookie, _auth_token("staff")):
         return "staff"
+    if ACCOUNTANT_PASSWORD and hmac.compare_digest(cookie, _auth_token("accountant")):
+        return "accountant"
     return None
 
 @app.before_request
@@ -434,6 +442,14 @@ def _require_auth():
         if request.path.startswith("/api/"):
             return jsonify({"error": "restricted — recipes only"}), 403
         return redirect("/cogs")
+    # Comptable : la page /contabilidade et rien d'autre, en lecture seule.
+    if role == "accountant":
+        if not request.path.startswith(ACCOUNTANT_ALLOWED_PREFIXES):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "restricted — accounting only"}), 403
+            return redirect("/contabilidade")
+        if request.method not in ("GET", "HEAD"):
+            return jsonify({"error": "read-only"}), 403
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -447,8 +463,10 @@ def login():
             role = "investor"
         elif STAFF_PASSWORD and hmac.compare_digest(pw, STAFF_PASSWORD):
             role = "staff"
+        elif ACCOUNTANT_PASSWORD and hmac.compare_digest(pw, ACCOUNTANT_PASSWORD):
+            role = "accountant"
         if role:
-            dest = "/cogs" if role == "staff" else "/"
+            dest = {"staff": "/cogs", "accountant": "/contabilidade"}.get(role, "/")
             resp = make_response(redirect(dest))
             resp.set_cookie("estu_auth", _auth_token(role),
                             max_age=30*24*3600, httponly=True,
@@ -672,7 +690,7 @@ def api_data():
         fut_docs    = pool.submit(_load_docs_main)
         fut_today   = pool.submit(_load_today_docs)
         fut_comp    = pool.submit(_load_comp)
-        fut_catalog = pool.submit(get_catalog)
+        fut_catalog = pool.submit(_catalog)
         fut_hm      = pool.submit(_load_heatmap_payload)
         fut_tlw     = pool.submit(_load_today_lastweek)
 
@@ -721,15 +739,38 @@ def api_data():
             heatmap_payload = None
 
     today_iso = today_real.isoformat()
-    today_sum = _summarize_docs_items(today_docs or [], catalog)
+    # ⚠️ TOUTE LIGNE DE RÉSUMÉ SE CONSTRUIT AVEC LE CATALOGUE DE BASE.
+    # Bâtie avec l'overlay popup, elle porterait déjà le coût du chef ; l'ajout
+    # à la lecture le comptait alors deux fois — c'est ce qui avait donné une
+    # couverture de 117 % et un point mort du double. Le popup entre toujours
+    # par _popup_adjust_rows, jamais par le catalogue qui sert au calcul.
+    base_catalog   = get_catalog() or {}
+    today_sum_base = _summarize_docs_items(today_docs or [], base_catalog)
+    today_sum      = _popup_adjust_rows([dict(today_sum_base)])[0]
+    # Lignes de la période de comparaison : le CA comparé doit être net du popup
+    # lui aussi, sinon la variation compare des périmètres différents.
+    try:
+        # ⚠️ `comp_exists` ET PAS SEULEMENT `comp_from <= comp_to`. C'est par ici que partaient
+        # les écritures de jours ANTÉRIEURS À L'OUVERTURE DU CAFÉ : `_ensure_summaries` fige une
+        # ligne pour chaque jour manquant de la plage qu'on lui donne, sans savoir que le café
+        # n'existait pas encore. Une plage valide n'est pas une plage réelle.
+        comp_rows_for_stats = (_ensure_summaries(comp_from, comp_to, catalog)
+                               if comp_exists else [])
+    except Exception:
+        comp_rows_for_stats = []
     ts        = calc_stats(today_docs or [])   # CA/nb du jour — sparkline & WoW
 
     # ── Agrégats item-level : cache pour les jours passés + live aujourd'hui ──
     if is_single:
-        day_summary = today_sum if is_today_single else _summarize_docs_items(docs_main, catalog)
-        # Cache opportuniste : une journée passée consultée = summary persisté
-        if to_date < today_real and catalog:
-            _upsert_summary(to_date.isoformat(), day_summary)
+        if is_today_single:
+            day_base, day_summary = today_sum_base, today_sum
+        else:
+            day_base    = _summarize_docs_items(docs_main, base_catalog)
+            day_summary = _popup_adjust_rows([dict(day_base)])[0]
+        # Cache opportuniste : une journée passée consultée = summary persisté.
+        # On écrit la version NEUTRE, jamais celle vue à l'écran.
+        if to_date < today_real and base_catalog:
+            _upsert_summary(to_date.isoformat(), day_base)
         period_rows = [{"day": to_date.isoformat(), **day_summary}]
     else:
         past_to     = min(to_date, today_real - timedelta(1))
@@ -812,8 +853,8 @@ def api_data():
         "comp_label":    comp_label,
         "comp_sofar":    comp_is_sofar,
         # Stats globales
-        "today":         calc_stats(docs_main),
-        "yesterday":     calc_stats(docs_comp),
+        "today":         _stats_net_popup(calc_stats(docs_main), period_rows),
+        "yesterday":     _stats_net_popup(calc_stats(docs_comp), comp_rows_for_stats),
         "seuil":         SEUIL_TRANSACTIONS,
         # Graphe temporel
         "daily":         daily_breakdown(docs_main),
@@ -838,9 +879,42 @@ def api_data():
     }
 
     # ── Économie : COGS depuis le cache (multi-jours) ou les items (jour) ─────
-    result["economics"] = daily_economics(docs_main, catalog, n_days,
-                                           from_date=from_date, to_date=to_date,
-                                           cogs_agg=cogs_agg)
+    # ── L'économie de la période s'arrête à HIER ─────────────────────────────
+    # Le jour courant apporte une recette partielle mais une journée ENTIÈRE de
+    # charges : à 9 h, un mois à 3 jours ouvrés imputait 189 € de charges à un
+    # jour qui n'avait encore rien vendu, et l'EBITDA du mois basculait dans le
+    # rouge pour cette seule raison. Les KPI du jour vivent dans leur propre
+    # bandeau ; ici on ne compare que des journées terminées.
+    # Un jour isolé (« Today ») garde son économie : l'exclure ne laisserait rien.
+    # Le choix reste réversible : `incl_today=1` remet la journée en cours dans
+    # le calcul, pour qui veut lire la période telle qu'elle est à l'instant.
+    want_today = request.args.get("incl_today") == "1"
+    eco_from, eco_to = from_date, to_date
+    eco_docs, eco_agg, eco_rows = docs_main, cogs_agg, period_rows
+    excludes_today = False
+    if (not want_today and not is_single
+            and from_date <= today_real <= to_date and from_date < today_real):
+        eco_to = today_real - timedelta(1)
+        eco_rows = [r for r in period_rows if r["day"] != today_iso]
+        eco_agg = (round(sum(r.get("cogs_ht",    0) for r in eco_rows), 2),
+                   round(sum(r.get("covered_ht", 0) for r in eco_rows), 2),
+                   round(sum(r.get("items_ht",   0) for r in eco_rows), 2))
+        eco_docs = [d for d in docs_main
+                    if (d.get("date") or d.get("local_time", ""))[:10] != today_iso]
+        excludes_today = True
+
+    eco_pop = _popup_split(eco_rows if excludes_today else period_rows)
+    result["economics"] = _apply_commissions(
+        daily_economics(eco_docs, catalog, (eco_to - eco_from).days + 1,
+                        from_date=eco_from, to_date=eco_to,
+                        cogs_agg=eco_agg,
+                        revenue_deduct=(eco_pop["chef_ttc"], eco_pop["chef_ht"])),
+        eco_from.isoformat(), eco_to.isoformat(), popup_com=eco_pop["com_ht"])
+    result["economics"]["excludes_today"] = excludes_today
+    # Le bouton n'a de sens que sur une période multi-jours contenant aujourd'hui.
+    result["economics"]["today_toggleable"] = (
+        not is_single and from_date <= today_real <= to_date and from_date < today_real)
+    result["economics"]["popup_chef_ttc"] = eco_pop["chef_ttc"]
     if result["economics"].get("charges_source") == "indisponible":
         warnings.append("Supabase costs unreachable — costs and break-even not computed")
 
@@ -850,10 +924,12 @@ def api_data():
     # donc cette évolution reflète surtout les changements de MARGE (mix/prix).
     try:
         comp_days = (comp_to - comp_from).days + 1
-        # ⚠️ `comp_exists` ET PAS SEULEMENT `comp_from <= comp_to`. C'est ici que partaient les
-        # écritures de jours antérieurs au café : `_ensure_summaries` fige une ligne pour chaque
-        # jour manquant de la plage qu'on lui donne, sans savoir que le café n'existait pas.
-        comp_rows = _ensure_summaries(comp_from, comp_to, catalog) if comp_exists else []
+        # ⚠️ ON RÉUTILISE, ON NE RECALCULE PAS. `comp_rows_for_stats` porte déjà ces lignes, et
+        # sa garde `comp_exists` est ce qui empêche d'écrire des journées antérieures à
+        # l'ouverture du café. Rappeler `_ensure_summaries` ici referait le travail — et, si la
+        # garde venait à diverger entre les deux endroits, la comparaison et les statistiques ne
+        # parleraient plus de la même période sans que rien ne le signale.
+        comp_rows = comp_rows_for_stats
         if comp_rows:
             comp_cogs_agg = (
                 round(sum(r.get("cogs_ht",    0) for r in comp_rows), 2),
@@ -1082,9 +1158,17 @@ def api_cron_refresh():
             hm_warm = _warm_heatmap_cache()
         except Exception:
             pass
+        # Visites carte : hier + aujourd'hui, idempotent (upsert sur pid).
+        visits = None
+        if _rm.enabled():
+            try:
+                td = today_lisbon()
+                visits = _card_visits_sync(td - timedelta(1), td)
+            except Exception:
+                pass
         return jsonify({"ok": True, "day": today_lisbon().isoformat(),
                         "docs_cached": len(docs), "heatmap_warm": hm_warm,
-                        "at": _utc_iso()})
+                        "card_visits": visits, "at": _utc_iso()})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -1151,11 +1235,11 @@ def api_summary_audit():
 def api_summary_rebuild():
     """Recalcule le cache daily_summary (après changement de prix d'achat/recettes).
     Body optionnel : {"from": "YYYY-MM-DD", "to": "YYYY-MM-DD"} — défaut : tout l'historique."""
-    from vendus import get_documents_with_items, get_catalog as _gc
+    from vendus import get_documents_with_items
     data      = request.get_json(silent=True) or {}
     from_iso  = data.get("from", OPENING_DAY)
     to_iso    = data.get("to", (today_lisbon() - timedelta(1)).isoformat())
-    catalog   = _gc()
+    catalog   = get_catalog() or {}
     if not catalog:
         return jsonify({"ok": False, "error": "catalogue Vendus indisponible"}), 502
     docs = get_documents_with_items(from_iso, to_iso)
@@ -1380,7 +1464,7 @@ def api_cashflow():
     OPEN_DATE = date(2026, 5, 27)
     to_date   = today_lisbon()
 
-    catalog = get_catalog() or {}
+    catalog = _catalog()
     rows    = _ensure_summaries(OPEN_DATE, to_date, catalog)
 
     # Le jour courant est ajouté EN MÉMOIRE, jamais écrit : _ensure_summaries refuse désormais
@@ -1410,19 +1494,28 @@ def api_cashflow():
         if e.get("category") != "works":
             exp_by_month_excl[mk] = exp_by_month_excl.get(mk, 0.0) + amt
 
-    months = sorted(set(rev_by_month) | set(exp_by_month))
+    com_by_month = {}
+    for c in _commissions_rows():
+        mk = (c.get("date") or "")[:7]
+        if mk:
+            com_by_month[mk] = com_by_month.get(mk, 0.0) + float(c.get("amount") or 0)
+
+    months = sorted(set(rev_by_month) | set(exp_by_month) | set(com_by_month))
     cum = cum_excl = 0.0
     out = []
     for mk in months:
         rev      = round(rev_by_month.get(mk, 0.0), 2)
+        com      = round(com_by_month.get(mk, 0.0), 2)
+        cash_in  = round(rev + com, 2)
         exp      = round(exp_by_month.get(mk, 0.0), 2)
         exp_excl = round(exp_by_month_excl.get(mk, 0.0), 2)
-        net      = round(rev - exp, 2)
-        net_excl = round(rev - exp_excl, 2)
+        net      = round(cash_in - exp, 2)
+        net_excl = round(cash_in - exp_excl, 2)
         cum      += net
         cum_excl += net_excl
         out.append({
             "month": mk, "revenue": rev,
+            "commissions": com, "cash_in": cash_in,
             "expenses": exp, "expenses_excl_capex": exp_excl,
             "net": net, "net_excl_capex": net_excl,
             "cum_net": round(cum, 2), "cum_net_excl_capex": round(cum_excl, 2),
@@ -1453,7 +1546,7 @@ def api_transactions_daily():
     # café qui n'existe plus. Le cache reste construit depuis l'ouverture : c'est la FENÊTRE
     # D'ANALYSE qui commence plus tard, et la page l'annonce.
     debut   = TX_ANALYSIS_START
-    catalog = get_catalog() or {}
+    catalog = _catalog()
     rows    = _ensure_summaries(debut, today_real - timedelta(1), catalog)
 
     today_docs = _get_today_docs_cached()
@@ -2129,6 +2222,207 @@ def api_tpa_upload():
         return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 400
 
 
+# ── Página da contabilista ────────────────────────────────────────────────────
+# Ce que la comptable demande chaque mois : ventes facturées, comissões du
+# terminal Revolut, gorjetas. Rien d'autre. Accès par ACCOUNTANT_PASSWORD.
+#
+# Deux bases de dates coexistent et ne doivent pas être confondues :
+#   · gorjetas/TPA  → date de CAPTURE (le jour où le client a payé)
+#   · comissões     → la FACTURE mensuelle Revolut, émise sur base règlement.
+# On affiche la facture officielle quand elle existe (c'est la pièce comptable),
+# et à défaut le cumul des commissions par capture, clairement étiqueté.
+
+MESES_PT = {1:"Janeiro",2:"Fevereiro",3:"Março",4:"Abril",5:"Maio",6:"Junho",
+            7:"Julho",8:"Agosto",9:"Setembro",10:"Outubro",11:"Novembro",12:"Dezembro"}
+
+def _fee_invoices():
+    """{'YYYY-MM': {fees, transactions, gross, invoice}} — factures Revolut."""
+    try:
+        rows = _supa_get("revolut_fee_invoices", {"order": "month.asc"})
+    except Exception:
+        rows = None
+    return {r["month"]: r for r in rows} if isinstance(rows, list) and rows else {}
+
+# Mai 2026 n'a aucune faturação Vendus : jusqu'au début juin les commandes
+# passaient par le POS Revolut (non certifié AT) et ont été ressaisies dans
+# Vendus EN JUIN. Isolé, mai affiche donc un numerário négatif et juin un
+# numerário gonflé du même montant. Les deux mois ne sont lisibles qu'ensemble.
+MESES_FUNDIDOS = {"2026-05": "2026-06"}
+LABELS_FUNDIDOS = {"2026-06": "Maio–Junho 2026"}
+
+def _contabilidade_months():
+    # ⚠️ L'HEURE DE LISBONNE, PAS CELLE DU SERVEUR. Ce `today` décide quel jour est lu en cache
+    # et quel jour est lu en direct. Vercel tourne en UTC : de minuit à une heure du matin, l'été
+    # portugais, la date UTC est encore CELLE DE LA VEILLE — les ventes de la nuit seraient
+    # rangées sous le mauvais jour, donc parfois sous le mauvais MOIS, sur la page que le
+    # comptable recopie. Repéré par le test de fuseau au moment de la fusion.
+    today = today_lisbon()
+    # Ventes facturées Vendus, par jour (cache journalier + jour courant en live)
+    vendus_day = {}
+    try:
+        for r in _fetch_summaries(OPENING_DAY, (today - timedelta(1)).isoformat()):
+            vendus_day[r["day"]] = float(r.get("ca_ttc") or 0)
+    except Exception:
+        pass
+    try:
+        td = _get_today_docs_cached()
+        if td:
+            vendus_day[today.isoformat()] = round(
+                sum(float(d.get("amount_gross") or 0) for d in td), 2)
+    except Exception:
+        pass
+
+    rev = _load_revolut_days()
+    invoices = _fee_invoices()
+    months = {}
+    for day in sorted(set(vendus_day) | set(rev)):
+        m = MESES_FUNDIDOS.get(day[:7], day[:7])
+        r = rev.get(day) or {}
+        e = months.setdefault(m, {"days": [], "vendas": 0.0, "tpa": 0.0,
+                                  "gorjetas": 0.0, "cartao": 0.0,
+                                  "comissoes": 0.0, "liquido": 0.0, "tx": 0})
+        vendas = round(vendus_day.get(day, 0.0), 2)
+        tpa    = round(float(r.get("gross") or 0), 2)
+        gorj   = round(float(r.get("tips") or 0), 2)
+        # Vendas por cartão = ce que le client a payé pour des VENTES : le TPA
+        # brut moins les gorjetas, qui transitent par le terminal sans être de
+        # la faturação. Le numerário reste à la comptable — on lui donne les
+        # bases justes, pas la conclusion.
+        cartao = round(tpa - gorj, 2)
+        row = {"day": day,
+               "vendas":    vendas,
+               "tpa":       tpa,
+               "gorjetas":  gorj,
+               "cartao":    cartao,
+               "comissoes": round(float(r.get("fees") or 0), 2),
+               "liquido":   round(float(r.get("net") or 0), 2),
+               "tx":        int(r.get("tx") or 0)}
+        e["days"].append(row)
+        for k in ("vendas", "tpa", "gorjetas", "cartao",
+                  "comissoes", "liquido", "tx"):
+            e[k] += row[k]
+
+    out = []
+    for m in sorted(months):
+        e = months[m]
+        # Un mois fusionné agrège aussi les factures de commissions des mois
+        # sources — sinon août de mai passerait à la trappe.
+        srcs = [m] + [s for s, d in MESES_FUNDIDOS.items() if d == m]
+        invs = [invoices[s] for s in srcs if invoices.get(s)]
+        inv = invs[0] if len(invs) == len(srcs) else None
+        y, mm = int(m[:4]), int(m[5:7])
+        out.append({
+            "month": m,
+            "label": LABELS_FUNDIDOS.get(m) or f"{MESES_PT[mm]} {y}",
+            "vendas":    round(e["vendas"], 2),
+            "tpa":       round(e["tpa"], 2),
+            "gorjetas":  round(e["gorjetas"], 2),
+            "cartao":    round(e["cartao"], 2),
+            # Comissões : la facture fait foi ; sinon cumul par capture (provisoire)
+            "comissoes": round(sum(float(i["fees"]) for i in invs)
+                               if inv else e["comissoes"], 2),
+            "comissoes_fonte": "fatura" if inv else "provisorio",
+            "fatura_num": " + ".join(i.get("invoice") or "" for i in invs) if inv else "",
+            "liquido":   round(e["liquido"], 2),
+            "tx":        e["tx"],
+            "days":      e["days"],
+        })
+    return out
+
+@app.route("/contabilidade")
+def contabilidade_page():
+    if _current_role() not in ("accountant", "admin"):
+        return redirect("/login")
+    return render_template("contabilidade.html")
+
+@app.route("/api/contabilidade/data")
+def api_contabilidade_data():
+    if _current_role() not in ("accountant", "admin"):
+        return jsonify({"error": "unauthorized"}), 403
+    # « Généré le » : l'heure que le comptable lit sur sa feuille, donc l'heure de Lisbonne.
+    return jsonify({"months": _contabilidade_months(),
+                    "gerado": now_lisbon().strftime("%d/%m/%Y %H:%M")})
+
+@app.route("/api/contabilidade/excel")
+def api_contabilidade_excel():
+    """Export .xlsx : une feuille de synthèse + une feuille par mois (détail
+    journalier). Un seul mois si ?month=YYYY-MM."""
+    if _current_role() not in ("accountant", "admin"):
+        return jsonify({"error": "unauthorized"}), 403
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill
+    except Exception:
+        return jsonify({"error": "openpyxl indisponível"}), 500
+    import io
+
+    months = _contabilidade_months()
+    want = request.args.get("month")
+    if want:
+        months = [m for m in months if m["month"] == want]
+        if not months:
+            return jsonify({"error": "mês sem dados"}), 404
+
+    EUR = '#,##0.00\\ "€"'
+    bold = Font(bold=True)
+    head_fill = PatternFill("solid", fgColor="EDEAE3")
+
+    def _head(ws, cols, widths):
+        ws.append(cols)
+        for i, w in enumerate(widths, 1):
+            ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
+            c = ws.cell(row=1, column=i)
+            c.font = bold; c.fill = head_fill
+            c.alignment = Alignment(horizontal="center")
+
+    wb = Workbook()
+    ws = wb.active; ws.title = "Resumo"
+    _head(ws, ["Mês", "Vendas faturadas", "Vendas por cartão",
+               "TPA bruto", "Gorjetas", "Comissões Revolut", "Origem comissões",
+               "Líquido creditado", "Transações"],
+          [16, 18, 18, 14, 12, 18, 17, 18, 12])
+    for m in months:
+        ws.append([m["label"], m["vendas"], m["cartao"],
+                   m["tpa"], m["gorjetas"], m["comissoes"],
+                   "Fatura " + m["fatura_num"] if m["comissoes_fonte"] == "fatura" else "Provisório",
+                   m["liquido"], m["tx"]])
+    tot_row = ws.max_row + 1
+    S = lambda k: sum(m[k] for m in months)
+    ws.append(["TOTAL", S("vendas"), S("cartao"), S("tpa"),
+               S("gorjetas"), S("comissoes"), "", S("liquido"), S("tx")])
+    for c in ws[tot_row]:
+        c.font = bold
+    for row in ws.iter_rows(min_row=2, min_col=2, max_col=6):
+        for c in row: c.number_format = EUR
+    for row in ws.iter_rows(min_row=2, min_col=8, max_col=8):
+        for c in row: c.number_format = EUR
+
+    for m in months:
+        s = wb.create_sheet(m["label"][:31])
+        _head(s, ["Data", "Vendas faturadas", "Vendas por cartão",
+                  "TPA bruto", "Gorjetas", "Comissões (captura)",
+                  "Líquido creditado", "Transações"],
+              [14, 18, 18, 14, 12, 19, 18, 12])
+        for d in m["days"]:
+            s.append([d["day"], d["vendas"], d["cartao"],
+                      d["tpa"], d["gorjetas"], d["comissoes"], d["liquido"], d["tx"]])
+        r = s.max_row + 1
+        s.append(["TOTAL", m["vendas"], m["cartao"], m["tpa"],
+                  m["gorjetas"], sum(d["comissoes"] for d in m["days"]),
+                  m["liquido"], m["tx"]])
+        for c in s[r]: c.font = bold
+        for row in s.iter_rows(min_row=2, min_col=2, max_col=7):
+            for c in row: c.number_format = EUR
+
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    name = f"contabilidade_{want or 'todos_os_meses'}.xlsx"
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"] = ("application/vnd.openxmlformats-"
+                                    "officedocument.spreadsheetml.sheet")
+    resp.headers["Content-Disposition"] = f'attachment; filename="{name}"'
+    return resp
+
+
 @app.route("/api/cash")
 def api_cash():
     """Espèces (Dinheiro) facturées dans Vendus, par jour depuis l'ouverture.
@@ -2224,6 +2518,7 @@ def api_expenses_bulk():
 
 # ── Supabase ──────────────────────────────────────────────────────────────────
 import requests as _req
+import revolut_merchant as _rm
 
 SUPA_URL = os.environ.get("SUPABASE_URL", "")
 SUPA_KEY = os.environ.get("SUPABASE_KEY", "")
@@ -2298,6 +2593,495 @@ def _supa_delete(table, col, val):
                     headers=_supa_headers(),
                     params={col: f"eq.{val}"})
     return r.ok
+
+# ── Visites carte (Revolut Merchant) : clients récurrents ────────────────────
+# Voir revolut_merchant.py pour ce qu'est une empreinte et ce qu'elle ne dit pas.
+
+def _supa_get_all(table, params=None, page=1000):
+    """PostgREST plafonne à 1 000 lignes par réponse : on pagine par offset."""
+    out, off = [], 0
+    while True:
+        rows = _supa_get(table, {**(params or {}), "limit": page, "offset": off})
+        if not isinstance(rows, list):
+            break
+        out.extend(rows)
+        if len(rows) < page:
+            break
+        off += page
+    return out
+
+def _card_visits_sync(from_day, to_day):
+    """Tire les visites d'une plage et les écrit (upsert sur pid : rejouable)."""
+    rows = _rm.fetch_range(from_day, to_day)
+    for i in range(0, len(rows), 500):
+        ok, err = _supa_upsert("card_visits", rows[i:i + 500])
+        if not ok:
+            raise RuntimeError(err or "upsert card_visits failed")
+    return len(rows)
+
+@app.route("/api/card-visits/sync", methods=["POST"])
+def api_card_visits_sync():
+    """Reconstruction d'une plage — admin. Plafonnée à 10 jours par appel pour
+    tenir dans le timeout serverless ; le client enchaîne les plages."""
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    if not _rm.enabled():
+        return jsonify({"error": "REVOLUT_MERCHANT_KEY absente"}), 503
+    data = request.get_json(silent=True) or {}
+    try:
+        f = date.fromisoformat(data.get("from", ""))
+        to = date.fromisoformat(data.get("to", ""))
+    except ValueError:
+        return jsonify({"error": "from/to (YYYY-MM-DD) requis"}), 400
+    to = min(to, f + timedelta(9))
+    try:
+        n = _card_visits_sync(f, to)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+    return jsonify({"ok": True, "from": f.isoformat(), "to": to.isoformat(), "visits": n})
+
+def _load_card_visits():
+    return _supa_get_all("card_visits",
+                         {"select": "day,ts,fp,amount", "order": "ts.asc"})
+
+def _at_risk(rows, today_iso):
+    """Habitués (≥ 4 visites) qu'on ne voit plus.
+
+    Le seuil est PERSONNEL : 3 × l'intervalle médian de la carte entre deux
+    jours de visite. Un client hebdomadaire est à risque après trois semaines,
+    un quotidien après quelques jours — un seuil fixe traiterait les deux
+    pareil. Plancher à 7 jours : le café ferme deux jours par semaine, un
+    quotidien absent un mardi n'est pas parti.
+    """
+    from collections import defaultdict
+    from datetime import date as _d
+    per = defaultdict(list)
+    for r in rows:
+        per[r["fp"]].append(r)
+    today = _d.fromisoformat(today_iso)
+    regulars = at_risk = 0
+    lost_cents = 0
+    absent_days = []
+    for fp, vs in per.items():
+        if len(vs) < 4:
+            continue
+        regulars += 1
+        days = sorted({_d.fromisoformat(v["day"]) for v in vs})
+        gaps = sorted((b - a).days for a, b in zip(days, days[1:]))
+        median = gaps[len(gaps) // 2] if gaps else 7
+        threshold = max(7, 3 * median)
+        absent = (today - days[-1]).days
+        if absent > threshold:
+            at_risk += 1
+            lost_cents += sum(int(v.get("amount") or 0) for v in vs)
+            absent_days.append(absent)
+    return {"count": at_risk, "regulars": regulars,
+            "pct": round(at_risk / regulars * 100) if regulars else 0,
+            "revenue_hist": round(lost_cents / 100, 2),
+            "absent_median": sorted(absent_days)[len(absent_days) // 2] if absent_days else None,
+            "rule": "absent > max(7 j, 3 × intervalle médian)"}
+
+def _returning_metrics(from_iso, to_iso):
+    """Ce que les cartes disent de la fidélité, sur une période et depuis
+    l'ouverture. « Récurrente » = carte déjà vue AVANT ce ticket, sur tout
+    l'historique — pas seulement dans la période."""
+    rows = _load_card_visits()
+    if not rows:
+        return {"enabled": _rm.enabled(), "empty": True}
+    from collections import Counter, defaultdict
+    seen, first_seen = set(), {}
+    per_fp = Counter()
+    period = []
+    monthly = defaultdict(lambda: [0, 0])
+    for r in rows:
+        fp, day = r["fp"], r["day"]
+        known = fp in seen
+        m = day[:7]
+        monthly[m][0] += 1
+        if known:
+            monthly[m][1] += 1
+        if from_iso <= day <= to_iso:
+            period.append((fp, known))
+        seen.add(fp)
+        first_seen.setdefault(fp, day)
+        per_fp[fp] += 1
+
+    n = len(period)
+    ret = sum(1 for _, k in period if k)
+    cards = {fp for fp, _ in period}
+    known_cards = {fp for fp in cards if first_seen[fp] < from_iso}
+    regulars = {fp for fp in cards if per_fp[fp] >= 4}
+    reg_visits = sum(1 for fp, _ in period if fp in regulars)
+    total = len(rows)
+    buckets = Counter("1" if c == 1 else "2-3" if c <= 3 else "4-9" if c <= 9 else "10+"
+                      for c in per_fp.values())
+    return {
+        "enabled": True, "empty": False,
+        "period": {"visits": n, "returning": ret,
+                   "returning_pct": round(ret / n * 100, 1) if n else None,
+                   "cards": len(cards), "known_cards": len(known_cards),
+                   "new_cards": len(cards) - len(known_cards),
+                   "regulars": len(regulars),
+                   "regulars_visit_pct": round(reg_visits / n * 100, 1) if n else None},
+        "all": {"visits": total, "cards": len(per_fp),
+                "repeat_cards": sum(1 for c in per_fp.values() if c >= 2),
+                "repeat_cards_pct": round(sum(1 for c in per_fp.values() if c >= 2)
+                                          / len(per_fp) * 100, 1),
+                "buckets": {k: buckets.get(k, 0) for k in ("1", "2-3", "4-9", "10+")},
+                "since": rows[0]["day"], "until": rows[-1]["day"]},
+        "monthly": [{"month": m, "visits": v, "returning_pct": round(r / v * 100, 1)}
+                    for m, (v, r) in sorted(monthly.items())],
+        "at_risk": _at_risk(rows, today_lisbon().isoformat()),
+    }
+
+def _customers_detail():
+    """Les trois panneaux de /clientes : le moteur hebdomadaire, qui fait le
+    chiffre, le rythme et ceux qui décrochent. Tout depuis l'ouverture — les
+    cohortes et le Pareto n'ont pas de sens sur une semaine."""
+    rows = _load_card_visits()
+    if not rows:
+        return {"enabled": _rm.enabled(), "empty": True}
+    from collections import Counter, defaultdict
+    from datetime import date as _d
+    today = today_lisbon()
+
+    # Moteur : nouveaux vs récurrents par semaine ISO, 12 dernières
+    seen = set()
+    weeks = defaultdict(lambda: {"new": 0, "returning": 0, "start": None})
+    per = defaultdict(list)
+    for r in rows:
+        d = _d.fromisoformat(r["day"])
+        y, w, _ = d.isocalendar()
+        k = (y, w)
+        if weeks[k]["start"] is None:
+            weeks[k]["start"] = (d - timedelta(d.weekday())).isoformat()
+        weeks[k]["returning" if r["fp"] in seen else "new"] += 1
+        seen.add(r["fp"])
+        per[r["fp"]].append(r)
+    cur = today.isocalendar()[:2]
+    weekly = [{"week": f"S{w}", "start": v["start"], "new": v["new"],
+               "returning": v["returning"], "partial": (y, w) == cur}
+              for (y, w), v in sorted(weeks.items())][-12:]
+
+    # Qui fait le chiffre : par tranche de fréquence, avec CA et ticket
+    def bucket(c):
+        return "1" if c == 1 else "2-3" if c <= 3 else "4-9" if c <= 9 else "10+"
+    agg = {b: {"cards": 0, "visits": 0, "cents": 0} for b in ("1", "2-3", "4-9", "10+")}
+    for vs in per.values():
+        b = agg[bucket(len(vs))]
+        b["cards"] += 1
+        b["visits"] += len(vs)
+        b["cents"] += sum(int(v.get("amount") or 0) for v in vs)
+    total_cents = sum(b["cents"] for b in agg.values()) or 1
+    types = [{"type": k, "cards": b["cards"], "visits": b["visits"],
+              "revenue": round(b["cents"] / 100, 2),
+              "revenue_pct": round(b["cents"] / total_cents * 100, 1),
+              "ticket": round(b["cents"] / b["visits"] / 100, 2) if b["visits"] else None}
+             for k, b in agg.items()]
+    rev_sorted = sorted((sum(int(v.get("amount") or 0) for v in vs) for vs in per.values()),
+                        reverse=True)
+    top20 = int(len(rev_sorted) * 0.2)
+    pareto_top20_pct = round(sum(rev_sorted[:top20]) / total_cents * 100)
+
+    # Rythme : jours entre deux visites (cartes revenues)
+    gaps = []
+    for vs in per.values():
+        days = sorted({_d.fromisoformat(v["day"]) for v in vs})
+        gaps += [(b - a).days for a, b in zip(days, days[1:])]
+    gaps.sort()
+    hist = Counter("1-3" if g <= 3 else "4-7" if g <= 7 else "8-14" if g <= 14
+                   else "15-30" if g <= 30 else "30+" for g in gaps)
+    rhythm = {"intervals": len(gaps),
+              "median": gaps[len(gaps) // 2] if gaps else None,
+              "q1": gaps[len(gaps) // 4] if gaps else None,
+              "q3": gaps[3 * len(gaps) // 4] if gaps else None,
+              "hist": [{"bucket": k, "n": hist.get(k, 0)}
+                       for k in ("1-3", "4-7", "8-14", "15-30", "30+")]}
+
+    # Cohortes : mois de première visite → % revu en M+1…M+4. Un mois qui
+    # n'a pas commencé vaut None ; le mois en cours est annoncé partiel.
+    def _add_months(ym, n):
+        y, m = int(ym[:4]), int(ym[5:7]) - 1 + n
+        return f"{y + m // 12}-{m % 12 + 1:02d}"
+    first_month, months_of = {}, defaultdict(set)
+    for r in rows:
+        m = r["day"][:7]
+        first_month.setdefault(r["fp"], m)
+        months_of[r["fp"]].add(m)
+    cur_month = today.isoformat()[:7]
+    cohorts = []
+    for cm in sorted(set(first_month.values())):
+        members = [fp for fp, m in first_month.items() if m == cm]
+        cells = []
+        for n in range(1, 5):
+            tm = _add_months(cm, n)
+            if tm > cur_month:
+                cells.append(None)
+            else:
+                back = sum(1 for fp in members if tm in months_of[fp])
+                cells.append({"pct": round(back / len(members) * 100),
+                              "partial": tm == cur_month})
+        cohorts.append({"month": cm, "size": len(members), "cells": cells})
+
+    # Profil : quand viennent les habitués, quand arrivent les nouveaux.
+    # « Première visite » = le premier ticket de CHAQUE carte (y compris celles
+    # devenues habituées) ; « habitués » = toutes les visites des cartes ≥ 4.
+    from datetime import datetime as _dt
+    def _local(r):
+        return _dt.fromisoformat(r["ts"].replace("Z", "+00:00")).astimezone(_rm.LISBON)
+    def _slot(h):
+        return "morning" if h < 12 else "midday" if h < 15 else "afternoon" if h < 18 else "evening"
+    first_visits = [vs[0] for vs in per.values()]
+    reg_visits   = [v for vs in per.values() if len(vs) >= 4 for v in vs]
+    def _dist(visits, key, keys):
+        c = Counter(key(_local(v)) for v in visits)
+        tot = sum(c.values()) or 1
+        return {k: round(c.get(k, 0) / tot * 100) for k in keys}
+    WD = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+    SLOTS = ["morning", "midday", "afternoon", "evening"]
+    profile = {
+        "weekday": {"regulars": _dist(reg_visits, lambda d: WD[d.weekday()], WD),
+                    "first":    _dist(first_visits, lambda d: WD[d.weekday()], WD)},
+        "daypart": {"regulars": _dist(reg_visits, lambda d: _slot(d.hour), SLOTS),
+                    "first":    _dist(first_visits, lambda d: _slot(d.hour), SLOTS)},
+        "n_regular_visits": len(reg_visits), "n_first_visits": len(first_visits),
+    }
+
+    return {"enabled": True, "empty": False,
+            "since": rows[0]["day"], "until": rows[-1]["day"],
+            "visits": len(rows), "cards": len(per),
+            "weekly": weekly, "types": types, "pareto_top20_pct": pareto_top20_pct,
+            "rhythm": rhythm, "at_risk": _at_risk(rows, today.isoformat()),
+            "cohorts": cohorts, "profile": profile,
+            "sources": _acquisition_sources(per, today)}
+
+def _acquisition_sources(per, today):
+    """D'où viennent les habitués : les nouveaux d'un événement reviennent-ils ?
+
+    Une « nouvelle carte » d'un événement = première visite un jour de
+    l'événement, à partir de son heure de début quand elle est renseignée —
+    sinon un popup du soir hériterait des nouveaux de la matinée. La mesure
+    comparable d'un événement à l'autre est « revenu sous 14 jours » ; tant
+    que 14 jours ne se sont pas écoulés, le chiffre est annoncé immature.
+    Référence : les nouveaux des jours sans événement, même fenêtre.
+    """
+    from datetime import date as _d, datetime as _dt
+    from collections import defaultdict
+    def _local(r):
+        return _dt.fromisoformat(r["ts"].replace("Z", "+00:00")).astimezone(_rm.LISBON)
+    cards = []   # (first_day, first_local_dt, later_days, later_daytime)
+    for vs in per.values():
+        f = vs[0]; fd = _d.fromisoformat(f["day"])
+        later = [(_d.fromisoformat(v["day"]), _local(v).hour) for v in vs[1:]]
+        cards.append((fd, _local(f), later))
+    def _stats(sel, is_evening=False):
+        n = len(sel)
+        back = [c for c in sel if any(0 < (d - c[0]).days <= 14 for d, _ in c[2])]
+        out = {"new_cards": n, "returned_14d": len(back),
+               "returned_14d_pct": round(len(back) / n * 100) if n else None}
+        if is_evening:
+            # Où reviennent-ils ? Sur TOUTES les visites suivantes, pas seulement
+            # sous 14 jours : c'est la question « le soir nourrit-il le jour ? »,
+            # et un petit effectif sous 14 jours la déformerait.
+            ever = [c for c in sel if c[2]]
+            later = [(d, h) for c in ever for d, h in c[2]]
+            out["returned_ever_pct"] = round(len(ever) / n * 100) if n else None
+            out["later_daytime_share"] = (round(sum(1 for _, h in later if h < 18) / len(later) * 100)
+                                          if later else None)
+        return out
+
+    try:
+        events = _supa_get("events", {"active": "eq.true", "order": "date.asc"})
+    except Exception:
+        events = []
+    event_days = set()
+    sources = []
+    for e in (events if isinstance(events, list) else []):
+        if e.get("status") == "cancelled" or not e.get("date"):
+            continue
+        d0 = _d.fromisoformat(e["date"][:10])
+        d1 = _d.fromisoformat((e.get("end_date") or e["date"])[:10])
+        if d0 > today:
+            continue
+        days = {d0 + timedelta(i) for i in range((d1 - d0).days + 1)}
+        event_days |= days
+        st = (e.get("start_time") or "")[:5]
+        evening = bool(st) and st >= "18:00"
+        sel = [c for c in cards if c[0] in days and (not st or c[1].strftime("%H:%M") >= st)]
+        s = _stats(sel, evening)
+        s.update({"title": e.get("title") or "Event", "date": d0.isoformat(),
+                  "end_date": d1.isoformat() if d1 != d0 else None,
+                  "start_time": st or None,
+                  "mature": today > d1 + timedelta(14),
+                  "days_elapsed": (today - d1).days})
+        sources.append(s)
+
+    mature_cut = today - timedelta(14)
+    base = [c for c in cards if c[0] not in event_days and c[0] <= mature_cut]
+    baseline = _stats(base)
+    evenings = _stats([c for c in cards if c[1].hour >= 19 and c[0] <= mature_cut], True)
+    return {"events": sources, "baseline": baseline, "evenings": evenings}
+
+@app.route("/api/customers")
+def api_customers():
+    try:
+        return jsonify(_customers_detail())
+    except SupabaseSchemaError as e:
+        return jsonify({"enabled": _rm.enabled(), "empty": True, "error": str(e)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+@app.route("/clientes")
+def clientes_page():
+    """Page « clients » : ce que les cartes du terminal disent de la fidélité.
+    Tout vient de /api/customers côté navigateur."""
+    return render_template("clientes.html")
+
+@app.route("/api/returning")
+def api_returning():
+    f  = request.args.get("from") or OPENING_DAY
+    to = request.args.get("to") or today_lisbon().isoformat()
+    try:
+        return jsonify(_returning_metrics(f, to))
+    except SupabaseSchemaError as e:
+        return jsonify({"enabled": _rm.enabled(), "empty": True, "error": str(e)}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+# ── Produits popup (chef partenaire) ──────────────────────────────────────────
+# Le chef fournit le produit, Quentin encaisse la vente TTC et garde une
+# commission ; le chef facture le restant HT. La marge brute est donc la
+# commission — le coût recette n'a aucun sens pour ces produits.
+_POPUP_CACHE = {"at": 0.0, "flags": {}}
+
+def _load_popup_flags():
+    import time as _t
+    if _t.time() - _POPUP_CACHE["at"] < 60:
+        return _POPUP_CACHE["flags"]
+    try:
+        rows = _supa_get("popup_products")
+        _POPUP_CACHE["flags"] = {r["product_name"]: float(r["commission_pct"])
+                                 for r in rows}
+        _POPUP_CACHE["at"] = _t.time()
+    except Exception:
+        pass
+    return _POPUP_CACHE["flags"]
+
+def _catalog():
+    """get_catalog() + overlay popup : le coût d'un produit flaggé devient
+    net × (1 − commission) — la facture attendue du chef — si bien que la
+    marge % affichée est exactement le taux de commission."""
+    catalog = get_catalog() or {}
+    flags = _load_popup_flags()
+    if not flags:
+        return catalog
+    # Copie les entrées touchées : le catalogue vient d'un cache TTL partagé,
+    # le muter ferait survivre l'ancien coût à un dé-flag jusqu'à expiration.
+    catalog = dict(catalog)
+    for name, pct in flags.items():
+        if name not in catalog:
+            continue
+        c = dict(catalog[name])
+        c["popup"] = True
+        c["commission_pct"] = pct
+        net = float(c.get("net") or 0)
+        if net:
+            c["cost"] = round(net * (1 - pct / 100), 4)
+        catalog[name] = c
+    return catalog
+
+@app.route("/api/popup-flag", methods=["POST"])
+def api_popup_flag():
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name required"}), 400
+    if data.get("popup"):
+        try:
+            pct = float(data.get("commission_pct"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "commission_pct invalide"}), 400
+        # 0 % est légitime : produit du chef vendu sans commission.
+        if not 0 <= pct < 100:
+            return jsonify({"error": "commission_pct doit être entre 0 et 100"}), 400
+        ok, err = _supa_upsert("popup_products",
+                               {"product_name": name, "commission_pct": pct})
+        if not ok:
+            return jsonify({"error": err or "upsert failed"}), 502
+    else:
+        _supa_delete("popup_products", "product_name", name)
+    _POPUP_CACHE["at"] = 0.0
+    return jsonify({"ok": True})
+
+# ── Commissions reçues (popup inversé) ────────────────────────────────────────
+# Le chef encaisse lui-même et reverse une commission par virement : un revenu
+# qui n'existe nulle part dans Vendus. Saisi à la main, il s'ajoute en marge
+# pure (100 %, aucun coût en face) à l'EBITDA et au cashflow du mois.
+
+def _commissions_rows():
+    try:
+        rows = _supa_get("commissions_received", {"order": "date.desc"})
+        return rows if isinstance(rows, list) else []
+    except Exception:
+        return []
+
+def _commissions_total(from_iso, to_iso):
+    return round(sum(float(r.get("amount") or 0) for r in _commissions_rows()
+                     if from_iso <= (r.get("date") or "") <= to_iso), 2)
+
+def _apply_commissions(eco, from_iso, to_iso, popup_com=0.0):
+    """Injecte les commissions de la période dans un dict daily_economics.
+
+    Deux sources, même nature : les commissions virées par un chef qui a
+    encaissé lui-même (saisies à la main) et celles prélevées sur des ventes
+    popup passées par notre caisse. Aucune n'a de coût en face : c'est de la
+    marge brute, donc elles remontent la marge ET l'EBITDA."""
+    com   = _commissions_total(from_iso, to_iso)
+    popup = round(float(popup_com or 0), 2)
+    eco["commissions_ht"]       = com
+    eco["popup_commission_ht"]  = popup
+    total = round(com + popup, 2)
+    if not total:
+        return eco
+    if eco.get("marge_brute_ht") is not None:
+        eco["marge_brute_ht"] = round(eco["marge_brute_ht"] + total, 2)
+        if eco.get("ca_ht"):
+            eco["marge_brute_ht_pct"] = round(
+                eco["marge_brute_ht"] / eco["ca_ht"] * 100, 1)
+    if eco.get("ebitda_ht") is not None:
+        eco["ebitda_ht"] = round(eco["ebitda_ht"] + total, 2)
+    return eco
+
+@app.route("/api/commissions", methods=["GET", "POST"])
+def api_commissions():
+    if request.method == "GET":
+        return jsonify({"rows": _commissions_rows()})
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    data = request.get_json(silent=True) or {}
+    day   = (data.get("date") or "").strip()
+    label = (data.get("label") or "").strip()
+    try:
+        amount = round(float(data.get("amount")), 2)
+    except (TypeError, ValueError):
+        return jsonify({"error": "montant invalide"}), 400
+    if not day or amount <= 0:
+        return jsonify({"error": "date et montant > 0 requis"}), 400
+    ok, err = _supa_upsert("commissions_received",
+                           {"date": day, "label": label or "Comissão popup",
+                            "amount": amount})
+    if not ok:
+        return jsonify({"error": err or "insert failed"}), 502
+    return jsonify({"ok": True})
+
+@app.route("/api/commissions/<cid>", methods=["DELETE"])
+def api_commissions_delete(cid):
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    _supa_delete("commissions_received", "id", cid)
+    return jsonify({"ok": True})
 
 # ── Helpers lecture / écriture (abstraction Supabase) ─────────────────────────
 def _load_ingredients():
@@ -2384,6 +3168,91 @@ def _fetch_summaries(from_iso, to_iso):
                             ("order", "day.asc")])
     return rows.json() if rows.ok else []
 
+def _stats_net_popup(stats, rows):
+    """Retire du CA affiché la part des ventes popup qui revient au chef.
+
+    Le brut est conservé sous `ca_gross` : c'est lui qui doit continuer à
+    coïncider avec Vendus, la trésorerie et la page comptable."""
+    pop = _popup_split(rows or [])
+    if not pop["chef_ttc"]:
+        return stats
+    ca    = round(stats["ca"]    - pop["chef_ttc"], 2)
+    ca_ht = round(stats["ca_ht"] - pop["chef_ht"],  2)
+    nb    = stats.get("nb") or 0
+    return {**stats, "ca": ca, "ca_ht": ca_ht,
+            "ticket":     round(ca    / nb, 2) if nb else 0.0,
+            "ticket_ht":  round(ca_ht / nb, 2) if nb else 0.0,
+            "ca_gross":   stats["ca"],
+            "popup_chef": pop["chef_ttc"]}
+
+def _popup_split(rows):
+    """Ventile les ventes popup d'un lot de lignes : ce qui revient au chef,
+    ce qui nous reste. La commission porte sur le TTC, et le chef facture le
+    reste hors TVA — les deux assiettes donnent la même proportion, donc le
+    même pourcentage s'applique au TTC comme au HT."""
+    out = {"chef_ttc": 0.0, "chef_ht": 0.0,
+           "com_ttc": 0.0, "com_ht": 0.0, "gross_ttc": 0.0}
+    flags = _load_popup_flags()
+    if not flags:
+        return out
+    for r in rows:
+        for name, p in (r.get("products") or {}).items():
+            pct = flags.get(name)
+            if pct is None:
+                continue
+            ttc = float(p.get("rev_ttc") or 0)
+            ht  = float(p.get("rev_ht")  or 0)
+            out["gross_ttc"] += ttc
+            out["chef_ttc"]  += ttc * (1 - pct / 100)
+            out["chef_ht"]   += ht  * (1 - pct / 100)
+            out["com_ttc"]   += ttc * pct / 100
+            out["com_ht"]    += ht  * pct / 100
+    return {k: round(v, 2) for k, v in out.items()}
+
+def _popup_adjust_rows(rows):
+    """Réécrit COGS/couverture des lignes daily_summary pour les produits popup.
+
+    Un produit popup n'est pas vendu pour notre compte : sa recette revient au
+    chef, à la commission près. Il sort donc entièrement du P&L matière — ni
+    coût, ni CA couvert, ni CA d'items — pour que le taux de marge mesuré reste
+    celui de NOTRE carte, comparable d'un mois à l'autre. La commission est
+    réinjectée comme marge pure par l'appelant (_popup_split), et la recette
+    brute est déduite du CA de gestion.
+
+    Les lignes STOCKÉES restent calculées avec le catalogue de base : un flag
+    popup ne demande donc AUCUN rebuild — la ligne porte le détail par produit
+    (qty, rev_ht) et tout se joue à la lecture. Flagger ou déflagger est
+    instantané sur tout l'historique."""
+    flags = _load_popup_flags()
+    if not flags or not rows:
+        return rows
+    base = get_catalog() or {}
+    out = []
+    for r in rows:
+        prods = r.get("products") or {}
+        hit = [n for n in flags if n in prods]
+        if not hit:
+            out.append(r)
+            continue
+        r = dict(r)
+        cogs    = float(r.get("cogs_ht")    or 0)
+        covered = float(r.get("covered_ht") or 0)
+        items   = float(r.get("items_ht")   or 0)
+        for n in hit:
+            p   = prods[n]
+            qty = float(p.get("qty") or 0)
+            ht  = float(p.get("rev_ht") or 0)
+            cost = float((base.get(n) or {}).get("cost") or 0)
+            if cost:                    # le produit pesait dans le COGS mesuré
+                cogs    -= cost * qty
+                covered -= ht
+            items -= ht                 # et dans le CA servant de base au taux
+        r["cogs_ht"]    = round(max(0.0, cogs), 2)
+        r["covered_ht"] = round(max(0.0, covered), 2)
+        r["items_ht"]   = round(max(0.0, items), 2)
+        out.append(r)
+    return out
+
 def _get_summaries(from_iso, to_iso):
     """Lecture du cache journalier, mutualisée sur la durée de la requête HTTP.
 
@@ -2402,8 +3271,9 @@ def _get_summaries(from_iso, to_iso):
         except RuntimeError:
             pass          # hors contexte de requête (cron, script) → pas de mémo
     if store is None:
-        return _fetch_summaries(from_iso, to_iso)
-    return [store[d] for d in sorted(store) if from_iso <= d <= to_iso]
+        return _popup_adjust_rows(_fetch_summaries(from_iso, to_iso))
+    return _popup_adjust_rows(
+        [store[d] for d in sorted(store) if from_iso <= d <= to_iso])
 
 def _summaries_cache_put(day_iso, row):
     """Garde le mémo de requête cohérent après construction d'un jour manquant."""
@@ -3106,7 +3976,16 @@ def _ensure_summaries(from_date, to_date, catalog):
         return []
     from_iso, to_iso = from_date.isoformat(), to_date.isoformat()
     rows = _get_summaries(from_iso, to_iso)
-    have = {r["day"] for r in rows}
+    # ⚠️ UNE LIGNE INCOHÉRENTE COMPTE COMME MANQUANTE, ET SE RECONSTRUIT.
+    # Le CA couvert est par construction un sous-ensemble du CA des items : le
+    # voir le dépasser prouve que la ligne stockée a été écrite avec un
+    # catalogue qui portait déjà le coût popup, et qu'on le compte deux fois.
+    # Ces lignes-là ne peuvent pas être réparées par le calcul — on les refait
+    # depuis Vendus. Le tour d'après elles sont saines, donc pas de boucle.
+    stale = {r["day"] for r in rows
+             if float(r.get("covered_ht") or 0) > float(r.get("items_ht") or 0) + 0.01}
+    have = {r["day"] for r in rows} - stale
+    rows = [r for r in rows if r["day"] not in stale]
     all_days = []
     cur = from_date
     while cur <= to_date:
@@ -3119,12 +3998,16 @@ def _ensure_summaries(from_date, to_date, catalog):
         for doc in docs:
             day = (doc.get("date") or doc.get("local_time", ""))[:10]
             by_day.setdefault(day, []).append(doc)
+        # ⚠️ Catalogue de BASE, pas l'overlay popup : les lignes stockées sont
+        # neutres, l'ajustement popup vit à la lecture (_popup_adjust_rows).
+        # Figer un coût popup ici le ferait compter deux fois.
+        base_catalog = get_catalog() or catalog
         for day in missing:
-            s = _summarize_docs_items(by_day.get(day, []), catalog)
+            s = _summarize_docs_items(by_day.get(day, []), base_catalog)
             _upsert_summary(day, s)
             row = {"day": day, **s}
-            rows.append(row)
-            _summaries_cache_put(day, row)   # cohérence du mémo de requête
+            rows.append(_popup_adjust_rows([{**row}])[0])
+            _summaries_cache_put(day, row)   # cohérence du mémo (version stockée)
     rows.sort(key=lambda r: r["day"])
     return rows
 
@@ -3145,7 +4028,8 @@ def _products_list(merged, catalog, n=10):
     """Format top_products depuis un dict fusionné."""
     rows = []
     for name, s in merged.items():
-        cost = catalog.get(name, {}).get("cost")
+        centry = catalog.get(name, {})
+        cost = centry.get("cost")
         cost_ht = round(cost * s["qty"], 2) if cost else None
         rev_ht  = round(s["rev_ht"], 2)
         margin  = round((rev_ht - cost_ht) / rev_ht * 100, 1) if rev_ht and cost_ht else None
@@ -3156,6 +4040,8 @@ def _products_list(merged, catalog, n=10):
             "cost_ht": cost_ht, "margin_pct": margin,
             "days_sold": s.get("days", 0),
             "avg_day": round(s["rev_ttc"] / s["days"], 2) if s.get("days") else 0,
+            "popup": bool(centry.get("popup")),
+            "commission_pct": centry.get("commission_pct"),
         })
     rows.sort(key=lambda x: x["qty"], reverse=True)
     return rows[:n] if n else rows
@@ -3498,7 +4384,7 @@ def api_inventory_usage():
         from_date, to_date = to_date, from_date
     to_date = min(to_date, today)
 
-    catalog = get_catalog() or {}
+    catalog = _catalog()
     past_to = min(to_date, today - timedelta(1))
     rows = _ensure_summaries(from_date, past_to, catalog) if from_date <= past_to else []
     if from_date <= today <= to_date:

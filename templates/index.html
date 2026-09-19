@@ -156,6 +156,7 @@
       <a href="/charges" data-path="/charges">Costs &mdash; charges fixes</a>
       <a href="/expenses" data-path="/expenses">Expenses &mdash; d&eacute;penses</a>
       <a href="/reconciliation" data-path="/reconciliation">Reconciliation &mdash; caisse</a>
+      <a href="/contabilidade" data-path="/contabilidade">Contabilidade &mdash; comptable</a>
     </div>
   </div>
   <div class="nav-group">
@@ -232,16 +233,22 @@
     <button class="pill"        data-preset="custom"    onclick="openCustomRange()">Custom…</button>
   </div>
 
+  <!-- Le jour en cours dans l'économie de la période : masqué quand la période
+       n'en contient pas, où le choix n'aurait rien à changer. -->
+  <label id="incl-today-bar" style="display:none;align-items:center;gap:7px;margin:-8px 0 18px;
+         font-size:12.5px;color:var(--muted);cursor:pointer;user-select:none;">
+    <input type="checkbox" id="incl-today" onchange="toggleInclToday()"
+           style="width:15px;height:15px;cursor:pointer;">
+    <span>Inclure la journée en cours dans l'économie de la période</span>
+    <span id="incl-today-hint" style="color:var(--faint);"></span>
+  </label>
+
   <div id="custom-range-bar" style="display:none; align-items:center; gap:8px; margin:-8px 0 20px;">
     <input type="date" id="custom-start" style="padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px;">
     <span style="color:var(--muted); font-size:13px;">to</span>
     <input type="date" id="custom-end" style="padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px;">
     <button class="pill" onclick="applyCustomRange()" style="background:var(--accent,#37352f); color:#fff;">Apply</button>
   </div>
-
-  <!-- Le trajet — ce que devient l'argent encaissé sur la période sélectionnée.
-       Placé en tête : il explique le résultat, les blocs suivants le détaillent. -->
-  <div class="flux" id="flux"></div>
 
   <!-- Strip "Today" — visible seulement sur période multi-jours incluant aujourd'hui -->
   <div id="today-strip" style="display:none; margin-bottom:32px;">
@@ -350,6 +357,40 @@
   <div id="rush-section" style="display:none;margin-bottom:16px;">
     <div class="section-label">Activity peaks</div>
     <div id="rush-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+  </div>
+
+  <!-- Clients récurrents — empreintes de cartes du terminal Revolut.
+       Aucune identité : un hash salé de (4 derniers chiffres + libellé puce). -->
+  <div id="returning-section" style="display:none;margin-bottom:32px;">
+    <div class="section-label" id="returning-label">Returning customers</div>
+    <!-- Chaque tuile mène à /clientes, comme Transactions mène à /transactions :
+         le dashboard donne le pouls, la page détaillée donne l'analyse. -->
+    <div class="kpi-grid">
+      <a href="/clientes" class="kpi-link"><div class="kpi-cell" data-tip="Share of card payments in the period made with a card already seen before that ticket, anywhere in the history. Cards only — cash is invisible. Read it as ±5 points: two people with the same card type and last four digits are merged, and a phone wallet counts as a second card. Click to open the customer analysis.">
+        <div class="kpi-label">Returning visits <span class="kpi-go">→</span></div>
+        <div class="kpi-value" id="ret-pct">—</div>
+        <div class="kpi-delta" id="ret-sub" style="color:var(--muted)"></div>
+      </div></a>
+      <a href="/clientes" class="kpi-link"><div class="kpi-cell" data-tip="Distinct cards seen in the period: first seen before the period (known) versus never seen before (new). Click to open the customer analysis.">
+        <div class="kpi-label">Cards this period <span class="kpi-go">→</span></div>
+        <div class="kpi-value" id="ret-cards">—</div>
+        <div class="kpi-delta" id="ret-cards-sub" style="color:var(--muted)"></div>
+      </div></a>
+      <a href="/clientes" class="kpi-link"><div class="kpi-cell" data-tip="Regulars = cards with 4 or more visits since opening. Their share of this period's card payments says how much of your business rests on a core of habitués. Click to open the customer analysis.">
+        <div class="kpi-label">Regulars (4+ visits) <span class="kpi-go">→</span></div>
+        <div class="kpi-value" id="ret-regulars">—</div>
+        <div class="kpi-delta" id="ret-regulars-sub" style="color:var(--muted)"></div>
+      </div></a>
+      <a href="/clientes" class="kpi-link"><div class="kpi-cell" data-tip="Regulars you have stopped seeing: absent for longer than 3× their own usual interval between visits (at least 7 days, because the café closes two days a week). The one number here that calls for action. Click to open the customer analysis.">
+        <div class="kpi-label">At risk <span class="kpi-go">→</span></div>
+        <div class="kpi-value" id="ret-risk" style="color:var(--amber)">—</div>
+        <div class="kpi-delta" id="ret-risk-sub" style="color:var(--muted)"></div>
+      </div></a>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--faint);margin-top:8px;">
+      <span id="ret-note"></span>
+      <button id="ret-rebuild" onclick="rebuildCardVisits()" style="display:none;border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:6px;padding:3px 9px;font-size:11px;cursor:pointer;">Rebuild history</button>
+    </div>
   </div>
 
   <!-- Revenue by hour — pleine largeur -->
@@ -548,6 +589,22 @@
         </tbody>
       </table>
     </div>
+    <div class="section-label" style="margin:24px 0 8px;">Commissions reçues <span style="color:var(--faint);font-weight:400;font-size:11px;">— popups où le chef encaisse et te reverse</span></div>
+    <div style="border:1px solid var(--border);border-radius:12px;background:var(--bg-card);padding:16px 20px;margin-bottom:24px;">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
+        <input type="date" id="com-date" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text);font-size:13px;">
+        <input type="text" id="com-label" placeholder="Libellé (ex. Popup ramen)" style="flex:1;min-width:160px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text);font-size:13px;">
+        <input type="number" id="com-amount" placeholder="€" min="0" step="0.01" style="width:100px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text);font-size:13px;">
+        <button onclick="addCommission()" style="padding:7px 16px;border:none;border-radius:8px;background:var(--text);color:var(--bg-card);font-size:13px;font-weight:600;cursor:pointer;">Add</button>
+      </div>
+      <div id="com-error" style="display:none;color:#c0392b;font-size:12px;margin-bottom:10px;"></div>
+      <div class="table-wrap" style="border:none;">
+        <table>
+          <thead><tr><th>Date</th><th>Libellé</th><th class="right">Montant</th><th style="width:40px;"></th></tr></thead>
+          <tbody id="com-body"><tr><td colspan="4" style="color:var(--muted);text-align:center;padding:16px;">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </div><!-- /view-cashflow -->
 
 </div><!-- /page -->
@@ -561,6 +618,35 @@
 <div id="tx-tooltip" style="display:none;position:fixed;z-index:300;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.14);padding:10px 12px;font-size:12px;max-width:280px;pointer-events:none;"></div>
 
 <!-- Drawer ticket -->
+<!-- Modal produit popup (chef partenaire) -->
+<div id="popup-overlay" onclick="closeProductPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:400;"></div>
+<div id="popup-modal" style="display:none;position:fixed;z-index:401;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.2);padding:22px 24px;width:min(400px,calc(100vw - 32px));">
+  <div style="font-size:15px;font-weight:600;" id="popup-prod-name"></div>
+  <div style="font-size:12px;color:var(--muted);margin:2px 0 14px;" id="popup-prod-meta"></div>
+  <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+    <input type="checkbox" id="popup-check" onchange="popupCheckChanged()">
+    Produit popup — chef partenaire (commission = marge brute)
+  </label>
+  <div id="popup-pct-row" style="display:none;margin-top:12px;">
+    <label style="font-size:12px;color:var(--muted);">Commission sur le prix TTC</label>
+    <div style="display:flex;gap:8px;margin-top:6px;align-items:center;">
+      <select id="popup-pct-select" onchange="popupPctChanged()" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text);font-size:13px;">
+        <option value="10">10 %</option>
+        <option value="15">15 %</option>
+        <option value="20" selected>20 %</option>
+        <option value="custom">Custom…</option>
+      </select>
+      <input type="number" id="popup-pct-custom" min="0" max="99" step="0.1" placeholder="%"
+             style="display:none;width:80px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text);font-size:13px;">
+    </div>
+  </div>
+  <div id="popup-error" style="display:none;color:#c0392b;font-size:12px;margin-top:10px;"></div>
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;">
+    <button onclick="closeProductPopup()" style="padding:7px 14px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);font-size:13px;cursor:pointer;">Cancel</button>
+    <button id="popup-save" onclick="saveProductPopup()" style="padding:7px 14px;border:none;border-radius:8px;background:var(--text);color:var(--bg-card);font-size:13px;font-weight:600;cursor:pointer;">Save</button>
+  </div>
+</div>
+
 <div id="drawer-overlay" onclick="closeDrawer()"></div>
 <div id="drawer">
   <div class="drawer-header">
