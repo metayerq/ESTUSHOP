@@ -343,3 +343,48 @@ def test_un_montant_absurde_n_entre_pas_dans_le_cumul():
         v("fpC", "09-01", 5000), v("fpC", "09-02", -2000), v("fpC", "09-03", 0),
     ]))
     assert cs["card:fpC"]["lifetime_points"] == 50
+
+
+def test_le_bonus_de_bienvenue_entre_dans_le_solde():
+    """
+    ⚠️ CE RÉGLAGE A EXISTÉ UNE SEMAINE SANS RIEN FAIRE. Il était dans la table, dans l'écran,
+    enregistrable — et branché nulle part. Un réglage qui s'enregistre sans effet est pire que
+    pas de réglage : on le tourne, on attend, et on conclut que le programme ne marche pas.
+    """
+    cs = par_cle(comptes(
+        visits=[v("fpA", "09-15", 1200)],
+        links=[{"fp": "fpA", "phone": "+351911"}],
+        customers=[{"phone": "+351911", "welcome_points": 20,
+                    "consent_at": "2026-09-14T10:00:00+00:00"}],
+    ))
+    assert cs["phone:+351911"]["state"]["credit_points"] == 20
+    assert cs["phone:+351911"]["state"]["balance_points"] == 32
+
+
+def test_le_bonus_est_offert_UNE_fois_par_personne_pas_par_carte():
+    """Rattacher son Apple Pay n'est pas une seconde adhésion."""
+    cs = par_cle(comptes(
+        visits=[v("fpA", "09-15", 1000), v("fpB", "09-16", 1000)],
+        links=[{"fp": "fpA", "phone": "+351911"}, {"fp": "fpB", "phone": "+351911"}],
+        customers=[{"phone": "+351911", "welcome_points": 20,
+                    "consent_at": "2026-09-14T10:00:00+00:00"}],
+    ))
+    assert cs["phone:+351911"]["state"]["credit_points"] == 20
+
+
+def test_sans_date_de_consentement_aucun_bonus():
+    """
+    Un bonus sans point de départ ne périmerait jamais : il rajeunirait à chaque lecture. Mieux
+    vaut ne rien donner que donner une dette éternelle.
+    """
+    cs = par_cle(comptes(
+        visits=[v("fpA", "09-15", 1000)],
+        links=[{"fp": "fpA", "phone": "+351911"}],
+        customers=[{"phone": "+351911", "welcome_points": 20, "consent_at": None}],
+    ))
+    assert cs["phone:+351911"]["state"]["credit_points"] == 0
+
+
+def test_une_carte_non_liee_ne_recoit_jamais_de_bonus():
+    cs = par_cle(comptes(visits=[v("fpSeule", "09-15", 1000)]))
+    assert cs["card:fpSeule"]["state"]["credit_points"] == 0

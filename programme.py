@@ -111,7 +111,18 @@ def build_accounts(visits, rewards, links, customers, threshold, now,
 
     comptes = []
     for (kind, ident), g in groupes.items():
-        etat = loyalty_state(g["visits"], g["rewards"], threshold, now, expiry_months, options)
+        fiche_c = fiches.get(ident) if kind == "phone" else None
+        # ⚠️ LE BONUS DE BIENVENUE EST PORTÉ PAR LE NUMÉRO, PAS PAR LA CARTE. Une seule fois par
+        # personne : celui qui rattache ensuite son Apple Pay ne le touche pas deux fois. Et sans
+        # date de consentement, pas de crédit — un bonus sans point de départ ne périmerait jamais.
+        credits = []
+        if fiche_c and (fiche_c.get("welcome_points") or 0) > 0 and fiche_c.get("consent_at"):
+            credits.append({"ts": fiche_c["consent_at"],
+                            "points": int(fiche_c["welcome_points"]),
+                            "reason": "welcome"})
+
+        etat = loyalty_state(g["visits"], g["rewards"], credits, threshold, now,
+                             expiry_months, options)
 
         jours = sorted({j for j in (_jour(v.get("ts")) for v in g["visits"]) if j})
         seuil_absence = absence_threshold_days(jours)
@@ -137,7 +148,7 @@ def build_accounts(visits, rewards, links, customers, threshold, now,
             and not isinstance(v.get("amount_cents"), bool) and v["amount_cents"] > 0
         )
 
-        fiche = fiches.get(ident) if kind == "phone" else None
+        fiche = fiche_c
         habitue = etat["visits"] >= REGULAR_AFTER_VISITS
 
         comptes.append({

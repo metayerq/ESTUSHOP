@@ -116,13 +116,16 @@ def _expire_ms(at_ms, months):
     return int(expires_at(_from_ms(at_ms), months).timestamp() * 1000)
 
 
-def loyalty_state(visits, rewards, threshold_points, now, expiry_months=EXPIRY_MONTHS,
-                  options=None):
+def loyalty_state(visits, rewards, credits, threshold_points, now,
+                  expiry_months=EXPIRY_MONTHS, options=None):
     """
     L'état de fidélité d'un client, à une date donnée.
 
     `visits`  : dicts avec `ts` et `amount_cents`.
     `rewards` : dicts avec `ts` et `points_spent`.
+    `credits` : dicts avec `ts` et `points` — des points offerts, jamais gagnés en dépensant.
+                ⚠️ ILS NE PASSENT PAS PAR `card_visits`. Y écrire un cadeau ferait mentir tous
+                les chiffres de chiffre d'affaires qui lisent cette table.
     `now`     : datetime. ⚠️ C'EST UN PARAMÈTRE, JAMAIS UNE LECTURE D'HORLOGE — sinon
                 l'expiration est intestable et un client perd ses points à une seconde près.
     `options` : `start_date` (AAAA-MM-JJ), `legacy_rate_pct`, `legacy_cap_points`.
@@ -174,6 +177,18 @@ def loyalty_state(visits, rewards, threshold_points, now, expiry_months=EXPIRY_M
     legacy_points = min(plafond, math.floor((pre_start_cents / 100) * (taux / 100)))
     if legacy_points > 0:
         lots.append([debut, legacy_points * 100])
+
+    # ⚠️ UN CRÉDIT ANTÉRIEUR AU LANCEMENT COMPTE QUAND MÊME. La date de lancement efface des
+    # points issus d'achats dont personne n'avait promis qu'ils compteraient ; elle n'a aucune
+    # raison d'effacer un engagement pris explicitement envers quelqu'un.
+    credit_points = 0
+    for c in credits or []:
+        at = parse_ts(c.get("ts"))
+        pts = c.get("points")
+        if at is None or not isinstance(pts, (int, float)) or isinstance(pts, bool) or pts <= 0:
+            continue
+        credit_points += int(pts)
+        lots.append([at, int(pts) * 100])
 
     lots.sort(key=lambda l: l[0])
 
@@ -275,6 +290,7 @@ def loyalty_state(visits, rewards, threshold_points, now, expiry_months=EXPIRY_M
         "visits": len(visits),
         "last_seen": last_seen,
         "legacy_points": legacy_points,
+        "credit_points": credit_points,
         "pre_start_cents": pre_start_cents,
     }
 

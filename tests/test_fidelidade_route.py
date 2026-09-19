@@ -112,12 +112,14 @@ def test_ni_la_cle_interne_ni_l_empreinte_entiere_ne_descendent(client, monkeypa
     d = client.get("/api/fidelidade/resumo").get_json()
     for c in d["accounts"]:
         assert "key" not in c
-        assert "fps" not in c
+        # ⚠️ LES EMPREINTES NE DESCENDENT QU'À L'ADMIN — et seulement parce qu'il faut une cible
+        # pour délier une carte précise. Pour les autres rôles, la liste est vide.
+        assert c["fps"] == []
         assert c["id"].startswith("c")
         assert len(c["short"]) <= 4
     # Et les listes d'action portent les mêmes identifiants d'écran, pas les clés internes.
     for c in d["summary"]["at_risk"] + d["summary"]["near_reward"]:
-        assert "key" not in c and "fps" not in c
+        assert "key" not in c and c["fps"] == []
 
 
 def test_le_jeton_de_la_page_client_ne_descend_jamais(client, monkeypatch):
@@ -139,6 +141,7 @@ def test_le_numero_complet_ne_descend_qu_a_l_admin(client, monkeypatch):
     _role(monkeypatch, "staff")
     staff = client.get("/api/fidelidade/resumo").get_json()
     assert all(c["phone"] is None for c in staff["accounts"])
+    assert all(c["fps"] == [] for c in staff["accounts"])
     # Les quatre derniers chiffres suffisent à confirmer qu'on parle de la bonne personne.
     assert any(c["phone_masked"] == "••• 5678" for c in staff["accounts"])
     assert "+351912345678" not in client.get("/api/fidelidade/resumo").get_data(as_text=True)

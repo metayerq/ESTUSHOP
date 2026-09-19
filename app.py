@@ -24,6 +24,7 @@ from config import today_lisbon, now_lisbon, TVA_MOYENNE_BLENDED
 # Le programme de points. `points.py` est une traduction vérifiée du calcul qui tourne à la
 # caisse ; `programme.py` regroupe les lignes brutes en clients. Ni l'un ni l'autre ne touche
 # à Supabase : c'est ce qui permet de tester la règle sans base de données.
+from phone import PHONE_MESSAGE, normalise_phone
 from programme import build_accounts, conversion_series, programme_summary
 
 from flask import Flask, jsonify, render_template, request, redirect, make_response, g
@@ -1408,7 +1409,7 @@ def _fidelidade_tables():
     # commence à le demander au comptoir.
     liens, t3 = _supa_all("card_links", {"select": "fp,phone,linked_at"})
     fiches, t4 = _supa_all(
-        "card_customers", {"select": "phone,name,token,consent_at,opted_out_at"})
+        "card_customers", {"select": "phone,name,token,consent_at,opted_out_at,welcome_points"})
     return visites, recompenses, liens, fiches, (t1 or t2 or t3 or t4)
 
 
@@ -1523,6 +1524,11 @@ def api_fidelidade_resumo():
             # entière n'aiderait personne et rattache une ligne à un moyen de paiement.
             "short": (c["fps"][0][:4] if c["fps"] else "????"),
             "cards": len(c["fps"]),
+            # ⚠️ LES EMPREINTES NE DESCENDENT QU'À L'ADMIN, ET SEULEMENT PARCE QU'IL FAUT UNE
+            # CIBLE POUR CORRIGER. Délier une carte précise exige de la désigner ; l'écran ne
+            # l'affiche jamais en entier. Même règle que le numéro : ce qui n'a pas d'usage à
+            # l'écran ne traverse pas.
+            "fps": c["fps"] if complet else [],
             "consent_at": c["consent_at"],
             "opted_out": c["opted_out"],
             "orphan": c["orphan"],
@@ -1699,6 +1705,125 @@ def api_fidelidade_simulation():
                     "before": _simulation(avant, base),
                     "after": _simulation(apres, reglages),
                     "truncated": tables[4]})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CORRIGER UN RATTACHEMENT — la seule issue à un numéro mal tapé
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ NEUF CHIFFRES TAPÉS SUR UN IPAD, EN SERVICE, PENDANT QUE LE CLIENT ATTEND. Le jour où il y
+# en a un de faux, la carte est rattachée au numéro d'un INCONNU — qui reçoit les SMS et le lien
+# vers la page de compte. Et le bandeau de la caisse ne repropose jamais rien : il ne s'affiche
+# que pour une carte NON liée. Sans cette route, la faute est définitive.
+
+
+def _journal_action(role, action, fp, avant, apres, motif):
+    """
+    ⚠️ L'EMPREINTE, PAS LE NUMÉRO. Un journal d'incidents qui recopie les numéros de téléphone
+    devient lui-même un fichier de contacts — conservé plus longtemps que le reste, et que
+    personne ne pense à purger. Les quatre derniers chiffres suffisent à reconnaître un compte.
+
+    Et son échec ne remonte jamais : l'action est déjà faite quand il s'écrit.
+    """
+    try:
+        _supa_upsert("card_actions_log", {
+            "by": role, "action": action, "fp": fp,
+            "before": avant, "after": apres, "reason": motif,
+        })
+        return "écrit"
+    except Exception:
+        return "non écrit"
+
+
+@app.route("/api/fidelidade/lien", methods=["PUT"])
+def api_fidelidade_lien():
+    """
+    Délier une carte, ou la rattacher au bon numéro.
+
+    ⚠️ DÉLIER N'EST PAS UNE PERTE, C'EST UN RETOUR EN ARRIÈRE. La carte redevient anonyme, ses
+    points restent attachés à elle, et le bandeau du comptoir reproposera l'inscription au
+    prochain passage — cette fois avec le bon numéro.
+    """
+    role = _current_role()
+    if role != "admin":
+        return jsonify({"error": "admin only"}), 403
+
+    corps = request.get_json(silent=True) or {}
+    fp = (corps.get("fp") or "").strip()
+    motif = (corps.get("reason") or "").strip()
+    brut = corps.get("phone")
+
+    if len(fp) < 8:
+        return jsonify({"error": "empreinte manquante"}), 400
+    if len(motif) < 3:
+        return jsonify({"error": "un motif est obligatoire"}), 400
+
+    cible = None
+    if brut not in (None, ""):
+        ok, valeur = normalise_phone(brut)
+        if not ok:
+            return jsonify({"error": PHONE_MESSAGE.get(valeur, valeur)}), 400
+        cible = valeur
+
+    try:
+        liens = _supa_get("card_links", {"select": "fp,phone,linked_at", "fp": f"eq.{fp}"})
+    except SupabaseSchemaError as e:
+        return jsonify({"error": str(e)}), 500
+    if not liens:
+        return jsonify({"error": "cette carte n'est rattachée à personne"}), 404
+    ancien = liens[0].get("phone")
+    depuis = liens[0].get("linked_at")
+
+    if cible == ancien:
+        return jsonify({"error": "c'est déjà ce numéro"}), 400
+
+    if cible is None:
+        if not _supa_delete("card_links", "fp", fp):
+            return jsonify({"error": "la carte n'a pas pu être déliée"}), 502
+    else:
+        # ⚠️ LA FICHE DU BON NUMÉRO EST CRÉÉE SI ELLE MANQUE, ET DATÉE DU RATTACHEMENT D'ORIGINE.
+        # C'est bien ce jour-là que la personne a donné son numéro : la dater d'aujourd'hui
+        # ferait repartir son bonus de bienvenue et la ferait apparaître comme une nouvelle
+        # inscription dans le suivi de conversion — deux mensonges pour une faute de frappe.
+        existante = _supa_get("card_customers", {"select": "phone", "phone": f"eq.{cible}",
+                                                 "limit": 1})
+        if not existante:
+            fiche = {"phone": cible, "consent_at": depuis or _utc_iso(), "consent_source": "backoffice"}
+            # Le bonus suit la personne qui s'était réellement inscrite.
+            perdue = _supa_get("card_customers",
+                               {"select": "welcome_points,name", "phone": f"eq.{ancien}", "limit": 1})
+            if perdue:
+                fiche["welcome_points"] = perdue[0].get("welcome_points") or 0
+                if perdue[0].get("name"):
+                    fiche["name"] = perdue[0]["name"]
+            ok, err = _supa_upsert("card_customers", fiche)
+            if not ok:
+                return jsonify({"error": err or "fiche client non créée"}), 502
+
+        ok, err = _supa_upsert("card_links", {"fp": fp, "phone": cible,
+                                              "linked_at": depuis or _utc_iso()})
+        if not ok:
+            return jsonify({"error": err or "le rattachement a échoué"}), 502
+
+    # ⚠️ LA FICHE DEVENUE ORPHELINE DOIT PARTIR. On avait créé un enregistrement au nom de
+    # quelqu'un qui n'a jamais rien demandé — un numéro saisi par erreur, avec un jeton ouvrant
+    # une page de points et un SMS de bienvenue déjà reçu. Il ne reste aucune raison de le
+    # garder, et une bonne raison de l'effacer.
+    orpheline = False
+    if ancien:
+        restants = _supa_get("card_links", {"select": "fp", "phone": f"eq.{ancien}", "limit": 1})
+        if not restants:
+            orpheline = bool(_supa_delete("card_customers", "phone", ancien))
+
+    trace = _journal_action(
+        role, "unlink" if cible is None else "relink", fp,
+        {"phone": _masque_tel(ancien), "linked_at": depuis},
+        {"phone": _masque_tel(cible) if cible else None, "orphan_removed": orpheline},
+        motif,
+    )
+    return jsonify({"ok": True, "unlinked": cible is None,
+                    "phone_masked": _masque_tel(cible) if cible else None,
+                    "orphan_removed": orpheline, "log": trace})
 
 
 @app.route("/api/fidelidade/config", methods=["PUT"])

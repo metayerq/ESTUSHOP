@@ -501,6 +501,14 @@ tbody tr:hover { background:var(--bg-hover); }
 .evt { display:flex; justify-content:space-between; gap:10px; font-size:13px; padding:5px 0; border-bottom:1px solid var(--border); }
 .evt .q { color:var(--muted); font-variant-numeric:tabular-nums; }
 .evt.rec { color:var(--spec); font-weight:500; }
+.corr { border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin-bottom:10px;
+  display:flex; flex-direction:column; gap:7px; }
+.corr-t { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:600; }
+.corr-b { display:flex; gap:8px; align-items:center; }
+.corr-b .btn-appliquer { margin-top:0; }
+.corr-del { font-family:inherit; font-size:12.5px; padding:9px 14px; border-radius:8px;
+  border:1px solid var(--border); background:none; color:#b4552f; cursor:pointer; }
+.corr-del:hover { background:var(--bg-hover); }
 .avert { background:var(--bg-hover); border:1px solid var(--border); border-left:3px solid #b4552f; border-radius:0 8px 8px 0;
   padding:10px 13px; font-size:12.5px; margin:14px 0; }
 </style>
@@ -707,12 +715,73 @@ tbody tr:hover { background:var(--bg-hover); }
         : '<div class="evt"><span>' + jour(e.ts) + '</span><span class="q">' + eur(e.amount_cents) + '</span></div>';
     }).join(''));
 
+    /**
+     * ⚠️ LA SEULE ISSUE À UN NUMÉRO MAL TAPÉ. Neuf chiffres saisis en service : le jour où il y
+     * en a un de faux, la carte est rattachée à un INCONNU qui reçoit les SMS et le lien vers la
+     * page de compte. Le bandeau du comptoir ne repropose rien — il ne s'affiche que pour une
+     * carte NON liée. Sans cet écran, la faute est définitive.
+     */
+    if (c.kind === 'phone' && c.fps.length) {
+      h.push('<h3>Corriger</h3>');
+      h.push('<p class="reg-aide" style="margin:0 0 10px">Un chiffre de travers au comptoir se ' +
+             'répare ici. <strong>Délier</strong> rend la carte anonyme : ses points lui restent, ' +
+             'et le comptoir reproposera l\'inscription au prochain passage.</p>');
+      h.push(c.fps.map(function(fp, i){
+        return '<div class="corr" data-fp="' + fp + '">' +
+          '<div class="corr-t">Carte ' + (i + 1) + ' · ' + fp.slice(0, 4) + '</div>' +
+          '<input class="reg-i corr-tel" type="tel" placeholder="Bon numéro (ex. 912 345 678)" ' +
+            'autocomplete="off">' +
+          '<input class="reg-i corr-motif" type="text" maxlength="180" ' +
+            'placeholder="Pourquoi ? (ex. chiffre inversé à la saisie)">' +
+          '<div class="corr-b">' +
+            '<button type="button" class="btn-appliquer corr-ok">Rattacher</button>' +
+            '<button type="button" class="corr-del">Délier</button>' +
+          '</div>' +
+          '<p class="reg-aide corr-etat"></p>' +
+        '</div>';
+      }).join(''));
+    }
+
     E('fiche-corps').innerHTML = h.join('');
     E('fiche-fond').hidden = false;
     E('fermer').focus();
   }
 
   function fermer(){ E('fiche-fond').hidden = true; }
+
+  function corriger(bloc, delier){
+    var fp = bloc.dataset.fp;
+    var tel = bloc.querySelector('.corr-tel').value.trim();
+    var motif = bloc.querySelector('.corr-motif').value.trim();
+    var etat = bloc.querySelector('.corr-etat');
+    if (motif.length < 3){ etat.textContent = 'Écris pourquoi : ce geste touche les points de quelqu\'un.'; return; }
+    if (!delier && !tel){ etat.textContent = 'Saisis le bon numéro, ou choisis Délier.'; return; }
+    // ⚠️ DÉLIER SE CONFIRME. C'est le seul geste de cet écran qui retire quelque chose à
+    // quelqu'un sans rien remettre à la place.
+    if (delier && !confirm('Délier cette carte ? Elle redeviendra anonyme et le comptoir ' +
+                           'reproposera l\'inscription au prochain passage.')) return;
+
+    etat.textContent = 'Envoi…';
+    fetch('/api/fidelidade/lien', {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ fp: fp, phone: delier ? null : tel, reason: motif })
+    }).then(function(r){ return r.json().then(function(d){ return {ok: r.ok, d: d}; }); })
+      .then(function(x){
+        if (!x.ok){ etat.textContent = x.d.error || 'Refusé.'; return; }
+        etat.textContent = x.d.unlinked
+          ? 'Carte déliée.' + (x.d.orphan_removed ? ' La fiche créée par erreur a été effacée.' : '')
+          : 'Rattachée au ' + x.d.phone_masked + '.' +
+            (x.d.orphan_removed ? ' La fiche créée par erreur a été effacée.' : '');
+        // Les soldes de toute la page changent : on recharge plutôt que d'afficher du périmé.
+        setTimeout(function(){ location.reload(); }, 1400);
+      }).catch(function(){ etat.textContent = 'Échec réseau — rien n\'a été modifié.'; });
+  }
+
+  E('fiche-corps').addEventListener('click', function(e){
+    var ok = e.target.closest('.corr-ok'), del = e.target.closest('.corr-del');
+    if (!ok && !del) return;
+    corriger(e.target.closest('.corr'), Boolean(del));
+  });
 
   E('fermer').addEventListener('click', fermer);
   E('fiche-fond').addEventListener('click', function(e){ if (e.target===E('fiche-fond')) fermer(); });

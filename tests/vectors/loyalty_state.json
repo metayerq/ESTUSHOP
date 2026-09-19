@@ -24,6 +24,7 @@
         "visits": 0,
         "lastSeen": null,
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -74,6 +75,7 @@
         "visits": 5,
         "lastSeen": "2026-08-20T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -115,6 +117,7 @@
         "visits": 2,
         "lastSeen": "2026-03-10T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -145,6 +148,7 @@
         "visits": 1,
         "lastSeen": "2026-05-02T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -186,6 +190,7 @@
         "visits": 2,
         "lastSeen": "2026-06-01T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -221,6 +226,7 @@
         "visits": 2,
         "lastSeen": "2026-09-01T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -262,6 +268,7 @@
         "visits": 2,
         "lastSeen": "2026-08-01T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -298,6 +305,7 @@
         "visits": 1,
         "lastSeen": "2026-09-10T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -333,6 +341,7 @@
         "visits": 2,
         "lastSeen": "2026-09-01T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -363,6 +372,7 @@
         "visits": 1,
         "lastSeen": "2024-02-29T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -393,6 +403,7 @@
         "visits": 1,
         "lastSeen": "2026-03-31T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -433,6 +444,7 @@
         "visits": 3,
         "lastSeen": "2026-08-03T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -468,6 +480,7 @@
         "visits": 2,
         "lastSeen": "2026-08-01T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -514,6 +527,7 @@
         "visits": 3,
         "lastSeen": "2026-06-01T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -544,6 +558,7 @@
         "visits": 1,
         "lastSeen": "2026-09-01T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -590,6 +605,7 @@
         "visits": 2,
         "lastSeen": "2026-06-01T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -620,6 +636,7 @@
         "visits": 1,
         "lastSeen": "2025-09-19T12:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     },
@@ -660,6 +677,7 @@
         "visits": 2,
         "lastSeen": "2026-07-01T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 14000
       }
     },
@@ -695,6 +713,7 @@
         "visits": 1,
         "lastSeen": "2026-06-01T10:00:00.000Z",
         "legacyPoints": 50,
+        "creditPoints": 0,
         "preStartCents": 140000
       }
     },
@@ -730,6 +749,7 @@
         "visits": 1,
         "lastSeen": "2026-06-01T10:00:00.000Z",
         "legacyPoints": 20,
+        "creditPoints": 0,
         "preStartCents": 20000
       }
     },
@@ -775,6 +795,7 @@
         "visits": 3,
         "lastSeen": "2026-09-22T10:00:00.000Z",
         "legacyPoints": 5,
+        "creditPoints": 0,
         "preStartCents": 5000
       }
     },
@@ -810,6 +831,7 @@
         "visits": 1,
         "lastSeen": "2025-06-01T10:00:00.000Z",
         "legacyPoints": 50,
+        "creditPoints": 0,
         "preStartCents": 50000
       }
     },
@@ -845,6 +867,7 @@
         "visits": 1,
         "lastSeen": "2026-06-01T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 140000
       }
     },
@@ -891,6 +914,7 @@
         "visits": 2,
         "lastSeen": "2026-09-23T10:00:00.000Z",
         "legacyPoints": 8,
+        "creditPoints": 0,
         "preStartCents": 8000
       }
     },
@@ -937,7 +961,210 @@
         "visits": 2,
         "lastSeen": "2026-09-23T10:00:00.000Z",
         "legacyPoints": 8,
+        "creditPoints": 0,
         "preStartCents": 8000
+      }
+    },
+    {
+      "name": "le bonus de bienvenue s'ajoute au solde",
+      "why": "⚠️ LE RÉGLAGE À PLUS FORT LEVIER, ET IL EST RESTÉ DÉBRANCHÉ UNE SEMAINE. À 8 € de ticket médian, 50 points demandent six ou sept visites avant la première gratification : c'est long. Le bonus paie le geste de donner son numéro, au moment où on le demande.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-09-23T10:00:00.000Z",
+          "amountCents": 1200
+        }
+      ],
+      "rewards": [],
+      "credits": [
+        {
+          "ts": "2026-09-22T15:00:00.000Z",
+          "points": 20,
+          "reason": "welcome"
+        }
+      ],
+      "thresholdPoints": 50,
+      "now": "2026-09-25T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 3200,
+        "earnedPoints": 32,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 32,
+        "rewardsDue": 0,
+        "pointsToNext": 18,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-09-22T15:00:00.000Z",
+        "visits": 1,
+        "lastSeen": "2026-09-23T10:00:00.000Z",
+        "legacyPoints": 0,
+        "creditPoints": 20,
+        "preStartCents": 0
+      }
+    },
+    {
+      "name": "un crédit antérieur au lancement compte quand même",
+      "why": "⚠️ LA DATE DE LANCEMENT EFFACE DES ACHATS, PAS DES PROMESSES. Elle existe parce que personne n'avait promis que les paiements de mai donneraient des points. Un crédit, lui, est un engagement explicite pris envers quelqu'un : l'annuler serait revenir sur sa parole.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-06-01T10:00:00.000Z",
+          "amountCents": 8000
+        }
+      ],
+      "rewards": [],
+      "credits": [
+        {
+          "ts": "2026-07-01T10:00:00.000Z",
+          "points": 30,
+          "reason": "manuel"
+        }
+      ],
+      "thresholdPoints": 50,
+      "now": "2026-09-25T12:00:00.000Z",
+      "expiryMonths": 12,
+      "options": {
+        "startDate": "2026-09-22",
+        "legacyRatePct": 0,
+        "legacyCapPoints": 0
+      },
+      "expected": {
+        "spentCents": 3000,
+        "earnedPoints": 30,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 30,
+        "rewardsDue": 0,
+        "pointsToNext": 20,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-07-01T10:00:00.000Z",
+        "visits": 1,
+        "lastSeen": "2026-06-01T10:00:00.000Z",
+        "legacyPoints": 0,
+        "creditPoints": 30,
+        "preStartCents": 8000
+      }
+    },
+    {
+      "name": "un crédit périme douze mois après son octroi",
+      "why": "Comme le reste. Un cadeau sans fin serait une dette sans fin.",
+      "visits": [],
+      "rewards": [],
+      "credits": [
+        {
+          "ts": "2025-09-01T10:00:00.000Z",
+          "points": 40,
+          "reason": "welcome"
+        }
+      ],
+      "thresholdPoints": 50,
+      "now": "2026-09-25T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 0,
+        "earnedPoints": 0,
+        "spentPoints": 0,
+        "expiredPoints": 40,
+        "balancePoints": 0,
+        "rewardsDue": 0,
+        "pointsToNext": 50,
+        "expiringSoonPoints": 0,
+        "nextExpiry": null,
+        "visits": 0,
+        "lastSeen": null,
+        "legacyPoints": 0,
+        "creditPoints": 40,
+        "preStartCents": 0
+      }
+    },
+    {
+      "name": "un crédit se dépense comme les autres points, et les plus anciens d'abord",
+      "why": "Un bonus n'est pas une monnaie à part : il entre dans la même file, à sa date. Le traiter à part laisserait périmer des points que la récompense aurait dû consommer.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-08-01T10:00:00.000Z",
+          "amountCents": 4000
+        }
+      ],
+      "rewards": [
+        {
+          "fp": "c1",
+          "ts": "2026-09-20T10:00:00.000Z",
+          "pointsSpent": 50
+        }
+      ],
+      "credits": [
+        {
+          "ts": "2026-07-01T10:00:00.000Z",
+          "points": 30,
+          "reason": "welcome"
+        }
+      ],
+      "thresholdPoints": 50,
+      "now": "2026-09-25T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 2000,
+        "earnedPoints": 20,
+        "spentPoints": 50,
+        "expiredPoints": 0,
+        "balancePoints": 20,
+        "rewardsDue": 0,
+        "pointsToNext": 30,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-08-01T10:00:00.000Z",
+        "visits": 1,
+        "lastSeen": "2026-08-01T10:00:00.000Z",
+        "legacyPoints": 0,
+        "creditPoints": 30,
+        "preStartCents": 0
+      }
+    },
+    {
+      "name": "un crédit illisible ou nul n'offre rien",
+      "why": "Une ligne abîmée ne doit ni fabriquer de points, ni faire tomber la page — et un crédit négatif ne doit surtout pas AMPUTER un solde acquis.",
+      "visits": [
+        {
+          "fp": "c1",
+          "ts": "2026-09-23T10:00:00.000Z",
+          "amountCents": 5000
+        }
+      ],
+      "rewards": [],
+      "credits": [
+        {
+          "ts": "pas une date",
+          "points": 50
+        },
+        {
+          "ts": "2026-09-22T10:00:00.000Z",
+          "points": 0
+        },
+        {
+          "ts": "2026-09-22T10:00:00.000Z",
+          "points": -30
+        }
+      ],
+      "thresholdPoints": 50,
+      "now": "2026-09-25T12:00:00.000Z",
+      "expiryMonths": 12,
+      "expected": {
+        "spentCents": 5000,
+        "earnedPoints": 50,
+        "spentPoints": 0,
+        "expiredPoints": 0,
+        "balancePoints": 50,
+        "rewardsDue": 1,
+        "pointsToNext": 0,
+        "expiringSoonPoints": 0,
+        "nextExpiry": "2027-09-23T10:00:00.000Z",
+        "visits": 1,
+        "lastSeen": "2026-09-23T10:00:00.000Z",
+        "legacyPoints": 0,
+        "creditPoints": 0,
+        "preStartCents": 0
       }
     },
     {
@@ -988,6 +1215,7 @@
         "visits": 3,
         "lastSeen": "2026-05-05T10:00:00.000Z",
         "legacyPoints": 0,
+        "creditPoints": 0,
         "preStartCents": 0
       }
     }
@@ -1053,6 +1281,110 @@
         "2026-09-01"
       ],
       "expected": 21
+    }
+  ],
+  "phones": [
+    {
+      "brut": "912345678",
+      "ok": true,
+      "e164": "+351912345678",
+      "reason": null
+    },
+    {
+      "brut": "+351912345678",
+      "ok": true,
+      "e164": "+351912345678",
+      "reason": null
+    },
+    {
+      "brut": "00351912345678",
+      "ok": true,
+      "e164": "+351912345678",
+      "reason": null
+    },
+    {
+      "brut": "912 345 678",
+      "ok": true,
+      "e164": "+351912345678",
+      "reason": null
+    },
+    {
+      "brut": "912-345-678",
+      "ok": true,
+      "e164": "+351912345678",
+      "reason": null
+    },
+    {
+      "brut": "0912345678",
+      "ok": true,
+      "e164": "+351912345678",
+      "reason": null
+    },
+    {
+      "brut": "  912345678  ",
+      "ok": true,
+      "e164": "+351912345678",
+      "reason": null
+    },
+    {
+      "brut": "+351 912 345 678",
+      "ok": true,
+      "e164": "+351912345678",
+      "reason": null
+    },
+    {
+      "brut": "",
+      "ok": false,
+      "e164": null,
+      "reason": "empty"
+    },
+    {
+      "brut": "21 345 6789",
+      "ok": false,
+      "e164": null,
+      "reason": "not-mobile"
+    },
+    {
+      "brut": "+351213456789",
+      "ok": false,
+      "e164": null,
+      "reason": "not-mobile"
+    },
+    {
+      "brut": "12345",
+      "ok": false,
+      "e164": null,
+      "reason": "too-short"
+    },
+    {
+      "brut": "+3519123456789012345",
+      "ok": false,
+      "e164": null,
+      "reason": "too-long"
+    },
+    {
+      "brut": "abc",
+      "ok": false,
+      "e164": null,
+      "reason": "not-a-number"
+    },
+    {
+      "brut": "+351abcdefghi",
+      "ok": false,
+      "e164": null,
+      "reason": "not-a-number"
+    },
+    {
+      "brut": "+33612345678",
+      "ok": true,
+      "e164": "+33612345678",
+      "reason": null
+    },
+    {
+      "brut": "+441234567890",
+      "ok": true,
+      "e164": "+441234567890",
+      "reason": null
     }
   ],
   "expiry": [

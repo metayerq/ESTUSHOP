@@ -37,7 +37,7 @@ VECTEURS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vectors", "
 # ⚠️ L'EMPREINTE EST ÉCRITE DES DEUX CÔTÉS. Mesa la vérifie aussi, sur le fichier d'origine.
 # Régénérer les vecteurs casse les deux suites : c'est le seul moyen qu'une modification du
 # barème ne puisse pas passer d'un seul côté sans que personne ne le remarque.
-EMPREINTE = "31a910582dc70358bba36c1a917bfec5d457711b0273689065c1c1db37ba2170"
+EMPREINTE = "b0274000f4a2ff47e49de04e5b138ff629e8fe2fda119678270f75e705e31df4"
 
 
 def _vecteurs():
@@ -58,6 +58,10 @@ def _recompenses(r):
     return [{"ts": x["ts"], "points_spent": x["pointsSpent"]} for x in r]
 
 
+def _credits(cas):
+    return [{"ts": x["ts"], "points": x["points"]} for x in (cas.get("credits") or [])]
+
+
 # Ce que le vecteur TypeScript appelle, et le nom qu'on lui donne ici.
 CHAMPS = {
     "spentCents": "spent_cents",
@@ -72,6 +76,7 @@ CHAMPS = {
     "visits": "visits",
     "lastSeen": "last_seen",
     "legacyPoints": "legacy_points",
+    "creditPoints": "credit_points",
     "preStartCents": "pre_start_cents",
 }
 
@@ -114,6 +119,7 @@ def test_le_solde_est_identique_a_celui_de_la_caisse(cas):
     obtenu = loyalty_state(
         _visites(cas["visits"]),
         _recompenses(cas["rewards"]),
+        _credits(cas),
         cas["thresholdPoints"],
         _dt(cas["now"]),
         cas["expiryMonths"],
@@ -170,7 +176,7 @@ def test_une_date_illisible_ne_fait_pas_tomber_la_page():
 
 
 def test_un_client_sans_rien_ne_casse_pas():
-    etat = loyalty_state([], [], 50, _dt("2026-09-19T12:00:00Z"))
+    etat = loyalty_state([], [], [], 50, _dt("2026-09-19T12:00:00Z"))
     assert etat["balance_points"] == 0
     assert etat["rewards_due"] == 0
     assert etat["next_expiry"] is None
@@ -185,7 +191,7 @@ def test_le_montant_arrive_parfois_en_chaine():
     pourquoi — si un jour `amount` devient `numeric`, ce test est le premier à le signaler.
     """
     etat = loyalty_state(
-        [{"ts": "2026-09-01T10:00:00Z", "amount_cents": "5000"}], [], 50, _dt("2026-09-19T12:00:00Z")
+        [{"ts": "2026-09-01T10:00:00Z", "amount_cents": "5000"}], [], [], 50, _dt("2026-09-19T12:00:00Z")
     )
     assert etat["balance_points"] == 0
 
@@ -193,7 +199,7 @@ def test_le_montant_arrive_parfois_en_chaine():
 def test_un_booleen_n_est_pas_un_montant():
     """`True` vaut 1 en Python — sans garde, une colonne booléenne offrirait un centime."""
     etat = loyalty_state(
-        [{"ts": "2026-09-01T10:00:00Z", "amount_cents": True}], [], 50, _dt("2026-09-19T12:00:00Z")
+        [{"ts": "2026-09-01T10:00:00Z", "amount_cents": True}], [], [], 50, _dt("2026-09-19T12:00:00Z")
     )
     assert etat["spent_cents"] == 0
 
@@ -204,10 +210,10 @@ def test_l_horloge_locale_n_entre_jamais_dans_le_calcul():
     ne le verra pas — mais la signature, si : elle exige l'instant, elle ne le devine pas.
     """
     tot = loyalty_state(
-        [{"ts": "2025-10-01T10:00:00Z", "amount_cents": 6000}], [], 50, _dt("2026-09-30T12:00:00Z")
+        [{"ts": "2025-10-01T10:00:00Z", "amount_cents": 6000}], [], [], 50, _dt("2026-09-30T12:00:00Z")
     )
     tard = loyalty_state(
-        [{"ts": "2025-10-01T10:00:00Z", "amount_cents": 6000}], [], 50, _dt("2026-10-02T12:00:00Z")
+        [{"ts": "2025-10-01T10:00:00Z", "amount_cents": 6000}], [], [], 50, _dt("2026-10-02T12:00:00Z")
     )
     assert tot["balance_points"] == 60
     assert tard["balance_points"] == 0

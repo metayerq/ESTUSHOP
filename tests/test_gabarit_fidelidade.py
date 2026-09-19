@@ -185,3 +185,22 @@ def test_la_regle_appliquee_est_affichee_en_haut_de_page():
         assert attendu in bloc, f"la règle affichée ne mentionne pas {attendu}"
     # Et l'absence de date de lancement se dit, elle ne se tait pas.
     assert "Aucune date de lancement" in bloc
+
+
+def test_delier_une_carte_demande_confirmation_et_un_motif():
+    """
+    ⚠️ C'EST LE SEUL GESTE DE CET ÉCRAN QUI RETIRE QUELQUE CHOSE SANS RIEN REMETTRE. Un clic de
+    trop sur un écran tactile, et un client perd le rattachement de sa carte. La confirmation
+    n'est pas une politesse : c'est la seule barrière entre un doigt et des points.
+    """
+    bloc = SOURCE[SOURCE.index("function corriger(bloc, delier){"):SOURCE.index("E('fiche-corps').addEventListener")]
+    assert "confirm(" in bloc, "délier ne demande aucune confirmation"
+    assert "motif.length < 3" in bloc, "un geste sans motif écrit passe"
+    # Et la confirmation ne doit garder que le cas destructeur.
+    confirmation = bloc[bloc.index("if (delier"):bloc.index("etat.textContent = 'Envoi")]
+    assert "delier &&" in confirmation, "la confirmation s'applique aussi au rattachement"
+
+
+def test_l_ecran_de_correction_n_existe_que_pour_un_compte_avec_numero():
+    """Une carte anonyme n'a rien à corriger : proposer « délier » dessus n'a aucun sens."""
+    assert "if (c.kind === 'phone' && c.fps.length) {" in SOURCE
