@@ -43,6 +43,17 @@ create table if not exists public.card_settings (
 
 insert into public.card_settings (id) values (1) on conflict (id) do nothing;
 
+-- ⚠️ SANS CETTE LIGNE, LA TABLE EST INUTILISABLE — ET ELLE ÉCHOUE DE LA PIRE FAÇON. Supabase
+-- active RLS par défaut : sans politique, la lecture renvoie ZÉRO LIGNE au lieu d'une erreur.
+-- L'application en conclut « pas encore configuré », sert les valeurs par défaut, affiche des
+-- champs parfaitement actifs — et l'écriture casse seulement au moment d'enregistrer, avec un
+-- message que personne ne relie aux réglages. Un refus silencieux en lecture, un refus bruyant
+-- en écriture, et rien entre les deux pour faire le lien.
+--
+-- Même régime que `card_visits` et les autres tables du programme : RLS désactivée, et la
+-- protection tient entièrement au fait que la clé Supabase ne quitte jamais le serveur.
+alter table public.card_settings disable row level security;
+
 -- Le journal des changements.
 --
 -- ⚠️ CERTAINS DE CES RÉGLAGES TOUCHENT DES GENS QUI ONT DÉJÀ PAYÉ. Relever le seuil de 50 à 100
@@ -62,5 +73,7 @@ create table if not exists public.card_settings_log (
   -- changement que personne ne saura expliquer dans six mois.
   reason     text
 );
+
+alter table public.card_settings_log disable row level security;
 
 create index if not exists card_settings_log_at_idx on public.card_settings_log (at desc);
