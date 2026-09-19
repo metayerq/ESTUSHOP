@@ -239,6 +239,25 @@
   <!-- ── Les chiffres qui d&eacute;cident quelque chose ─────────────────────────────────────── -->
   <div id="kpis" class="kpi-grid"><div class="muted">Chargement&hellip;</div></div>
 
+  <!-- ── Le suivi de conversion : est-ce que demander le num&eacute;ro marche ? ─────────────── -->
+  <section class="bloc" id="bloc-conv" style="margin-bottom:22px">
+    <div class="conv-tete">
+      <div>
+        <h2 class="bloc-titre">Conversion au programme</h2>
+        <p class="muted bloc-note" style="margin:0">
+          Part des clients <strong>revenus au moins deux fois</strong> qui ont donn&eacute; leur num&eacute;ro.
+          Les passants d'un jour ne comptent pas&nbsp;: ils n'avaient aucune raison de le donner.
+        </p>
+      </div>
+      <div class="conv-chiffres">
+        <div><div class="kpi-v" id="conv-total">&mdash;</div><div class="kpi-l">inscrits</div></div>
+        <div><div class="kpi-v" id="conv-semaine">&mdash;</div><div class="kpi-l">cette semaine</div></div>
+      </div>
+    </div>
+    <div id="conv-graph" class="conv-graph"></div>
+    <p class="muted" id="conv-note" style="font-size:11.5px;margin:10px 0 0"></p>
+  </section>
+
   <!-- ── Les deux listes qui font agir ──────────────────────────────────────────────────── -->
   <div class="deux-listes">
     <section class="bloc">
@@ -295,6 +314,26 @@
 .kpi.vedette { border-color:var(--spec); }
 .kpi.vedette .kpi-v { color:var(--spec); }
 
+/* ── Suivi de conversion ── */
+.conv-tete { display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; margin-bottom:18px; }
+.conv-tete > div:first-child { flex:1 1 320px; }
+.conv-chiffres { display:flex; gap:26px; }
+.conv-chiffres .kpi-l { margin:0; }
+.conv-graph { display:flex; align-items:flex-end; gap:6px; min-height:104px; overflow-x:auto; padding-bottom:2px; }
+.sem { flex:1 1 0; min-width:38px; display:flex; flex-direction:column; align-items:center; gap:5px; }
+/* La colonne : sa HAUTEUR est le taux, et c'est la seule chose qu'elle encode. */
+.sem-piste { width:100%; height:78px; display:flex; align-items:flex-end;
+  background:var(--bg-hover); border-radius:3px; overflow:hidden; }
+.sem-barre { width:100%; background:var(--spec); border-radius:3px 3px 0 0; min-height:2px; }
+.sem.vide .sem-barre { background:var(--border); }
+.sem.encours .sem-barre { background:repeating-linear-gradient(135deg,var(--spec),var(--spec) 4px,transparent 4px,transparent 8px),var(--spec); }
+.sem-taux { font-size:11px; font-variant-numeric:tabular-nums; color:var(--muted); }
+.sem-jour { font-size:10px; color:var(--muted); white-space:nowrap; }
+/* Les inscrits de la semaine : un NOMBRE, jamais une seconde hauteur — deux echelles sur un
+   meme graphique ne se comparent pas, elles se confondent. */
+.sem-neufs { font-size:11px; font-weight:600; color:var(--spec); font-variant-numeric:tabular-nums; }
+.sem-neufs.zero { color:var(--border); font-weight:400; }
+
 .deux-listes { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px; }
 .bloc { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:16px 18px; }
 .bloc-titre { font-size:14px; font-weight:600; margin:0 0 3px; }
@@ -329,6 +368,12 @@ tbody tr:hover { background:var(--bg-hover); }
 .anon { color:var(--muted); font-family:ui-monospace,Menlo,monospace; font-size:12px; }
 
 .fiche-fond { position:fixed; inset:0; background:rgba(20,18,14,.34); z-index:80; display:flex; justify-content:flex-end; }
+/* ⚠️ `display:flex` ÉCRASE L'ATTRIBUT `hidden`. Le navigateur cache un élément `hidden` avec un
+   `display:none` de sa feuille par défaut — et TOUTE règle d'auteur passe devant, quelle que
+   soit sa spécificité. Sans cette ligne, le panneau de fiche reste affiché en permanence : une
+   bande blanche de 520 px collée à droite, par-dessus le tableau des clients. Le JavaScript
+   fonctionnait parfaitement ; c'est le CSS qui ignorait ce qu'il disait. */
+.fiche-fond[hidden] { display:none; }
 .fiche { background:var(--bg-card); width:min(520px,100%); height:100%; overflow-y:auto; padding:22px 24px 48px;
   border-left:1px solid var(--border); position:relative; }
 .fermer { position:absolute; top:12px; right:14px; background:none; border:none; font-size:26px; line-height:1;
@@ -377,6 +422,37 @@ tbody tr:hover { background:var(--bg-hover); }
       return '<div class="kpi' + (k[3] ? ' vedette' : '') + '"><div class="kpi-l">' + k[0] +
              '</div><div class="kpi-v">' + k[1] + '</div><div class="kpi-s">' + k[2] + '</div></div>';
     }).join('');
+  }
+
+  function conversion(cv){
+    E('conv-total').textContent   = cv.customers_total;
+    E('conv-semaine').textContent = (cv.this_week_customers > 0 ? '+' : '') + cv.this_week_customers;
+
+    var dernier = cv.weeks.length - 1;
+    E('conv-graph').innerHTML = cv.weeks.map(function(w, i){
+      // ⚠️ UN TAUX ABSENT N'EST PAS UN TAUX DE ZÉRO. Une semaine sans personne de revenu n'a
+      // rien mesuré ; lui donner une barre à zéro raconterait un échec qui n'a pas eu lieu.
+      var mesure = w.rate_pct !== null;
+      var classes = 'sem' + (mesure ? '' : ' vide') + (i === dernier ? ' encours' : '');
+      var jour = w.start.slice(8) + '/' + w.start.slice(5,7);
+      return '<div class="' + classes + '" title="' + jour + ' : ' + w.linked + ' rattachées sur ' +
+               w.returning + ' revenues">' +
+        '<div class="sem-neufs' + (w.new_customers ? '' : ' zero') + '">' +
+          (w.new_customers ? '+' + w.new_customers : '·') + '</div>' +
+        '<div class="sem-piste"><div class="sem-barre" style="height:' +
+          (mesure ? Math.max(2, w.rate_pct) : 0) + '%"></div></div>' +
+        '<div class="sem-taux">' + (mesure ? w.rate_pct + '%' : '—') + '</div>' +
+        '<div class="sem-jour">' + jour + '</div>' +
+      '</div>';
+    }).join('');
+
+    var notes = ['La dernière colonne est la semaine en cours : elle n\'est pas finie.'];
+    if (cv.undated_links)
+      notes.push(cv.undated_links + ' rattachement(s) sans date connue — absents de la courbe, ' +
+                 'mais comptés dans le total.');
+    if (cv.opted_out)
+      notes.push(cv.opted_out + ' désabonné(s) des SMS — leurs points continuent de courir.');
+    E('conv-note').textContent = notes.join(' ');
   }
 
   function petiteListe(el, arr, detail, vide){
@@ -485,6 +561,7 @@ tbody tr:hover { background:var(--bg-hover); }
     if (d.error) throw new Error(d.error);
     S = d.summary; comptes = d.accounts;
     kpis(S);
+    conversion(d.conversion);
     petiteListe(E('liste-proches'), S.near_reward,
       function(c){ return c.state.balance_points + ' pts · ' + c.state.points_to_next + ' à faire'; },
       'Personne n\'approche des 50 points.');

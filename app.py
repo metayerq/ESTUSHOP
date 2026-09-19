@@ -24,7 +24,7 @@ from config import today_lisbon, now_lisbon, TVA_MOYENNE_BLENDED
 # Le programme de points. `points.py` est une traduction vérifiée du calcul qui tourne à la
 # caisse ; `programme.py` regroupe les lignes brutes en clients. Ni l'un ni l'autre ne touche
 # à Supabase : c'est ce qui permet de tester la règle sans base de données.
-from programme import build_accounts, programme_summary
+from programme import build_accounts, conversion_series, programme_summary
 
 from flask import Flask, jsonify, render_template, request, redirect, make_response, g
 from vendus import (
@@ -1302,6 +1302,11 @@ FIDELIDADE_MAX_ROWS = 60000
 # Nombre d'événements montrés sur une fiche. Au-delà, personne ne fait défiler.
 FIDELIDADE_MAX_EVENTS = 80
 
+# Semaines de suivi de conversion. ⚠️ ASSEZ POUR VOIR AVANT ET APRÈS. Quentin commence à
+# demander les numéros au comptoir la semaine du 21/09/2026 : sans plusieurs semaines de
+# plat devant, la première montée n'aurait rien à quoi se comparer.
+FIDELIDADE_WEEKS = 12
+
 
 def _supa_all(table, params, page=1000, cap=FIDELIDADE_MAX_ROWS):
     """
@@ -1341,7 +1346,10 @@ def _fidelidade_donnees(now):
     """
     visites, t1 = _supa_all("card_visits", {"select": "fp,ts,amount", "order": "ts.asc"})
     recompenses, t2 = _supa_all("card_rewards", {"select": "fp,ts,points_spent,amount_cents,label"})
-    liens, t3 = _supa_all("card_links", {"select": "fp,phone"})
+    # `linked_at` porte le SUIVI DE CONVERSION : sans lui, on sait combien de clients ont donné
+    # leur numéro, mais pas si ça progresse — et c'est la seule question qui se pose quand on
+    # commence à le demander au comptoir.
+    liens, t3 = _supa_all("card_links", {"select": "fp,phone,linked_at"})
     fiches, t4 = _supa_all(
         "card_customers", {"select": "phone,name,token,consent_at,opted_out_at"})
 
@@ -1373,7 +1381,11 @@ def _fidelidade_donnees(now):
         c["events_total"] = len(evts)
         c["events"] = evts[:FIDELIDADE_MAX_EVENTS]
 
-    return comptes, (t1 or t2 or t3 or t4)
+    conversion = conversion_series(
+        [{"fp": v.get("fp"), "ts": v.get("ts")} for v in visites],
+        liens, fiches, now, FIDELIDADE_WEEKS,
+    )
+    return comptes, conversion, (t1 or t2 or t3 or t4)
 
 
 @app.route("/loyalty")
@@ -1398,7 +1410,7 @@ def api_fidelidade_resumo():
         return jsonify({"error": "unauthorized"}), 401
 
     try:
-        comptes, tronque = _fidelidade_donnees(now_lisbon())
+        comptes, conversion, tronque = _fidelidade_donnees(now_lisbon())
     except SupabaseSchemaError as e:
         # Une table absente est un déploiement incomplet, pas un programme vide.
         return jsonify({"error": str(e)}), 500
@@ -1449,6 +1461,7 @@ def api_fidelidade_resumo():
         "threshold": POINTS_THRESHOLD,
         "reward_cost_cents": REWARD_COST_CENTS,
         "truncated": tronque,
+        "conversion": conversion,
         "summary": {**resume,
                     "at_risk": [vue(c) for c in resume["at_risk"]],
                     "near_reward": [vue(c) for c in resume["near_reward"]]},

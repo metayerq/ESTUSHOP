@@ -25,7 +25,8 @@ TABLES = {
     ],
     "card_rewards": [{"fp": "fpA", "ts": "2026-09-08T10:05:00+00:00",
                       "points_spent": 50, "amount_cents": 300, "label": "Galao"}],
-    "card_links": [{"fp": "fpA", "phone": "+351912345678"}],
+    "card_links": [{"fp": "fpA", "phone": "+351912345678",
+                    "linked_at": "2026-08-01T09:00:00+00:00"}],
     "card_customers": [{"phone": "+351912345678", "name": "Ana", "token": "SECRET-TOKEN",
                         "consent_at": "2026-08-01T09:00:00+00:00", "opted_out_at": None}],
 }
@@ -245,8 +246,17 @@ def test_le_gabarit_ne_lit_que_des_champs_qui_existent(client, monkeypatch):
     def lus(prefixe, ou=js):
         return {m for m in re.findall(rf"\b{prefixe}\.([a-z_]+)\b(?!\s*\()", ou)}
 
+    # Le suivi de conversion : l'objet, et une ligne de semaine.
+    cv = d["conversion"]
+    assert cv["weeks"], "le suivi de conversion ne renvoie aucune semaine"
+    semaine = cv["weeks"][-1]
+    debut_cv = js.index("cv.weeks.map(function(w, i){")
+    bloc_sem = js[debut_cv:js.index("}).join('')", debut_cv)]
+
     manquants = {
         "compte (c.)": lus("c") - set(compte) - {"state", "events"},
+        "conversion (cv.)": lus("cv") - set(cv),
+        "semaine (w.)": lus("w", bloc_sem) - set(semaine),
         "état (c.state.)": {m for m in re.findall(r"\bs\.(?:state\.)?([a-z_]+)\b(?!\s*\()", js)}
                            - set(resume) - set(etat),
         "ligne « récompense » (e.)": lus("e", recompense) - genres["reward"],

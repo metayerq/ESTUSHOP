@@ -22,7 +22,7 @@ CARTES ORPHELINES SONT LA MAJORITÉ : les ignorer ferait croire que le programme
 clients alors qu'il en voit trois cents. C'est la mesure qui dit si le programme progresse.
 """
 
-from datetime import timezone
+from datetime import datetime, time, timedelta, timezone
 
 from points import EXPIRY_MONTHS, absence_threshold_days, loyalty_state, parse_ts
 
@@ -215,4 +215,110 @@ def programme_summary(comptes, threshold, reward_cost_cents):
         "at_risk": [c for c in comptes if c["at_risk"]],
         "near_reward": sorted(bientôt, key=lambda c: -c["state"]["balance_points"]),
         "regulars": sum(1 for c in comptes if c["regular"]),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LE SUIVI DE CONVERSION — combien de clients ont donné leur numéro, semaine après semaine
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ UN TAUX SEUL NE DIT PAS SI ÇA MARCHE. « 18 % » ne répond pas à la question qu'on se pose
+# vraiment quand on commence à demander les numéros au comptoir : est-ce que ça monte ? Un
+# chiffre unique se lit comme un jugement ; une courbe se lit comme un résultat, et elle dit en
+# plus quelle semaine a été bonne — donc quelle façon de demander a marché.
+#
+# ⚠️ ET LE DÉNOMINATEUR BOUGE AUSSI. Chaque semaine amène de nouveaux clients revenus, qui n'ont
+# pas encore eu l'occasion de donner leur numéro. Calculer le taux passé avec le dénominateur
+# d'aujourd'hui écraserait les débuts — on recalcule donc l'état du monde à la fin de CHAQUE
+# semaine : qui était revenu, qui était déjà rattaché.
+
+
+def _lundi(d):
+    """Le lundi de la semaine de `d`."""
+    return d - timedelta(days=d.weekday())
+
+
+def _instant(jour, tz):
+    """Minuit, ce jour-là, à l'heure du café — pas à celle du serveur."""
+    return int(datetime.combine(jour, time(0, 0), tzinfo=tz).timestamp() * 1000)
+
+
+def conversion_series(visits, links, customers, now, weeks=12):
+    """
+    La progression du rattachement, semaine par semaine.
+
+    ⚠️ ON COMPTE LES CARTES QUI REVIENNENT, PAS TOUS LES PASSANTS. Un touriste venu une fois
+    n'avait aucune raison de donner son numéro : au dénominateur, il ferait baisser le taux
+    chaque fois qu'un inconnu entre, et la courbe mesurerait la fréquentation au lieu de
+    l'effort fait au comptoir.
+
+    ⚠️ UN RATTACHEMENT SANS DATE NE PEUT PAS ÊTRE PLACÉ SUR LA COURBE. `linked_at` peut manquer
+    (ligne ancienne, migration). On se rabat sur la date de consentement du numéro ; s'il n'y en
+    a pas non plus, la ligne est comptée dans `undated` et DITE, jamais rangée d'office au début
+    — ce qui gonflerait les premières semaines et ferait croire à un départ en fanfare.
+    """
+    tz = now.tzinfo or timezone.utc
+    maintenant = int(now.timestamp() * 1000)
+
+    # Le deuxième passage de chaque carte : l'instant où elle devient « revenue ».
+    passages = {}
+    for v in visits or []:
+        fp, ms = v.get("fp"), parse_ts(v.get("ts"))
+        if fp and ms is not None:
+            passages.setdefault(fp, []).append(ms)
+    revenue_a = {fp: sorted(ms)[1] for fp, ms in passages.items() if len(ms) >= 2}
+
+    consentement = {}
+    for c in customers or []:
+        tel, ms = c.get("phone"), parse_ts(c.get("consent_at"))
+        if tel and ms is not None:
+            consentement[tel] = ms
+
+    # Quand chaque carte a été rattachée.
+    rattache_a, undated = {}, 0
+    for l in links or []:
+        fp = l.get("fp")
+        if not fp:
+            continue
+        ms = parse_ts(l.get("linked_at"))
+        if ms is None:
+            ms = consentement.get(l.get("phone"))
+        if ms is None:
+            undated += 1
+            continue
+        rattache_a[fp] = min(ms, rattache_a[fp]) if fp in rattache_a else ms
+
+    # Les numéros, eux, se comptent en PERSONNES : deux cartes rattachées au même téléphone,
+    # c'est un client convaincu, pas deux.
+    inscrits = sorted(consentement.values())
+
+    fin_semaine = _lundi(now.date()) + timedelta(days=7)
+    lignes = []
+    for i in range(weeks - 1, -1, -1):
+        debut = _instant(fin_semaine - timedelta(days=7 * (i + 1)), tz)
+        fin = min(_instant(fin_semaine - timedelta(days=7 * i), tz), maintenant)
+        if fin <= debut:
+            continue
+
+        revenus = [fp for fp, ms in revenue_a.items() if ms <= fin]
+        rattaches = [fp for fp in revenus if rattache_a.get(fp, maintenant + 1) <= fin]
+        lignes.append({
+            "start": datetime.fromtimestamp(debut / 1000, tz).date().isoformat(),
+            "returning": len(revenus),
+            "linked": len(rattaches),
+            # ⚠️ `None` ET NON `0` QUAND PERSONNE N'EST ENCORE REVENU. Un taux de 0 % se lit
+            # comme un échec ; l'absence de mesure se lit comme ce qu'elle est.
+            "rate_pct": round(len(rattaches) * 100.0 / len(revenus), 1) if revenus else None,
+            "new_links": sum(1 for ms in rattache_a.values() if debut <= ms < fin),
+            "new_customers": sum(1 for ms in inscrits if debut <= ms < fin),
+        })
+
+    derniere = lignes[-1] if lignes else None
+    return {
+        "weeks": lignes,
+        "undated_links": undated,
+        "customers_total": len(inscrits),
+        "opted_out": sum(1 for c in (customers or []) if c.get("opted_out_at")),
+        "this_week_customers": derniere["new_customers"] if derniere else 0,
+        "this_week_links": derniere["new_links"] if derniere else 0,
     }
