@@ -151,3 +151,37 @@ def test_le_tri_ne_reordonne_pas_les_listes_d_urgence():
     """
     bloc = SOURCE[SOURCE.index("function tableau(){"):SOURCE.index("E('compte').textContent")]
     assert ".slice().sort(" in bloc, "le tri s'applique au tableau partagé, pas à une copie"
+
+
+def test_le_tableau_a_autant_de_cellules_que_d_en_tetes():
+    """
+    ⚠️ AJOUTER UNE COLONNE, C'EST TOUCHER TROIS ENDROITS. L'en-tête, la ligne, et le `colspan`
+    du message « personne ne correspond ». En oublier un décale tout le tableau d'une case sans
+    qu'aucune erreur ne s'affiche : les soldes apparaissent sous « Dues », les passages sous
+    « Dernier », et on lit des chiffres justes en face des mauvais libellés.
+    """
+    entetes = len(re.findall(r"<th[^>]*data-tri=", SOURCE))
+
+    debut = SOURCE.index("E('clients').tBodies[0].innerHTML = vus.map(")
+    ligne = SOURCE[debut:SOURCE.index("}).join('')", debut)]
+    cellules = len(re.findall(r"<td[ >]", ligne))
+
+    colspan = int(re.search(r'<tr><td colspan="(\d+)" class="vide"', SOURCE).group(1))
+
+    assert entetes == cellules == colspan, (
+        f"{entetes} en-têtes, {cellules} cellules par ligne, colspan={colspan} — le tableau est décalé"
+    )
+
+
+def test_la_regle_appliquee_est_affichee_en_haut_de_page():
+    """
+    ⚠️ UN CHIFFRE SANS SA RÈGLE EST UN CHIFFRE QU'ON NE PEUT PAS CONTESTER. Les réglages vivent
+    tout en bas ; après les avoir enregistrés, rien en haut ne confirmait qu'ils étaient pris en
+    compte, et chaque vérification demandait de redescendre.
+    """
+    assert 'id="regle-active"' in SOURCE
+    bloc = SOURCE[SOURCE.index("var st = d.settings, regle = []"):SOURCE.index("E('regle-active')")]
+    for attendu in ("start_date", "threshold_points", "expiry_months", "legacy_cap_points"):
+        assert attendu in bloc, f"la règle affichée ne mentionne pas {attendu}"
+    # Et l'absence de date de lancement se dit, elle ne se tait pas.
+    assert "Aucune date de lancement" in bloc

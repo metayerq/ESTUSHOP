@@ -125,6 +125,18 @@ def build_accounts(visits, rewards, links, customers, threshold, now,
             maintenant_ms = int(now.astimezone(timezone.utc).timestamp() * 1000)
             depuis = max(0, (maintenant_ms - dernier_ms) // _MS_PAR_JOUR)
 
+        # ⚠️ CE QUE LA PERSONNE A DÉPENSÉ EN TOUT, SANS AUCUNE PONDÉRATION. Ni la date de
+        # lancement, ni l'expiration, ni les boissons déjà offertes n'entrent ici : c'est le
+        # cumul brut depuis la première visite. Le solde répond à « que lui dois-je ? » ; ce
+        # chiffre-ci répond à « qui est-ce ? » — et les deux ne se déduisent pas l'un de l'autre.
+        # Un client à 50 points de solde peut avoir dépensé 1 400 € ; sans cette colonne, il
+        # ressemble à quelqu'un qui vient d'arriver.
+        cumul_cents = sum(
+            int(v["amount_cents"]) for v in g["visits"]
+            if isinstance(v.get("amount_cents"), (int, float))
+            and not isinstance(v.get("amount_cents"), bool) and v["amount_cents"] > 0
+        )
+
         fiche = fiches.get(ident) if kind == "phone" else None
         habitue = etat["visits"] >= REGULAR_AFTER_VISITS
 
@@ -141,6 +153,10 @@ def build_accounts(visits, rewards, links, customers, threshold, now,
             # et la seule façon qu'elle se répare est que quelqu'un la voie.
             "orphan": kind == "phone" and fiche is None,
             "state": etat,
+            "lifetime_cents": cumul_cents,
+            # 1 € = 1 point : le cumul s'exprime dans la même unité que le solde, sinon les deux
+            # colonnes côte à côte ne se comparent pas.
+            "lifetime_points": cumul_cents // 100,
             "visit_days": jours,
             "distinct_days": len(jours),
             "absence_threshold_days": seuil_absence,

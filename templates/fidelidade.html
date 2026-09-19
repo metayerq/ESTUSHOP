@@ -234,6 +234,7 @@
     client&nbsp;&mdash; une divergence entre les trois est un test rouge, pas une surprise au comptoir.
   </p>
 
+  <p class="muted" id="regle-active" style="margin:0 0 16px;font-size:12.5px"></p>
   <div id="alerte" style="display:none"></div>
   <div id="alerte-lancement" style="display:none"></div>
 
@@ -357,6 +358,7 @@
         <thead><tr>
           <th data-tri="nom"><button type="button">Client</button></th>
           <th class="num" data-tri="solde"><button type="button">Solde</button></th>
+          <th class="num" data-tri="cumul"><button type="button" title="Tout ce que ce client a dépensé, sans aucune pondération : ni date de lancement, ni expiration, ni boissons déjà offertes.">Cumul</button></th>
           <th class="num" data-tri="dues"><button type="button">Dues</button></th>
           <th class="num" data-tri="passages"><button type="button">Passages</button></th>
           <th data-tri="dernier"><button type="button">Dernier</button></th>
@@ -591,6 +593,7 @@ tbody tr:hover { background:var(--bg-hover); }
     // `localeCompare` gère les accents : « Álvaro » se range avant « Ana », pas après « Zé ».
     nom:      function(c){ return (c.name || c.phone_masked || ('~' + c.short)).toLowerCase(); },
     solde:    function(c){ return c.state.balance_points; },
+    cumul:    function(c){ return c.lifetime_points; },
     dues:     function(c){ return c.state.rewards_due; },
     passages: function(c){ return c.state.visits; },
     dernier:  function(c){ return c.days_since_last; },
@@ -649,11 +652,15 @@ tbody tr:hover { background:var(--bg-hover); }
       if (c.orphan) p.push('<span class="puce risque">sans fiche</span>');
       return '<tr data-k="' + c.id + '"><td>' + nom(c) + '</td>' +
         '<td class="num">' + c.state.balance_points + '</td>' +
+        // ⚠️ GRISÉ QUAND IL ÉGALE LE SOLDE. Répéter le même nombre dans deux colonnes n'apprend
+        // rien ; c'est l'ÉCART entre les deux qui raconte quelque chose.
+        '<td class="num"' + (c.lifetime_points === c.state.balance_points ? ' style="color:var(--muted)"' : '') +
+          '>' + c.lifetime_points + '</td>' +
         '<td class="num">' + (c.state.rewards_due || '') + '</td>' +
         '<td class="num">' + c.state.visits + '</td>' +
         '<td>' + (c.days_since_last===null ? '—' : c.days_since_last + ' j') + '</td>' +
         '<td>' + (p.join(' ') || '') + '</td></tr>';
-    }).join('') || '<tr><td colspan="6" class="vide">Personne ne correspond.</td></tr>';
+    }).join('') || '<tr><td colspan="7" class="vide">Personne ne correspond.</td></tr>';
   }
 
   function fiche(key){
@@ -677,6 +684,8 @@ tbody tr:hover { background:var(--bg-hover); }
     if (!s.rewards_due) h.push('<div class="paire"><span>Avant la prochaine</span><span>' + s.points_to_next + '</span></div>');
     h.push('<div class="paire"><span>Déjà consommés</span><span>' + s.spent_points + '</span></div>');
     h.push('<div class="paire"><span>Périmés</span><span>' + s.expired_points + '</span></div>');
+    h.push('<div class="paire"><span>Cumul depuis le début</span><span>' + c.lifetime_points +
+           ' pts · ' + eur(c.lifetime_cents) + '</span></div>');
     if (s.expiring_soon_points) h.push('<div class="paire"><span>Périment sous 30 jours</span><span>' +
       s.expiring_soon_points + ' &mdash; le ' + jour(s.next_expiry) + '</span></div>');
     else if (s.next_expiry) h.push('<div class="paire"><span>Première expiration</span><span>' + jour(s.next_expiry) + '</span></div>');
@@ -883,6 +892,26 @@ tbody tr:hover { background:var(--bg-hover); }
      * boissons dues que personne n'a jamais promises. Ce n'est pas une dette, c'est un accident
      * de comptage — et il coûte de l'argent réel tant qu'il n'est pas dit.
      */
+    /**
+     * ⚠️ UN ÉCRAN DOIT DIRE QUELLE RÈGLE IL APPLIQUE. Les réglages vivent tout en bas de la
+     * page : après les avoir enregistrés, plus rien en haut ne confirmait qu'ils étaient bien
+     * pris en compte — et chaque vérification demandait de redescendre, ou de me le demander.
+     * Un chiffre sans sa règle est un chiffre qu'on ne peut pas contester.
+     */
+    var st = d.settings, regle = [];
+    regle.push(st.start_date
+      ? 'Programme lancé le ' + jour(st.start_date)
+      : '⚠️ Aucune date de lancement : tout l\'historique compte');
+    if (st.legacy_cap_points > 0 && st.legacy_rate_pct > 0)
+      regle.push('crédit d\'ancienneté ' + st.legacy_rate_pct + ' % plafonné à ' +
+                 st.legacy_cap_points + ' pts');
+    else if (st.start_date)
+      regle.push('aucun crédit d\'ancienneté');
+    regle.push(st.threshold_points + ' points = 1 boisson');
+    regle.push('validité ' + st.expiry_months + ' mois');
+    if (st.welcome_bonus_points > 0) regle.push('+' + st.welcome_bonus_points + ' pts à l\'inscription');
+    E('regle-active').textContent = regle.join(' · ');
+
     if (!d.settings.start_date && S.rewards_due_now > 0) {
       E('alerte-lancement').style.display = 'block';
       E('alerte-lancement').innerHTML = '<div class="avert-fort"><strong>Aucune date de lancement : ' +

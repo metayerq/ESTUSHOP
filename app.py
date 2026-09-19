@@ -1527,6 +1527,11 @@ def api_fidelidade_resumo():
             "opted_out": c["opted_out"],
             "orphan": c["orphan"],
             "state": c["state"],
+            # ⚠️ LE CUMUL RÉPOND À « QUI EST-CE ? », LE SOLDE À « QUE LUI DOIS-JE ? ». Après le
+            # lancement, un habitué de six mois tombe à 50 points de solde ; sans le cumul, il
+            # ressemble à l'écran à quelqu'un qui vient d'arriver.
+            "lifetime_points": c["lifetime_points"],
+            "lifetime_cents": c["lifetime_cents"],
             "distinct_days": c["distinct_days"],
             "absence_threshold_days": c["absence_threshold_days"],
             "days_since_last": c["days_since_last"],

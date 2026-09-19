@@ -290,3 +290,56 @@ def test_un_programme_vide_ne_divise_par_rien():
     assert s["link_rate_pct"] is None
     assert s["redemption_rate_pct"] is None
     assert s["liability_cents"] == 0
+
+
+# ─── le cumul brut, sans aucune pondération ───────────────────────────────────────────────────
+
+def test_le_cumul_ignore_la_date_de_lancement():
+    """
+    ⚠️ LE SOLDE ET LE CUMUL RÉPONDENT À DEUX QUESTIONS DIFFÉRENTES. Le solde dit « que lui
+    dois-je ? » ; le cumul dit « qui est-ce ? ». Après le lancement, un habitué de six mois
+    tombe à 50 points de solde — sans le cumul, il ressemble à quelqu'un qui vient d'arriver, et
+    on le traite comme tel.
+    """
+    cs = par_cle(build_accounts(
+        [{"fp": "fpA", "ts": "2026-05-01T10:00:00+00:00", "amount_cents": 140000},
+         {"fp": "fpA", "ts": "2026-09-25T10:00:00+00:00", "amount_cents": 1000}],
+        [], [], [], SEUIL, datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc),
+        options={"start_date": "2026-09-22", "legacy_rate_pct": 10, "legacy_cap_points": 50},
+    ))
+    c = cs["card:fpA"]
+    assert c["state"]["balance_points"] == 60      # 50 de crédit + 10 du 25 septembre
+    assert c["lifetime_points"] == 1410            # tout, sans pondération
+    assert c["lifetime_cents"] == 141000
+
+
+def test_le_cumul_ignore_l_expiration_et_les_boissons_offertes():
+    """Ce qui a été dépensé l'a été. Ni le calendrier ni une récompense ne l'effacent."""
+    cs = par_cle(build_accounts(
+        [{"fp": "fpB", "ts": "2024-01-01T10:00:00+00:00", "amount_cents": 5000},
+         {"fp": "fpB", "ts": "2026-09-01T10:00:00+00:00", "amount_cents": 6000}],
+        [{"fp": "fpB", "ts": "2026-09-02T10:00:00+00:00", "points_spent": 50}],
+        [], [], SEUIL, MAINTENANT,
+    ))
+    c = cs["card:fpB"]
+    assert c["state"]["expired_points"] == 50      # le lot de 2024 est mort
+    assert c["state"]["spent_points"] == 50        # une boisson offerte
+    assert c["state"]["balance_points"] == 10
+    assert c["lifetime_points"] == 110             # 50 + 60, intacts
+
+
+def test_le_cumul_additionne_toutes_les_cartes_du_client():
+    cs = par_cle(comptes(
+        visits=[v("fpA", "08-01", 3000), v("fpB", "08-10", 4500)],
+        links=[{"fp": "fpA", "phone": "+351911"}, {"fp": "fpB", "phone": "+351911"}],
+        customers=[{"phone": "+351911"}],
+    ))
+    assert cs["phone:+351911"]["lifetime_points"] == 75
+
+
+def test_un_montant_absurde_n_entre_pas_dans_le_cumul():
+    """Un remboursement ne doit pas gonfler — ni amputer — la valeur d'un client."""
+    cs = par_cle(comptes(visits=[
+        v("fpC", "09-01", 5000), v("fpC", "09-02", -2000), v("fpC", "09-03", 0),
+    ]))
+    assert cs["card:fpC"]["lifetime_points"] == 50
