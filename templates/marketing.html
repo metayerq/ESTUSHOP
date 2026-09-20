@@ -73,16 +73,6 @@
 .mk-t tr:last-child td { border-bottom:none; }
 .mk-t tr.off td { opacity:.4; }
 .mk-t tbody tr:hover { background:var(--bg-hover); }
-.mk-eff { display:flex; flex-wrap:wrap; gap:18px; margin-top:8px; }
-.mk-eff > div { min-width:96px; }
-.mk-eff .n { font-size:17px; font-weight:600; line-height:1.2; }
-.mk-eff .n .fl { font-size:12px; font-weight:400; color:var(--muted); }
-.mk-eff .q { font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;
-  color:var(--muted); }
-.mk-part { margin-top:8px; font-size:12px; color:var(--muted); }
-.mk-part b { color:var(--text); font-weight:600; }
-.mk-encours { display:inline-block; font-size:10.5px; font-weight:600; padding:1px 7px; border-radius:20px;
-  background:#fdf2e6; color:#6b4a1e; border:1px solid #e8c9a0; }
 </style>
 </head>
 <body>
@@ -257,12 +247,7 @@
   </div>
 
   <div class="mk-bloc" style="margin-top:24px">
-    <h2 class="mk-titre">D&eacute;j&agrave; envoy&eacute; &mdash; et ce qui s'est pass&eacute; ensuite</h2>
-    <p class="mk-aide" style="margin-top:0">On compare <strong>les m&ecirc;mes personnes</strong>,
-      la semaine d'avant et la semaine d'apr&egrave;s l'envoi. &Ccedil;a ne prouve pas que le
-      message en est la cause &mdash; une semaine ensoleill&eacute;e suffit &agrave; tout
-      expliquer &mdash; mais &ccedil;a &eacute;vite de prendre l'habitude d'un client pour
-      l'effet d'un SMS.</p>
+    <h2 class="mk-titre">D&eacute;j&agrave; envoy&eacute;</h2>
     <div id="mk-hist"><p class="vide">Chargement&hellip;</p></div>
   </div>
 
@@ -593,41 +578,6 @@
     E('mk-dep').innerHTML = h.join('');
   }
 
-  function fleche(av, ap, formate){
-    var f = formate || function(x){ return x; };
-    var signe = ap > av ? '+' : '';
-    return '<div class="n">' + f(ap) + ' <span class="fl">(' + f(av) + ' avant, ' +
-      signe + f(ap - av) + ')</span></div>';
-  }
-
-  function effet(e){
-    if (!e) return '';
-    var h = ['<div class="mk-eff">'];
-    h.push('<div>' + fleche(e.venus_avant, e.venus_apres) +
-      '<div class="q">clients venus</div></div>');
-    h.push('<div>' + fleche(e.avant.cents, e.apres.cents, eur) +
-      '<div class="q">encaissé</div></div>');
-    h.push('<div><div class="n">' + e.destinataires + '</div>' +
-      '<div class="q">destinataires</div></div>');
-    h.push('</div>');
-
-    // ⚠️ LE SEUL GROUPE OÙ L'EFFET D'UN MESSAGE EST PLAUSIBLE. Un habitué qui vient chaque
-    // semaine serait venu sans nous ; celui qui ne venait plus, peut-être pas.
-    if (e.reveilles) h.push('<p class="mk-part"><b>' + e.reveilles + '</b> ' +
-      (e.reveilles > 1 ? 'personnes ne s\'étaient pas montrées' : 'personne ne s\'était pas montrée') +
-      ' la semaine d\'avant et ' + (e.reveilles > 1 ? 'sont revenues' : 'est revenue') +
-      ' dans les ' + e.fenetre_jours + ' jours.</p>');
-
-    if (!e.complete) h.push('<p class="mk-part"><span class="mk-encours">EN COURS</span> ' +
-      'La semaine n\'est pas écoulée' +
-      (e.jours_restants ? ' — encore ' + e.jours_restants + ' jour(s)' : '') +
-      '. Ces chiffres vont encore bouger.</p>');
-    else if (e.delta_cents > e.cout_cents) h.push('<p class="mk-part">Écart encaissé <b>' +
-      eur(e.delta_cents) + '</b> pour <b>' + eur(e.cout_cents) + '</b> de SMS. ' +
-      'Un écart n\'est pas une preuve.</p>');
-    return h.join('');
-  }
-
   function historique(){
     fetch('/api/marketing/effet').then(function(r){ return r.json(); }).then(function(d){
       depense(d.depense);
@@ -653,9 +603,6 @@
         // saisie ; le réinjecter en balisage ferait exécuter ce qu'on y aurait collé.
         s2.textContent = l.body || '';
         bloc.appendChild(s1); bloc.appendChild(s2);
-        // L'effet, lui, ne contient que des nombres calculés ici.
-        var s3 = document.createElement('div'); s3.innerHTML = effet(l.effet);
-        bloc.appendChild(s3);
         E('mk-hist').appendChild(bloc);
       });
     }).catch(function(){
