@@ -376,3 +376,40 @@ def test_le_style_de_la_nav_precede_la_nav():
     """Une feuille de style posée après l'élément laisse un clignotement à chaque chargement."""
     html = _gabarit()
     assert html.index(".nav-menu {") < html.index('<nav class="topnav"')
+
+
+# ── L'envoi d'essai ──────────────────────────────────────────────────────────────────────────
+
+def test_lessai_demande_un_test_et_pas_un_envoi(client, admin, mesa):
+    client.post("/api/marketing/test", json={"texte": "Amanha temos pao quente"})
+    assert mesa[0]["corps"]["test"] is True
+    assert "send" not in mesa[0]["corps"]
+
+
+def test_aucun_numero_ne_part_de_lecran_dessai(client, admin, mesa):
+    """
+    ⚠️ LA DESTINATION EST POSÉE DANS LES RÉGLAGES, PAS DANS LA REQUÊTE. Un numéro transmis ici
+    ferait de ce bouton un moyen d'écrire à n'importe qui, un message à la fois, pour qui
+    obtiendrait le secret de campagne. La caisse l'ignore ; cet écran ne l'envoie même pas.
+    """
+    client.post("/api/marketing/test", json={"texte": "Amanha temos pao quente",
+                                             "phone": "+33612345678", "to": "+33612345678"})
+    envoye = mesa[0]["corps"]
+    assert set(envoye) <= {"texte", "audience", "test"}
+    assert "+33" not in json.dumps(envoye)
+
+
+@pytest.mark.parametrize("role", [None, "investor", "staff"])
+def test_seul_ladmin_peut_envoyer_un_test(client, monkeypatch, role):
+    monkeypatch.setattr(flask_app, "_current_role", lambda: role)
+    r = client.post("/api/marketing/test", json={"texte": "Amanha temos pao quente"})
+    assert r.status_code in (401, 403)
+
+
+def test_lecran_dessai_na_pas_de_champ_de_destination():
+    """Le seul garde-fou contre le chiffre de travers : ne pas offrir le champ."""
+    html = _gabarit()
+    i = html.index("mk-test")
+    bloc = html[i:i + 1500]
+    assert "prompt(" not in bloc
+    assert "phone" not in bloc

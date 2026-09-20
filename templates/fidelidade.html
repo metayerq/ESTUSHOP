@@ -334,6 +334,13 @@
           </select>
           <!-- ⚠️ LA PHRASE EST INS&Eacute;R&Eacute;E EN TEXTE, PAS EN HTML : elle vient de la base, et
                une phrase de consentement n'a aucune raison de pouvoir injecter du balisage. -->
+          <label class="reg-l" for="r-test">Num&eacute;ro pour les envois d'essai</label>
+          <input class="reg-i" type="tel" id="r-test" data-k="test_phone"
+                 placeholder="ex. 930 665 746 — vide = pas d'essai possible" autocomplete="off">
+          <p class="reg-aide">Le bouton <strong>Envoyer un test</strong> de la page Marketing
+            n'a pas d'autre destination que ce num&eacute;ro. Un champ de saisie au moment de
+            l'envoi, ce serait un chiffre de travers et un message publicitaire exp&eacute;di&eacute;
+            &agrave; un inconnu, au nom du caf&eacute;.</p>
           <p class="reg-aide" id="r-lit" hidden>Le caissier lit&nbsp;:
             «&nbsp;<strong id="r-phrase" lang="pt"></strong>&nbsp;»</p>
           <p class="reg-aide"><strong>Ce changement ne vaut que pour les prochains inscrits.</strong>
@@ -897,7 +904,7 @@ tbody tr:hover { background:var(--bg-hover); }
 
   // ── Les réglages ────────────────────────────────────────────────────────────────────────
   var CHAMPS = ['start_date','legacy_rate_pct','legacy_cap_points','threshold_points',
-                'expiry_months','welcome_bonus_points','consent_scope'];
+                'expiry_months','welcome_bonus_points','consent_scope','test_phone'];
   var enregistres = null, attente = null;
 
   function saisie(){

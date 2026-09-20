@@ -1354,6 +1354,9 @@ FIDELIDADE_DEFAUTS = {
     "expiry_months": 12,
     "welcome_bonus_points": 0,
     "consent_scope": "points",
+    # ⚠️ LA SEULE DESTINATION QU'UN ENVOI D'ESSAI PUISSE ATTEINDRE. `None` veut dire « pas
+    # d'essai possible », jamais « envoie au premier venu ».
+    "test_phone": None,
 }
 
 # À quoi le comptoir demande de consentir, et la phrase EXACTE qui va avec.
@@ -1413,6 +1416,7 @@ def _fidelidade_reglages():
         # absente, texte libre saisi à la main — ne doit jamais élargir un consentement.
         "consent_scope": (r.get("consent_scope")
                           if r.get("consent_scope") in FIDELIDADE_CONSENTEMENTS else "points"),
+        "test_phone": r.get("test_phone") or None,
         "updated_at": r.get("updated_at"),
         "updated_by": r.get("updated_by"),
         "missing": False,
@@ -1632,6 +1636,20 @@ def _reglages_du_formulaire(source, base):
                 erreurs.append(f"date de lancement invalide : {brut}")
         else:
             erreurs.append(f"date de lancement invalide : {brut}")
+
+    # ⚠️ LE NUMÉRO D'ESSAI EST NORMALISÉ COMME N'IMPORTE QUEL AUTRE. Un numéro mal rangé ici
+    # n'enverrait rien et ressemblerait à une panne Twilio — alors que c'est une saisie. Vide
+    # est une valeur valable : elle désactive le bouton d'essai.
+    if "test_phone" in source:
+        brut = (source.get("test_phone") or "").strip()
+        if not brut:
+            sortie["test_phone"] = None
+        else:
+            ok, valeur = normalise_phone(brut)
+            if ok:
+                sortie["test_phone"] = valeur
+            else:
+                erreurs.append("numéro d'essai : " + PHONE_MESSAGE.get(valeur, valeur))
 
     # ⚠️ UNE LISTE BLANCHE, PAS UN CHAMP LIBRE. Une portée inconnue enregistrée telle quelle
     # ferait retomber la lecture sur le repli étroit à la relecture suivante : le réglage
@@ -2109,6 +2127,30 @@ def api_marketing_envoi():
     })
     if code == 200:
         donnees["cout_centimes"] = donnees.get("segmentsFactures", 0) * PRIX_SEGMENT_CENTIMES
+    return jsonify(donnees), code
+
+
+@app.route("/api/marketing/test", methods=["POST"])
+def api_marketing_test():
+    """
+    S'envoyer le message à soi-même avant de l'envoyer à tout le monde.
+
+    ⚠️ AUCUN NUMÉRO NE TRAVERSE D'ICI. La destination est celle posée dans les réglages de
+    fidélité, et la caisse ignore délibérément tout numéro qu'on lui transmettrait — sans quoi ce
+    bouton deviendrait un moyen d'écrire à n'importe qui, un message à la fois.
+
+    ⚠️ ET L'ESSAI N'EST PAS COMPTÉ COMME UNE CAMPAGNE. Ni registre anti-doublon, ni journal :
+    l'inscrire ferait croire qu'une campagne est partie à quelqu'un qui n'en est pas le
+    destinataire, et un vrai client ne serait jamais servi.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    corps = request.get_json(silent=True) or {}
+    code, donnees = _mesa_campagne({
+        "texte": corps.get("texte") or "",
+        "audience": corps.get("audience") or "tous",
+        "test": True,
+    })
     return jsonify(donnees), code
 
 

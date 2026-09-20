@@ -318,3 +318,28 @@ def test_lecran_dit_quil_consigne_et_non_quil_accorde():
     assert "Demande-lui" in bloc
     assert "Il a accepté nos nouvelles" in bloc
     assert "Qu\\'a-t-il dit, et quand" in bloc
+
+
+def test_le_numero_dessai_est_normalise(monkeypatch):
+    """
+    ⚠️ UN NUMÉRO MAL RANGÉ N'ENVERRAIT RIEN ET RESSEMBLERAIT À UNE PANNE TWILIO. C'est une
+    saisie, et elle se corrige au moment de la saisie.
+    """
+    sortie, erreurs = flask_app._reglages_du_formulaire(
+        {"test_phone": "930 665 746"}, dict(flask_app.FIDELIDADE_DEFAUTS))
+    assert not erreurs
+    assert sortie["test_phone"] == "+351930665746"
+
+
+def test_un_numero_dessai_vide_desactive_lessai():
+    """Vide est une valeur valable : pas d'essai possible, plutôt qu'un destinataire improvisé."""
+    sortie, erreurs = flask_app._reglages_du_formulaire(
+        {"test_phone": ""}, dict(flask_app.FIDELIDADE_DEFAUTS))
+    assert not erreurs
+    assert sortie["test_phone"] is None
+
+
+def test_un_numero_dessai_invalide_est_refuse():
+    sortie, erreurs = flask_app._reglages_du_formulaire(
+        {"test_phone": "21 555 1234"}, dict(flask_app.FIDELIDADE_DEFAUTS))
+    assert erreurs and "essai" in erreurs[0]

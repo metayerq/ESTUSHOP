@@ -211,6 +211,7 @@
           r&eacute;pond avec le nombre exact de destinataires et le co&ucirc;t.</p></div>
         <div class="mk-actions">
           <button class="mk-btn" type="button" id="mk-verif">V&eacute;rifier</button>
+          <button class="mk-btn" type="button" id="mk-test">Envoyer un test</button>
           <button class="mk-btn fort" type="button" id="mk-envoi" disabled>Envoyer</button>
           <span class="mk-etat" id="mk-etat"></span>
         </div>
@@ -493,6 +494,28 @@
           ? 'Personne à qui écrire.'
           : 'Vérifié. Rien n\'est parti.';
       }).catch(function(){ E('mk-etat').textContent = 'Échec réseau — rien n\'est parti.'; });
+  });
+
+  /**
+   * ⚠️ L'ESSAI N'A PAS DE CHAMP DE DESTINATION, ET C'EST VOULU. Il part au numéro posé dans
+   * Fidélité → Réglages, et nulle part ailleurs. Un champ ici, ce serait un chiffre de travers
+   * et un message publicitaire expédié à un inconnu, au nom du café.
+   *
+   * ⚠️ ET IL N'A PAS BESOIN DE « Vérifier » D'ABORD. C'est un seul message, vers soi-même :
+   * exiger l'aperçu ferait de la relecture une corvée, et on finirait par ne plus se relire.
+   */
+  E('mk-test').addEventListener('click', function(){
+    if (corpsDe().length < 10){
+      E('mk-etat').textContent = 'Écris au moins quelques mots.'; return;
+    }
+    appel('/api/marketing/test', {texte: corpsDe()}, E('mk-test'), 'Envoi du test…')
+      .then(function(x){
+        if (!x.ok){ E('mk-etat').textContent = x.d.error || 'Refusé.'; return; }
+        E('mk-etat').textContent = x.d.sent
+          ? 'Test envoyé au ••• ' + x.d.last4 + ' — ' + x.d.segments + ' segment(s). ' +
+            'Regarde ton téléphone : c\'est exactement ce que le client recevra.'
+          : 'Non envoyé : ' + (x.d.reason || 'refus');
+      }).catch(function(){ E('mk-etat').textContent = 'Échec réseau.'; });
   });
 
   E('mk-envoi').addEventListener('click', function(){
