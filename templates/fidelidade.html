@@ -683,8 +683,12 @@ tbody tr:hover { background:var(--bg-hover); }
     if (c.orphan) h.push('<div class="avert"><strong>Num&eacute;ro sans fiche client.</strong> ' +
       'Le lien existe mais la fiche a disparu : ce client ne reçoit plus de SMS et n\'a plus de page. ' +
       'À réparer.</div>');
-    if (c.opted_out) h.push('<div class="avert">Ce client s\'est <strong>désabonné des SMS</strong>. ' +
-      'Ses points continuent de courir ; il ne reçoit plus rien.</div>');
+    if (c.opted_out) h.push('<div class="avert">Ce client s\'est <strong>désabonné des SMS</strong>' +
+      (c.opted_out_at ? ' le <strong>' + jour(c.opted_out_at) + '</strong>' : '') + '. ' +
+      'Ses points continuent de courir ; il ne reçoit plus rien.<br>' +
+      // ⚠️ LE COMPTOIR NE PEUT PAS LE RÉABONNER, ET C'EST VOULU. Le consentement se redonne,
+      // il ne se restitue pas d'autorité — sinon le refus ne vaut rien.
+      'Lui seul peut revenir dessus, depuis sa page : « Voltar a receber as mensagens ».</div>');
 
     h.push('<h3>Points</h3>');
     h.push('<div class="paire"><span>Solde</span><span><strong>' + s.balance_points + '</strong></span></div>');

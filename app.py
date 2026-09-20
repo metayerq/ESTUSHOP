@@ -1531,6 +1531,7 @@ def api_fidelidade_resumo():
             "fps": c["fps"] if complet else [],
             "consent_at": c["consent_at"],
             "opted_out": c["opted_out"],
+            "opted_out_at": c["opted_out_at"],
             "orphan": c["orphan"],
             "state": c["state"],
             # ⚠️ LE CUMUL RÉPOND À « QUI EST-CE ? », LE SOLDE À « QUE LUI DOIS-JE ? ». Après le

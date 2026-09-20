@@ -388,3 +388,29 @@ def test_sans_date_de_consentement_aucun_bonus():
 def test_une_carte_non_liee_ne_recoit_jamais_de_bonus():
     cs = par_cle(comptes(visits=[v("fpSeule", "09-15", 1000)]))
     assert cs["card:fpSeule"]["state"]["credit_points"] == 0
+
+
+def test_la_date_du_desabonnement_remonte_avec_le_drapeau():
+    """
+    ⚠️ « DÉSABONNÉ » NE SE DISCUTE PAS ; « DÉSABONNÉ LE 14 SEPTEMBRE À 17H02 » SE RECOUPE. Avec
+    un passage, un SMS, un essai de la maison. Un habitué a juré n'avoir rien fait : sans la
+    date, on n'a rien à lui opposer — ni à soi-même.
+    """
+    cs = par_cle(comptes(
+        visits=[v("fpA", "09-01", 1000)],
+        links=[{"fp": "fpA", "phone": "+351911"}],
+        customers=[{"phone": "+351911", "opted_out_at": "2026-09-14T17:02:00+00:00"}],
+    ))
+    c = cs["phone:+351911"]
+    assert c["opted_out"] is True
+    assert c["opted_out_at"] == "2026-09-14T17:02:00+00:00"
+
+
+def test_un_client_abonne_n_a_pas_de_date():
+    cs = par_cle(comptes(
+        visits=[v("fpA", "09-01", 1000)],
+        links=[{"fp": "fpA", "phone": "+351911"}],
+        customers=[{"phone": "+351911"}],
+    ))
+    assert cs["phone:+351911"]["opted_out"] is False
+    assert cs["phone:+351911"]["opted_out_at"] is None

@@ -160,6 +160,10 @@ def build_accounts(visits, rewards, links, customers, threshold, now,
             "token": (fiche or {}).get("token"),
             "consent_at": (fiche or {}).get("consent_at"),
             "opted_out": bool((fiche or {}).get("opted_out_at")),
+            # ⚠️ LA DATE, PAS SEULEMENT LE DRAPEAU. « Désabonné » ne se discute pas ; « désabonné
+            # le 14 septembre à 17h02 » se recoupe avec un passage, un SMS, un essai. Un client
+            # a juré n'avoir rien fait : sans la date, on n'a rien à lui opposer — ni à soi-même.
+            "opted_out_at": (fiche or {}).get("opted_out_at"),
             # ⚠️ UN TÉLÉPHONE SANS FICHE EST SIGNALÉ, PAS MASQUÉ. C'est une incohérence de base,
             # et la seule façon qu'elle se répare est que quelqu'un la voie.
             "orphan": kind == "phone" and fiche is None,
