@@ -97,3 +97,70 @@ def test_seul_ladmin_y_accede(monkeypatch, role):
     flask_app.app.config["TESTING"] = True
     r = flask_app.app.test_client().get("/api/revolut/pourboires?month=2026-07")
     assert r.status_code in (401, 403)
+
+
+# ── Le filtre de mois ────────────────────────────────────────────────────────────────────────
+
+def test_le_mois_est_lu_par_une_plage_de_dates(client, monkeypatch):
+    """
+    ⚠️ LE MOTIF `like.2026-07-%` ÉTAIT LE SEUL DU PROJET, et il a échoué — PostgREST a répondu
+    404, que le code a traduit en « table absente », ce qui envoyait chercher une migration qui
+    n'avait jamais manqué. Une heure de diagnostic pour un caractère.
+
+    La convention éprouvée ici est une PLAGE sur deux filtres (`_fetch_summaries`), et elle se
+    sert de l'index au passage.
+    """
+    vus = {}
+
+    def capture(table, params, page=1000, cap=None):
+        vus["table"] = table
+        vus["params"] = params
+        return [], False
+
+    monkeypatch.setattr(flask_app, "_supa_all", capture)
+    monkeypatch.setattr(flask_app, "_load_revolut_days",
+                        lambda: {"2026-07-01": {"gross": 1000, "tips": 80, "fees": 12,
+                                                "net": 1068, "tx": 1}})
+    client.get("/api/revolut/pourboires?month=2026-07")
+    filtres = dict((k, v) for k, v in vus["params"] if k == "day") if isinstance(
+        vus["params"], list) else {}
+    assert isinstance(vus["params"], list), "le filtre est redevenu un dictionnaire"
+    jours = [v for k, v in vus["params"] if k == "day"]
+    assert jours == ["gte.2026-07-01", "lt.2026-08-01"]
+    assert "like" not in str(vus["params"])
+    assert filtres  # la plage porte bien sur `day`
+
+
+def test_decembre_bascule_sur_lannee_suivante(client, monkeypatch):
+    """La borne haute d'un mois de décembre est le 1er janvier — pas le mois 13."""
+    vus = {}
+    monkeypatch.setattr(flask_app, "_supa_all",
+                        lambda t, p, **k: (vus.update(params=p), ([], False))[1])
+    monkeypatch.setattr(flask_app, "_load_revolut_days",
+                        lambda: {"2026-12-01": {"gross": 1000, "tips": 80, "fees": 12,
+                                                "net": 1068, "tx": 1}})
+    client.get("/api/revolut/pourboires?month=2026-12")
+    assert [v for k, v in vus["params"] if k == "day"] == ["gte.2026-12-01", "lt.2027-01-01"]
+
+
+def test_le_lecteur_pagine_accepte_une_liste_de_filtres(monkeypatch):
+    """
+    ⚠️ `_supa_all` NE SAVAIT RECEVOIR QU'UN DICTIONNAIRE, donc jamais deux filtres sur la même
+    colonne — c'est ce manque qui avait poussé vers le `like`. La pagination doit continuer de
+    fonctionner dans les deux formes.
+    """
+    appels = []
+
+    def faux_get(table, params):
+        appels.append(params)
+        return [{"amount": 1}] if len(appels) == 1 else []
+
+    monkeypatch.setattr(flask_app, "_supa_get", faux_get)
+    lignes, tronque = flask_app._supa_all("card_visits", [("day", "gte.2026-07-01")], page=1)
+    assert len(lignes) == 1 and tronque is False
+    assert ("day", "gte.2026-07-01") in appels[0]
+    assert ("limit", 1) in appels[0] and ("offset", 0) in appels[0]
+
+    appels.clear()
+    flask_app._supa_all("card_visits", {"select": "amount"}, page=1)
+    assert appels[0]["select"] == "amount" and appels[0]["offset"] == 0

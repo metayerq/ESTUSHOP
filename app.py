@@ -1326,9 +1326,21 @@ def _supa_all(table, params, page=1000, cap=FIDELIDADE_MAX_ROWS):
 
     Renvoie `(lignes, tronqué)`.
     """
+    def _avec(extra):
+        """
+        ⚠️ POSTGREST EXIGE PARFOIS DEUX FILTRES SUR LA MÊME COLONNE — une plage de dates s'écrit
+        `day=gte.X&day=lt.Y`, et un dictionnaire ne peut pas porter deux fois la même clé. Le
+        reste du fichier passe alors une LISTE de tuples (voir `_fetch_summaries`). Ce lecteur
+        ne l'acceptait pas, et l'appelant se rabattait sur un `like` — le seul du projet, et
+        celui qui a échoué.
+        """
+        if isinstance(params, dict):
+            return {**params, **extra}
+        return list(params) + list(extra.items())
+
     lignes, decalage = [], 0
     while True:
-        lot = _supa_get(table, {**params, "limit": page, "offset": decalage})
+        lot = _supa_get(table, _avec({"limit": page, "offset": decalage}))
         lignes.extend(lot)
         if len(lot) < page:
             return lignes, False
@@ -2272,9 +2284,18 @@ def api_revolut_pourboires():
     if not _re.fullmatch(r"\d{4}-\d{2}", mois):
         return jsonify({"error": "month attendu au format YYYY-MM"}), 400
 
+    # Les bornes du mois. ⚠️ UNE PLAGE, PAS UN `like`. Le motif `like.2026-07-%` était le seul
+    # de tout le projet — non éprouvé, et il a échoué en renvoyant un 404 que le code a traduit
+    # en « table absente », ce qui envoyait chercher une migration qui n'a jamais manqué. La
+    # convention qui marche ici est une plage sur deux filtres (voir `_fetch_summaries`).
+    an, m = int(mois[:4]), int(mois[5:7])
+    debut = date(an, m, 1)
+    fin = date(an + 1, 1, 1) if m == 12 else date(an, m + 1, 1)
     try:
         visites, tronque = _supa_all("card_visits",
-                                     {"select": "amount", "day": f"like.{mois}-%"})
+                                     [("select", "amount"),
+                                      ("day", f"gte.{debut.isoformat()}"),
+                                      ("day", f"lt.{fin.isoformat()}")])
     except SupabaseSchemaError as e:
         return jsonify({"error": str(e)}), 500
     api_cents = sum(int(v.get("amount") or 0) for v in visites)
