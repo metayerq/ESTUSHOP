@@ -1385,6 +1385,54 @@
       "ok": true,
       "e164": "+441234567890",
       "reason": null
+    },
+    {
+      "brut": "+34 612 345 678",
+      "ok": true,
+      "e164": "+34612345678",
+      "reason": null
+    },
+    {
+      "brut": "+55 11 91234 5678",
+      "ok": true,
+      "e164": "+5511912345678",
+      "reason": null
+    },
+    {
+      "brut": "+1 415 555 2671",
+      "ok": true,
+      "e164": "+14155552671",
+      "reason": null
+    },
+    {
+      "brut": "+49 151 12345678",
+      "ok": true,
+      "e164": "+4915112345678",
+      "reason": null
+    },
+    {
+      "brut": "0033612345678",
+      "ok": true,
+      "e164": "+33612345678",
+      "reason": null
+    },
+    {
+      "brut": "00 351 912 345 678",
+      "ok": true,
+      "e164": "+351912345678",
+      "reason": null
+    },
+    {
+      "brut": "0612345678",
+      "ok": false,
+      "e164": null,
+      "reason": "not-mobile"
+    },
+    {
+      "brut": "33612345678",
+      "ok": false,
+      "e164": null,
+      "reason": "too-long"
     }
   ],
   "expiry": [

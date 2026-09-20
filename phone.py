@@ -17,12 +17,21 @@ import re
 DEFAULT_COUNTRY_CODE = "351"
 
 # Ce que le message d'erreur doit dire à quelqu'un qui tape vite.
+# ⚠️ LES MÊMES PHRASES QUE LA CAISSE, ET POUR LA MÊME RAISON. Corriger un numéro depuis le
+# backoffice ou depuis le comptoir pose le même problème à la même personne : deux formulations
+# différentes pour un même refus feraient croire à deux règles différentes.
+#
+# ⚠️ ET CHACUNE DIT QUOI FAIRE. Trois des cinq cas sont, en pratique, un numéro étranger tapé
+# sans son indicatif — Alcântara est un quartier d'expatriés.
 PHONE_MESSAGE = {
-    "empty": "Saisis un numéro de téléphone.",
-    "too-short": "Trop court pour un mobile portugais — neuf chiffres après l'indicatif.",
-    "too-long": "Trop long — vérifie le numéro.",
-    "not-a-number": "Des chiffres uniquement, avec un + au début si besoin.",
-    "not-mobile": "Les mobiles portugais commencent par 9 — un fixe ne reçoit pas le SMS.",
+    "empty": "Saisis un numéro.",
+    "too-short": ("Trop court. Neuf chiffres pour un portugais ; pour un étranger, commence par "
+                  "+ et l'indicatif (ex. +33 6 12 34 56 78)."),
+    "too-long": ("Trop long. Si c'est un numéro étranger, commence par + et l'indicatif "
+                 "(ex. +33 6 12 34 56 78)."),
+    "not-a-number": "Des chiffres seulement, avec un + au début pour l'étranger.",
+    "not-mobile": ("Les mobiles portugais commencent par 9 — un fixe ne reçoit pas de SMS. "
+                   "Si c'est un numéro étranger, commence par + et l'indicatif."),
 }
 
 _BRUIT = re.compile(r"[\s.\-()/]")
