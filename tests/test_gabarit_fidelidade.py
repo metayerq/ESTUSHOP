@@ -204,3 +204,25 @@ def test_delier_une_carte_demande_confirmation_et_un_motif():
 def test_l_ecran_de_correction_n_existe_que_pour_un_compte_avec_numero():
     """Une carte anonyme n'a rien à corriger : proposer « délier » dessus n'a aucun sens."""
     assert "if (c.kind === 'phone' && c.fps.length) {" in SOURCE
+
+
+def test_aucun_gabarit_ne_porte_la_nav_sans_son_style():
+    """
+    ⚠️ LA NAVIGATION EST RECOPIÉE DANS CHAQUE GABARIT, avec le bloc `<style>` qui la précède.
+    Recopier l'un sans l'autre est une erreur silencieuse : le HTML reste valide, la page se
+    rend, aucun test ne rougit — mais sans `.nav-menu { display:none }` tous les menus
+    déroulants s'affichent en permanence et la page devient illisible.
+
+    C'est arrivé le 20/09/2026 sur `marketing.html`, fabriqué à partir de `fidelidade.html`.
+    Ce test vaut pour tous les gabarits, y compris ceux qui n'existent pas encore.
+    """
+    import glob
+
+    racine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    orphelins = []
+    for chemin in sorted(glob.glob(os.path.join(racine, "templates", "*.html"))):
+        with open(chemin, encoding="utf-8") as f:
+            html = f.read()
+        if '<nav class="topnav"' in html and ".nav-menu {" not in html:
+            orphelins.append(os.path.basename(chemin))
+    assert not orphelins, f"navigation sans feuille de style : {', '.join(orphelins)}"
