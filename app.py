@@ -2944,7 +2944,12 @@ def api_event_tasks_delete(task_id):
 
 @app.route("/reconciliation")
 def reconciliation_page():
-    return render_template("reconciliation.html")
+    # ⚠️ LES BORNES VIENNENT DU SERVEUR. Le navigateur calcule « hier » en heure locale de
+    # l'appareil : entre minuit et 1 h à Lisbonne, un iPad réglé sur un autre fuseau proposerait
+    # une plage décalée d'un jour, et la reconstruction manquerait une journée sans le dire.
+    return render_template("reconciliation.html",
+                           open_date=OPENING_DAY,
+                           hier=(today_lisbon() - timedelta(1)).isoformat())
 
 @app.route("/api/reconciliation")
 def api_reconciliation():

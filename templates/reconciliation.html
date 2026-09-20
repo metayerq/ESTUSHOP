@@ -288,6 +288,35 @@ td.date { color:var(--muted); white-space:nowrap; }
     </div>
   </details>
 
+  <!--
+    RECONSTRUIRE L'HISTORIQUE DE L'ENCAISSEMENT TERMINAL.
+    ⚠️ DIX JOURS PAR APPEL, ET SÉQUENTIELLEMENT. Chaque jour coûte un appel à la liste des
+    commandes Revolut plus un appel par commande. Une plage plus longue fait tuer la fonction
+    par le timeout serverless AU MILIEU, et on ne sait pas où elle s'est arrêtée ; des tranches
+    en parallèle épuiseraient la limite de débit de l'API.
+  -->
+  <details class="card" id="rebuild-card" style="margin-top:22px">
+    <summary style="cursor:pointer; font-weight:600; font-size:14px">
+      Reconstruire l'historique de l'encaissement terminal
+    </summary>
+    <p class="hint" style="margin:10px 0">
+      Les ventes, pourboires et remboursements du terminal sont enregistr&eacute;s
+      automatiquement depuis aujourd'hui. Cette reconstruction remonte les jours
+      pr&eacute;c&eacute;dents depuis l'API Revolut, par tranches de dix jours.
+      <b>Rejouable sans risque</b>&nbsp;: chaque jour se r&eacute;&eacute;crit en entier.
+    </p>
+    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end">
+      <label class="field">Du
+        <input type="date" class="field-input" id="rb-from" value="{{ open_date }}">
+      </label>
+      <label class="field">au
+        <input type="date" class="field-input" id="rb-to" value="{{ hier }}">
+      </label>
+      <button type="button" class="btn" id="rb-go">Reconstruire</button>
+    </div>
+    <p class="hint" id="rb-etat" style="margin-top:10px"></p>
+  </details>
+
 </div><!-- /page -->
 
 <div class="toast" id="toast"></div>
@@ -538,6 +567,66 @@ function updateCashCalc(){
   if (saved !== null) el.value = saved;
   el.addEventListener('input', () => { localStorage.setItem('cash_' + id, el.value); updateCashCalc(); });
 });
+/* ── Reconstruction de l'historique terminal ───────────────────────────────────────────────
+ *
+ * ⚠️ SÉQUENTIEL, JAMAIS EN PARALLÈLE. Chaque tranche déclenche des dizaines d'appels à
+ * l'API Revolut ; les lancer ensemble épuiserait la limite de débit et ferait échouer des
+ * tranches au hasard — celles-là même qu'on croirait reconstruites.
+ *
+ * ⚠️ ET UN ÉCHEC DIT OÙ REPRENDRE. Une reconstruction interrompue au milieu sans dire à quelle
+ * date laisse le choix entre tout refaire et deviner. */
+(function(){
+  const btn = document.getElementById('rb-go');
+  if (!btn) return;
+  const etat = document.getElementById('rb-etat');
+
+  const iso = d => d.toISOString().slice(0, 10);
+  const plus = (d, n) => { const x = new Date(d); x.setUTCDate(x.getUTCDate() + n); return x; };
+
+  function tranches(from, to){
+    const out = [];
+    let d = new Date(from + 'T00:00:00Z');
+    const fin = new Date(to + 'T00:00:00Z');
+    while (d <= fin){
+      /* La borne haute est incluse : dix jours vont de J à J+9. */
+      const bout = plus(d, 9);
+      out.push([iso(d), iso(bout > fin ? fin : bout)]);
+      d = plus(bout, 1);
+    }
+    return out;
+  }
+
+  btn.addEventListener('click', async () => {
+    const from = document.getElementById('rb-from').value;
+    const to = document.getElementById('rb-to').value;
+    if (!from || !to || from > to){ etat.textContent = 'Choisis une plage valide.'; return; }
+
+    const lots = tranches(from, to);
+    btn.disabled = true;
+    let faits = 0;
+    for (const [a, b] of lots){
+      etat.textContent = `Tranche ${faits + 1} sur ${lots.length} — ${a} → ${b}…`;
+      try {
+        const r = await fetch('/api/terminal-days/sync', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({from: a, to: b})
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      } catch (e) {
+        /* ⚠️ ON NOMME LA DATE DE REPRISE. Sans elle, il faut tout refaire ou deviner. */
+        etat.innerHTML = `<b>Arrêté sur ${a} → ${b}</b> : ${e.message}.<br>` +
+          `Les ${faits} tranche(s) précédentes sont enregistrées. ` +
+          `Relance en mettant <b>Du = ${a}</b>.`;
+        btn.disabled = false;
+        return;
+      }
+      faits++;
+    }
+    etat.innerHTML = `<b>Terminé</b> — ${faits} tranche(s), du ${from} au ${to}.`;
+    btn.disabled = false;
+  });
+})();
 </script>
 </body>
 </html>
