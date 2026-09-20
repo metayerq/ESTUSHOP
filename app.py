@@ -2007,6 +2007,10 @@ def api_marketing_apercu():
     """
     Ce que cette campagne donnerait. ⚠️ RIEN N'EST ENVOYÉ : l'essai à blanc est le comportement
     par défaut de la caisse, et on ne demande pas l'envoi ici.
+
+    ⚠️ ET LA SÉLECTION MANUELLE NE TRAVERSE PAS. L'aperçu doit montrer TOUT ce que le critère
+    retient : le filtrer sur les cases cochées ferait disparaître de la liste celui qu'on vient
+    de décocher, et on ne pourrait plus le recocher. Les cases ne partent qu'à l'envoi.
     """
     if _current_role() != "admin":
         return jsonify({"error": "admin only"}), 403
@@ -2036,6 +2040,11 @@ def api_marketing_envoi():
         "texte": corps.get("texte") or "",
         "audience": corps.get("audience") or "tous",
         "arg": corps.get("arg"),
+        # ⚠️ LES LIGNES COCHÉES, ET RIEN D'AUTRE. Ce sont des références opaques rendues par la
+        # caisse — ni numéros, ni jetons. Elles RESTREIGNENT une cible déjà filtrée : cocher ne
+        # peut pas ajouter quelqu'un que le consentement avait écarté, et c'est la caisse qui
+        # s'en assure, pas cet écran.
+        **({"refs": corps["refs"]} if isinstance(corps.get("refs"), list) else {}),
         "send": True,
     })
     if code == 200:

@@ -234,12 +234,18 @@ def test_lecran_perime_lapercu_quand_le_texte_change():
     assert "texteVu" in html
 
 
-def test_lecran_demande_confirmation_avec_le_nombre():
-    """Un « Êtes-vous sûr ? » ne fait rien relire. Le chiffre, si."""
+def test_lecran_demande_confirmation_avec_le_nombre_et_le_texte():
+    """
+    Un « Êtes-vous sûr ? » ne fait rien relire. Le chiffre et le message, si.
+
+    ⚠️ LE TEXTE EST DANS LA CONFIRMATION PARCE QUE C'EST LE DERNIER MOMENT OÙ ON PEUT LE LIRE.
+    Après, il est chez des dizaines de gens.
+    """
     html = _gabarit()
     i = html.index("confirm(")
     bloc = html[i:i + 400]
-    assert "destinataires" in bloc
+    assert "' + n + ' personne(s)" in bloc
+    assert "vu.message" in bloc
     assert "irréversible" in bloc
 
 
@@ -254,3 +260,94 @@ def test_lhistorique_est_insere_en_texte_pas_en_html():
     bloc = html[i:html.index("})();", i)]
     assert "textContent = l.body" in bloc
     assert "innerHTML = l.body" not in bloc
+
+
+# ── Le ciblage par la dépense, et la sélection à la main ─────────────────────────────────────
+
+def test_les_refs_cochees_traversent_jusqua_la_caisse(client, admin, mesa):
+    client.post("/api/marketing/envoi", json={"texte": "Amanha temos pao quente",
+                                              "refs": ["r1", "r2"]})
+    assert mesa[0]["corps"]["refs"] == ["r1", "r2"]
+
+
+def test_labsence_de_selection_nenvoie_pas_une_liste_vide(client, admin, mesa):
+    """
+    ⚠️ UN CHAMP ABSENT ET UNE LISTE VIDE SONT DEUX CHOSES DIFFÉRENTES. Transmettre `refs: []`
+    quand rien n'est coché ferait comprendre à la caisse « n'écris à personne » — l'envoi
+    réussirait, ne partirait à personne, et l'écran dirait « 0 envoyé » sans qu'on sache
+    pourquoi.
+    """
+    client.post("/api/marketing/envoi", json={"texte": "Amanha temos pao quente"})
+    assert "refs" not in mesa[0]["corps"]
+
+
+def test_une_selection_qui_nest_pas_une_liste_est_ignoree(client, admin, mesa):
+    """Une chaîne, un nombre, un dictionnaire : rien de tout ça ne doit traverser tel quel."""
+    for mauvais in ("r1", 42, {"r": 1}):
+        mesa.clear()
+        client.post("/api/marketing/envoi", json={"texte": "Amanha temos pao quente",
+                                                  "refs": mauvais})
+        assert "refs" not in mesa[0]["corps"]
+
+
+def test_lapercu_ne_transmet_pas_la_selection(client, admin, mesa):
+    """
+    ⚠️ LA VÉRIFICATION DOIT MONTRER TOUT CE QUE LE CRITÈRE RETIENT. Filtrer l'aperçu sur les
+    cases cochées ferait disparaître de la liste celui qu'on vient de décocher — et on ne
+    pourrait plus le recocher.
+    """
+    client.post("/api/marketing/apercu", json={"texte": "Amanha temos pao quente",
+                                               "refs": ["r1"]})
+    assert "refs" not in mesa[0]["corps"]
+
+
+def test_le_seuil_de_depense_est_annonce_en_euros():
+    """
+    ⚠️ QUELQU'UN QUI TAPE 50 EN PENSANT EUROS ET OBTIENT 50 CENTIMES écrirait à toute la liste
+    en croyant viser ses meilleurs clients. L'unité doit être écrite dans le libellé.
+    """
+    # ⚠️ ON VISE LA LIGNE DU LIBELLÉ, PAS LE BLOC. La première version de ce test lisait
+    # « euros » dans le commentaire juste au-dessus : retirer l'unité du texte affiché le
+    # laissait passer — le test gardait le commentaire, pas l'écran.
+    html = _gabarit()
+    i = html.index("a === 'depense'")
+    ligne = [l for l in html[i:i + 500].split("\n") if "mk-arg-l" in l][0]
+    assert "euros" in ligne
+
+
+def test_lecran_trie_sur_la_depense_et_le_solde():
+    html = _gabarit()
+    for colonne in ("lifetimeCents", "balancePoints", "distinctDays", "daysSinceLast"):
+        assert 'data-tri="%s"' % colonne in html
+
+
+def test_jamais_vu_ne_se_trie_pas_comme_zero_jour():
+    """
+    ⚠️ `null` TRIÉ COMME ZÉRO METTRAIT EN TÊTE DE « VU IL Y A » CEUX QU'ON N'A JAMAIS VUS —
+    exactement ceux qu'une relance ne doit pas viser. Le tri les envoie en fin de liste.
+    """
+    html = _gabarit()
+    i = html.index("function tableau()")
+    bloc = html[i:i + 1200]
+    assert "x === null" in bloc and "return 1" in bloc
+
+
+def test_la_liste_est_construite_en_texte_pas_en_html():
+    """Ces prénoms ont été dictés au comptoir et tapés à la main sur un iPad."""
+    html = _gabarit()
+    i = html.index("function tableau()")
+    bloc = html[i:html.index("function compteCoches()")]
+    assert "nom.textContent" in bloc
+    assert "innerHTML = l.name" not in bloc
+
+
+def test_la_confirmation_annonce_le_nombre_reellement_coche():
+    """
+    ⚠️ ANNONCER LE CHIFFRE DU CRITÈRE APRÈS AVOIR DÉCOCHÉ DIX PERSONNES SERAIT UN MENSONGE au
+    moment précis où l'on demande de confirmer un geste irréversible.
+    """
+    html = _gabarit()
+    i = html.index("confirm(")
+    # Le nombre annoncé est la variable calculée juste au-dessus, pas le chiffre du critère.
+    assert "var n = liste.length ? coches().length : vu.destinataires;" in html
+    assert "' + n + ' personne(s)" in html[i:i + 200]

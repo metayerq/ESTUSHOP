@@ -61,6 +61,18 @@
 .avert-fort { background:#fdecea; border:1px solid #f5c2bd; color:#7d2019; padding:11px 13px;
   border-radius:9px; font-size:12.5px; line-height:1.5; margin-bottom:16px; }
 .vide { color:var(--muted); font-size:12.5px; }
+.mk-t { width:100%; border-collapse:collapse; font-size:12.5px; }
+.mk-t th { text-align:left; font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:.07em;
+  text-transform:uppercase; color:var(--muted); padding:8px 10px; border-bottom:1px solid var(--border);
+  white-space:nowrap; }
+.mk-t th[data-tri] { cursor:pointer; user-select:none; }
+.mk-t th[data-tri]:hover { color:var(--text); }
+.mk-t th.on { color:var(--spec); }
+.mk-t th.n, .mk-t td.n { text-align:right; font-variant-numeric:tabular-nums; }
+.mk-t td { padding:8px 10px; border-bottom:1px solid var(--border); }
+.mk-t tr:last-child td { border-bottom:none; }
+.mk-t tr.off td { opacity:.4; }
+.mk-t tbody tr:hover { background:var(--bg-hover); }
 </style>
 </head>
 <body>
@@ -152,6 +164,8 @@
           <option value="tous">Tous ceux qui ont accept&eacute; nos nouvelles</option>
           <option value="habitues">Les habitu&eacute;s</option>
           <option value="absents">Ceux qu'on n'a pas vus depuis un moment</option>
+          <option value="depense">Ceux qui ont d&eacute;pens&eacute; le plus</option>
+          <option value="solde">Ceux qui ont le plus de points</option>
         </select>
         <div id="mk-arg-bloc" hidden>
           <label class="mk-l" for="mk-arg" id="mk-arg-l">Seuil</label>
@@ -183,6 +197,25 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <div class="mk-bloc" style="margin-top:24px" id="mk-liste-bloc" hidden>
+    <h2 class="mk-titre">Qui recevra &mdash; d&eacute;coche ceux que tu veux &eacute;pargner</h2>
+    <p class="mk-aide" style="margin-top:0">Clique sur un en-t&ecirc;te pour trier. Ceux qui n'ont
+      pas accept&eacute; nos nouvelles ne sont pas dans cette liste&nbsp;: ils ne peuvent pas y
+      entrer, m&ecirc;me en cochant.</p>
+    <div style="overflow-x:auto"><table class="mk-t" id="mk-t">
+      <thead><tr>
+        <th style="width:34px"><input type="checkbox" id="mk-tous" checked></th>
+        <th data-tri="name">Client</th>
+        <th data-tri="lifetimeCents" class="n">D&eacute;pens&eacute;</th>
+        <th data-tri="balancePoints" class="n">Points</th>
+        <th data-tri="distinctDays" class="n">Passages</th>
+        <th data-tri="daysSinceLast" class="n">Vu il y a</th>
+      </tr></thead>
+      <tbody id="mk-tbody"></tbody>
+    </table></div>
+    <p class="mk-aide" id="mk-coches"></p>
   </div>
 
   <div class="mk-bloc" style="margin-top:24px">
@@ -245,6 +278,8 @@
   function perimer(){
     if (vu && corpsDe() !== texteVu) {
       vu = null;
+      liste = []; exclus = {};
+      E('mk-liste-bloc').hidden = true;
       E('mk-envoi').disabled = true;
       E('mk-sim').innerHTML = '<p class="vide">Le message a changé depuis la ' +
         'vérification. <strong>Vérifie à nouveau</strong> avant d\'envoyer.</p>';
@@ -265,17 +300,116 @@
     } else if (a === 'absents'){
       E('mk-arg-l').textContent = 'Sans venir depuis combien de jours';
       if (!E('mk-arg').value) E('mk-arg').value = 30;
+    } else if (a === 'depense'){
+      // ⚠️ EN EUROS, ET L'ÉCRAN LE DIT. Quelqu'un qui tape 50 en pensant euros et obtient un
+      // seuil de 50 centimes écrirait à toute la liste en croyant viser ses meilleurs clients.
+      E('mk-arg-l').textContent = 'Au moins combien dépensé, en euros';
+      if (!E('mk-arg').value) E('mk-arg').value = 50;
+    } else if (a === 'solde'){
+      E('mk-arg-l').textContent = 'Au moins combien de points';
+      if (!E('mk-arg').value) E('mk-arg').value = 25;
     }
   }
 
-  function charge(){
+  function charge(avecSelection){
     var o = {texte: corpsDe(), audience: E('mk-audience').value};
     if (E('mk-audience').value !== 'tous') o.arg = parseInt(E('mk-arg').value, 10) || 0;
+    /**
+     * ⚠️ LA SÉLECTION NE PART QU'À L'ENVOI. La vérification doit montrer TOUT ce que le critère
+     * retient — sinon décocher quelqu'un le ferait disparaître de la liste au rafraîchissement
+     * suivant, et on ne pourrait plus le recocher.
+     */
+    if (avecSelection && liste.length) o.refs = coches();
     return o;
   }
 
+  // ── La liste, triable et décochable ───────────────────────────────────────────────────────
+  var liste = [], triSur = 'lifetimeCents', triDesc = true, exclus = {};
+
+  function coches(){
+    return liste.filter(function(l){ return !exclus[l.ref]; }).map(function(l){ return l.ref; });
+  }
+
+  function tableau(){
+    var bloc = E('mk-liste-bloc');
+    bloc.hidden = !liste.length;
+    if (!liste.length) return;
+    var tri = liste.slice().sort(function(a, b){
+      var x = a[triSur], y = b[triSur];
+      // ⚠️ « JAMAIS VU » N'EST PAS ZÉRO JOUR. `null` trié comme 0 mettrait en tête de la colonne
+      // « vu il y a » ceux qu'on n'a jamais vus — exactement ceux qu'on ne veut pas relancer.
+      if (x === null || x === undefined) return 1;
+      if (y === null || y === undefined) return -1;
+      if (typeof x === 'string') return triDesc ? y.localeCompare(x) : x.localeCompare(y);
+      return triDesc ? y - x : x - y;
+    });
+    E('mk-tbody').innerHTML = '';
+    tri.forEach(function(l){
+      var tr = document.createElement('tr');
+      if (exclus[l.ref]) tr.className = 'off';
+      var c = document.createElement('td');
+      var b = document.createElement('input');
+      b.type = 'checkbox'; b.checked = !exclus[l.ref]; b.dataset.ref = l.ref;
+      c.appendChild(b); tr.appendChild(c);
+
+      // ⚠️ EN TEXTE, PAS EN HTML. Ces prénoms ont été dictés au comptoir et tapés à la main.
+      var nom = document.createElement('td');
+      nom.textContent = (l.name || '—') + ' · ••• ' + l.last4;
+      tr.appendChild(nom);
+
+      [eur(l.lifetimeCents), l.balancePoints + ' pts', l.distinctDays,
+       (l.daysSinceLast === null ? 'jamais' : l.daysSinceLast + ' j')].forEach(function(v){
+        var td = document.createElement('td'); td.className = 'n'; td.textContent = v;
+        tr.appendChild(td);
+      });
+      E('mk-tbody').appendChild(tr);
+    });
+    [].forEach.call(document.querySelectorAll('#mk-t th[data-tri]'), function(th){
+      th.classList.toggle('on', th.dataset.tri === triSur);
+    });
+    compteCoches();
+  }
+
+  function compteCoches(){
+    var n = coches().length;
+    E('mk-coches').textContent = n + ' coché(s) sur ' + liste.length +
+      (n < liste.length ? ' — seuls les cochés recevront.' : '');
+    E('mk-envoi').disabled = (n === 0) || !vu;
+    E('mk-tous').checked = (n === liste.length);
+  }
+
+  document.addEventListener('click', function(e){
+    var th = e.target.closest('#mk-t th[data-tri]');
+    if (th){
+      if (triSur === th.dataset.tri) triDesc = !triDesc;
+      else { triSur = th.dataset.tri; triDesc = true; }
+      tableau();
+      return;
+    }
+    if (e.target.id === 'mk-tous'){
+      var tout = e.target.checked;
+      liste.forEach(function(l){ if (tout) delete exclus[l.ref]; else exclus[l.ref] = true; });
+      tableau();
+      return;
+    }
+    var b = e.target.closest('#mk-tbody input[type=checkbox]');
+    if (b){
+      if (b.checked) delete exclus[b.dataset.ref]; else exclus[b.dataset.ref] = true;
+      b.closest('tr').classList.toggle('off', !b.checked);
+      compteCoches();
+    }
+  });
+
   function rendu(d, envoye){
     vu = d; texteVu = corpsDe();
+    if (!envoye){
+      liste = d.liste || [];
+      // ⚠️ LES EXCLUSIONS SONT REMISES À ZÉRO À CHAQUE VÉRIFICATION. Garder une croix posée sur
+      // une liste précédente la ferait porter sur quelqu'un d'autre au critère suivant — et
+      // personne ne s'en apercevrait, puisque la ligne aurait simplement disparu.
+      exclus = {};
+      tableau();
+    }
     var n = envoye ? d.sent : d.destinataires;
     var cout = envoye ? d.cout_centimes : d.cout_centimes;
     var h = [];
@@ -327,7 +461,7 @@
     if (corpsDe().length < 10){
       E('mk-etat').textContent = 'Écris au moins quelques mots.'; return;
     }
-    appel('/api/marketing/apercu', charge(), E('mk-verif'), 'Vérification…')
+    appel('/api/marketing/apercu', charge(false), E('mk-verif'), 'Vérification…')
       .then(function(x){
         if (!x.ok){
           E('mk-etat').textContent = x.d.error || 'Refusé.';
@@ -335,6 +469,7 @@
         }
         rendu(x.d, false);
         E('mk-envoi').disabled = (x.d.destinataires === 0);
+        if (liste.length) compteCoches();
         E('mk-etat').textContent = x.d.destinataires === 0
           ? 'Personne à qui écrire.'
           : 'Vérifié. Rien n\'est parti.';
@@ -350,16 +485,20 @@
      * geste est irréversible : un message parti est lu, il ne se rappelle pas. Le seul
      * garde-fou utile est de faire relire le chiffre.
      */
-    if (!confirm('Envoyer ce message à ' + vu.destinataires + ' personne(s) ?\n\n' +
+    // ⚠️ LE NOMBRE RÉELLEMENT COCHÉ, PAS CELUI DU CRITÈRE. Annoncer 42 après en avoir décoché
+    // dix serait un mensonge au moment précis où l'on demande de confirmer l'irréversible.
+    var n = liste.length ? coches().length : vu.destinataires;
+    if (!confirm('Envoyer ce message à ' + n + ' personne(s) ?\n\n' +
                  vu.message + '\n\nEnviron ' + eur(vu.cout_centimes || 0) +
                  '. C\'est irréversible.')) return;
-    appel('/api/marketing/envoi', charge(), E('mk-envoi'), 'Envoi en cours…')
+    appel('/api/marketing/envoi', charge(true), E('mk-envoi'), 'Envoi en cours…')
       .then(function(x){
         if (!x.ok){ E('mk-etat').textContent = x.d.error || 'Refusé.'; return; }
         rendu(x.d, true);
         E('mk-etat').textContent = x.d.sent + ' message(s) envoyé(s).';
         E('mk-envoi').disabled = true;
-        vu = null;
+        vu = null; liste = []; exclus = {};
+        E('mk-liste-bloc').hidden = true;
         historique();
       }).catch(function(){
         E('mk-etat').textContent = 'Échec réseau. Des messages ont PEUT-ÊTRE ' +
