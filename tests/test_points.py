@@ -37,7 +37,7 @@ VECTEURS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vectors", "
 # ⚠️ L'EMPREINTE EST ÉCRITE DES DEUX CÔTÉS. Mesa la vérifie aussi, sur le fichier d'origine.
 # Régénérer les vecteurs casse les deux suites : c'est le seul moyen qu'une modification du
 # barème ne puisse pas passer d'un seul côté sans que personne ne le remarque.
-EMPREINTE = "c8df12100d734b75df13352c07b341e525460ac982b5ef9f2a09e1c09b448ed7"
+EMPREINTE = "5118a296a2b8bcc9ccc64e946dc46be49460f4e8c346ff93579a52fd471d3e01"
 
 
 def _vecteurs():

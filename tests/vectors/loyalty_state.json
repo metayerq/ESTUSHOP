@@ -1439,6 +1439,140 @@
     "points": "Recebe os seus pontos por SMS. Pode sair quando quiser.",
     "points+news": "Recebe os seus pontos por SMS, e de vez em quando as nossas novidades. Pode sair quando quiser."
   },
+  "smsCost": [
+    {
+      "texte": "Estudantina: ola",
+      "gsm7": true,
+      "length": 16,
+      "segments": 1
+    },
+    {
+      "texte": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "gsm7": true,
+      "length": 160,
+      "segments": 1
+    },
+    {
+      "texte": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "gsm7": true,
+      "length": 161,
+      "segments": 2
+    },
+    {
+      "texte": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "gsm7": true,
+      "length": 153,
+      "segments": 1
+    },
+    {
+      "texte": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "gsm7": true,
+      "length": 306,
+      "segments": 2
+    },
+    {
+      "texte": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "gsm7": true,
+      "length": 307,
+      "segments": 3
+    },
+    {
+      "texte": "Amanha temos pao quente as 9h",
+      "gsm7": true,
+      "length": 29,
+      "segments": 1
+    },
+    {
+      "texte": "Amanhã temos pão quente às 9h",
+      "gsm7": false,
+      "length": 29,
+      "segments": 1
+    },
+    {
+      "texte": "começar",
+      "gsm7": false,
+      "length": 7,
+      "segments": 1
+    },
+    {
+      "texte": "COMEÇAR",
+      "gsm7": true,
+      "length": 7,
+      "segments": 1
+    },
+    {
+      "texte": "serviço",
+      "gsm7": false,
+      "length": 7,
+      "segments": 1
+    },
+    {
+      "texte": "José",
+      "gsm7": true,
+      "length": 4,
+      "segments": 1
+    },
+    {
+      "texte": "ó á ã õ",
+      "gsm7": false,
+      "length": 7,
+      "segments": 1
+    },
+    {
+      "texte": "ò è é ù ì",
+      "gsm7": true,
+      "length": 9,
+      "segments": 1
+    },
+    {
+      "texte": "€",
+      "gsm7": true,
+      "length": 2,
+      "segments": 1
+    },
+    {
+      "texte": "€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€",
+      "gsm7": true,
+      "length": 160,
+      "segments": 1
+    },
+    {
+      "texte": "{}[]~|^\\",
+      "gsm7": true,
+      "length": 16,
+      "segments": 1
+    },
+    {
+      "texte": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "gsm7": true,
+      "length": 70,
+      "segments": 1
+    },
+    {
+      "texte": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaã",
+      "gsm7": false,
+      "length": 72,
+      "segments": 2
+    },
+    {
+      "texte": "ãããããããããããããããããããããããããããããããããããããããããããããããããããããããããããããããããããããã",
+      "gsm7": false,
+      "length": 70,
+      "segments": 1
+    },
+    {
+      "texte": "ããããããããããããããããããããããããããããããããããããããããããããããããããããããããããããããããããããããã",
+      "gsm7": false,
+      "length": 71,
+      "segments": 2
+    },
+    {
+      "texte": "",
+      "gsm7": true,
+      "length": 0,
+      "segments": 1
+    }
+  ],
   "expiry": [
     {
       "at": "2026-01-31T08:30:00.000Z",

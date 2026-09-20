@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/static/icons/favicon-32.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Estudantina">
+<meta name="theme-color" content="#EDEAE3">
+<title>Estudantina · Marketing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<style>
+/* ── L'écran de composition ── */
+.mk-grille { display:grid; grid-template-columns:minmax(320px,1fr) minmax(320px,1fr); gap:24px; align-items:start; }
+@media (max-width:900px){ .mk-grille { grid-template-columns:1fr; } }
+.mk-bloc { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:18px 20px; }
+.mk-titre { font-size:13px; font-weight:600; margin:0 0 12px; }
+.mk-l { display:block; font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--muted); margin:14px 0 5px; }
+.mk-l:first-of-type { margin-top:0; }
+.mk-zone { width:100%; box-sizing:border-box; font-family:inherit; font-size:14px; line-height:1.5; padding:10px 12px;
+  border:1px solid var(--border); border-radius:8px; background:var(--bg-page); color:var(--text); resize:vertical;
+  min-height:96px; }
+.mk-i { width:100%; box-sizing:border-box; font-family:inherit; font-size:13.5px; padding:9px 12px;
+  border:1px solid var(--border); border-radius:8px; background:var(--bg-page); color:var(--text); }
+.mk-aide { font-size:11.5px; color:var(--muted); margin:6px 0 0; line-height:1.45; }
+.mk-compteur { display:flex; gap:16px; align-items:baseline; margin-top:8px; font-size:12px; }
+.mk-compteur strong { font-size:15px; }
+.mk-alerte { margin-top:8px; padding:9px 11px; border-radius:8px; font-size:12px; line-height:1.45;
+  background:#fdf2e6; border:1px solid #e8c9a0; color:#6b4a1e; }
+.mk-enveloppe { font-family:var(--mono); font-size:11.5px; line-height:1.6; color:var(--muted);
+  background:var(--bg-page); border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-top:8px;
+  word-break:break-word; }
+.mk-enveloppe b { color:var(--text); font-weight:600; }
+.mk-tel { max-width:320px; margin:0 auto; background:#111; border-radius:20px; padding:12px; }
+.mk-bulle { background:#e9f3ea; color:#14210f; border-radius:14px 14px 14px 4px; padding:10px 12px;
+  font-size:13px; line-height:1.45; word-break:break-word; }
+.mk-cible { display:flex; flex-wrap:wrap; gap:14px; margin-top:4px; }
+.mk-chiffre { flex:1 1 120px; }
+.mk-chiffre .n { font-size:24px; font-weight:600; line-height:1.1; }
+.mk-chiffre .q { font-family:var(--mono); font-size:10px; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--muted); }
+.mk-ecart { margin-top:12px; font-size:12px; color:var(--muted); line-height:1.7; }
+.mk-ecart b { color:var(--text); font-weight:600; }
+.mk-btn { font-family:inherit; font-size:13px; font-weight:600; padding:10px 18px; border-radius:8px;
+  cursor:pointer; border:1px solid var(--border); background:var(--bg-card); color:var(--text); }
+.mk-btn:hover { background:var(--bg-hover); }
+.mk-btn.fort { background:var(--spec); color:#fff; border-color:transparent; }
+.mk-btn:disabled { opacity:.45; cursor:not-allowed; }
+.mk-actions { display:flex; gap:10px; align-items:center; margin-top:16px; flex-wrap:wrap; }
+.mk-etat { font-size:12px; color:var(--muted); }
+.mk-jrn { border-top:1px solid var(--border); padding:11px 0; font-size:12.5px; line-height:1.55; }
+.mk-jrn:first-child { border-top:none; }
+.mk-jrn .q { font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); }
+.mk-jrn .corps { color:var(--text); margin-top:3px; }
+.avert-fort { background:#fdecea; border:1px solid #f5c2bd; color:#7d2019; padding:11px 13px;
+  border-radius:9px; font-size:12.5px; line-height:1.5; margin-bottom:16px; }
+.vide { color:var(--muted); font-size:12.5px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<nav class="topnav" id="topnav">
+  <a href="/" class="nav-link" data-path="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg><span>Dashboard</span></a>
+  <div class="nav-group">
+    <button class="nav-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5-9 4.5-9-4.5Z"/><path d="M3 7.5v9L12 21l9-4.5v-9"/><path d="M12 12v9"/></svg><span>Carte &amp; Stock</span><i class="caret">&#9662;</i></button>
+    <div class="nav-menu">
+      <a href="/cogs" data-path="/cogs">COGS &mdash; recettes &amp; co&ucirc;ts</a>
+      <a href="/stock" data-path="/stock">Stock &mdash; inventaire</a>
+    </div>
+  </div>
+  <div class="nav-group">
+    <button class="nav-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1" fill="currentColor" stroke="none"/></svg><span>Finances</span><i class="caret">&#9662;</i></button>
+    <div class="nav-menu">
+      <a href="/charges" data-path="/charges">Costs &mdash; charges fixes</a>
+      <a href="/expenses" data-path="/expenses">Expenses &mdash; d&eacute;penses</a>
+      <a href="/reconciliation" data-path="/reconciliation">Reconciliation &mdash; caisse</a>
+    </div>
+  </div>
+  <div class="nav-group">
+    <button class="nav-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>Op&eacute;rations</span><i class="caret">&#9662;</i></button>
+    <div class="nav-menu">
+      <a href="/sop" data-path="/sop">SOP &mdash; checklists</a>
+      <a href="/holidays" data-path="/holidays">Holidays &mdash; cong&eacute;s</a>
+      <a href="/events" data-path="/events">Events &mdash; pop-ups</a>
+      <a href="/loyalty" data-path="/loyalty">Loyalty &mdash; fid&eacute;lit&eacute;</a>
+      <a href="/marketing" data-path="/marketing">Marketing &mdash; SMS</a>
+    </div>
+  </div>
+</nav>
+<script>
+(function(){
+  var path=(location.pathname.replace(/\/+$/,'')||'/');
+  var nav=document.getElementById('topnav'); if(!nav) return;
+  nav.querySelectorAll('a[data-path]').forEach(function(a){
+    var p=a.getAttribute('data-path');
+    if(p===path||(p!=='/'&&path.indexOf(p)===0)){
+      a.classList.add('active');
+      var g=a.closest('.nav-group'); if(g) g.querySelector('.nav-btn').classList.add('active');
+    }
+  });
+  nav.querySelectorAll('.nav-group .nav-btn').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      var g=btn.parentElement, wasOpen=g.classList.contains('open');
+      nav.querySelectorAll('.nav-group').forEach(function(x){x.classList.remove('open');});
+      if(!wasOpen) g.classList.add('open');
+    });
+  });
+  document.addEventListener('click',function(){ nav.querySelectorAll('.nav-group').forEach(function(x){x.classList.remove('open');}); });
+})();
+</script>
+
+  <h1 style="font-size:20px;font-weight:600;margin:0 0 6px">Marketing &mdash; SMS</h1>
+  <p class="mk-aide" style="margin:0 0 22px;max-width:70ch">
+    Le message part de la caisse, pas d'ici. Cet &eacute;cran compose et v&eacute;rifie&nbsp;;
+    <strong>c'est Mesa qui choisit les destinataires</strong>, dans sa propre base, au moment de
+    l'envoi &mdash; et qui &eacute;carte lui-m&ecirc;me ceux qui n'ont pas accept&eacute; le
+    d&eacute;marchage.
+  </p>
+
+  <div id="mk-manque"></div>
+
+  <div class="mk-grille">
+    <div>
+      <div class="mk-bloc">
+        <h2 class="mk-titre">Le message</h2>
+        <label class="mk-l" for="mk-texte">Ce que tu &eacute;cris</label>
+        <textarea class="mk-zone" id="mk-texte" maxlength="320"
+          placeholder="Amanha temos pao quente a partir das 9h"></textarea>
+        <div class="mk-compteur">
+          <span><strong id="mk-n">0</strong> <span class="mk-aide" id="mk-budget">caract&egrave;res</span></span>
+          <span><strong id="mk-seg">1</strong> <span class="mk-aide">segment(s) par personne</span></span>
+        </div>
+        <div id="mk-gsm"></div>
+        <p class="mk-aide">Le nom du caf&eacute;, le lien vers la page de points et la mention de
+          d&eacute;sabonnement sont ajout&eacute;s par la caisse. Tu ne peux pas les retirer, et
+          ils comptent dans la longueur.</p>
+        <div class="mk-enveloppe" id="mk-env"></div>
+      </div>
+
+      <div class="mk-bloc" style="margin-top:20px">
+        <h2 class="mk-titre">&Agrave; qui</h2>
+        <label class="mk-l" for="mk-audience">Crit&egrave;re</label>
+        <select class="mk-i" id="mk-audience">
+          <option value="tous">Tous ceux qui ont accept&eacute; nos nouvelles</option>
+          <option value="habitues">Les habitu&eacute;s</option>
+          <option value="absents">Ceux qu'on n'a pas vus depuis un moment</option>
+        </select>
+        <div id="mk-arg-bloc" hidden>
+          <label class="mk-l" for="mk-arg" id="mk-arg-l">Seuil</label>
+          <input class="mk-i" type="number" id="mk-arg" min="1" max="999" step="1">
+        </div>
+        <p class="mk-aide"><strong>Seuls les clients qui ont dit oui &agrave; nos nouvelles
+          re&ccedil;oivent.</strong> Ceux qui n'ont accept&eacute; que leurs points ne sont jamais
+          dans la liste, quel que soit le crit&egrave;re &mdash; et c'est la caisse qui le
+          v&eacute;rifie, pas cet &eacute;cran.</p>
+      </div>
+    </div>
+
+    <div>
+      <div class="mk-bloc">
+        <h2 class="mk-titre">Ce qu'il recevra</h2>
+        <div class="mk-tel"><div class="mk-bulle" id="mk-bulle">&hellip;</div></div>
+        <p class="mk-aide" style="text-align:center">Aper&ccedil;u local. Le texte exact part de la
+          caisse&nbsp;: demande la v&eacute;rification avant d'envoyer.</p>
+      </div>
+
+      <div class="mk-bloc" style="margin-top:20px">
+        <h2 class="mk-titre">Ce que &ccedil;a donnerait</h2>
+        <div id="mk-sim"><p class="vide">Clique sur <strong>V&eacute;rifier</strong>&nbsp;: la caisse
+          r&eacute;pond avec le nombre exact de destinataires et le co&ucirc;t.</p></div>
+        <div class="mk-actions">
+          <button class="mk-btn" type="button" id="mk-verif">V&eacute;rifier</button>
+          <button class="mk-btn fort" type="button" id="mk-envoi" disabled>Envoyer</button>
+          <span class="mk-etat" id="mk-etat"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mk-bloc" style="margin-top:24px">
+    <h2 class="mk-titre">D&eacute;j&agrave; envoy&eacute;</h2>
+    <div id="mk-hist"><p class="vide">Chargement&hellip;</p></div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  var E = function(id){ return document.getElementById(id); };
+  var vu = null;          // le dernier aperçu rendu par la caisse
+  var texteVu = '';       // le texte EXACT sur lequel il portait
+
+  function eur(c){ return (c/100).toFixed(2).replace('.', ',') + ' €'; }
+  function jour(s){
+    if (!s) return '';
+    var d = new Date(s);
+    return isNaN(d) ? s : d.toLocaleDateString('fr-FR', {day:'2-digit', month:'short', year:'numeric'}) +
+      ' ' + d.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+  }
+  function corpsDe(){ return E('mk-texte').value.trim().replace(/\s+/g, ' '); }
+
+  /**
+   * ⚠️ LE COMPTEUR EST SERVI PAR LE SERVEUR, PAS ÉCRIT EN JAVASCRIPT. L'alphabet GSM-7 est une
+   * table de 128 caractères avec des pièges — « ç » minuscule absent, « Ç » majuscule présent —
+   * et une troisième implémentation ici finirait par diverger des deux autres. Le prix d'un
+   * aller-retour par frappe est dérisoire ; celui d'un comptage faux se paie sur toute la liste.
+   */
+  var enCours = null;
+  function compter(){
+    var texte = E('mk-texte').value;
+    clearTimeout(enCours);
+    enCours = setTimeout(function(){
+      fetch('/api/marketing/cout', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({texte: texte})
+      }).then(function(r){ return r.json(); }).then(function(d){
+        if (d.error) return;
+        E('mk-n').textContent = d.length;
+        E('mk-budget').textContent = 'caractères · ' + d.budget + ' avant le second segment';
+        E('mk-seg').textContent = d.segments;
+        E('mk-bulle').textContent = d.message;
+        E('mk-env').innerHTML = 'Estudantina: <b>' + (corpsDe() ? 'ton texte' : '…') +
+          '</b> lien-de-sa-page STOP para sair';
+        E('mk-gsm').innerHTML = d.gsm7 ? '' :
+          '<div class="mk-alerte"><strong>Un caractère hors alphabet SMS double la ' +
+          'facture.</strong> La limite tombe de 160 à 70 caractères pour tout le ' +
+          'message. En portugais, les coupables habituels sont <b>ã</b>, <b>õ</b>, ' +
+          '<b>ó</b>, <b>á</b> et le <b>ç</b> minuscule. Écris ' +
+          '« amanha », « pao », ' +
+          '« comecar » : c\'est l\'usage courant du SMS au Portugal.</div>';
+      }).catch(function(){});
+    }, 180);
+  }
+
+  // ⚠️ TOUTE MODIFICATION PÉRIME L'APERÇU. Sans ça, on vérifie un texte et on en envoie un
+  // autre — et l'écran affiche fièrement le nombre de destinataires de la version d'avant.
+  function perimer(){
+    if (vu && corpsDe() !== texteVu) {
+      vu = null;
+      E('mk-envoi').disabled = true;
+      E('mk-sim').innerHTML = '<p class="vide">Le message a changé depuis la ' +
+        'vérification. <strong>Vérifie à nouveau</strong> avant d\'envoyer.</p>';
+      E('mk-etat').textContent = '';
+    }
+  }
+
+  E('mk-texte').addEventListener('input', function(){ compter(); perimer(); });
+  E('mk-audience').addEventListener('change', function(){ critere(); perimer(); });
+  E('mk-arg').addEventListener('input', perimer);
+
+  function critere(){
+    var a = E('mk-audience').value;
+    E('mk-arg-bloc').hidden = (a === 'tous');
+    if (a === 'habitues'){
+      E('mk-arg-l').textContent = 'Au moins combien de passages';
+      if (!E('mk-arg').value) E('mk-arg').value = 4;
+    } else if (a === 'absents'){
+      E('mk-arg-l').textContent = 'Sans venir depuis combien de jours';
+      if (!E('mk-arg').value) E('mk-arg').value = 30;
+    }
+  }
+
+  function charge(){
+    var o = {texte: corpsDe(), audience: E('mk-audience').value};
+    if (E('mk-audience').value !== 'tous') o.arg = parseInt(E('mk-arg').value, 10) || 0;
+    return o;
+  }
+
+  function rendu(d, envoye){
+    vu = d; texteVu = corpsDe();
+    var n = envoye ? d.sent : d.destinataires;
+    var cout = envoye ? d.cout_centimes : d.cout_centimes;
+    var h = [];
+    h.push('<div class="mk-cible">' +
+      '<div class="mk-chiffre"><div class="n">' + n + '</div>' +
+      '<div class="q">' + (envoye ? 'message(s) envoyé(s)' : 'destinataire(s)') + '</div></div>' +
+      '<div class="mk-chiffre"><div class="n">' + d.segments + '</div>' +
+      '<div class="q">segment(s) chacun</div></div>' +
+      '<div class="mk-chiffre"><div class="n">' + eur(cout || 0) + '</div>' +
+      '<div class="q">estimation</div></div></div>');
+
+    // ⚠️ LES ÉCARTÉS SONT DÉTAILLÉS, ET CE N'EST PAS DE LA STATISTIQUE. « 38 n'ont pas accepté
+    // le démarchage » dit au patron que sa liste est petite parce qu'il n'a pas encore posé la
+    // question au comptoir — pas parce que le programme est cassé.
+    var e = d.ecartes || {}, parts = [];
+    if (e.horsPortee) parts.push('<b>' + e.horsPortee + '</b> n\'ont pas accepté nos nouvelles');
+    if (e.desabonne) parts.push('<b>' + e.desabonne + '</b> se sont désabonnés');
+    if (e.sansPage) parts.push('<b>' + e.sansPage + '</b> n\'ont pas de page de points');
+    if (e.horsCritere) parts.push('<b>' + e.horsCritere + '</b> hors du critère choisi');
+    if (e.dejaRecu) parts.push('<b>' + e.dejaRecu + '</b> ont déjà reçu ce message');
+    if (parts.length) h.push('<div class="mk-ecart">Écartés : ' + parts.join(' · ') + '</div>');
+
+    if (d.plafonne) h.push('<div class="mk-alerte">La caisse s\'arrête à ' + d.plafond +
+      ' messages par envoi — <b>' + d.restants + '</b> restent à faire. ' +
+      'Renvoie la même campagne : elle reprendra où elle s\'est arrêtée, ' +
+      'sans réécrire à personne.</div>');
+
+    if (envoye){
+      var ech = d.echecs || {}, cles = Object.keys(ech);
+      if (cles.length) h.push('<div class="mk-alerte"><strong>Refusés :</strong> ' +
+        cles.map(function(k){ return ech[k] + ' × ' + k; }).join(' · ') + '</div>');
+      if (d.desabonnesDetectes) h.push('<div class="mk-ecart"><b>' + d.desabonnesDetectes +
+        '</b> avaient répondu STOP à Twilio : ils sont maintenant marqués ' +
+        'comme désabonnés ici aussi.</div>');
+    }
+    E('mk-sim').innerHTML = h.join('');
+  }
+
+  function appel(url, corps, bouton, mot){
+    E('mk-etat').textContent = mot;
+    bouton.disabled = true;
+    return fetch(url, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(corps)
+    }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+      .finally(function(){ bouton.disabled = false; });
+  }
+
+  E('mk-verif').addEventListener('click', function(){
+    if (corpsDe().length < 10){
+      E('mk-etat').textContent = 'Écris au moins quelques mots.'; return;
+    }
+    appel('/api/marketing/apercu', charge(), E('mk-verif'), 'Vérification…')
+      .then(function(x){
+        if (!x.ok){
+          E('mk-etat').textContent = x.d.error || 'Refusé.';
+          E('mk-envoi').disabled = true; return;
+        }
+        rendu(x.d, false);
+        E('mk-envoi').disabled = (x.d.destinataires === 0);
+        E('mk-etat').textContent = x.d.destinataires === 0
+          ? 'Personne à qui écrire.'
+          : 'Vérifié. Rien n\'est parti.';
+      }).catch(function(){ E('mk-etat').textContent = 'Échec réseau — rien n\'est parti.'; });
+  });
+
+  E('mk-envoi').addEventListener('click', function(){
+    if (!vu || corpsDe() !== texteVu){
+      E('mk-etat').textContent = 'Vérifie d\'abord.'; return;
+    }
+    /**
+     * ⚠️ UNE CONFIRMATION QUI ANNONCE LE NOMBRE, PAS UN « Êtes-vous sûr ? ». Le
+     * geste est irréversible : un message parti est lu, il ne se rappelle pas. Le seul
+     * garde-fou utile est de faire relire le chiffre.
+     */
+    if (!confirm('Envoyer ce message à ' + vu.destinataires + ' personne(s) ?\n\n' +
+                 vu.message + '\n\nEnviron ' + eur(vu.cout_centimes || 0) +
+                 '. C\'est irréversible.')) return;
+    appel('/api/marketing/envoi', charge(), E('mk-envoi'), 'Envoi en cours…')
+      .then(function(x){
+        if (!x.ok){ E('mk-etat').textContent = x.d.error || 'Refusé.'; return; }
+        rendu(x.d, true);
+        E('mk-etat').textContent = x.d.sent + ' message(s) envoyé(s).';
+        E('mk-envoi').disabled = true;
+        vu = null;
+        historique();
+      }).catch(function(){
+        E('mk-etat').textContent = 'Échec réseau. Des messages ont PEUT-ÊTRE ' +
+          'été envoyés — relance la même campagne, elle ne réécrira ' +
+          'à personne qui l\'a déjà reçue.';
+      });
+  });
+
+  function historique(){
+    fetch('/api/marketing/historique').then(function(r){ return r.json(); }).then(function(d){
+      if (d.missing){
+        E('mk-hist').innerHTML = '<p class="vide">La table <code>card_campaigns</code> n\'existe ' +
+          'pas encore — exécute <code>migrations/20260923_card_campaigns.sql</code> dans ' +
+          'Supabase. Les envois fonctionnent, mais rien n\'est archivé.</p>';
+        return;
+      }
+      var c = d.campagnes || [];
+      if (!c.length){ E('mk-hist').innerHTML = '<p class="vide">Aucune campagne envoyée.</p>'; return; }
+      E('mk-hist').innerHTML = c.map(function(l){
+        var q = jour(l.sent_at) + ' · ' + l.recipients + ' destinataire(s) · ' +
+          eur(l.cout_centimes || 0) + ' · ' + l.audience +
+          (l.audience_arg ? ' (' + l.audience_arg + ')' : '');
+        var d2 = document.createElement('div');
+        d2.className = 'mk-jrn';
+        var s1 = document.createElement('span'); s1.className = 'q'; s1.textContent = q;
+        var s2 = document.createElement('div'); s2.className = 'corps';
+        // ⚠️ EN TEXTE, PAS EN HTML. Ce corps de message a été tapé à la main dans une zone de
+        // saisie ; le réinjecter en balisage ferait exécuter ce qu'on y aurait collé.
+        s2.textContent = l.body || '';
+        d2.appendChild(s1); d2.appendChild(s2);
+        return d2.outerHTML;
+      }).join('');
+    }).catch(function(){ E('mk-hist').innerHTML = '<p class="vide">Historique illisible.</p>'; });
+  }
+
+  critere();
+  compter();
+  historique();
+})();
+</script>
+
+</body>
+</html>

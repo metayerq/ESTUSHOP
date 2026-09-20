@@ -26,6 +26,7 @@ from config import today_lisbon, now_lisbon, TVA_MOYENNE_BLENDED
 # à Supabase : c'est ce qui permet de tester la règle sans base de données.
 from phone import PHONE_MESSAGE, normalise_phone
 from programme import build_accounts, conversion_series, programme_summary
+from sms import campagne_apercu
 
 from flask import Flask, jsonify, render_template, request, redirect, make_response, g
 from vendus import (
@@ -381,6 +382,10 @@ INVESTOR_BLOCKED_PREFIXES = (
     # de passe investisseur — un accès pensé pour des chiffres, pas pour des personnes. Ce n'est
     # pas une donnée d'actionnaire ; c'est une donnée personnelle de client.
     "/loyalty", "/api/fidelidade",
+    # ⚠️ ET LA PAGE MARKETING ENCORE MOINS. Elle n'affiche pas seulement le fichier clients :
+    # elle permet de leur ÉCRIRE. Un accès pensé pour consulter des chiffres ne doit pas pouvoir
+    # envoyer un SMS au nom du café.
+    "/marketing", "/api/marketing",
 )
 
 def _auth_token(role):
@@ -1934,6 +1939,148 @@ def api_fidelidade_config_save():
         trace = "non écrit"
 
     return jsonify({"ok": True, "settings": _fidelidade_reglages(), "log": trace})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LES CAMPAGNES SMS — composées ici, envoyées par la caisse
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ CE MODULE N'ENVOIE RIEN. Twilio vit dans Mesa ; le fichier clients vit ici. On aurait pu
+# donner les identifiants Twilio au backoffice et le laisser écrire directement : ç'aurait été
+# DEUX expéditeurs, donc deux endroits où vérifier le consentement, deux registres anti-doublon,
+# et un jour l'un des deux oublié. Une seule porte de sortie, et elle est chez Mesa.
+#
+# ⚠️ ET ON N'ENVOIE AUCUNE LISTE DE NUMÉROS. On transmet un TEXTE et un CRITÈRE ; la caisse
+# résout la cible dans sa propre base, au moment de l'envoi, et écarte elle-même ceux qui n'ont
+# pas accepté le démarchage. Si l'expéditeur envoyait ce qu'on lui tend, `consent_scope` ne
+# serait qu'une décoration : une lecture périmée ou un mot de passe de bureau égaré suffiraient
+# à contourner le refus de quelqu'un.
+
+MESA_URL = (os.environ.get("MESA_URL") or "").rstrip("/")
+MESA_CAMPAIGN_SECRET = os.environ.get("MESA_CAMPAIGN_SECRET") or ""
+
+# Ce que coûte un segment, pour donner un ordre de grandeur en euros.
+# ⚠️ UNE ESTIMATION, ET ELLE EST ÉCRITE COMME TELLE À L'ÉCRAN. Le tarif Twilio dépend de
+# l'opérateur du destinataire : « 3,40 € » affiché comme un prix ferme deviendrait un reproche le
+# jour où la facture dit 4,10 €.
+PRIX_SEGMENT_CENTIMES = 5
+
+
+def _mesa_campagne(charge):
+    """
+    Parle à l'expéditeur. Renvoie `(code_http, données)`.
+
+    ⚠️ LES ERREURS DE CONFIGURATION SE DISENT EN CLAIR, ET AVANT L'APPEL. « 502 » sur une
+    variable d'environnement absente enverrait chercher une panne réseau pendant une heure.
+    """
+    if not MESA_URL or not MESA_CAMPAIGN_SECRET:
+        manque = " et ".join(n for n, v in
+                             (("MESA_URL", MESA_URL), ("MESA_CAMPAIGN_SECRET", MESA_CAMPAIGN_SECRET))
+                             if not v)
+        return 500, {"error": f"{manque} absent — à ajouter dans les variables Vercel d'ESTUSHOP"}
+    try:
+        r = _req.post(f"{MESA_URL}/api/sms/campaign", json=charge,
+                      headers={"Authorization": f"Bearer {MESA_CAMPAIGN_SECRET}"},
+                      timeout=55)
+    except Exception as e:
+        # ⚠️ AMBIGU ET IL FAUT LE DIRE. Un délai dépassé ne signifie PAS que rien n'est parti :
+        # la caisse a pu envoyer avant de ne plus répondre. Le registre anti-doublon fait qu'une
+        # relance ne réécrira à personne — c'est la seule réponse sûre, et il faut la donner.
+        return 504, {"error": f"la caisse n'a pas répondu ({type(e).__name__}). "
+                              "Des messages ont PEUT-ÊTRE été envoyés : relance la même campagne, "
+                              "elle ne réécrira à personne qui l'a déjà reçue."}
+    try:
+        return r.status_code, r.json()
+    except Exception:
+        return r.status_code, {"error": (r.text or "réponse illisible")[:200]}
+
+
+@app.route("/marketing")
+def page_marketing():
+    if _current_role() is None:
+        return redirect("/login")
+    return render_template("marketing.html", role=_current_role())
+
+
+@app.route("/api/marketing/apercu", methods=["POST"])
+def api_marketing_apercu():
+    """
+    Ce que cette campagne donnerait. ⚠️ RIEN N'EST ENVOYÉ : l'essai à blanc est le comportement
+    par défaut de la caisse, et on ne demande pas l'envoi ici.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    corps = request.get_json(silent=True) or {}
+    code, donnees = _mesa_campagne({
+        "texte": corps.get("texte") or "",
+        "audience": corps.get("audience") or "tous",
+        "arg": corps.get("arg"),
+    })
+    if code == 200:
+        donnees["cout_centimes"] = donnees.get("segmentsTotal", 0) * PRIX_SEGMENT_CENTIMES
+    return jsonify(donnees), code
+
+
+@app.route("/api/marketing/envoi", methods=["POST"])
+def api_marketing_envoi():
+    """
+    Envoie — pour de bon.
+
+    ⚠️ LE MOTIF N'EST PAS DEMANDÉ ICI, PARCE QUE LE TEXTE EST LE MOTIF. Il est journalisé mot
+    pour mot par la caisse dans `card_campaigns` : à qui, combien, quand, et quoi.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    corps = request.get_json(silent=True) or {}
+    code, donnees = _mesa_campagne({
+        "texte": corps.get("texte") or "",
+        "audience": corps.get("audience") or "tous",
+        "arg": corps.get("arg"),
+        "send": True,
+    })
+    if code == 200:
+        donnees["cout_centimes"] = donnees.get("segmentsFactures", 0) * PRIX_SEGMENT_CENTIMES
+    return jsonify(donnees), code
+
+
+@app.route("/api/marketing/historique")
+def api_marketing_historique():
+    """
+    Ce qui a déjà été envoyé.
+
+    ⚠️ LE TEXTE EXACT, PAS UN RÉSUMÉ. « Vous m'avez écrit le 3 octobre » n'a de réponse que si
+    l'on retrouve ce qui a été écrit, à combien de personnes, et sur quelle base.
+    """
+    if _current_role() is None:
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        lignes = _supa_get("card_campaigns",
+                           {"select": "slug,body,audience,audience_arg,scope,recipients,"
+                                      "segments,sent_at,by_role",
+                            "order": "sent_at.desc", "limit": 50})
+    except SupabaseSchemaError:
+        # La migration n'est pas passée : la page reste utilisable, l'historique est vide et le
+        # dit. Une table absente est un déploiement incomplet, pas un écran en erreur.
+        return jsonify({"campagnes": [], "missing": True})
+    for l in lignes:
+        l["cout_centimes"] = (l.get("segments") or 0) * PRIX_SEGMENT_CENTIMES
+    return jsonify({"campagnes": lignes, "missing": False})
+
+
+@app.route("/api/marketing/cout", methods=["POST"])
+def api_marketing_cout():
+    """
+    Le compteur de caractères, pendant qu'on tape.
+
+    ⚠️ IL NE REMPLACE PAS L'APERÇU. Celui-ci compte le message enveloppe comprise, sans toucher
+    à la caisse, pour dire tout de suite qu'un « ã » vient de doubler la facture. Le chiffre qui
+    ENGAGE reste celui que rend la caisse avec le message réel.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    corps = request.get_json(silent=True) or {}
+    a = campagne_apercu(corps.get("texte") or "")
+    return jsonify({**a, "prix_segment_centimes": PRIX_SEGMENT_CENTIMES})
 
 
 @app.route("/api/cashflow")
