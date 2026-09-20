@@ -2248,6 +2248,85 @@ def api_revolut_schema():
         return jsonify({"error": f"{type(e).__name__}: {str(e)[:200]}"}), 502
 
 
+@app.route("/api/revolut/pourboires")
+def api_revolut_pourboires():
+    """
+    LE MONTANT D'UN PAIEMENT INCLUT-IL LE POURBOIRE ?
+
+    ⚠️ LA QUESTION QUI DÉCIDE DE CHAQUE CHIFFRE DE LA RÉCONCILIATION. L'API rend `amount` et,
+    parfois, `tip_amount` ; le relevé mensuel rend `Original amount` et `Tip amount` dans deux
+    colonnes distinctes. Personne ne dit si les premiers se recouvrent. Selon la réponse,
+    « encaissé carte » vaut `amount` ou `amount − tip` — et l'écart avec Vendus change de signe.
+
+    ⚠️ ET ÇA SE MESURE, ÇA NE SE DEVINE PAS. On compare un mois DÉJÀ RÉGLÉ : ce que notre base a
+    enregistré depuis l'API, et ce que Revolut a effectivement versé. Deux sources indépendantes
+    sur les mêmes paiements.
+
+    ⚠️ DES TOTAUX, JAMAIS DES LIGNES. Ce sont les chiffres d'affaires du café, pas ceux de ses
+    clients : aucun montant individuel, aucune carte, aucune empreinte ne traverse.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+
+    mois = (request.args.get("month") or "").strip()
+    if not _re.fullmatch(r"\d{4}-\d{2}", mois):
+        return jsonify({"error": "month attendu au format YYYY-MM"}), 400
+
+    try:
+        visites, tronque = _supa_all("card_visits",
+                                     {"select": "amount", "day": f"like.{mois}-%"})
+    except SupabaseSchemaError as e:
+        return jsonify({"error": str(e)}), 500
+    api_cents = sum(int(v.get("amount") or 0) for v in visites)
+
+    releve = {k: 0.0 for k in ("gross", "tips", "fees", "net")}
+    tx = 0
+    for jour, r in (_load_revolut_days() or {}).items():
+        if not jour.startswith(mois):
+            continue
+        for k in releve:
+            releve[k] += float(r.get(k) or 0)
+        tx += int(r.get("tx") or 0)
+
+    if tx == 0:
+        return jsonify({"error": f"aucun relevé de settlement pour {mois} — "
+                                 "choisis un mois déjà réglé et importé"}), 404
+
+    api = round(api_cents / 100, 2)
+    brut = round(releve["gross"], 2)
+    brut_plus_tips = round(releve["gross"] + releve["tips"], 2)
+
+    # ⚠️ UNE TOLÉRANCE, PARCE QUE LES DEUX SOURCES NE COUVRENT PAS EXACTEMENT LES MÊMES LIGNES.
+    # `card_visits` écarte les paiements sans derniers chiffres et ignore les remboursements ;
+    # un écart de quelques euros ne tranche rien, un écart égal au total des pourboires, si.
+    def proche(a, b):
+        return abs(a - b) <= max(0.50, 0.005 * max(abs(a), abs(b)))
+
+    if proche(api, brut) and not proche(brut, brut_plus_tips):
+        verdict = "amount EXCLUT le pourboire (= Original amount)"
+    elif proche(api, brut_plus_tips) and not proche(brut, brut_plus_tips):
+        verdict = "amount INCLUT le pourboire (= Original + Tip)"
+    elif proche(brut, brut_plus_tips):
+        verdict = ("indécidable : les pourboires du mois sont trop faibles pour distinguer "
+                   "les deux hypothèses — réessaie sur un mois avec plus de pourboires")
+    else:
+        verdict = ("indécidable : nos totaux ne collent à aucune des deux hypothèses — "
+                   "comparer d'abord le NOMBRE de transactions ci-dessous")
+
+    return jsonify({
+        "mois": mois,
+        "verdict": verdict,
+        "api": {"total": api, "transactions": len(visites), "tronque": tronque},
+        "releve": {"original": brut, "pourboires": round(releve["tips"], 2),
+                   "frais": round(releve["fees"], 2), "verse": round(releve["net"], 2),
+                   "transactions": tx},
+        "hypotheses": {"sans_pourboire": brut, "avec_pourboire": brut_plus_tips},
+        # ⚠️ L'ÉCART DE COMPTAGE SE LIT AVANT LES MONTANTS. Si les deux sources n'ont pas le même
+        # nombre de transactions, la comparaison des totaux ne veut rien dire.
+        "ecart_transactions": len(visites) - tx,
+    })
+
+
 @app.route("/api/cashflow")
 def api_cashflow():
     """Trésorerie réelle par mois : CA encaissé (Vendus) vs dépenses sorties
