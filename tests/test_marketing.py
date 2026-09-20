@@ -413,3 +413,96 @@ def test_lecran_dessai_na_pas_de_champ_de_destination():
     bloc = html[i:i + 1500]
     assert "prompt(" not in bloc
     assert "phone" not in bloc
+
+
+# ── L'effet des campagnes ────────────────────────────────────────────────────────────────────
+
+def _effet_route(client, monkeypatch, campagnes, notices, visites, liens):
+    monkeypatch.setattr(flask_app, "_current_role", lambda: "admin")
+    monkeypatch.setattr(flask_app, "_supa_get", lambda t, p: list(campagnes))
+    monkeypatch.setattr(flask_app, "_supa_all", lambda t, p: (list(notices), False))
+    monkeypatch.setattr(flask_app, "_fidelidade_tables",
+                        lambda: (list(visites), [], list(liens), [], False))
+    return client.get("/api/marketing/effet").get_json()
+
+
+CAMP = {"slug": "abc", "body": "Estudantina: ola", "audience": "tous", "audience_arg": None,
+        "scope": "points+news", "recipients": 2, "segments": 2,
+        "sent_at": "2026-09-10T09:00:00+00:00", "by_role": "backoffice"}
+
+
+def test_les_destinataires_viennent_du_registre_pas_du_critere(client, monkeypatch):
+    """
+    ⚠️ REJOUER LE CRITÈRE AUJOURD'HUI DONNERAIT CEUX QUI LE REMPLISSENT MAINTENANT — pas ceux
+    qui ont reçu le message il y a trois semaines. Quelqu'un inscrit depuis compterait comme
+    destinataire d'un message qu'il n'a jamais reçu, et le taux de retour serait calculé sur des
+    gens à qui on n'a rien envoyé.
+    """
+    d = _effet_route(
+        client, monkeypatch, [CAMP],
+        [{"phone": "+351912345678", "kind": "campaign:abc"}],
+        [{"fp": "aaaa", "ts": "2026-09-11T10:00:00+00:00", "amount": 700}],
+        [{"fp": "aaaa", "phone": "+351912345678"}])
+    e = d["campagnes"][0]["effet"]
+    assert e["destinataires"] == 1
+    assert e["venus_apres"] == 1
+    assert e["apres"]["cents"] == 700
+
+
+def test_les_avis_dexpiration_ne_comptent_pas_comme_destinataires(client, monkeypatch):
+    """
+    ⚠️ `card_notices` PORTE AUSSI LES AVIS D'EXPIRATION. Les confondre avec les destinataires
+    d'une campagne gonflerait la liste avec des gens à qui ce message n'a jamais été envoyé.
+    """
+    d = _effet_route(
+        client, monkeypatch, [CAMP],
+        [{"phone": "+351912345678", "kind": "campaign:abc"},
+         {"phone": "+351999999999", "kind": "expiry"}],
+        [], [])
+    assert d["campagnes"][0]["effet"]["destinataires"] == 1
+
+
+def test_le_recap_de_depense_accompagne_leffet(client, monkeypatch):
+    d = _effet_route(client, monkeypatch, [CAMP], [], [], [])
+    assert d["depense"]["total_cents"] == 2 * flask_app.PRIX_SEGMENT_CENTIMES
+    assert d["depense"]["messages"] == 2
+
+
+def test_leffet_survit_a_une_table_absente(client, monkeypatch):
+    monkeypatch.setattr(flask_app, "_current_role", lambda: "admin")
+
+    def absent(*a, **k):
+        raise flask_app.SupabaseSchemaError("card_campaigns n'existe pas")
+
+    monkeypatch.setattr(flask_app, "_supa_get", absent)
+    d = client.get("/api/marketing/effet").get_json()
+    assert d["missing"] is True
+    assert d["depense"]["total_cents"] == 0
+
+
+def test_lecran_dit_que_ce_nest_pas_toute_la_facture():
+    """
+    ⚠️ LES SMS DE PASSAGE NE SONT PAS COMPTÉS, et ils sont de loin les plus fréquents. Présenter
+    ce total comme « la dépense SMS » la sous-estimerait d'un facteur dix.
+    """
+    html = _gabarit()
+    i = html.index("Ce que les campagnes ont co")
+    bloc = html[i:i + 900]
+    assert "pas toute la facture" in bloc
+
+
+def test_lecran_ne_promet_pas_de_causalite():
+    """
+    ⚠️ UN ÉCART N'EST PAS UNE PREUVE, et c'est le genre de nuance qu'un tableau de bord efface.
+    Une semaine ensoleillée suffit à tout expliquer.
+    """
+    html = _gabarit()
+    assert "ne prouve pas" in html
+    assert "les m&ecirc;mes personnes" in html
+
+
+def test_une_campagne_recente_est_signalee_en_cours():
+    """Sans ça, on la lit le lendemain et on conclut à un échec."""
+    html = _gabarit()
+    assert "EN COURS" in html
+    assert "n\\'est pas écoulée" in html

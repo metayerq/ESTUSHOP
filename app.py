@@ -27,6 +27,7 @@ from config import today_lisbon, now_lisbon, TVA_MOYENNE_BLENDED
 from phone import PHONE_MESSAGE, normalise_phone
 from programme import build_accounts, conversion_series, programme_summary
 from sms import campagne_apercu
+from campagnes import complete, effet_campagne, recap_depense, visites_par_telephone
 
 from flask import Flask, jsonify, render_template, request, redirect, make_response, g
 from vendus import (
@@ -2176,6 +2177,73 @@ def api_marketing_historique():
     for l in lignes:
         l["cout_centimes"] = (l.get("segments") or 0) * PRIX_SEGMENT_CENTIMES
     return jsonify({"campagnes": lignes, "missing": False})
+
+
+@app.route("/api/marketing/effet")
+def api_marketing_effet():
+    """
+    CE QUE LES CAMPAGNES ONT COÛTÉ, ET CE QU'ELLES ONT PRODUIT.
+
+    ⚠️ LES DESTINATAIRES SONT LUS DANS LE REGISTRE, PAS DÉDUITS DU CRITÈRE. Rejouer le critère
+    aujourd'hui donnerait la liste de ceux qui le rempliraient MAINTENANT — pas de ceux qui ont
+    reçu le message il y a trois semaines. Quelqu'un qui s'est inscrit depuis compterait comme
+    destinataire d'un message qu'il n'a jamais reçu.
+
+    ⚠️ ET LE REGISTRE EST LA SEULE SOURCE QUI DISE « CELUI-LÀ A REÇU ». `card_campaigns` dit
+    combien ; `card_notices` dit qui.
+    """
+    if _current_role() is None:
+        return jsonify({"error": "unauthorized"}), 401
+
+    try:
+        campagnes = _supa_get("card_campaigns",
+                              {"select": "slug,body,audience,audience_arg,scope,recipients,"
+                                         "segments,sent_at,by_role",
+                               "order": "sent_at.desc", "limit": 50})
+    except SupabaseSchemaError:
+        return jsonify({"campagnes": [], "depense": recap_depense([]), "missing": True})
+
+    for c in campagnes:
+        c["cout_centimes"] = (c.get("segments") or 0) * PRIX_SEGMENT_CENTIMES
+
+    depense = recap_depense(campagnes)
+    if not campagnes:
+        return jsonify({"campagnes": [], "depense": depense, "missing": False})
+
+    # ⚠️ LE REGISTRE EST FILTRÉ SUR LES GENRES DE CES CAMPAGNES-LÀ. Tout charger ramènerait aussi
+    # les avis d'expiration, et chaque destinataire d'un avis compterait comme ayant reçu la
+    # campagne — un taux de retour calculé sur des gens à qui on n'a rien envoyé.
+    genres = ["campaign:" + c["slug"] for c in campagnes]
+    try:
+        notices, _ = _supa_all("card_notices",
+                               {"select": "phone,kind",
+                                "kind": "in.(" + ",".join(genres) + ")"})
+    except SupabaseSchemaError:
+        notices = []
+    par_genre = {}
+    for n in notices:
+        par_genre.setdefault(n.get("kind"), []).append(n.get("phone"))
+
+    try:
+        visites, _r, liens, _f, tronque = _fidelidade_tables()
+    except SupabaseSchemaError as e:
+        return jsonify({"error": str(e)}), 500
+    passages = visites_par_telephone(visites, liens)
+
+    now = now_lisbon()
+    sortie = []
+    for c in campagnes:
+        destinataires = par_genre.get("campaign:" + c["slug"], [])
+        effet = effet_campagne(c, destinataires, passages)
+        ligne = {k: c.get(k) for k in ("slug", "body", "audience", "audience_arg", "scope",
+                                       "recipients", "segments", "sent_at", "by_role",
+                                       "cout_centimes")}
+        if effet:
+            ligne["effet"] = {**effet, **complete(effet, now)}
+        sortie.append(ligne)
+
+    return jsonify({"campagnes": sortie, "depense": depense, "missing": False,
+                    "truncated": tronque, "prix_segment_centimes": PRIX_SEGMENT_CENTIMES})
 
 
 @app.route("/api/marketing/cout", methods=["POST"])

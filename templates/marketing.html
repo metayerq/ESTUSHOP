@@ -73,6 +73,16 @@
 .mk-t tr:last-child td { border-bottom:none; }
 .mk-t tr.off td { opacity:.4; }
 .mk-t tbody tr:hover { background:var(--bg-hover); }
+.mk-eff { display:flex; flex-wrap:wrap; gap:18px; margin-top:8px; }
+.mk-eff > div { min-width:96px; }
+.mk-eff .n { font-size:17px; font-weight:600; line-height:1.2; }
+.mk-eff .n .fl { font-size:12px; font-weight:400; color:var(--muted); }
+.mk-eff .q { font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--muted); }
+.mk-part { margin-top:8px; font-size:12px; color:var(--muted); }
+.mk-part b { color:var(--text); font-weight:600; }
+.mk-encours { display:inline-block; font-size:10.5px; font-weight:600; padding:1px 7px; border-radius:20px;
+  background:#fdf2e6; color:#6b4a1e; border:1px solid #e8c9a0; }
 </style>
 </head>
 <body>
@@ -239,7 +249,20 @@
   </div>
 
   <div class="mk-bloc" style="margin-top:24px">
-    <h2 class="mk-titre">D&eacute;j&agrave; envoy&eacute;</h2>
+    <h2 class="mk-titre">Ce que les campagnes ont co&ucirc;t&eacute;</h2>
+    <div id="mk-dep"><p class="vide">Chargement&hellip;</p></div>
+    <p class="mk-aide"><strong>Ce n'est pas toute la facture Twilio.</strong> Les SMS de passage,
+      de bienvenue et d'expiration partent de la caisse sans passer par ce journal&nbsp;: ils ne
+      sont pas compt&eacute;s ici, et le passage est de loin le plus fr&eacute;quent.</p>
+  </div>
+
+  <div class="mk-bloc" style="margin-top:24px">
+    <h2 class="mk-titre">D&eacute;j&agrave; envoy&eacute; &mdash; et ce qui s'est pass&eacute; ensuite</h2>
+    <p class="mk-aide" style="margin-top:0">On compare <strong>les m&ecirc;mes personnes</strong>,
+      la semaine d'avant et la semaine d'apr&egrave;s l'envoi. &Ccedil;a ne prouve pas que le
+      message en est la cause &mdash; une semaine ensoleill&eacute;e suffit &agrave; tout
+      expliquer &mdash; mais &ccedil;a &eacute;vite de prendre l'habitude d'un client pour
+      l'effet d'un SMS.</p>
     <div id="mk-hist"><p class="vide">Chargement&hellip;</p></div>
   </div>
 
@@ -549,31 +572,96 @@
       });
   });
 
+  function depense(d){
+    if (!d || !d.mois || !d.mois.length){
+      E('mk-dep').innerHTML = '<p class="vide">Aucune campagne envoyée.</p>'; return;
+    }
+    var h = ['<div class="mk-cible">' +
+      '<div class="mk-chiffre"><div class="n">' + eur(d.total_cents) + '</div>' +
+      '<div class="q">depuis le début</div></div>' +
+      '<div class="mk-chiffre"><div class="n">' + d.messages + '</div>' +
+      '<div class="q">messages</div></div>' +
+      // ⚠️ LE COÛT PAR MESSAGE EST CE QUI SE COMPARE D'UNE CAMPAGNE À L'AUTRE. Un « ã » oublié
+      // double cette ligne sans que le nombre de destinataires bouge.
+      '<div class="mk-chiffre"><div class="n">' + eur(d.cents_par_message) + '</div>' +
+      '<div class="q">par message</div></div></div>'];
+    h.push(d.mois.map(function(m){
+      return '<div class="mk-jrn"><span class="q">' + m.mois + '</span>' +
+        '<div class="corps">' + eur(m.cents) + ' · ' + m.messages + ' message(s) · ' +
+        m.campagnes + ' campagne(s)</div></div>';
+    }).join(''));
+    E('mk-dep').innerHTML = h.join('');
+  }
+
+  function fleche(av, ap, formate){
+    var f = formate || function(x){ return x; };
+    var signe = ap > av ? '+' : '';
+    return '<div class="n">' + f(ap) + ' <span class="fl">(' + f(av) + ' avant, ' +
+      signe + f(ap - av) + ')</span></div>';
+  }
+
+  function effet(e){
+    if (!e) return '';
+    var h = ['<div class="mk-eff">'];
+    h.push('<div>' + fleche(e.venus_avant, e.venus_apres) +
+      '<div class="q">clients venus</div></div>');
+    h.push('<div>' + fleche(e.avant.cents, e.apres.cents, eur) +
+      '<div class="q">encaissé</div></div>');
+    h.push('<div><div class="n">' + e.destinataires + '</div>' +
+      '<div class="q">destinataires</div></div>');
+    h.push('</div>');
+
+    // ⚠️ LE SEUL GROUPE OÙ L'EFFET D'UN MESSAGE EST PLAUSIBLE. Un habitué qui vient chaque
+    // semaine serait venu sans nous ; celui qui ne venait plus, peut-être pas.
+    if (e.reveilles) h.push('<p class="mk-part"><b>' + e.reveilles + '</b> ' +
+      (e.reveilles > 1 ? 'personnes ne s\'étaient pas montrées' : 'personne ne s\'était pas montrée') +
+      ' la semaine d\'avant et ' + (e.reveilles > 1 ? 'sont revenues' : 'est revenue') +
+      ' dans les ' + e.fenetre_jours + ' jours.</p>');
+
+    if (!e.complete) h.push('<p class="mk-part"><span class="mk-encours">EN COURS</span> ' +
+      'La semaine n\'est pas écoulée' +
+      (e.jours_restants ? ' — encore ' + e.jours_restants + ' jour(s)' : '') +
+      '. Ces chiffres vont encore bouger.</p>');
+    else if (e.delta_cents > e.cout_cents) h.push('<p class="mk-part">Écart encaissé <b>' +
+      eur(e.delta_cents) + '</b> pour <b>' + eur(e.cout_cents) + '</b> de SMS. ' +
+      'Un écart n\'est pas une preuve.</p>');
+    return h.join('');
+  }
+
   function historique(){
-    fetch('/api/marketing/historique').then(function(r){ return r.json(); }).then(function(d){
+    fetch('/api/marketing/effet').then(function(r){ return r.json(); }).then(function(d){
+      depense(d.depense);
       if (d.missing){
         E('mk-hist').innerHTML = '<p class="vide">La table <code>card_campaigns</code> n\'existe ' +
           'pas encore — exécute <code>migrations/20260923_card_campaigns.sql</code> dans ' +
           'Supabase. Les envois fonctionnent, mais rien n\'est archivé.</p>';
+        E('mk-dep').innerHTML = '<p class="vide">Rien à compter tant que la table manque.</p>';
         return;
       }
       var c = d.campagnes || [];
       if (!c.length){ E('mk-hist').innerHTML = '<p class="vide">Aucune campagne envoyée.</p>'; return; }
-      E('mk-hist').innerHTML = c.map(function(l){
-        var q = jour(l.sent_at) + ' · ' + l.recipients + ' destinataire(s) · ' +
+      E('mk-hist').innerHTML = '';
+      c.forEach(function(l){
+        var bloc = document.createElement('div');
+        bloc.className = 'mk-jrn';
+        var s1 = document.createElement('span'); s1.className = 'q';
+        s1.textContent = jour(l.sent_at) + ' · ' + l.recipients + ' destinataire(s) · ' +
           eur(l.cout_centimes || 0) + ' · ' + l.audience +
           (l.audience_arg ? ' (' + l.audience_arg + ')' : '');
-        var d2 = document.createElement('div');
-        d2.className = 'mk-jrn';
-        var s1 = document.createElement('span'); s1.className = 'q'; s1.textContent = q;
         var s2 = document.createElement('div'); s2.className = 'corps';
         // ⚠️ EN TEXTE, PAS EN HTML. Ce corps de message a été tapé à la main dans une zone de
         // saisie ; le réinjecter en balisage ferait exécuter ce qu'on y aurait collé.
         s2.textContent = l.body || '';
-        d2.appendChild(s1); d2.appendChild(s2);
-        return d2.outerHTML;
-      }).join('');
-    }).catch(function(){ E('mk-hist').innerHTML = '<p class="vide">Historique illisible.</p>'; });
+        bloc.appendChild(s1); bloc.appendChild(s2);
+        // L'effet, lui, ne contient que des nombres calculés ici.
+        var s3 = document.createElement('div'); s3.innerHTML = effet(l.effet);
+        bloc.appendChild(s3);
+        E('mk-hist').appendChild(bloc);
+      });
+    }).catch(function(){
+      E('mk-hist').innerHTML = '<p class="vide">Historique illisible.</p>';
+      E('mk-dep').innerHTML = '<p class="vide">Dépense illisible.</p>';
+    });
   }
 
   critere();
