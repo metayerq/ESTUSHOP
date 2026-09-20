@@ -2989,6 +2989,200 @@ def api_reconciliation():
     return jsonify({"month": month, "days": out, "payment_titles": sorted(titles),
                     "revolut": revolut})
 
+# ══════════════════════════════════════════════════════════════════════════════
+# RÉCONCILIATION QUOTIDIENNE — trois sources, trois statuts
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ UN ÉCRAN QUI MÉLANGE MESURÉ, ESTIMÉ ET INCONNU EST PIRE QU'UN ÉCRAN VIDE. Chaque grandeur
+# rendue ici porte son statut, et l'estimation garde son préfixe jusqu'au relevé.
+#
+# ⚠️ ET TOUT EST CONVERTI EN CENTIMES ICI, À UN SEUL ENDROIT. `terminal_days` est en centiemes
+# entiers (comme l'API Revolut), `daily_summary` en euros décimaux (comme Vendus). Le bug
+# d'unité est le plus banal et le plus silencieux : un facteur cent ne lève jamais.
+
+# Ce qu'un titre de paiement Vendus désigne. ⚠️ EN MINUSCULES ET SANS ACCENT à la comparaison :
+# « Cartão » et « cartao » sont le même moyen de paiement, et un jour quelqu'un tapera l'un ou
+# l'autre.
+TITRES_CARTE = {"cartao", "multibanco", "mbway", "mb way", "card", "carte", "tpa"}
+TITRES_ESPECES = {"dinheiro", "numerario", "cash", "especes"}
+
+# Le taux de frais par défaut, mesuré sur juillet 2026 (87,93 € pour 6 091,55 € de ventes).
+# ⚠️ UN REPLI, PAS UNE VÉRITÉ. Le taux réel est recalculé sur le dernier mois réglé dès qu'il
+# existe : figer celui-ci ferait vieillir l'estimation sans que rien ne le signale.
+TAUX_FRAIS_DEFAUT = 0.014435
+
+
+def _sans_accent(t):
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", (t or "").strip().lower())
+                   if unicodedata.category(c) != "Mn")
+
+
+def _classer_paiements(repartition):
+    """
+    Range les moyens de paiement Vendus en carte / espèces / autre.
+
+    ⚠️ LES TITRES INCONNUS SONT RENDUS, JAMAIS AVALÉS. Un moyen de paiement non classé qui
+    tomberait silencieusement dans « autre » ferait apparaître un écart permanent avec le
+    terminal, et personne ne saurait que la cause est un libellé.
+    """
+    if repartition is None:
+        return None
+    carte = especes = autre = 0.0
+    inconnus = []
+    for titre, montant in (repartition or {}).items():
+        n = _sans_accent(titre)
+        if n in TITRES_CARTE:
+            carte += float(montant or 0)
+        elif n in TITRES_ESPECES:
+            especes += float(montant or 0)
+        else:
+            autre += float(montant or 0)
+            inconnus.append(titre)
+    return {"carte_cents": round(carte * 100), "especes_cents": round(especes * 100),
+            "autre_cents": round(autre * 100), "titres_inconnus": sorted(set(inconnus))}
+
+
+def _taux_frais(revolut):
+    """
+    Le taux de frais, calibré sur le dernier mois RÉGLÉ.
+
+    ⚠️ RECALCULÉ PLUTÔT QUE FIGÉ. Un taux en dur vieillit sans que rien ne le signale — un
+    changement de contrat Revolut ferait dériver l'estimation de tous les jours à venir, et
+    l'écart ne se verrait qu'à la clôture suivante.
+    """
+    par_mois = {}
+    for jour, r in (revolut or {}).items():
+        m = jour[:7]
+        e = par_mois.setdefault(m, {"gross": 0.0, "fees": 0.0})
+        e["gross"] += float(r.get("gross") or 0)
+        e["fees"] += float(r.get("fees") or 0)
+    for m in sorted(par_mois, reverse=True):
+        e = par_mois[m]
+        if e["gross"] > 0 and e["fees"] > 0:
+            return round(e["fees"] / e["gross"], 6), m
+    return TAUX_FRAIS_DEFAUT, None
+
+
+@app.route("/api/reconciliation/daily")
+def api_reconciliation_daily():
+    """
+    La caisse, jour par jour, sans un seul appel Vendus pour le passé.
+
+    ⚠️ C'EST LA RAISON D'ÊTRE DE LA PHASE 1. La page actuelle recharge un mois entier document
+    par document à chaque ouverture — la rafale qui dépasse le timeout serverless et rend la
+    page à zéro. Ici tout vient de Supabase ; seul le jour courant coûte un appel, déjà mis en
+    cache par le cron.
+    """
+    if _current_role() is None:
+        return jsonify({"error": "unauthorized"}), 401
+
+    aujourdhui = today_lisbon()
+    try:
+        to_d = date.fromisoformat(request.args["to"]) if request.args.get("to") else aujourdhui
+        from_d = (date.fromisoformat(request.args["from"]) if request.args.get("from")
+                  else to_d - timedelta(34))
+    except ValueError:
+        return jsonify({"error": "from/to attendus au format YYYY-MM-DD"}), 400
+    if from_d > to_d:
+        return jsonify({"error": "from après to"}), 400
+    to_d = min(to_d, aujourdhui)
+
+    # ── Les trois sources, toutes en base ────────────────────────────────────────────────────
+    resume = {r["day"]: r for r in _fetch_summaries(from_d.isoformat(), to_d.isoformat())}
+    try:
+        terminal = {r["day"]: r for r in _supa_get(
+            "terminal_days",
+            [("day", f"gte.{from_d.isoformat()}"), ("day", f"lte.{to_d.isoformat()}"),
+             ("order", "day.asc")])}
+    except SupabaseSchemaError:
+        terminal = {}
+    revolut = _load_revolut_days() or {}
+    taux, mois_calibre = _taux_frais(revolut)
+
+    # ⚠️ LE JOUR COURANT VIENT DU CACHE, PAS DE LA BASE. `daily_summary` ne porte jamais
+    # aujourd'hui — il n'est pas fini, et l'y écrire le figerait à l'heure du premier regard.
+    vendus_aujourdhui = None
+    if from_d <= aujourdhui <= to_d:
+        try:
+            docs = _get_today_docs_cached() or []
+            vendus_aujourdhui = {
+                "ca_ttc": round(sum(float(d.get("amount_gross") or 0) for d in docs), 2),
+                "payments": _repartition_paiements(docs),
+            }
+        except Exception:
+            vendus_aujourdhui = None
+
+    jours = []
+    d = from_d
+    while d <= to_d:
+        iso = d.isoformat()
+        est_aujourdhui = d == aujourdhui
+        r = resume.get(iso) or ({} if not est_aujourdhui else (vendus_aujourdhui or {}))
+        t = terminal.get(iso) or {}
+        rev = revolut.get(iso) or {}
+
+        v_total = round(float(r.get("ca_ttc") or 0) * 100)
+        reparti = _classer_paiements(
+            (vendus_aujourdhui or {}).get("payments") if est_aujourdhui else r.get("payments"))
+
+        brut = int(t.get("gross_cents") or 0)
+        pourboires = int(t.get("tips_cents") or 0)
+        remboursements = int(t.get("refunds_cents") or 0)
+        # ⚠️ LES FRAIS MESURÉS L'EMPORTENT SUR L'ESTIMATION, et l'écran doit savoir lesquels il
+        # affiche : `frais_mesures` est le drapeau, pas une nuance de présentation.
+        frais_mesures = None
+        if rev.get("fees"):
+            frais_mesures = round(float(rev["fees"]) * 100)
+        elif t.get("fees_cents") is not None:
+            frais_mesures = int(t["fees_cents"])
+        frais = frais_mesures if frais_mesures is not None else round(brut * taux)
+
+        # L'écart qui compte : ventes terminal contre facturé carte. ⚠️ `None` SI LA RÉPARTITION
+        # MANQUE — un écart calculé sur une répartition absente vaudrait exactement le montant
+        # encaissé en carte, et se lirait comme une catastrophe.
+        ecart = None
+        if reparti is not None and (brut or reparti["carte_cents"]):
+            ecart = brut - remboursements - reparti["carte_cents"]
+
+        jours.append({
+            "day": iso,
+            "aujourdhui": est_aujourdhui,
+            # MESURÉ
+            "terminal_cents": brut,
+            "pourboires_cents": pourboires,
+            "remboursements_cents": remboursements,
+            "transactions": int(t.get("tx") or 0),
+            "vendus_total_cents": v_total,
+            "vendus": reparti,
+            "ecart_cents": ecart,
+            # MESURÉ ou ESTIMÉ — le drapeau dit lequel
+            "frais_cents": frais,
+            "frais_mesures": frais_mesures is not None,
+            "net_cents": brut + pourboires - remboursements - frais,
+            # Ce qui manque, nommé. ⚠️ « PAS DE DONNÉE » ET « ZÉRO » MÈNENT À DEUX LECTURES
+            # OPPOSÉES du même écran, et seul le premier se répare.
+            "terminal_absent": iso not in terminal,
+            "vendus_absent": not r,
+            "repartition_absente": reparti is None,
+        })
+        d += timedelta(1)
+
+    def somme(cle):
+        return sum(j[cle] or 0 for j in jours)
+
+    return jsonify({
+        "from": from_d.isoformat(), "to": to_d.isoformat(),
+        "jours": jours,
+        "totaux": {c: somme(c) for c in ("terminal_cents", "pourboires_cents",
+                                         "remboursements_cents", "frais_cents",
+                                         "net_cents", "vendus_total_cents", "transactions")},
+        "taux_frais": taux,
+        "taux_calibre_sur": mois_calibre,
+        "genere": now_lisbon().strftime("%d/%m/%Y %H:%M"),
+    })
+
+
 # ── Página da contabilista : reconciliação TPA ────────────────────────────────
 # Accès par token secret (env ACCOUNTANT_TOKEN) — lecture seule, en portugais.
 # Données Revolut : table Supabase revolut_days (fallback revolut_data.json).
@@ -3344,6 +3538,39 @@ def api_cash():
     return jsonify({"since": OPEN_DATE.isoformat(),
                     "days": out,
                     "total": round(sum(d["cash"] for d in out), 2)})
+
+
+@app.route("/api/terminal-days/sync", methods=["POST"])
+def api_terminal_days_sync():
+    """
+    Reconstruit l'encaissement terminal d'une plage.
+
+    ⚠️ PLAFONNÉE À DIX JOURS PAR APPEL, comme `/api/card-visits/sync`. Chaque jour coûte un appel
+    à la liste des commandes plus un appel par commande : sur un mois entier, la fonction est
+    tuée par le timeout serverless AU MILIEU de la plage, et on ne sait pas où elle s'est
+    arrêtée. Dix jours tiennent ; le client enchaîne les plages.
+
+    ⚠️ REJOUABLE SANS DOMMAGE : chaque jour se réécrit en entier (upsert sur `day`).
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    if not _rm.enabled():
+        return jsonify({"error": "REVOLUT_MERCHANT_KEY absente"}), 503
+    data = request.get_json(silent=True) or {}
+    try:
+        f = date.fromisoformat(data.get("from", ""))
+        to = date.fromisoformat(data.get("to", ""))
+    except ValueError:
+        return jsonify({"error": "from/to (YYYY-MM-DD) requis"}), 400
+    if f > to:
+        return jsonify({"error": "from après to"}), 400
+    if (to - f).days > 9:
+        return jsonify({"error": "plage limitée à 10 jours par appel"}), 400
+    try:
+        n = _terminal_days_sync(f, to)
+    except Exception as e:
+        return jsonify({"error": f"{type(e).__name__}: {str(e)[:200]}"}), 502
+    return jsonify({"ok": True, "jours": n, "from": f.isoformat(), "to": to.isoformat()})
 
 
 # ── Expenses (dépenses réelles, avec justificatif Google Drive) ───────────────

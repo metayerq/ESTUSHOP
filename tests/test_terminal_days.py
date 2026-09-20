@@ -149,3 +149,51 @@ def test_une_panne_comptable_ne_prive_pas_la_fidelite(monkeypatch):
     j = src.index("_terminal_days_sync")
     entre = src[i:j]
     assert entre.count("try:") >= 1, "les deux synchronisations partagent le même try"
+
+
+# ── Le backfill ──────────────────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def admin(monkeypatch):
+    monkeypatch.setattr(flask_app, "_current_role", lambda: "admin")
+    monkeypatch.setattr(flask_app._rm, "enabled", lambda: True)
+    flask_app.app.config["TESTING"] = True
+    return flask_app.app.test_client()
+
+
+def test_la_plage_est_plafonnee_a_dix_jours(admin, monkeypatch):
+    """
+    ⚠️ CHAQUE JOUR COÛTE UN APPEL À LA LISTE PLUS UN PAR COMMANDE. Sur un mois entier, la
+    fonction est tuée par le timeout serverless AU MILIEU de la plage — et on ne sait pas où
+    elle s'est arrêtée. Refuser est plus honnête qu'échouer à mi-chemin.
+    """
+    appels = []
+    monkeypatch.setattr(flask_app, "_terminal_days_sync",
+                        lambda f, t: appels.append((f, t)) or 1)
+    r = admin.post("/api/terminal-days/sync",
+                   json={"from": "2026-05-01", "to": "2026-05-31"})
+    assert r.status_code == 400
+    assert not appels, "la plage trop longue a quand même été lancée"
+
+    ok = admin.post("/api/terminal-days/sync", json={"from": "2026-05-01", "to": "2026-05-10"})
+    assert ok.status_code == 200
+
+
+def test_des_bornes_inversees_sont_refusees(admin):
+    r = admin.post("/api/terminal-days/sync", json={"from": "2026-05-10", "to": "2026-05-01"})
+    assert r.status_code == 400
+
+
+def test_sans_cle_revolut_elle_le_dit(admin, monkeypatch):
+    monkeypatch.setattr(flask_app._rm, "enabled", lambda: False)
+    r = admin.post("/api/terminal-days/sync", json={"from": "2026-05-01", "to": "2026-05-02"})
+    assert r.status_code == 503
+
+
+@pytest.mark.parametrize("role", [None, "investor", "staff"])
+def test_seul_ladmin_reconstruit(monkeypatch, role):
+    monkeypatch.setattr(flask_app, "_current_role", lambda: role)
+    flask_app.app.config["TESTING"] = True
+    r = flask_app.app.test_client().post("/api/terminal-days/sync",
+                                         json={"from": "2026-05-01", "to": "2026-05-02"})
+    assert r.status_code in (401, 403)
