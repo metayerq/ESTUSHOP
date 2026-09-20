@@ -2225,6 +2225,29 @@ def api_marketing_cout():
     return jsonify({**a, "prix_segment_centimes": PRIX_SEGMENT_CENTIMES})
 
 
+@app.route("/api/revolut/schema")
+def api_revolut_schema():
+    """
+    Ce que l'API Revolut nous donne, en noms de champs.
+
+    ⚠️ LA SONDE QUI DÉCIDE DE LA RÉCONCILIATION. Si `fee` et `tip` existent par paiement, la
+    page devient vraie en direct ; sinon les frais resteront une estimation jusqu'au relevé
+    mensuel, et l'écran devra le dire à chaque ligne. On ne conçoit pas cet écran sans la
+    réponse.
+
+    ⚠️ LECTURE SEULE, ET NOMS SEULEMENT. Le compte Revolut configuré est celui de production ;
+    cette réponse est faite pour être recopiée, donc elle ne doit porter aucune valeur.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    if not _rm.enabled():
+        return jsonify({"error": "REVOLUT_MERCHANT_KEY absent de ce projet"}), 500
+    try:
+        return jsonify(_rm.schema_recent(request.args.get("limit", 3)))
+    except Exception as e:
+        return jsonify({"error": f"{type(e).__name__}: {str(e)[:200]}"}), 502
+
+
 @app.route("/api/cashflow")
 def api_cashflow():
     """Trésorerie réelle par mois : CA encaissé (Vendus) vs dépenses sorties

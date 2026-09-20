@@ -119,3 +119,64 @@ def fetch_range(from_day, to_day):
         out.extend(fetch_day(d, s))
         d += timedelta(1)
     return out
+
+
+def schema_recent(limite=3):
+    """
+    LES NOMS DES CHAMPS QUE REVOLUT NOUS DONNE — jamais leurs valeurs.
+
+    ⚠️ CETTE SONDE EXISTE POUR TRANCHER UNE ARCHITECTURE. Toute la réconciliation quotidienne
+    dépend d'une question sans réponse dans notre code : l'API donne-t-elle les FRAIS et les
+    POURBOIRES par paiement, ou seulement dans le relevé de settlement mensuel ? Concevoir
+    l'écran sans le savoir, c'est choisir entre deux modèles à pile ou face — et chaque chiffre
+    affiché en porterait la conséquence.
+
+    ⚠️ LES NOMS SEULEMENT, ET C'EST NON NÉGOCIABLE. Un paiement porte le moyen de paiement d'un
+    client réel. Cette réponse est faite pour être recopiée dans une conversation : elle doit
+    être sûre à recopier.
+
+    ⚠️ ET ELLE NE LIT QUE. Aucune écriture, aucun effet — le compte Revolut configuré est celui
+    de production.
+    """
+    # ⚠️ BORNÉE DES DEUX CÔTÉS, ET PARSÉE UNE SEULE FOIS. Sans borne haute, une faute de frappe
+    # dans l'URL lance des centaines d'appels à Revolut ; sans borne basse, `limit=0` ne rend
+    # rien sans dire pourquoi. Et `int(limite or 3)` se comporte différemment selon que le zéro
+    # arrive en entier (faux, donc remplacé par 3) ou en chaîne « 0 » (vrai, donc gardé) —
+    # exactement le genre d'écart qui ne se voit qu'en production.
+    try:
+        n = int(limite)
+    except (TypeError, ValueError):
+        n = 3
+    n = max(1, min(n, 10))
+
+    s = _session()
+    j = _get(s, f"{BASE}/orders", {"limit": n}) or {}
+    commandes = j.get("orders", j) if isinstance(j, (dict, list)) else []
+    if isinstance(commandes, dict):
+        commandes = commandes.get("orders") or []
+    if not isinstance(commandes, list):
+        return {"enveloppe": type(j).__name__, "commandes": []}
+
+    sortie = []
+    for o in commandes[:n]:
+        if not isinstance(o, dict) or not o.get("id"):
+            continue
+        ps = _get(s, f"{BASE}/orders/{o['id']}/payments") or []
+        ligne = {
+            # Huit caractères suffisent à retrouver la ligne dans les journaux.
+            "id": str(o.get("id"))[:8],
+            "state": o.get("state"),
+            "champs_commande": sorted(o.keys()),
+            "paiements": [],
+        }
+        for p in (ps if isinstance(ps, list) else []):
+            if not isinstance(p, dict):
+                continue
+            pm = p.get("payment_method") or {}
+            ligne["paiements"].append({
+                "state": p.get("state"),
+                "champs_paiement": sorted(p.keys()),
+                "champs_moyen": sorted(pm.keys()) if isinstance(pm, dict) else [],
+            })
+        sortie.append(ligne)
+    return {"enveloppe": "liste" if isinstance(j, list) else "objet", "commandes": sortie}
