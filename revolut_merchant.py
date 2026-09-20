@@ -111,6 +111,62 @@ def fetch_day(day, s=None):
     return rows
 
 
+def fetch_day_totals(day, s=None):
+    """
+    L'ENCAISSEMENT TERMINAL D'UN JOUR, EN SOURCE COMPTABLE.
+
+    ⚠️ CE N'EST PAS `fetch_day`, ET LA DIFFÉRENCE EST TOUT L'INTÉRÊT. `fetch_day` sert la
+    FIDÉLITÉ : elle écarte les paiements sans derniers chiffres — Tap to Pay n'en rattache
+    aucun — parce qu'on ne peut pas leur inventer une empreinte de carte. Pour la comptabilité,
+    ce même filtre sous-compte en silence : mesuré sur juillet 2026, 605 lignes retenues pour
+    606 paiements réglés, 13,44 € manquants.
+
+    ⚠️ LES POURBOIRES SONT COMPTÉS À PART, parce qu'ils ne sont PAS dans le montant des ventes.
+    Vérifié sur juillet : `Σ amount` = 6 078,11 € contre 6 091,55 € de ventes au relevé, et
+    99,35 € de pourboires en plus. Les additionner ferait croire à un chiffre d'affaires
+    surévalué de 1,6 %.
+
+    ⚠️ ET `tip_amount` N'EXISTE QUE QUAND IL Y A UN POURBOIRE. Revolut omet le champ plutôt que
+    de rendre zéro : le lire avec un défaut est obligatoire.
+
+    ⚠️ LES REMBOURSEMENTS SONT COMPTÉS, EUX AUSSI. Ils n'entrent jamais dans `card_visits` (le
+    webhook n'écoute que `ORDER_COMPLETED`) : une journée avec un avoir afficherait sinon un
+    écart inexplicable avec Vendus.
+    """
+    s = s or _session()
+    start = datetime.combine(day, datetime.min.time(), LISBON).astimezone(timezone.utc)
+    end   = start + timedelta(days=1)
+    j = _get(s, f"{BASE}/orders", {
+        "from_created_date": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "to_created_date":   end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "limit": 500}) or {}
+    orders = [o for o in j.get("orders", []) if o.get("state") == "completed"]
+
+    def pays(o):
+        return o, (_get(s, f"{BASE}/orders/{o['id']}/payments") or [])
+
+    total = {"gross_cents": 0, "tips_cents": 0, "tx": 0, "refunds_cents": 0}
+    with ThreadPoolExecutor(4) as ex:
+        for o, ps in ex.map(pays, orders):
+            # ⚠️ UN REMBOURSEMENT EST UNE COMMANDE À PART, rattachée par `related_order_id` —
+            # constaté le 20/09/2026. Son montant se soustrait de l'encaissement du jour.
+            rembourse = bool(o.get("related_order_id"))
+            for p in ps:
+                if p.get("state") != "completed" and p.get("state") != "captured":
+                    continue
+                ts = p.get("created_at") or o.get("created_at")
+                if _lisbon_day(ts) != day.isoformat():
+                    continue            # appartient au jour voisin
+                montant = int(p.get("amount") or 0)
+                if rembourse:
+                    total["refunds_cents"] += montant
+                    continue
+                total["gross_cents"] += montant
+                total["tips_cents"] += int(p.get("tip_amount") or 0)
+                total["tx"] += 1
+    return total
+
+
 def fetch_range(from_day, to_day):
     s = _session()
     out = []

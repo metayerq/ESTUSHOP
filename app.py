@@ -1167,15 +1167,25 @@ def api_cron_refresh():
             pass
         # Visites carte : hier + aujourd'hui, idempotent (upsert sur pid).
         visits = None
+        terminal = None
         if _rm.enabled():
             try:
                 td = today_lisbon()
                 visits = _card_visits_sync(td - timedelta(1), td)
             except Exception:
                 pass
+            # ⚠️ DANS UN `try` SÉPARÉ. La fidélité et la comptabilité lisent la même API mais ne
+            # servent pas le même usage : une panne de l'une ne doit pas priver l'autre. Les
+            # grouper ferait perdre les points d'un client parce qu'un total comptable a échoué.
+            try:
+                td = today_lisbon()
+                terminal = _terminal_days_sync(td - timedelta(1), td)
+            except Exception:
+                pass
         return jsonify({"ok": True, "day": today_lisbon().isoformat(),
                         "docs_cached": len(docs), "heatmap_warm": hm_warm,
-                        "card_visits": visits, "at": _utc_iso()})
+                        "card_visits": visits, "terminal_days": terminal,
+                        "at": _utc_iso()})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -3511,6 +3521,36 @@ def _card_visits_sync(from_day, to_day):
             raise RuntimeError(err or "upsert card_visits failed")
     return len(rows)
 
+def _terminal_days_sync(from_day, to_day):
+    """
+    Écrit l'encaissement terminal, jour par jour. Rejouable (upsert sur `day`).
+
+    ⚠️ UNE LIGNE PAR JOUR, ET ELLE SE RÉÉCRIT EN ENTIER. Additionner à l'existant doublerait les
+    montants à chaque passage du cron — qui repasse sur hier toutes les cinq minutes.
+
+    ⚠️ ET `fees_cents` N'EST JAMAIS ÉCRIT ICI. Les frais ne sont connus qu'au relevé mensuel ;
+    poser 0 en attendant ferait lire « aucun frais » là où il faut lire « pas encore connu ».
+    C'est la colonne qui restera NULL pendant trois semaines chaque mois, et c'est voulu.
+    """
+    ecrits = 0
+    d = from_day
+    while d <= to_day:
+        t = _rm.fetch_day_totals(d)
+        ok, err = _supa_upsert("terminal_days", {
+            "day": d.isoformat(),
+            "gross_cents": t["gross_cents"],
+            "tips_cents": t["tips_cents"],
+            "refunds_cents": t["refunds_cents"],
+            "tx": t["tx"],
+            "updated_at": _utc_iso(),
+        })
+        if not ok:
+            raise RuntimeError(err or "upsert terminal_days failed")
+        ecrits += 1
+        d += timedelta(1)
+    return ecrits
+
+
 @app.route("/api/card-visits/sync", methods=["POST"])
 def api_card_visits_sync():
     """Reconstruction d'une plage — admin. Plafonnée à 10 jours par appel pour
@@ -4200,6 +4240,30 @@ def _covers_from_notes(doc):
     return n if n > 0 else None
 
 
+def _repartition_paiements(docs):
+    """
+    Ce que Vendus dit avoir encaissé, par moyen de paiement. En euros décimaux.
+
+    ⚠️ `None` SI L'INFORMATION N'EST PAS LÀ, JAMAIS UN DICTIONNAIRE VIDE. Le champ `payments`
+    vient de la vue détaillée de Vendus, qui n'est pas documentée : si elle cesse un jour de le
+    porter, l'écran doit dire « répartition indisponible » et non « zéro euro encaissé en
+    carte ». Les deux se ressemblent et mènent à des conclusions opposées.
+    """
+    vu = False
+    sortie = {}
+    for d in docs:
+        lignes = d.get("payments")
+        if not isinstance(lignes, list):
+            continue
+        vu = True
+        # Un avoir rend de l'argent : son montant compte en négatif.
+        signe = -1 if d.get("_refund") else 1
+        for p in lignes:
+            titre = (p.get("title") or "Autre").strip() or "Autre"
+            sortie[titre] = round(sortie.get(titre, 0.0) + signe * float(p.get("amount") or 0), 2)
+    return sortie if vu else None
+
+
 def _summarize_docs_items(docs, catalog):
     """Agrégats item-level d'une liste de docs avec items (1 journée)."""
     cogs = covered = items_ht = 0.0
@@ -4293,6 +4357,14 @@ def _summarize_docs_items(docs, catalog):
         "covers_estimated": covers_estimated,
         "products":    {k: {"qty": v["qty"], "rev_ttc": round(v["rev_ttc"], 2),
                             "rev_ht": round(v["rev_ht"], 2)} for k, v in products.items()},
+        # ⚠️ LA RÉPARTITION PAR MOYEN DE PAIEMENT, SANS LAQUELLE LA RÉCONCILIATION EXIGE DE
+        # RECHARGER TOUT LE MOIS depuis Vendus, document par document — la rafale qui dépasse le
+        # timeout serverless et rend la page à zéro. C'est ce que fait la page actuelle.
+        #
+        # ⚠️ LES AVOIRS COMPTENT, ET EN NÉGATIF. Un remboursement rendu en carte diminue
+        # l'encaissement carte du jour : l'exclure ferait apparaître un écart permanent avec le
+        # terminal, du montant exact des avoirs.
+        "payments": _repartition_paiements(docs),
     }
 
 def _upsert_summary(day_iso, summary):
@@ -4314,7 +4386,8 @@ def _upsert_summary(day_iso, summary):
         # ⚠️ L'ORDRE COMPTE : `covers_measured` avant `covers`, sinon le nom court se retrouverait
         # dans le message d'erreur qui nomme le nom long, et on retirerait la mauvaise colonne.
         manquante = next((c for c in ("hours", "covers_measured", "covers_estimated",
-                                      "covers_capped", "covers") if c in str(err)), None)
+                                      "covers_capped", "covers", "payments")
+                          if c in str(err)), None)
         if manquante is None or manquante not in row:
             break
         row.pop(manquante, None)
