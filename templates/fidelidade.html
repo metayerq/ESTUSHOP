@@ -317,6 +317,29 @@
           <p class="reg-aide"><strong>Baisser le seuil est un cadeau&nbsp;; le relever est une promesse
             rompue</strong> pour tous ceux qui ont d&eacute;j&agrave; pay&eacute; leurs points.</p>
         </div>
+
+        <!--
+          ⚠️ CE N'EST PAS UN RÉGLAGE D'AFFICHAGE, C'EST LA PHRASE QU'ON PRONONCE. Le
+          consentement est ORAL : on demande un num&eacute;ro au comptoir, il n'y a pas d'&eacute;cran
+          client &agrave; l'inscription. La seule preuve de ce &agrave; quoi les gens ont dit oui est que la
+          phrase LUE et la port&eacute;e ENREGISTR&Eacute;E sortent du m&ecirc;me r&eacute;glage.
+        -->
+        <div class="reg-groupe">
+          <h3 class="reg-titre">Ce qu'on demande au comptoir</h3>
+          <label class="reg-l" for="r-scope">&Agrave; quoi le client dit oui</label>
+          <select class="reg-i" id="r-scope" data-k="consent_scope">
+            <option value="points">Ses points, par SMS</option>
+            <option value="points+news">Ses points, et nos nouvelles</option>
+          </select>
+          <!-- ⚠️ LA PHRASE EST INS&Eacute;R&Eacute;E EN TEXTE, PAS EN HTML : elle vient de la base, et
+               une phrase de consentement n'a aucune raison de pouvoir injecter du balisage. -->
+          <p class="reg-aide" id="r-lit" hidden>Le caissier lit&nbsp;:
+            «&nbsp;<strong id="r-phrase" lang="pt"></strong>&nbsp;»</p>
+          <p class="reg-aide"><strong>Ce changement ne vaut que pour les prochains inscrits.</strong>
+            Ce que chaque client a accept&eacute; est fig&eacute; le jour de son inscription&nbsp;: &eacute;largir
+            la phrase ne r&eacute;&eacute;crit pas le pass&eacute;, et n'obligera jamais &agrave; redemander
+            son accord &agrave; toute la liste.</p>
+        </div>
       </div>
 
       <div class="reg-effet">
@@ -680,6 +703,25 @@ tbody tr:hover { background:var(--bg-hover); }
       (c.kind==='phone' ? c.cards + ' carte(s) rattachée(s)' : 'carte non rattachée à un numéro') +
       (c.consent_at ? ' · inscrit le ' + jour(c.consent_at) : '') + '</div>');
 
+    /**
+     * CE À QUOI CETTE PERSONNE-LÀ A DIT OUI.
+     *
+     * ⚠️ FIGÉ LE JOUR DE SON INSCRIPTION, ET NON LE RÉGLAGE DU JOUR. C'est la seule réponse
+     * honnête à « il a accepté quoi, exactement ? » — et ce qui permettra de n'écrire qu'à ceux
+     * que la question concerne, sans jamais relancer toute la liste pour redemander l'accord.
+     *
+     * ⚠️ UNE FICHE CRÉÉE DEPUIS LE BUREAU N'A ENTENDU PERSONNE. On l'écrit, parce que la
+     * différence entre « a dit oui au comptoir » et « a été saisi ici » ne se devine pas.
+     */
+    if (c.kind === 'phone') {
+      var couvre = c.consent_scope === 'points+news'
+        ? 'ses points <strong>et nos nouvelles</strong>'
+        : 'ses points <strong>seulement</strong>';
+      h.push('<div class="muted" style="font-size:12.5px">A accepté de recevoir par SMS&nbsp;: ' +
+        couvre + (c.consent_source === 'backoffice'
+          ? ' <span class="puce">saisi au bureau</span>' : '') + '</div>');
+    }
+
     if (c.orphan) h.push('<div class="avert"><strong>Num&eacute;ro sans fiche client.</strong> ' +
       'Le lien existe mais la fiche a disparu : ce client ne reçoit plus de SMS et n\'a plus de page. ' +
       'À réparer.</div>');
@@ -803,7 +845,7 @@ tbody tr:hover { background:var(--bg-hover); }
 
   // ── Les réglages ────────────────────────────────────────────────────────────────────────
   var CHAMPS = ['start_date','legacy_rate_pct','legacy_cap_points','threshold_points',
-                'expiry_months','welcome_bonus_points'];
+                'expiry_months','welcome_bonus_points','consent_scope'];
   var enregistres = null, attente = null;
 
   function saisie(){
@@ -840,6 +882,22 @@ tbody tr:hover { background:var(--bg-hover); }
         'target="_blank" rel="noopener">sur GitHub</a>), exécute, puis recharge cette page.<br>' +
         'Tant que ce n\'est pas fait, le programme compte tout l\'historique depuis mai.</div>';
     }
+  }
+
+  /**
+   * La phrase EXACTE, telle qu'elle s'affichera sur le bandeau de la caisse.
+   *
+   * ⚠️ ELLE VIENT DU SERVEUR, PAS D'ICI. Si l'écran portait sa propre copie du texte, un jour
+   * l'une des deux changerait sans l'autre — et le backoffice montrerait au patron une phrase
+   * que personne n'a jamais dite à personne.
+   */
+  var PHRASES = {};
+
+  function montrerPhrase(){
+    var el = E('r-phrase'), v = document.querySelector('[data-k="consent_scope"]').value;
+    if (!el) return;
+    el.textContent = PHRASES[v] || '';
+    E('r-lit').hidden = !PHRASES[v];
   }
 
   function modifie(){
@@ -898,6 +956,7 @@ tbody tr:hover { background:var(--bg-hover); }
   }
 
   function surChangement(){
+    montrerPhrase();
     E('r-ok').disabled = !modifie() || E('r-motif').value.trim().length < 3;
     clearTimeout(attente);
     attente = setTimeout(simuler, 350);
@@ -945,7 +1004,9 @@ tbody tr:hover { background:var(--bg-hover); }
   }
 
   fetch('/api/fidelidade/config').then(function(r){ return r.json(); }).then(function(d){
+    PHRASES = d.consent_phrases || {};
     remplir(d.settings);
+    montrerPhrase();
     journal(d.log || []);
     simuler();
   }).catch(function(){ E('sim').innerHTML = '<p class="reg-aide">Réglages illisibles.</p>'; });

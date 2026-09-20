@@ -1435,6 +1435,10 @@
       "reason": "too-long"
     }
   ],
+  "consentPhrases": {
+    "points": "Recebe os seus pontos por SMS. Pode sair quando quiser.",
+    "points+news": "Recebe os seus pontos por SMS, e de vez em quando as nossas novidades. Pode sair quando quiser."
+  },
   "expiry": [
     {
       "at": "2026-01-31T08:30:00.000Z",

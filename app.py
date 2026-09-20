@@ -1348,6 +1348,26 @@ FIDELIDADE_DEFAUTS = {
     "threshold_points": 50,
     "expiry_months": 12,
     "welcome_bonus_points": 0,
+    "consent_scope": "points",
+}
+
+# À quoi le comptoir demande de consentir, et la phrase EXACTE qui va avec.
+#
+# ⚠️ DEUX FINALITÉS, PAS UN CURSEUR. « Les points par SMS » ne couvre pas « venez à notre
+# événement » : ce sont deux raisons différentes d'écrire à quelqu'un. Une campagne marketing
+# filtrera sur la portée enregistrée — jamais sur le souvenir de ce qui a été dit au comptoir il
+# y a six mois, par quelqu'un d'autre.
+#
+# ⚠️ ET LA PHRASE EST ICI POUR ÊTRE RELUE, PAS POUR DÉCORER. C'est la seule preuve de ce à quoi
+# les gens ont dit oui : si l'écran de la caisse en affichait une autre, ce qui est consigné
+# cesserait de correspondre à ce qui a été prononcé — et une preuve fausse est pire qu'aucune.
+# ⚠️ LE MÊME TEXTE QUE `PHRASE_CONSENTEMENT` DANS MESA. `tests/test_consentement.py` compare les
+# deux fichiers caractère par caractère : les laisser diverger ferait afficher au backoffice une
+# phrase qui n'a jamais été dite à personne.
+FIDELIDADE_CONSENTEMENTS = {
+    "points": "Recebe os seus pontos por SMS. Pode sair quando quiser.",
+    "points+news": ("Recebe os seus pontos por SMS, e de vez em quando as nossas novidades. "
+                    "Pode sair quando quiser."),
 }
 
 
@@ -1384,6 +1404,10 @@ def _fidelidade_reglages():
         "threshold_points": _entier(r.get("threshold_points"), 50),
         "expiry_months": _entier(r.get("expiry_months"), 12),
         "welcome_bonus_points": _entier(r.get("welcome_bonus_points"), 0),
+        # ⚠️ LE REPLI EST LA PORTÉE LA PLUS ÉTROITE. Une valeur inconnue en base — colonne
+        # absente, texte libre saisi à la main — ne doit jamais élargir un consentement.
+        "consent_scope": (r.get("consent_scope")
+                          if r.get("consent_scope") in FIDELIDADE_CONSENTEMENTS else "points"),
         "updated_at": r.get("updated_at"),
         "updated_by": r.get("updated_by"),
         "missing": False,
@@ -1409,7 +1433,9 @@ def _fidelidade_tables():
     # commence à le demander au comptoir.
     liens, t3 = _supa_all("card_links", {"select": "fp,phone,linked_at"})
     fiches, t4 = _supa_all(
-        "card_customers", {"select": "phone,name,token,consent_at,opted_out_at,welcome_points"})
+        "card_customers",
+        {"select": "phone,name,token,consent_at,consent_source,consent_scope,opted_out_at,"
+                   "welcome_points"})
     return visites, recompenses, liens, fiches, (t1 or t2 or t3 or t4)
 
 
@@ -1530,6 +1556,11 @@ def api_fidelidade_resumo():
             # l'écran ne traverse pas.
             "fps": c["fps"] if complet else [],
             "consent_at": c["consent_at"],
+            # ⚠️ CE À QUOI CETTE PERSONNE-LÀ A DIT OUI, et non le réglage du jour. C'est la seule
+            # réponse honnête à « il a accepté quoi, exactement ? » — et la raison pour laquelle
+            # élargir la phrase du comptoir n'obligera jamais à relancer tout le monde.
+            "consent_scope": c["consent_scope"],
+            "consent_source": c["consent_source"],
             "opted_out": c["opted_out"],
             "opted_out_at": c["opted_out_at"],
             "orphan": c["orphan"],
@@ -1596,6 +1627,16 @@ def _reglages_du_formulaire(source, base):
                 erreurs.append(f"date de lancement invalide : {brut}")
         else:
             erreurs.append(f"date de lancement invalide : {brut}")
+
+    # ⚠️ UNE LISTE BLANCHE, PAS UN CHAMP LIBRE. Une portée inconnue enregistrée telle quelle
+    # ferait retomber la lecture sur le repli étroit à la relecture suivante : le réglage
+    # semblerait accepté à l'écran et n'aurait aucun effet. Mieux vaut refuser tout de suite.
+    if "consent_scope" in source:
+        v = (source.get("consent_scope") or "").strip()
+        if v in FIDELIDADE_CONSENTEMENTS:
+            sortie["consent_scope"] = v
+        else:
+            erreurs.append(f"portée de consentement inconnue : {v or '(vide)'}")
 
     for champ, (mini, maxi) in FIDELIDADE_BORNES.items():
         if champ not in source:
@@ -1672,6 +1713,9 @@ def api_fidelidade_config():
     except SupabaseSchemaError:
         journal = []
     return jsonify({"settings": _fidelidade_reglages(),
+                    # Les phrases exactes, pour que l'écran affiche ce qui sera dit — et non une
+                    # reformulation écrite par l'écran lui-même.
+                    "consent_phrases": FIDELIDADE_CONSENTEMENTS,
                     "bounds": {k: list(v) for k, v in FIDELIDADE_BORNES.items()},
                     "reward_cost_cents": REWARD_COST_CENTS,
                     "log": journal})
@@ -1792,11 +1836,18 @@ def api_fidelidade_lien():
             fiche = {"phone": cible, "consent_at": depuis or _utc_iso(), "consent_source": "backoffice"}
             # Le bonus suit la personne qui s'était réellement inscrite.
             perdue = _supa_get("card_customers",
-                               {"select": "welcome_points,name", "phone": f"eq.{ancien}", "limit": 1})
+                               {"select": "welcome_points,name,consent_scope",
+                                "phone": f"eq.{ancien}", "limit": 1})
             if perdue:
                 fiche["welcome_points"] = perdue[0].get("welcome_points") or 0
                 if perdue[0].get("name"):
                     fiche["name"] = perdue[0]["name"]
+                # ⚠️ LA PORTÉE SUIT LA PERSONNE, PAS LE RÉGLAGE DU JOUR. Corriger un chiffre mal
+                # tapé ne change rien à ce qui lui a été dit au comptoir ce jour-là. Reprendre le
+                # réglage courant lui attribuerait un consentement qu'elle n'a jamais donné — et
+                # le ferait au moment précis où l'on répare une erreur de saisie.
+                if perdue[0].get("consent_scope") in FIDELIDADE_CONSENTEMENTS:
+                    fiche["consent_scope"] = perdue[0]["consent_scope"]
             ok, err = _supa_upsert("card_customers", fiche)
             if not ok:
                 return jsonify({"error": err or "fiche client non créée"}), 502
@@ -1858,6 +1909,14 @@ def api_fidelidade_config_save():
     ligne.update({"id": 1, "updated_at": _utc_iso(), "updated_by": role})
     ok, err = _supa_upsert("card_settings", ligne)
     if not ok:
+        # ⚠️ UNE COLONNE MANQUANTE N'EST PAS UNE « ÉCRITURE REFUSÉE ». La table existe, l'écran
+        # s'affiche, tout paraît normal — et l'enregistrement échoue sur un message PostgREST
+        # que personne ne relie à un fichier SQL jamais exécuté. Le refus doit dire lequel.
+        manquante = next((c for c in FIDELIDADE_DEFAUTS if c in (err or "")), None)
+        if manquante and "column" in (err or ""):
+            return jsonify({"error": f"la colonne « {manquante} » n'existe pas encore dans "
+                                     "card_settings — exécute la migration correspondante dans "
+                                     "Supabase → SQL Editor, puis recharge cette page."}), 500
         return jsonify({"error": err or "écriture refusée"}), 502
 
     # ⚠️ LE JOURNAL NE DOIT PAS POUVOIR ANNULER L'ENREGISTREMENT. Si son écriture échoue, le

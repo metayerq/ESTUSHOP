@@ -58,7 +58,8 @@ def build_accounts(visits, rewards, links, customers, threshold, now,
     `visits`    : {fp, ts, amount_cents}          — table `card_visits`
     `rewards`   : {fp, ts, points_spent, ...}     — table `card_rewards`
     `links`     : {fp, phone}                     — table `card_links`
-    `customers` : {phone, name, token, consent_at, opted_out_at} — table `card_customers`
+    `customers` : {phone, name, token, consent_at, consent_scope, consent_source,
+                   opted_out_at} — table `card_customers`
     `options`   : date de lancement et crédit d'ancienneté — voir `points.loyalty_state`
 
     ⚠️ UNE CARTE LIÉE À UN TÉLÉPHONE INCONNU RESTE UN COMPTE. Une ligne de `card_links` sans
@@ -159,6 +160,17 @@ def build_accounts(visits, rewards, links, customers, threshold, now,
             "name": (fiche or {}).get("name"),
             "token": (fiche or {}).get("token"),
             "consent_at": (fiche or {}).get("consent_at"),
+            # ⚠️ CE À QUOI CETTE PERSONNE A DIT OUI, FIGÉ LE JOUR DE SON INSCRIPTION — et non le
+            # réglage du jour. Élargir la phrase du comptoir ne réécrit pas le passé : celui qui
+            # s'est inscrit quand on ne parlait que des points reste sur « points », pour
+            # toujours. Sans ça, la seule façon de lancer une campagne serait de se fier au
+            # souvenir de ce qui a été dit il y a six mois, par quelqu'un d'autre.
+            # ⚠️ ET LE REPLI EST LA PORTÉE LA PLUS ÉTROITE : une fiche antérieure à la migration
+            # n'a pas de colonne, et ne doit surtout pas être présumée plus large.
+            "consent_scope": (fiche or {}).get("consent_scope") or "points",
+            # « pos » = dit au comptoir. « backoffice » = créé en corrigeant une saisie — la
+            # personne n'était pas là, et n'a rien entendu.
+            "consent_source": (fiche or {}).get("consent_source"),
             "opted_out": bool((fiche or {}).get("opted_out_at")),
             # ⚠️ LA DATE, PAS SEULEMENT LE DRAPEAU. « Désabonné » ne se discute pas ; « désabonné
             # le 14 septembre à 17h02 » se recoupe avec un passage, un SMS, un essai. Un client
