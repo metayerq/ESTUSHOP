@@ -12,15 +12,16 @@
 
 create table if not exists public.card_campaigns (
   id          bigserial primary key,
-  -- La clé d'idempotence : dérivée du TEXTE. ⚠️ VOLONTAIREMENT PAS UN IDENTIFIANT TIRÉ AU
-  -- HASARD. Un identifiant neuf à chaque ouverture de page ferait repartir la campagne entière
-  -- au second clic, après un rechargement ou un retour en arrière. Le même texte le même jour
-  -- est, en pratique, toujours un doublon.
+  -- L'empreinte du texte, qui relie cette ligne au registre `card_notices` (genre
+  -- « campaign:<slug> »). ⚠️ DÉRIVÉE DU TEXTE ET NON TIRÉE AU HASARD : un identifiant neuf à
+  -- chaque ouverture de page ferait repartir la campagne entière au second clic, après un
+  -- rechargement ou un retour en arrière.
   slug        text not null,
   -- Le message EXACT tel qu'il est parti, préfixe et mention de désabonnement compris. Pas le
   -- brouillon tapé par le patron : ce que le client a lu.
   body        text not null,
-  -- À qui : 'tous' | 'habitues' | 'absents'. Le paramètre du critère, s'il en a un.
+  -- À qui : 'tous' | 'habitues' | 'absents' | 'depense' | 'solde'. Et le seuil du critère,
+  -- s'il en a un — en EUROS pour 'depense', en points pour 'solde', en jours pour les autres.
   audience    text not null,
   audience_arg integer,
   -- ⚠️ LA PORTÉE EXIGÉE AU MOMENT DE L'ENVOI. Elle vaut 'points+news' pour toute campagne
@@ -30,13 +31,18 @@ create table if not exists public.card_campaigns (
   recipients  integer not null default 0,
   segments    integer not null default 0,
   sent_at     timestamptz not null default now(),
-  by_role     text,
-
-  -- Deux envois du même texte le même jour sont un doublon, pas une campagne.
-  constraint card_campaigns_une_fois unique (slug)
+  by_role     text
 );
 
+-- ⚠️ AUCUNE CONTRAINTE D'UNICITÉ ICI, ET C'EST DÉLIBÉRÉ. Une campagne arrêtée au plafond puis
+-- relancée écrit DEUX lignes : « 120 » puis « 30 ». C'est la vérité. Une contrainte unique sur le
+-- texte aurait forcé une fusion, et l'archive aurait annoncé 30 destinataires là où 150 avaient
+-- reçu le message — le contraire exact de ce que cette table existe pour faire.
+--
+-- L'anti-doublon n'est pas ici. Il est dans `card_notices`, destinataire par destinataire, où
+-- une contrainte unique empêche réellement d'écrire deux fois à la même personne.
 create index if not exists card_campaigns_date_idx on public.card_campaigns (sent_at desc);
+create index if not exists card_campaigns_slug_idx on public.card_campaigns (slug);
 
 -- ⚠️ SANS CETTE LIGNE, LA LECTURE RENVOIE ZÉRO LIGNE SANS ERREUR. Supabase active RLS par
 -- défaut : la page d'historique afficherait « aucune campagne » après un envoi réussi, et on
