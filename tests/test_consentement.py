@@ -204,3 +204,117 @@ def test_une_colonne_manquante_dit_quoi_faire(monkeypatch):
     assert r.status_code == 500
     erreur = r.get_json()["error"]
     assert "consent_scope" in erreur and "migration" in erreur
+
+
+# ── Enregistrer un consentement donné après coup ─────────────────────────────────────────────
+#
+# ⚠️ SANS CE CHEMIN, TOUTE LA CLIENTÈLE DÉJÀ INSCRITE EST BLOQUÉE À VIE sur la portée étroite.
+# La seule issue aurait été de réécrire la base à la main — sans trace, sans motif, sans
+# personne pour en répondre. C'est exactement ce qu'on a failli faire le 20/09/2026 pour un
+# client dont le patron « connaissait » l'accord sans l'avoir demandé.
+
+@pytest.fixture
+def client_http():
+    flask_app.app.config["TESTING"] = True
+    return flask_app.app.test_client()
+
+
+@pytest.fixture
+def base(monkeypatch):
+    """Une fiche existante sur la portée étroite, et ce qu'on lui écrit."""
+    ecrits = []
+    monkeypatch.setattr(flask_app, "_current_role", lambda: "admin")
+    monkeypatch.setattr(flask_app, "_supa_get",
+                        lambda t, p: [{"phone": "+351912345678", "consent_scope": "points"}])
+    monkeypatch.setattr(flask_app, "_supa_patch",
+                        lambda t, f, d: (ecrits.append((t, f, d)), (True, None))[1])
+    monkeypatch.setattr(flask_app, "_journal_action",
+                        lambda *a: ecrits.append(("journal",) + a) or "écrit")
+    return ecrits
+
+
+def _put(c, **corps):
+    return c.put("/api/fidelidade/consentement", json=corps)
+
+
+def test_le_motif_est_obligatoire(client_http, base):
+    """
+    ⚠️ « MON FRÈRE, JE LE CONNAIS » N'EST PAS UN CONSENTEMENT ; « demandé au comptoir le 20/09,
+    a dit oui » en est un. La différence entre consigner et fabriquer tient dans ce champ — et
+    c'est pour ça qu'il est refusé vide.
+    """
+    r = _put(client_http, phone="912345678", scope="points+news", reason="")
+    assert r.status_code == 400
+    assert "motif" in r.get_json()["error"]
+    assert not base, "la base a été modifiée sans motif"
+
+
+def test_un_oui_donne_apres_coup_selargit(client_http, base):
+    r = _put(client_http, phone="912345678", scope="points+news",
+             reason="demandé au comptoir le 20/09, a dit oui")
+    assert r.status_code == 200
+    ecriture = [e for e in base if e[0] == "card_customers"][0]
+    assert ecriture[2] == {"consent_scope": "points+news"}
+
+
+def test_le_retrait_est_possible_dans_lautre_sens(client_http, base, monkeypatch):
+    """
+    ⚠️ UN RETRAIT DE CONSENTEMENT NE SE DISCUTE PAS, et personne ne doit avoir à se désabonner
+    de TOUT pour cesser d'être démarché. Le chemin inverse doit être au moins aussi simple.
+    """
+    monkeypatch.setattr(flask_app, "_supa_get",
+                        lambda t, p: [{"phone": "+351912345678", "consent_scope": "points+news"}])
+    r = _put(client_http, phone="912345678", scope="points",
+             reason="m'a demandé d'arrêter les nouvelles")
+    assert r.status_code == 200
+    assert [e for e in base if e[0] == "card_customers"][0][2] == {"consent_scope": "points"}
+
+
+def test_le_changement_est_journalise_sans_le_numero(client_http, base):
+    """
+    ⚠️ LA TRACE EST LA MOITIÉ DE LA FONCTIONNALITÉ — et elle ne recopie pas le numéro : un
+    journal d'incidents qui garde les numéros devient lui-même un fichier de contacts.
+    """
+    _put(client_http, phone="912345678", scope="points+news", reason="a dit oui au comptoir")
+    ligne = [e for e in base if e[0] == "journal"][0]
+    assert ligne[2] == "consent-scope"
+    assert "912345678" not in str(ligne)
+    assert ligne[4] == {"consent_scope": "points"}
+    assert ligne[5] == {"consent_scope": "points+news"}
+
+
+def test_une_portee_inventee_est_refusee(client_http, base):
+    r = _put(client_http, phone="912345678", scope="points+news+partenaires", reason="essai")
+    assert r.status_code == 400
+    assert not base
+
+
+def test_un_numero_sans_fiche_est_refuse(client_http, base, monkeypatch):
+    monkeypatch.setattr(flask_app, "_supa_get", lambda t, p: [])
+    r = _put(client_http, phone="912345678", scope="points+news", reason="a dit oui")
+    assert r.status_code == 404
+
+
+@pytest.mark.parametrize("role", [None, "investor", "staff"])
+def test_seul_ladmin_peut_consigner(client_http, monkeypatch, role):
+    """Attester du consentement de quelqu'un n'est pas consulter un chiffre."""
+    monkeypatch.setattr(flask_app, "_current_role", lambda: role)
+    r = _put(client_http, phone="912345678", scope="points+news", reason="a dit oui")
+    assert r.status_code in (401, 403)
+
+
+def test_lecran_dit_quil_consigne_et_non_quil_accorde():
+    """
+    ⚠️ CELUI QUI CLIQUE DOIT SAVOIR QU'IL ATTESTE, pas qu'il coche une préférence. Un libellé
+    du genre « activer les nouvelles » ferait de ce bouton un interrupteur — et du champ
+    `consent_scope` une décoration.
+    """
+    chemin = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "templates", "fidelidade.html")
+    with open(chemin, encoding="utf-8") as f:
+        html = f.read()
+    i = html.index("Ce qu\\'il accepte de recevoir")
+    bloc = html[i:i + 1200]
+    assert "Demande-lui" in bloc
+    assert "Il a accepté nos nouvelles" in bloc
+    assert "Qu\\'a-t-il dit, et quand" in bloc

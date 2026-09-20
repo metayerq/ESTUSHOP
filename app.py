@@ -1883,6 +1883,66 @@ def api_fidelidade_lien():
                     "orphan_removed": orpheline, "log": trace})
 
 
+@app.route("/api/fidelidade/consentement", methods=["PUT"])
+def api_fidelidade_consentement():
+    """
+    ENREGISTRER UN CONSENTEMENT DONNÉ APRÈS COUP.
+
+    ⚠️ CETTE ROUTE N'ACCORDE RIEN, ELLE CONSIGNE. Quelqu'un qui s'est inscrit quand le comptoir
+    ne parlait que des points reste sur « points » pour toujours — c'est la règle, et elle est
+    bonne. Mais il peut dire oui plus tard, à voix haute, comme il avait dit oui la première
+    fois. Sans cette route, ce oui-là n'existerait nulle part : toute la clientèle déjà inscrite
+    serait bloquée sur la portée étroite à vie, et la seule issue serait de la réécrire en base à
+    la main — sans trace, sans motif, sans personne pour en répondre.
+
+    ⚠️ LE MOTIF EST OBLIGATOIRE, ET C'EST TOUT L'INTÉRÊT. « Mon frère, je le connais » n'est pas
+    un consentement ; « demandé au comptoir le 20/09, a dit oui » en est un, et il s'écrit. La
+    différence entre consigner et fabriquer tient dans ce champ.
+
+    ⚠️ ET ÇA MARCHE DANS LES DEUX SENS. Retirer les nouvelles en gardant les points doit être
+    aussi simple que l'inverse — plus simple, même : un retrait de consentement ne se discute
+    pas, et personne ne doit avoir à se désabonner de TOUT pour cesser d'être démarché.
+    """
+    role = _current_role()
+    if role != "admin":
+        return jsonify({"error": "admin only"}), 403
+
+    corps = request.get_json(silent=True) or {}
+    tel = (corps.get("phone") or "").strip()
+    portee = (corps.get("scope") or "").strip()
+    motif = (corps.get("reason") or "").strip()
+
+    if not tel:
+        return jsonify({"error": "numéro manquant"}), 400
+    if portee not in FIDELIDADE_CONSENTEMENTS:
+        return jsonify({"error": "portée inconnue"}), 400
+    if len(motif) < 3:
+        return jsonify({"error": "un motif est obligatoire — écris ce qui a été dit, et quand"}), 400
+
+    ok, valeur = normalise_phone(tel)
+    if not ok:
+        return jsonify({"error": PHONE_MESSAGE.get(valeur, valeur)}), 400
+    tel = valeur
+
+    lignes = _supa_get("card_customers", {"select": "phone,consent_scope",
+                                          "phone": f"eq.{tel}", "limit": 1})
+    if not lignes:
+        return jsonify({"error": "aucune fiche pour ce numéro"}), 404
+    avant = lignes[0].get("consent_scope") or "points"
+    if avant == portee:
+        return jsonify({"error": "c'est déjà sa portée"}), 400
+
+    ok, err = _supa_patch("card_customers", {"phone": f"eq.{tel}"}, {"consent_scope": portee})
+    if not ok:
+        return jsonify({"error": err or "écriture refusée"}), 502
+
+    # ⚠️ LA TRACE EST LA MOITIÉ DE LA FONCTIONNALITÉ. Un consentement qu'on ne peut pas rattacher
+    # à une date, à une personne et à une phrase ne vaut pas mieux qu'un champ inventé.
+    trace = _journal_action(role, "consent-scope", _masque_tel(tel),
+                            {"consent_scope": avant}, {"consent_scope": portee}, motif)
+    return jsonify({"ok": True, "consent_scope": portee, "log": trace})
+
+
 @app.route("/api/fidelidade/config", methods=["PUT"])
 def api_fidelidade_config_save():
     """

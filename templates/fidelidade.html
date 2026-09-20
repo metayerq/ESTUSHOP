@@ -789,12 +789,59 @@ tbody tr:hover { background:var(--bg-hover); }
       }).join(''));
     }
 
+    /**
+     * ENREGISTRER UN OUI DONNÉ APRÈS COUP.
+     *
+     * ⚠️ CE PANNEAU NE DONNE PAS UN CONSENTEMENT, IL EN CONSIGNE UN. Le libellé le dit, et ce
+     * n'est pas de la prudence d'affichage : celui qui clique doit savoir qu'il atteste de
+     * quelque chose, pas qu'il coche une préférence. Le motif est obligatoire pour la même
+     * raison.
+     *
+     * ⚠️ ET SANS LUI, TOUTE LA CLIENTÈLE DÉJÀ INSCRITE EST BLOQUÉE À VIE sur la portée étroite.
+     * La seule issue aurait été de réécrire la base à la main — sans trace, sans motif, sans
+     * personne pour en répondre.
+     */
+    if (c.kind === 'phone' && c.phone) {
+      var large = c.consent_scope === 'points+news';
+      h.push('<h3>Ce qu\'il accepte de recevoir</h3>');
+      h.push('<p class="reg-aide" style="margin:0 0 10px">' + (large
+        ? 'Il reçoit ses points <strong>et nos nouvelles</strong>. S\'il demande à ne plus être démarché, retire-le ici — il gardera ses points et ses SMS de passage.'
+        : 'Il ne reçoit que ses points. <strong>Demande-lui</strong> s\'il veut aussi nos nouvelles ; s\'il dit oui, écris-le ici. Tant que ce n\'est pas fait, aucune campagne ne peut l\'atteindre.') + '</p>');
+      h.push('<div class="corr" id="cons" data-tel="' + c.phone + '" data-scope="' +
+        (large ? 'points' : 'points+news') + '">' +
+        '<input class="reg-i corr-motif" type="text" maxlength="180" placeholder="' +
+          (large ? 'Pourquoi ? (ex. m\'a demandé d\'arrêter les nouvelles)'
+                 : 'Qu\'a-t-il dit, et quand ? (ex. demandé au comptoir le 20/09, a dit oui)') + '">' +
+        '<div class="corr-b"><button type="button" class="btn-appliquer" id="cons-ok">' +
+          (large ? 'Retirer les nouvelles' : 'Il a accepté nos nouvelles') + '</button></div>' +
+        '<p class="reg-aide corr-etat"></p></div>');
+    }
+
     E('fiche-corps').innerHTML = h.join('');
     E('fiche-fond').hidden = false;
     E('fermer').focus();
   }
 
   function fermer(){ E('fiche-fond').hidden = true; }
+
+  function consentement(bloc){
+    var etat = bloc.querySelector('.corr-etat');
+    var motif = bloc.querySelector('.corr-motif').value.trim();
+    if (motif.length < 3){
+      etat.textContent = 'Écris ce qui a été dit, et quand. Ce champ est la preuve.';
+      return;
+    }
+    etat.textContent = 'Enregistrement…';
+    fetch('/api/fidelidade/consentement', {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({phone: bloc.dataset.tel, scope: bloc.dataset.scope, reason: motif})
+    }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+      .then(function(x){
+        if (!x.ok){ etat.textContent = x.d.error || 'Refusé.'; return; }
+        etat.textContent = 'Enregistré. Rechargement…';
+        location.reload();
+      }).catch(function(){ etat.textContent = 'Échec réseau — rien n\'a été modifié.'; });
+  }
 
   function corriger(bloc, delier){
     var fp = bloc.dataset.fp;
@@ -825,6 +872,10 @@ tbody tr:hover { background:var(--bg-hover); }
   }
 
   E('fiche-corps').addEventListener('click', function(e){
+    // ⚠️ LE PANNEAU DE CONSENTEMENT D'ABORD. Il porte la classe `.corr` comme les cartes à
+    // corriger — sans ce test, un clic dessus partirait dans `corriger()` avec une empreinte
+    // absente, et délierait dans le vide.
+    if (e.target.closest('#cons-ok')){ consentement(E('cons')); return; }
     var ok = e.target.closest('.corr-ok'), del = e.target.closest('.corr-del');
     if (!ok && !del) return;
     corriger(e.target.closest('.corr'), Boolean(del));
