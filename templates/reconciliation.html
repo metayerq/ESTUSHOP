@@ -300,10 +300,18 @@ td.date { color:var(--muted); white-space:nowrap; }
       Reconstruire l'historique de l'encaissement terminal
     </summary>
     <p class="hint" style="margin:10px 0">
-      Les ventes, pourboires et remboursements du terminal sont enregistr&eacute;s
-      automatiquement depuis aujourd'hui. Cette reconstruction remonte les jours
-      pr&eacute;c&eacute;dents depuis l'API Revolut, par tranches de dix jours.
-      <b>Rejouable sans risque</b>&nbsp;: chaque jour se r&eacute;&eacute;crit en entier.
+      Deux sources se reconstruisent ici, dans cet ordre&nbsp;: <b>l'encaissement terminal</b>
+      (API Revolut&nbsp;: ventes, pourboires, remboursements) puis <b>la r&eacute;partition
+      Vendus</b> (carte / esp&egrave;ces), sans laquelle l'&eacute;cart du jour ne peut pas
+      &ecirc;tre calcul&eacute;. <b>Rejouable sans risque</b>&nbsp;: chaque jour se
+      r&eacute;&eacute;crit en entier.
+    </p>
+    <p class="hint" style="margin:10px 0; color:var(--red)">
+      &#9888; La seconde passe recalcule <b>toute</b> la ligne du jour, pas seulement la
+      r&eacute;partition&nbsp;: marge, COGS et produits sont refaits avec les <b>prix d'achat et
+      recettes d'aujourd'hui</b>. Si un prix fournisseur a chang&eacute; depuis, les marges
+      historiques bougeront. C'est le comportement normal de ce recalcul&nbsp;; mieux vaut le
+      savoir avant que de le d&eacute;couvrir.
     </p>
     <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end">
       <label class="field">Du
@@ -583,17 +591,48 @@ function updateCashCalc(){
   const iso = d => d.toISOString().slice(0, 10);
   const plus = (d, n) => { const x = new Date(d); x.setUTCDate(x.getUTCDate() + n); return x; };
 
-  function tranches(from, to){
+  function tranches(from, to, largeur){
     const out = [];
     let d = new Date(from + 'T00:00:00Z');
     const fin = new Date(to + 'T00:00:00Z');
     while (d <= fin){
-      /* La borne haute est incluse : dix jours vont de J à J+9. */
-      const bout = plus(d, 9);
+      /* La borne haute est incluse : une tranche de dix jours va de J à J+9. */
+      const bout = plus(d, largeur - 1);
       out.push([iso(d), iso(bout > fin ? fin : bout)]);
       d = plus(bout, 1);
     }
     return out;
+  }
+
+  /**
+   * Enchaîne une reconstruction par tranches.
+   *
+   * ⚠️ SÉQUENTIEL ICI AUSSI, ET POUR DEUX RAISONS DIFFÉRENTES. Côté Revolut c'est la limite de
+   * débit ; côté Vendus c'est le timeout serverless, qui tue la fonction au milieu d'une plage
+   * trop large. Les deux produisent des tranches « faites » qui ne le sont pas.
+   */
+  async function enchainer(url, lots, libelle, deja){
+    let faits = 0;
+    for (const [a, b] of lots){
+      etat.textContent = `${libelle} — tranche ${faits + 1} sur ${lots.length} (${a} → ${b})…`;
+      try {
+        const r = await fetch(url, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({from: a, to: b})
+        });
+        const d = await r.json();
+        if (!r.ok || d.ok === false) throw new Error(d.error || ('HTTP ' + r.status));
+      } catch (e) {
+        /* ⚠️ ON NOMME LA DATE DE REPRISE ET LA PASSE OÙ ÇA A CASSÉ. Sans elles, il faut tout
+           refaire ou deviner — et refaire la première passe alors que la seconde a échoué coûte
+           dix minutes pour rien. */
+        etat.innerHTML = `<b>Arrêté sur ${a} → ${b}</b>, pendant « ${libelle} » : ${e.message}.` +
+          `<br>${deja} Relance en mettant <b>Du = ${a}</b>.`;
+        return false;
+      }
+      faits++;
+    }
+    return true;
   }
 
   btn.addEventListener('click', async () => {
@@ -601,30 +640,23 @@ function updateCashCalc(){
     const to = document.getElementById('rb-to').value;
     if (!from || !to || from > to){ etat.textContent = 'Choisis une plage valide.'; return; }
 
-    const lots = tranches(from, to);
     btn.disabled = true;
-    let faits = 0;
-    for (const [a, b] of lots){
-      etat.textContent = `Tranche ${faits + 1} sur ${lots.length} — ${a} → ${b}…`;
-      try {
-        const r = await fetch('/api/terminal-days/sync', {
-          method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({from: a, to: b})
-        });
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
-      } catch (e) {
-        /* ⚠️ ON NOMME LA DATE DE REPRISE. Sans elle, il faut tout refaire ou deviner. */
-        etat.innerHTML = `<b>Arrêté sur ${a} → ${b}</b> : ${e.message}.<br>` +
-          `Les ${faits} tranche(s) précédentes sont enregistrées. ` +
-          `Relance en mettant <b>Du = ${a}</b>.`;
-        btn.disabled = false;
-        return;
-      }
-      faits++;
+    try {
+      /* ⚠️ DIX JOURS CÔTÉ REVOLUT, SEPT CÔTÉ VENDUS. Une journée de café coûte ~25 appels à
+         Revolut ; côté Vendus c'est chaque document AVEC ses lignes, plus lourd par jour. Les
+         deux passes ne tiennent pas la même largeur dans les 60 secondes de la fonction. */
+      if (!await enchainer('/api/terminal-days/sync', tranches(from, to, 10),
+                           'Encaissement terminal',
+                           'Rien n\'a été reconstruit côté Vendus.')) return;
+      if (!await enchainer('/api/summary/rebuild', tranches(from, to, 7),
+                           'Répartition Vendus',
+                           'L\'encaissement terminal, lui, est complet.')) return;
+      etat.innerHTML = `<b>Terminé</b> — historique complet du ${from} au ${to}. ` +
+        `Recharge la page pour voir les écarts.`;
+    } finally {
+      /* Sur les deux sorties, succès comme échec. */
+      btn.disabled = false;
     }
-    etat.innerHTML = `<b>Terminé</b> — ${faits} tranche(s), du ${from} au ${to}.`;
-    btn.disabled = false;
   });
 })();
 </script>
