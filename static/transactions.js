@@ -1,23 +1,34 @@
 /* ═══════════════════════════════════════════════════════════════════════════════
    /transactions — « l'affluence tient-elle ? »
 
-   REFONTE. La page précédente répondait à la question du haut et s'arrêtait là ;
-   elle a été écrite pour un endpoint qui a changé sous elle (fenêtres de 14 jours,
-   pas de `covers`, pas de `hourly.blocks`, pas d'`analysis_start`).
+   SIMPLIFICATION, 21/09/2026. La page défendait sa méthode à chaque étape : 744 mots
+   de prose lus sans rien déplier, dont 426 en notes de bas de page, huit sections, une
+   table de données brutes et deux graphiques. C'était juste quand les chiffres étaient
+   neufs et qu'il fallait prouver qu'ils ne mentaient pas ; ça ne l'est plus quand on
+   les lit toutes les semaines. Une page qu'il faut traverser pour trouver son nombre
+   est une page qu'on n'ouvre plus.
+
+   ⚠️ ET LA SIMPLIFICATION N'EST PAS UN RACCOURCISSEMENT DES AVERTISSEMENTS. Effacer une
+   mise en garde sans effacer le chiffre qu'elle protège rendrait la page plus courte ET
+   plus fausse. Ce qui est parti, ce sont les CHIFFRES qui avaient besoin d'un paragraphe
+   pour être honnêtes — les quatre cellules KPI, la table des fenêtres, la part
+   multi-lignes, et surtout le graphique du CA par personne, qui portait à lui seul la
+   moitié des réserves de la page. Les limites qui restent vraies sont TOUJOURS ÉCRITES,
+   dans un bloc replié : fermé, on sait qu'il existe et on l'ouvre le jour où un chiffre
+   surprend — c'est exactement ce jour-là qu'il sert.
+
+   ⚠️ DEUX CHOSES ONT ÉTÉ RETIRÉES À TORT, PUIS REMISES. La RAISON affichée quand le
+   chiffre manque : sans elle un « — » reste sans explication, au moment précis où l'on
+   en a besoin. Et le SEUIL DU VERDICT : « tient » est un jugement à ±10 %, pas une
+   mesure, et le taire donnerait au mot l'autorité d'un fait.
 
    ─── LE RÉCIT QUE CETTE PAGE PORTE ──────────────────────────────────────────
-   La fréquentation TIENT — 26 à 28 tickets et 33 à 35 personnes estimées par jour
-   ouvré sur les trois dernières fenêtres. Ce qui bouge est ailleurs : le CA PAR
-   PERSONNE s'érode, de 7,18 € (3–9 juil.) à 6,45 € (31 juil.–6 août). Deux
-   mesures qui divergent : la page doit rendre cette divergence VISIBLE, pas la
-   laisser deviner dans un tableau.
-
-   D'où la forme : DEUX GRAPHIQUES EMPILÉS ET ALIGNÉS sur le même axe de dates —
-   l'affluence en haut, le CA/personne en bas. PAS de double axe Y : l'alignement
-   de deux échelles est arbitraire, et une courbe qu'on cale à la main sur des
-   barres fabrique une corrélation que la donnée ne porte pas. Deux cadres, deux
-   unités, un seul axe des temps : la divergence se lit dans la GÉOMÉTRIE (le haut
-   est plat, le bas descend), pas dans un artifice de cadrage.
+   La fréquentation TIENT — 26 à 28 tickets par jour ouvré sur les trois dernières
+   fenêtres. Ce qui bouge est ailleurs : le CA PAR PERSONNE s'érode, de 7,18 €
+   (3–9 juil.) à 6,45 € (31 juil.–6 août). C'est le signal le plus utile de la page,
+   et il tient maintenant en UNE LIGNE sous la réponse — avec sa provenance collée au
+   chiffre, parce qu'une provenance qui vit en bas de page est une provenance qu'on
+   ne lit pas. Un silence, lui, se lirait comme « compté ».
 
    ─── TROIS RÈGLES TENUES D'UN BOUT À L'AUTRE ────────────────────────────────
    1. AUCUN ZÉRO FABRIQUÉ. Les jours fermés sont absents de `days` — ce ne sont pas
@@ -38,8 +49,7 @@
    FICHIER par regex et les exécute — il n'en recopie aucune.
    ═══════════════════════════════════════════════════════════════════════════════ */
 
-let chartFoot = null;    // graphique du haut — affluence
-let chartSpend = null;   // graphique du bas  — CA par personne estimée
+let chartFoot = null;    // le graphique d'affluence — le seul de la page
 let lastPayload = null;  // dernier payload servi, pour re-dessiner au changement de thème
 
 // Au-delà de ce seuil, la page cesse de dire « ça tient ». C'est un JUGEMENT, pas
@@ -443,55 +453,7 @@ function answerModel(payload) {
 // quand même mis un curseur « help » promettant une explication qui ne venait
 // jamais. Elles sont donc du texte visible. C'est de toute façon la bonne place :
 // « estimé, plafond 8 » n'est pas un détail à découvrir au survol.
-function kpiSpecs() {
-  return [
-    { key: 'tx', label: 'Tickets / open day', field: 'tx_median', kind: 'tx',
-      hint: 'Median over the full open days of the window.' },
-    { key: 'covers', label: 'People / open day', field: 'covers_median', kind: 'tx',
-      hint: 'Estimated, not counted — 1 drink = 1 person, floor 1, ceiling 8. Runs high.' },
-    { key: 'spend', label: 'Revenue / person', field: 'ca_per_cover', kind: 'eur',
-      hint: 'Window ratio from the API — not revenue/day ÷ people/day.' },
-    { key: 'basket', label: 'Basket / ticket', field: 'basket_median', kind: 'eur',
-      hint: 'Median of the daily average baskets — not the median ticket.' },
-  ];
-}
 
-function kpiModels(payload) {
-  const p = (payload && typeof payload === 'object') ? payload : {};
-  const rel = reliableWindows(p.windows);
-  const pick = pickWindows(p);
-  const num = function (o, f) {
-    if (!o) return null;
-    const v = o[f];
-    return (typeof v === 'number' && isFinite(v)) ? v : null;
-  };
-  return kpiSpecs().map(function (s) {
-    const cur = num(pick.cur, s.field);
-    const prev = num(pick.prev, s.field);
-    const d = deltaModel(cur, prev);
-    const series = rel.map(function (w) { return num(w, s.field); });
-    const measured = series.filter(function (v) { return v != null; }).length;
-    return {
-      key: s.key,
-      label: s.label,
-      hint: s.hint,
-      value: s.kind === 'eur' ? fmtEur(cur) : fmtTx(cur),
-      raw: cur,
-      n: pick.cur && typeof pick.cur.full_days === 'number' ? pick.cur.full_days : null,
-      range: pick.cur ? fmtRange(pick.cur.from, pick.cur.to) : '',
-      prevValue: s.kind === 'eur' ? fmtEur(prev) : fmtTx(prev),
-      prevRange: pick.prev ? fmtRange(pick.prev.from, pick.prev.to) : '',
-      prevN: pick.prev && typeof pick.prev.full_days === 'number' ? pick.prev.full_days : null,
-      delta: d,
-      // La raison montre pourquoi il n'y a pas d'écart. Elle remplace le chiffre,
-      // elle ne le complète pas.
-      note: d.ok ? null : reasonLabel(joinReasons(d.reason, pick.reason)),
-      series: series,
-      seriesMeasured: measured,
-      windows: rel.length,
-    };
-  });
-}
 
 // ── Sparkline ─────────────────────────────────────────────────────────────────
 // Rendue en SVG pur, sans Chart.js : quatre canvas de 90×26 px pour quatre suites
@@ -660,29 +622,6 @@ function windowStep(bars, windows, field) {
 // Le nuage de points journaliers est là pour que le palier ne se prenne pas pour la
 // vérité : on voit la dispersion dont la médiane est tirée.
 
-function spendModel(days, windows) {
-  const base = dailyModel(days, windows);
-  const dots = base.bars.map(function (b) {
-    if (b.ca_ttc == null || b.covers == null || b.covers <= 0) return null;
-    return Math.round(b.ca_ttc / b.covers * 100) / 100;
-  });
-  const steps = windowStep(base.bars, windows, 'ca_per_cover');
-  const measuredDots = dots.filter(function (v) { return v != null; }).length;
-  const measuredSteps = steps.filter(function (v) { return v != null; }).length;
-  const out = {
-    ok: measuredSteps > 0 || measuredDots > 0,
-    reason: null,
-    labels: base.labels,
-    bars: base.bars,
-    dots: dots,
-    steps: steps,
-    measuredDots: measuredDots,
-    measuredSteps: measuredSteps,
-    n: base.n,
-  };
-  if (!out.ok) out.reason = base.n ? 'no-covers' : 'no-days';
-  return out;
-}
 
 // ── 4. Répartition horaire ────────────────────────────────────────────────────
 // `hourly.reason` non null ⇒ ON NE DESSINE PAS. Une répartition mesurée sur trois
@@ -797,45 +736,6 @@ function hourlyModel(hourly) {
 // de médianes de 5 ou 6 la ferait lire comme une journée typique — elle n'en est
 // pas une, et rien dans le nombre lui-même ne le dirait.
 
-function windowRows(windows) {
-  const src = Array.isArray(windows) ? windows.slice() : [];
-  src.sort(function (a, b) {
-    return String((b && b.to) || '').localeCompare(String((a && a.to) || ''));
-  });
-  return src.map(function (w) {
-    const ok = !!w && w.reliable !== false;
-    const notes = [];
-    const base = (w && w.reason) ? reasonLabel(w.reason) : null;
-    if (base) notes.push(base);
-    if (!ok && !base) notes.push(reasonLabel('too-few-days'));
-    const capped = (w && typeof w.covers_capped === 'number' && w.covers_capped > 0)
-      ? w.covers_capped : 0;
-    if (capped > 0) {
-      notes.push('8-person ceiling reached ' + capped + '× — people under-counted, '
-        + 'so revenue per person is over-stated here');
-    }
-    const row = {
-      from: (w && w.from) || null,
-      to: (w && w.to) || null,
-      range: w ? fmtRange(w.from, w.to) : '',
-      n: (w && typeof w.full_days === 'number') ? w.full_days : null,
-      reliable: ok,
-      tx: ok ? fmtTx(w && w.tx_median) : '—',
-      covers: ok ? fmtTx(w && w.covers_median) : '—',
-      spend: ok ? fmtEur(w && w.ca_per_cover) : '—',
-      basket: ok ? fmtEur(w && w.basket_median) : '—',
-      ca: ok ? fmtEur(w && w.ca_median) : '—',
-      multi: ok ? fmtPct(w && w.multi_pct) : '—',
-      capped: capped,
-      notes: notes,
-      note: notes.length ? notes.join(' · ') : null,
-    };
-    if (ok && !row.note && (row.tx === '—' || row.ca === '—')) {
-      row.note = 'not computable from the daily cache';
-    }
-    return row;
-  });
-}
 
 // ── 6. Médiane par jour de semaine ────────────────────────────────────────────
 // n par jour toujours affiché : une médiane sur 2 lundis n'est pas une médiane sur
@@ -880,24 +780,6 @@ function weekdayRows(weekday) {
 // Lue sur la dernière fenêtre FIABLE. Pas de moyenne de toutes les fenêtres : elles
 // peuvent se chevaucher, et la moyenne compterait plusieurs fois les mêmes jours.
 
-function multiLineModel(windows) {
-  const rel = reliableWindows(windows);
-  for (let i = rel.length - 1; i >= 0; i--) {
-    const w = rel[i];
-    if (typeof w.multi_pct !== 'number' || !isFinite(w.multi_pct)) continue;
-    return {
-      ok: true, pct: w.multi_pct, text: fmtPct(w.multi_pct),
-      n: (typeof w.full_days === 'number') ? w.full_days : null,
-      range: fmtRange(w.from, w.to), note: null,
-    };
-  }
-  const src = Array.isArray(windows) ? windows : [];
-  const last = src.length ? src[src.length - 1] : null;
-  return {
-    ok: false, pct: null, text: '—', n: null, range: '',
-    note: reasonLabel(joinReasons(last && last.reason, 'multi-not-measured')),
-  };
-}
 
 // ── 8. Ce que la page couvre, et ce qu'elle exclut ────────────────────────────
 // JUIN EST EXCLU, ET ÇA DOIT SE VOIR. Le café a ouvert le 27 mai ; l'analyse
@@ -906,38 +788,6 @@ function multiLineModel(windows) {
 // de la page. L'exclusion est légitime ; la CACHER ne l'est pas. Elle vit donc dans
 // un bandeau permanent en haut de page, pas seulement dans l'encart du bas.
 
-function scopeModel(payload) {
-  const p = (payload && typeof payload === 'object') ? payload : {};
-  const start = (typeof p.analysis_start === 'string' && p.analysis_start) ? p.analysis_start : null;
-  const opening = (typeof p.opening_day === 'string' && p.opening_day) ? p.opening_day : null;
-  const from = (typeof p.from === 'string' && p.from) ? p.from : null;
-  const to = (typeof p.to === 'string' && p.to) ? p.to : null;
-  const effective = start || from;
-  const out = {
-    ok: !!effective,
-    analysisStart: effective,
-    analysisStartText: effective ? fmtLongDay(effective) : '—',
-    openingDay: opening,
-    openingText: opening ? fmtLongDay(opening) : '—',
-    scopeText: (from && to) ? (from + ' → ' + to) : '',
-    excludes: false,
-    excludedText: '',
-    note: null,
-  };
-  if (!start) out.note = 'the API did not report analysis_start — the range below is the raw payload range';
-  if (opening && effective && opening < effective) {
-    out.excludes = true;
-    // Fin de la période exclue = veille du démarrage de l'analyse, calculée sur une
-    // date UTC à midi pour ne pas glisser d'un jour au changement d'heure de Lisbonne.
-    const d = new Date(effective + 'T12:00:00Z');
-    d.setUTCDate(d.getUTCDate() - 1);
-    const eve = d.toISOString().slice(0, 10);
-    out.excludedFrom = opening;
-    out.excludedTo = eve;
-    out.excludedText = fmtLongDay(opening) + ' → ' + fmtLongDay(eve);
-  }
-  return out;
-}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // RENDU (DOM) — au-dessous, plus rien n'est pur.
@@ -979,25 +829,6 @@ function chipHtml(d) {
   return '<span class="tx-chip tx-chip-' + d.dir + '">' + arrow + esc(d.text) + '</span>';
 }
 
-function renderScope(d) {
-  const m = scopeModel(d);
-  const band = el('tx-scope-band');
-  const scope = el('tx-scope');
-  if (scope) scope.textContent = m.scopeText;
-  if (!band) return;
-  let html = '<b>Analysis starts ' + esc(m.analysisStartText) + '.</b> ';
-  if (m.excludes) {
-    html += 'The café opened ' + esc(m.openingText) + ' — <b>' + esc(m.excludedText)
-      + ' is excluded from every figure on this page</b>: the opening weeks carry '
-      + 'run-in days and group orders of up to 55 drinks, which would move every median here.';
-  } else if (m.openingDay) {
-    html += 'The café opened ' + esc(m.openingText) + ' — nothing is excluded.';
-  } else {
-    html += 'Opening day not reported by the API, so the excluded stretch cannot be named.';
-  }
-  if (m.note) html += ' <span class="tx-dim">(' + esc(m.note) + ')</span>';
-  band.innerHTML = html;
-}
 
 function renderAnswer(d) {
   const m = answerModel(d);
@@ -1005,37 +836,46 @@ function renderAnswer(d) {
   el('hl-value').textContent = m.value;
   el('hl-delta').innerHTML = chipHtml(m.delta);
 
+  // ⚠️ LES DEUX FENÊTRES SONT NOMMÉES ICI, PUISQUE LA LIGNE « fenêtre précédente » A DISPARU.
+  // Un écart sans ses deux bornes est un pourcentage qui flotte : on ne sait plus ce qu'il
+  // compare, et surtout pas sur combien de jours.
   el('hl-n').innerHTML = m.ok
     ? 'median of <b>' + (m.n == null ? '?' : m.n) + '</b> full open days'
       + (m.range ? ' · ' + esc(m.range) : '')
-      + (m.covers ? ' · <b>' + esc(m.covers.value) + '</b> estimated people / open day' : '')
+      + (m.prevValue !== '—'
+        ? ' <span class="tx-dim">· against <b>' + esc(m.prevValue) + '</b> over '
+          + (m.prevN == null ? '?' : m.prevN) + ' full days'
+          + (m.prevRange ? ', ' + esc(m.prevRange) : '') + '</span>'
+        : '')
     : '';
-
-  const prev = el('hl-prev');
-  if (m.prevValue !== '—') {
-    prev.innerHTML = 'previous window <b>' + esc(m.prevValue) + '</b> tickets / open day'
-      + ' <span class="tx-dim">· ' + (m.prevN == null ? '?' : m.prevN) + ' full days'
-      + (m.prevRange ? ' · ' + esc(m.prevRange) : '') + '</span>';
-  } else {
-    prev.textContent = '';
-  }
 
   // La clause qui porte la vraie information : l'affluence tient, la dépense
   // par personne recule. Deux points nommés, jamais une pente.
   const ero = el('hl-erosion');
   const e = m.erosion;
   if (e && e.ok) {
-    ero.innerHTML = 'What moves instead — <b>revenue per estimated person</b>: '
+    // ⚠️ LA PROVENANCE EST COLLÉE AU CHIFFRE, PAS RANGÉE EN BAS DE PAGE. « CA par personne »
+    // veut dire deux choses très différentes selon que Mesa a compté les têtes ou qu'on les a
+    // devinées en comptant les boissons — et une provenance qui vit dans un bloc replié est
+    // une provenance qu'on ne lit pas.
+    const src = coversSourceModel((d || {}).windows);
+    ero.innerHTML = 'What moves instead — <b>revenue per person</b>: '
       + '<b>' + esc(e.last) + '</b> <span class="tx-dim">(' + esc(e.lastRange)
       + ', n=' + (e.lastN == null ? '?' : e.lastN) + ')</span> against '
       + '<b>' + esc(e.first) + '</b> <span class="tx-dim">(' + esc(e.firstRange)
       + ', n=' + (e.firstN == null ? '?' : e.firstN) + ')</span> '
       + chipHtml(e.delta)
       + ' <span class="tx-dim">· two named windows compared directly, ' + e.windows
-      + ' measured in between — no trend is fitted.</span>';
+      + ' measured in between — no trend is fitted.'
+      // ⚠️ UN SILENCE SE LIT COMME « COMPTÉ ». Ne rien dire quand la provenance est inconnue
+      // laisserait croire que la caisse a compté des têtes — exactement le malentendu que
+      // toute cette mécanique existe pour dissiper. On dit qu'on ne sait pas.
+      + '<br>' + (src.known ? src.text
+        : 'the API did not report where the headcount comes from')
+      + '</span>';
     ero.style.display = '';
   } else if (e) {
-    ero.innerHTML = 'Revenue per estimated person — <b>—</b> <span class="tx-dim">'
+    ero.innerHTML = 'Revenue per person — <b>—</b> <span class="tx-dim">'
       + esc(reasonLabel(e.reason) || 'not measured') + '</span>';
     ero.style.display = '';
   } else {
@@ -1043,10 +883,12 @@ function renderAnswer(d) {
   }
 
   const rule = el('hl-rule');
+  // ⚠️ « TIENT » EST UN JUGEMENT, PAS UNE MESURE. Le seuil doit rester écrit : sans lui, le mot
+  // prend l'autorité d'un fait, et avec cinq jours ouverts de chaque côté, une bonne journée
+  // suffit à le faire basculer.
   rule.innerHTML = m.delta.ok
-    ? '&laquo;&nbsp;holding&nbsp;&raquo; means within &plusmn;' + m.threshold
-      + '&nbsp;% of the previous window. That is a convention set on this page, not a '
-      + 'measurement — and with ~5 open days a side, one busy day moves it.'
+    ? '&laquo;&nbsp;holding&nbsp;&raquo; = within &plusmn;' + m.threshold
+      + '&nbsp;% of the previous window — a convention set on this page, not a measurement.'
     : '';
 
   const note = el('hl-note');
@@ -1062,35 +904,6 @@ function renderAnswer(d) {
   caveat.style.display = showCaveat ? '' : 'none';
 }
 
-function renderKpis(d) {
-  const rows = kpiModels(d);
-  const capped = cappedModel(d && d.windows);
-  el('tx-kpis').innerHTML = rows.map(function (r) {
-    const spark = sparkSvg(r.series, 92, 26);
-    const sub = r.delta.ok
-      ? chipHtml(r.delta) + '<span class="tx-vs">vs ' + esc(r.prevRange || 'previous window')
-        + (r.prevN == null ? '' : ' · n=' + r.prevN) + '</span>'
-      : '<span class="tx-chip tx-chip-none">no delta</span>';
-    const foot = r.delta.ok ? '' :
-      '<div class="tx-kpi-reason">' + esc(r.note || 'not comparable') + '</div>';
-    const sparkFoot = spark
-      ? '<div class="tx-spark-wrap">' + spark + '<span class="tx-spark-cap">'
-        + r.seriesMeasured + ' of ' + r.windows + ' reliable windows'
-        + (r.seriesMeasured < r.windows ? ' · gaps are not drawn' : '') + '</span></div>'
-      : '<div class="tx-spark-wrap"><span class="tx-spark-cap">'
-        + (r.seriesMeasured < 2 ? 'fewer than two measured windows — no sparkline'
-                                : 'no sparkline') + '</span></div>';
-    const warn = (r.key === 'covers' || r.key === 'spend') && capped.any
-      ? '<div class="tx-kpi-reason">' + esc(capped.text) + '</div>' : '';
-    return '<div class="kpi-cell tx-kpi">'
-      + '<div class="kpi-label">' + esc(r.label) + '</div>'
-      + '<div class="kpi-value">' + esc(r.value) + '</div>'
-      + '<div class="tx-kpi-delta">' + sub + '</div>'
-      + '<div class="tx-kpi-hint">' + esc(r.hint) + '</div>'
-      + foot + warn + sparkFoot
-      + '</div>';
-  }).join('');
-}
 
 // Les deux graphiques partagent la MÊME largeur d'axe Y, imposée : sans ça, un axe
 // en « 80 » et un axe en « €7.50 » ne s'alignent pas, et deux cadres décalés de
@@ -1118,25 +931,21 @@ function commonScales(faint, border, showX) {
 function renderCharts(d) {
   const payload = d || {};
   const foot = dailyModel(payload.days, payload.windows);
-  const spend = spendModel(payload.days, payload.windows);
 
   const empty = el('tx-chart-empty');
   const grid = el('tx-chart-grid');
-  const spendFrame = el('tx-frame-spend');
   if (!foot.n) {
-    // Aucun jour ouvré : les DEUX cadres disparaissent. En laisser un vide à
-    // l'écran lui donnerait l'air d'une mesure plate.
+    // ⚠️ AUCUN JOUR OUVRÉ : LE CADRE DISPARAÎT. Le laisser vide à l'écran lui donnerait
+    // l'air d'une mesure plate — et une mesure plate est une information, l'absence n'en
+    // est pas une.
     grid.style.display = 'none';
-    spendFrame.style.display = 'none';
     empty.style.display = '';
-    empty.textContent = 'No open day recorded in the analysis period — nothing to plot.';
+    empty.textContent = 'No open day in the analysis period — nothing to plot.';
     el('tx-chart-foot').textContent = '';
     if (chartFoot) { chartFoot.destroy(); chartFoot = null; }
-    if (chartSpend) { chartSpend.destroy(); chartSpend = null; }
     return;
   }
   grid.style.display = '';
-  spendFrame.style.display = '';
   empty.style.display = 'none';
 
   const gray = cssVar('--flux-tax');
@@ -1172,13 +981,6 @@ function renderCharts(d) {
           borderColor: green, borderWidth: 2,
           pointRadius: 0, fill: false, order: 1,
         },
-        {
-          type: 'line', label: 'median estimated people / open day (7-day window)',
-          data: foot.coverSteps,
-          stepped: 'middle', spanGaps: false,
-          borderColor: muted, borderWidth: 1.5, borderDash: [4, 3],
-          pointRadius: 0, fill: false, order: 2,
-        },
       ],
     },
     options: {
@@ -1199,117 +1001,30 @@ function renderCharts(d) {
                 return c.raw == null ? ' no reliable median here'
                   : ' window median: ' + fmtTx(c.raw) + ' tickets / open day';
               }
-              if (c.datasetIndex === 2) {
-                return c.raw == null ? ' estimated people not measured here'
-                  : ' window median: ' + fmtTx(c.raw) + ' estimated people / open day';
-              }
               return ' ' + b.nb + ' tickets'
-                + (b.covers != null ? ' · ' + b.covers + ' estimated people' : '')
                 + (b.ca_ttc != null ? ' · ' + fmtEur(b.ca_ttc) : '')
                 + (b.partial ? ' · partial — excluded from every median' : '');
             },
           },
         },
       },
-      scales: commonScales(faint, border, false),
+      scales: commonScales(faint, border, true),
     },
   });
 
-  // ── Bas : CA par personne estimée ──
-  const spendBox = el('tx-spend-box');
-  const spendEmpty = el('tx-spend-empty');
-  const spendLegend = el('tx-spend-legend');
-  if (!spend.ok) {
-    spendBox.style.display = 'none';
-    spendLegend.style.display = 'none';   // pas de légende sans marques à légender
-    spendEmpty.style.display = '';
-    spendEmpty.textContent = 'Revenue per person is not drawn — '
-      + (reasonLabel(spend.reason) || 'not measured') + '.';
-    if (chartSpend) { chartSpend.destroy(); chartSpend = null; }
-  } else {
-    spendBox.style.display = '';
-    spendLegend.style.display = '';
-    spendEmpty.style.display = 'none';
-    if (chartSpend) chartSpend.destroy();
-    chartSpend = new Chart(el('chart-spend').getContext('2d'), {
-      type: 'line',
-      data: {
-        labels: spend.labels,
-        datasets: [
-          {
-            type: 'line', label: 'that day (revenue ÷ estimated people)',
-            data: spend.dots,
-            showLine: false, spanGaps: false,
-            pointRadius: spend.bars.map(function (b) { return b.partial ? 3 : 2.6; }),
-            pointHoverRadius: 5,
-            pointBackgroundColor: spend.bars.map(function (b) { return b.partial ? surface : gray; }),
-            pointBorderColor: gray, pointBorderWidth: 1.4,
-            order: 2,
-          },
-          {
-            type: 'line', label: 'window ratio (7-day)',
-            data: spend.steps,
-            stepped: 'middle', spanGaps: false,
-            borderColor: green, borderWidth: 2,
-            pointRadius: 0, fill: false, order: 1,
-          },
-        ],
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false, animation: false,
-        interaction: { mode: 'index', intersect: false },
-        layout: { padding: { top: 4 } },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              title: function (items) {
-                const b = spend.bars[items[0].dataIndex];
-                return b ? fmtLongDay(b.day) + (b.partial ? ' — partial day' : '') : '';
-              },
-              label: function (c) {
-                if (c.datasetIndex === 1) {
-                  return c.raw == null ? ' no reliable window ratio here'
-                    : ' window: ' + fmtEur(c.raw) + ' per estimated person';
-                }
-                return c.raw == null ? ' people not estimated that day'
-                  : ' that day: ' + fmtEur(c.raw) + ' per estimated person';
-              },
-            },
-          },
-        },
-        scales: (function () {
-          const s = commonScales(faint, border, true);
-          // Une dépense par personne ne se lit pas depuis zéro : à zéro, un recul de
-          // 10 % sur ~7 € devient une ligne plate et la page ne dit plus rien. Mais
-          // un axe tronqué GROSSIT ce qu'il montre, alors il l'ANNONCE — la phrase
-          // part avec le graphique, sous le cadre.
-          s.y.beginAtZero = false;
-          s.y.ticks.callback = function (v) { return fmtEur(v); };
-          return s;
-        })(),
-      },
-    });
-  }
-
+  // ⚠️ LA NOTE SOUS LE GRAPHIQUE RESTE, ET ELLE EST COURTE. Trois choses qu'aucun axe ne dit :
+  // un jour fermé N'EST PAS un jour à zéro ticket, le jour en cours est hachuré parce qu'il est
+  // incomplet, et le sommet est montré en entier. Les taire ferait lire des creux qui n'existent
+  // pas.
   const capped = cappedModel(payload.windows);
-  const source = coversSourceModel(payload.windows);
   el('tx-chart-foot').innerHTML =
-    (source.known ? source.text + ' · ' : '') +
-    foot.n + ' open days plotted · closed days have no bar — <b>they are not zero-ticket days</b>'
+    foot.n + ' open days plotted · a closed day has no bar — '
+    + '<b>it is not a zero-ticket day</b>'
     + (foot.partialDays.length
-        ? ' · hatched = ' + esc(foot.partialDays.join(', ')) + ' <b>partial, excluded from every median</b>'
+        ? ' · hatched = ' + esc(foot.partialDays.join(', '))
+          + ' <b>partial, excluded from every median</b>'
         : '')
     + ' · peak ' + foot.yMax + ' tickets, shown in full (no scale clipping)'
-    // La phrase sur les deux cadres ne vaut que s'il y en a deux. Quand celui du bas
-    // ne se dessine pas, elle décrirait une géométrie absente.
-    + (spend.ok
-        ? ' · both frames share one date axis; <b>neither shares a y-axis with the other</b> — '
-          + 'the two units are read separately, and no scale was tuned to make them cross'
-          + ' · ' + spend.measuredDots + ' of ' + spend.n + ' days carry a person estimate'
-          + ' · <b>the lower y-axis does not start at zero</b>, so it magnifies what it shows — '
-          + 'read the euro labels, not the slope'
-        : '')
     + (capped.any ? ' · <b>' + esc(capped.text) + '</b>' : '');
 }
 
@@ -1364,28 +1079,6 @@ function renderHourly(d) {
     + ' A ticket with no recorded time is not an 00h ticket: those days are excluded entirely.';
 }
 
-function renderWindows(d) {
-  const rows = windowRows(d && d.windows);
-  const tb = el('tx-win-body');
-  if (!rows.length) {
-    tb.innerHTML = '<tr><td colspan="7" class="tx-empty">No 7-day window computed yet.</td></tr>';
-    return;
-  }
-  tb.innerHTML = rows.map(function (r) {
-    return '<tr class="' + (r.reliable ? '' : 'tx-row-thin') + '">'
-      + '<td class="tx-mono">' + esc(r.range) + '</td>'
-      + '<td class="tx-num tx-dim">' + (r.n == null ? '—' : r.n) + '</td>'
-      + '<td class="tx-num">' + esc(r.tx) + '</td>'
-      + '<td class="tx-num">' + esc(r.covers) + '</td>'
-      + '<td class="tx-num tx-lead">' + esc(r.spend) + '</td>'
-      + '<td class="tx-num">' + esc(r.basket) + '</td>'
-      + '<td class="tx-num tx-dim">' + esc(r.ca) + '</td>'
-      + '</tr>'
-      + (r.note
-          ? '<tr class="tx-note-row"><td colspan="7">' + esc(r.range) + ' — ' + esc(r.note) + '</td></tr>'
-          : '');
-  }).join('');
-}
 
 function renderWeekday(d) {
   const rows = weekdayRows(d && d.weekday);
@@ -1400,26 +1093,13 @@ function renderWeekday(d) {
   }).join('');
 }
 
-function renderMulti(d) {
-  const m = multiLineModel(d && d.windows);
-  el('tx-multi-val').textContent = m.text;
-  el('tx-multi-sub').textContent = m.ok
-    ? 'of tickets carry more than one line · latest reliable window'
-      + (m.range ? ' (' + m.range + ')' : '')
-      + (m.n != null ? ' · ' + m.n + ' full days' : '')
-    : (m.note ? 'not computable — ' + m.note : 'not computable');
-}
 
 function renderAll(d) {
   lastPayload = d || {};
-  renderScope(lastPayload);
   renderAnswer(lastPayload);
-  renderKpis(lastPayload);
   renderCharts(lastPayload);
   renderHourly(lastPayload);
-  renderWindows(lastPayload);
   renderWeekday(lastPayload);
-  renderMulti(lastPayload);
 }
 
 async function loadTx() {

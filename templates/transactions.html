@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Estudantina">
 <meta name="theme-color" content="#EDEAE3">
-<title>Estudantina · Transactions</title>
+<title>Estudantina · Footfall</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css?v={{ v }}">
@@ -45,17 +45,6 @@
 }
 .tx-dim   { color: var(--faint); font-weight: 400; }
 .tx-empty { color: var(--muted); font-size: 13px; padding: 18px 0; }
-
-/* ── 0. Bandeau de périmètre — JUIN EST EXCLU, ET ÇA SE VOIT ──
-      Il est en haut, permanent, avant tout chiffre. Une exclusion qui ne vit que
-      dans l'encart du bas serait une exclusion cachée. ── */
-.tx-scope-band {
-  font-size: 12.5px; line-height: 1.65; color: var(--muted);
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-left: 3px solid var(--amber);
-  border-radius: 4px; padding: 11px 15px; margin-bottom: 22px;
-}
-.tx-scope-band b { color: var(--text); font-weight: 600; }
 
 /* ── 1. Bandeau-réponse ── */
 .tx-answer { padding: 24px 26px; }
@@ -117,21 +106,31 @@
   display: block; font-size: 10.5px; color: var(--faint); margin-top: 4px; line-height: 1.4;
 }
 
-/* ── 3. Les deux cadres alignés ──
-      Même axe des dates, deux unités, DEUX AXES Y SÉPARÉS DANS DEUX CADRES. Pas
-      de double axe : caler deux échelles l'une sur l'autre fabriquerait une
-      corrélation que la donnée ne porte pas. ── */
-.tx-frame + .tx-frame { margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--border); }
-.tx-frame-title {
-  display: flex; justify-content: space-between; align-items: baseline;
-  gap: 12px; flex-wrap: wrap; margin-bottom: 8px;
+/* ── Ce que la page ne peut pas dire — replié ──
+      ⚠️ FERMÉ, PAS CACHÉ. On sait qu'il existe, et on l'ouvre le jour où un chiffre
+      surprend — c'est exactement ce jour-là qu'il sert. Le supprimer rendrait la page
+      plus courte et moins vraie. ── */
+.tx-limites {
+  border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg-card); padding: 0 18px; margin-bottom: 34px;
 }
-.tx-frame-title h4 { font-size: 13px; font-weight: 600; color: var(--text); }
-.tx-frame-title span { font-size: 11.5px; color: var(--muted); }
-.tx-wrap-tall  { position: relative; height: 210px; }
-.tx-wrap-short { position: relative; height: 160px; }
-.tx-chart-foot { font-size: 11.5px; color: var(--faint); margin-top: 14px; line-height: 1.7; }
-.tx-chart-foot b { color: var(--muted); font-weight: 600; }
+.tx-limites > summary {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); padding: 13px 0; cursor: pointer; list-style: none;
+}
+.tx-limites > summary::-webkit-details-marker { display: none; }
+.tx-limites > summary::before { content: "▸ "; color: var(--faint); }
+.tx-limites[open] > summary::before { content: "▾ "; }
+.tx-limites > summary:hover { color: var(--text); }
+.tx-limites dl { padding-bottom: 6px; }
+.tx-limites dt {
+  font-size: 12.5px; font-weight: 600; color: var(--text); margin-top: 14px;
+}
+.tx-limites dd {
+  font-size: 12.5px; color: var(--muted); line-height: 1.65; margin: 4px 0 0;
+}
+.tx-limites dd b { color: var(--text); font-weight: 600; }
+
 .tx-legend {
   display: flex; gap: 16px; flex-wrap: wrap;
   font-size: 11.5px; color: var(--muted); margin-bottom: 10px;
@@ -186,27 +185,8 @@
   font-size: 11.5px; color: var(--amber); padding: 0 10px 9px;
   border-bottom: 1px solid var(--border);
 }
-.tx-identity {
-  font-family: var(--mono); font-size: 12px; color: var(--muted);
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: 6px; padding: 4px 9px; display: inline-block;
-}
 .tx-bar-cell { width: 38%; }
 .tx-bar { display: block; height: 8px; border-radius: 3px; background: var(--flux-tax); min-width: 0; }
-
-/* ── 7. Ce que la page ne peut pas dire ── */
-.tx-cannot { border-style: dashed; }
-.tx-cannot h3 {
-  font-family: var(--mono);
-  font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--muted); margin-bottom: 14px;
-}
-.tx-cannot dl { margin: 0; }
-.tx-cannot dt { font-size: 13px; font-weight: 600; color: var(--text); margin-top: 16px; }
-.tx-cannot dt:first-child { margin-top: 0; }
-.tx-cannot dd { font-size: 12.5px; color: var(--muted); margin: 4px 0 0; line-height: 1.65; }
-.tx-cannot dd code { font-family: var(--mono); font-size: 11.5px; color: var(--text); }
-.tx-cannot dd b { color: var(--text); font-weight: 600; }
 
 #tx-error {
   display: none; margin-bottom: 20px; padding: 11px 14px; border-radius: 4px;
@@ -217,7 +197,6 @@
   .tx-value { font-size: 32px; }
   .tx-lead  { font-size: 16px; }
   .tx-wrap-tall  { height: 190px; }
-  .tx-wrap-short { height: 150px; }
   .tx-bar-cell { display: none; }
   .tx-table { min-width: 560px; }
 }
@@ -229,7 +208,7 @@
 
   <div class="header" style="margin-bottom:20px;">
     <div>
-      <div class="header-title">Transactions</div>
+      <div class="header-title">Footfall</div>
       <div class="header-sub">Footfall and spend per open day · <span id="tx-scope" class="tx-dim"></span></div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
@@ -240,92 +219,63 @@
 
   <div id="tx-error"></div>
 
-  <!-- ── 0. PÉRIMÈTRE — l'exclusion de juin est ANNONCÉE, pas rangée en bas ── -->
-  <div class="tx-scope-band" id="tx-scope-band"></div>
+  {#
+    ⚠️ CETTE PAGE DÉFENDAIT SA MÉTHODE À CHAQUE ÉTAPE : 744 mots de prose, dont 426 en notes de
+    bas de page. C'était juste quand les chiffres étaient neufs et qu'il fallait prouver qu'ils
+    ne mentaient pas. Ça ne l'est plus quand on les lit toutes les semaines — une page qu'on doit
+    traverser pour trouver son nombre est une page qu'on n'ouvre plus.
+
+    ⚠️ ET LA SIMPLIFICATION N'EST PAS UN RACCOURCISSEMENT DES AVERTISSEMENTS. Effacer la mise en
+    garde sans effacer le chiffre qu'elle protège rendrait la page plus courte ET plus fausse. Ce
+    qui part, ce sont les CHIFFRES qui avaient besoin d'un paragraphe pour être honnêtes ; les
+    réserves qui restent tiennent en quelques mots, collées au nombre qu'elles concernent.
+  #}
 
   <!-- ── 1. LA RÉPONSE ─────────────────────────────────────────────────────── -->
   <div class="tx-section">
     <div class="tx-card tx-answer">
       <div class="tx-q">Is footfall holding?</div>
-      <div class="tx-lead" id="hl-lead">—</div>
+      <div class="tx-lead" id="hl-lead">&mdash;</div>
       <div class="tx-answer-main">
-        <span class="tx-value" id="hl-value">—</span>
+        <span class="tx-value" id="hl-value">&mdash;</span>
         <span class="tx-unit">tickets / open day</span>
         <span id="hl-delta"></span>
       </div>
       <div class="tx-sub"  id="hl-n"></div>
-      <div class="tx-prev" id="hl-prev"></div>
-      <div class="tx-erosion" id="hl-erosion"></div>
+      <!-- ⚠️ DEUX ÉLÉMENTS QUE J'AVAIS RETIRÉS À TORT EN SIMPLIFIANT. `hl-note` porte la RAISON
+           quand le chiffre manque : sans elle, un « — » reste sans explication, et c'est
+           précisément le moment où l'on a besoin d'une. `hl-rule` publie le seuil du verdict —
+           « tient » est un jugement à ±10 %, pas une mesure ; le taire donnerait au mot
+           l'autorité d'un fait. Raccourcir une page ne veut pas dire lui retirer ce qui
+           l'empêche d'affirmer plus qu'elle ne sait. -->
       <div class="tx-rule" id="hl-rule"></div>
+      <div class="tx-reason" id="hl-note" style="display:none"></div>
+      <!-- ⚠️ LE SEUL AUTRE CHIFFRE DU BLOC, ET C'EST LE PLUS UTILE DE LA PAGE : « ils viennent
+           autant mais dépensent moins » ne se lit nulle part ailleurs. Il portait un graphique
+           entier et trois paragraphes ; il tient en une ligne, avec sa provenance. -->
+      <div class="tx-erosion" id="hl-erosion"></div>
       <div class="tx-reason" id="hl-caveat" style="display:none"></div>
-      <div class="tx-reason" id="hl-note"   style="display:none"></div>
     </div>
   </div>
 
-  <!-- ── 2. LES QUATRE MESURES DE LA MÊME PAIRE DE FENÊTRES ────────────────── -->
+  <!-- ── 2. L'AFFLUENCE DANS LE TEMPS ──────────────────────────────────────── -->
   <div class="tx-section">
-    <div class="tx-section-title">Latest reliable 7-day window vs the one before</div>
-    <div class="tx-section-sub">
-      All four cells describe the <b>same two windows</b> — the pair named in the answer above.
-      The sparkline behind each is the sequence of reliable windows, in order: it is a list of
-      measured levels, <b>not a trend line</b>, and it is not fitted, smoothed or extended.
-    </div>
-    <div class="kpi-grid" id="tx-kpis"></div>
-  </div>
-
-  <!-- ── 3. LA DIVERGENCE ──────────────────────────────────────────────────
-       Deux cadres, un seul axe des dates. PAS de double axe Y : deux échelles
-       calées l'une sur l'autre inventeraient une corrélation.               -->
-  <div class="tx-section">
-    <div class="tx-section-title">How many came · what each one spent</div>
-    <div class="tx-section-sub">
-      Two frames, one shared date axis, <b>two separate y-axes in two separate boxes</b>.
-      Read them top against bottom: if the top holds while the bottom slides, footfall is not
-      the thing that moved.
-    </div>
+    <div class="tx-section-title">Tickets per open day</div>
     <div class="tx-card">
-
-      <div class="tx-frame">
-        <div class="tx-frame-title">
-          <h4>Footfall per open day</h4>
-          <span>tickets (bars) · window medians (lines)</span>
-        </div>
-        <div class="tx-legend">
-          <span><i class="k-bar"></i> tickets that day</span>
-          <span><i class="k-median"></i> median tickets / open day, 7-day window (step, not a trend)</span>
-          <span><i class="k-people"></i> median estimated people / open day</span>
-          <span><i class="k-part"></i> today — partial, excluded from every median</span>
-        </div>
-        <div class="tx-wrap-tall" id="tx-chart-grid"><canvas id="chart-footfall"></canvas></div>
-        <div class="tx-empty" id="tx-chart-empty" style="display:none"></div>
+      <div class="tx-legend">
+        <span><i class="k-bar"></i> that day</span>
+        <span><i class="k-median"></i> 7-day median &mdash; a measured step, not a trend</span>
+        <span><i class="k-part"></i> today, partial &mdash; excluded from every median</span>
       </div>
-
-      <div class="tx-frame" id="tx-frame-spend">
-        <div class="tx-frame-title">
-          <h4>Revenue per estimated person</h4>
-          <span>euros · same days, same order</span>
-        </div>
-        <!-- Masquée avec le graphique : une légende sans tracé décrit des marques
-             qui ne sont nulle part, et laisse croire qu'on a dessiné quelque chose. -->
-        <div class="tx-legend" id="tx-spend-legend">
-          <span><i class="k-dot"></i> that day (revenue ÷ estimated people)</span>
-          <span><i class="k-median"></i> 7-day window ratio (step, not a trend)</span>
-        </div>
-        <div class="tx-wrap-short" id="tx-spend-box"><canvas id="chart-spend"></canvas></div>
-        <div class="tx-empty" id="tx-spend-empty" style="display:none"></div>
-      </div>
-
+      <div class="tx-wrap-tall" id="tx-chart-grid"><canvas id="chart-footfall"></canvas></div>
+      <div class="tx-empty" id="tx-chart-empty" style="display:none"></div>
       <div class="tx-chart-foot" id="tx-chart-foot"></div>
     </div>
   </div>
 
-  <!-- ── 4. RÉPARTITION HORAIRE ────────────────────────────────────────────── -->
+  <!-- ── 3. QUAND LES TICKETS TOMBENT ──────────────────────────────────────── -->
   <div class="tx-section">
     <div class="tx-section-title">When the tickets land</div>
-    <div class="tx-section-sub">
-      Two separate crowds, not one spread out: a morning block and an evening block with a
-      trough between them. Ticket counts, <b>not revenue</b>.
-    </div>
     <div class="tx-card">
       <div class="tx-hours-meta" id="tx-hours-meta"></div>
       <div class="tx-blocks" id="tx-blocks"></div>
@@ -337,132 +287,66 @@
     </div>
   </div>
 
-  <!-- ── 5. FENÊTRES DE 7 JOURS ────────────────────────────────────────────── -->
-  <div class="tx-section">
-    <div class="tx-section-title">7-day windows</div>
-    <div class="tx-section-sub">
-      <span class="tx-identity">revenue = tickets × basket</span> is an identity — those columns
-      are arithmetically linked by definition and say nothing about what moves what.
-      <b>&euro;&nbsp;/&nbsp;person is not revenue&nbsp;/&nbsp;day &divide; people&nbsp;/&nbsp;day</b>:
-      the first is a ratio over the whole window, the other two are medians of daily values, and
-      dividing two medians gives the median of nothing. Thin windows keep their <code>n</code>
-      and lose their medians — a median of three days would read as a typical day and is not one.
-    </div>
-    <div class="tx-card">
-      <div class="tx-table-scroll">
-        <table class="tx-table">
-          <thead>
-            <tr>
-              <th>Window</th>
-              <th class="tx-num">Full days (n)</th>
-              <th class="tx-num">Tickets / day</th>
-              <th class="tx-num">People / day (est.)</th>
-              <th class="tx-num">&euro; / person</th>
-              <th class="tx-num">Basket</th>
-              <th class="tx-num">Revenue / day</th>
-            </tr>
-          </thead>
-          <tbody id="tx-win-body">
-            <tr><td colspan="7" class="tx-empty">Loading…</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── 6. PAR JOUR DE SEMAINE ────────────────────────────────────────────── -->
+  <!-- ── 4. PAR JOUR DE SEMAINE ────────────────────────────────────────────── -->
   <div class="tx-section">
     <div class="tx-section-title">Median tickets by weekday</div>
     <div class="tx-card">
       <div class="tx-table-scroll">
         <table class="tx-table">
           <thead>
-            <tr>
-              <th>Day</th>
-              <th class="tx-num">Median tickets</th>
-              <th></th>
-              <th class="tx-num">Days measured (n)</th>
-              <th></th>
-            </tr>
+            <tr><th>Day</th><th class="tx-num">Median tickets</th><th></th>
+              <th class="tx-num">Days measured (n)</th><th></th></tr>
           </thead>
           <tbody id="tx-wd-body">
-            <tr><td colspan="5" class="tx-empty">Loading…</td></tr>
+            <tr><td colspan="5" class="tx-empty">Loading&hellip;</td></tr>
           </tbody>
         </table>
       </div>
     </div>
   </div>
 
-  <!-- ── 7. TICKETS MULTI-LIGNES ───────────────────────────────────────────── -->
-  <div class="tx-section">
-    <div class="tx-section-title">Multi-line tickets</div>
-    <div class="tx-card">
-      <div class="tx-answer-main">
-        <span class="tx-value" id="tx-multi-val" style="font-size:28px">—</span>
-      </div>
-      <div class="tx-sub" id="tx-multi-sub"></div>
-      <div class="tx-rule">
-        A multi-line ticket carries at least <b>two distinct lines</b>. Two coffees rung up on one
-        line (qty&nbsp;2) counts as single-line. This measures <b>add-on selling</b> — a coffee plus
-        a pastry — not order size.
-      </div>
-    </div>
-  </div>
+  <!--
+    ⚠️ CE QUE LA PAGE NE PEUT PAS DIRE RESTE ÉCRIT, MAIS REPLIÉ. Ces cinq limites ne sont pas
+    des précautions de style : chacune répond à une question qu'on se poserait autrement avec
+    un chiffre inventé. Les supprimer rendrait la page plus courte et moins vraie.
 
-  <!-- ── 8. CE QUE CETTE PAGE NE PEUT PAS DIRE ─────────────────────────────
-       Encart FIXE : il reste à l'écran même quand tout va bien. Sans lui, les
-       quatre questions ci-dessous se répondraient par un chiffre inventé.      -->
-  <div class="tx-section">
-    <div class="tx-card tx-cannot">
-      <h3>What this page cannot tell you</h3>
-      <dl>
-        <dt>Regulars — not measurable, and no proxy will do</dt>
-        <dd>
-          The till is anonymous. Checked against the API: <code>client.fiscal_id</code> is
-          <code>'---------'</code> on <b>59 of 60</b> tickets sampled since opening. Nothing here
-          can separate a returning visitor from a first-time one, and no substitute (ticket size,
-          weekday habits, hourly patterns) would be that measurement — it would only look like one.
-        </dd>
+    ⚠️ ET LE DÉTAIL EST FERMÉ PAR DÉFAUT, PAS CACHÉ. Fermé, on sait qu'il existe et on l'ouvre
+    le jour où le chiffre surprend — c'est exactement ce jour-là qu'il sert.
+  -->
+  <details class="tx-limites">
+    <summary>What this page cannot tell you &mdash; and how it measures</summary>
+    <dl>
+      <dt>Regulars are not measurable, and no proxy will do</dt>
+      <dd>The till is anonymous: <code>client.fiscal_id</code> reads
+        <code>'---------'</code> on <b>59 of 60 tickets</b> sampled since opening. No substitute
+        &mdash; ticket size, weekday habits, hourly patterns &mdash; would be that measurement;
+        it would only look like one.</dd>
 
-        <dt>People are estimated, never counted — and the estimate runs HIGH</dt>
-        <dd>
-          Every figure on this page that says <b>people</b> is an estimate built from drinks:
-          <b>1 drink = 1 person</b>, floor 1, ceiling 8 per ticket. Two coffees for one person
-          count as two people. So <b>people / open day is an upper bound</b>, and
-          <b>&euro;&nbsp;/&nbsp;person is therefore a lower bound</b> — the real spend per human is
-          higher than the number shown. Tickets that hit the 8-person ceiling pull the other way and
-          are flagged where they occur. The word here is always <b>estimated</b>, never
-          <b>customers</b>; the till never counted a person.
-        </dd>
+      <dt>People: counted at the table, estimated at the counter</dt>
+      <dd>Mesa asks how many people sit down and writes it on the document. The rest is
+        <b>estimated</b> from drinks: <b>1 drink = 1 person</b>, floor&nbsp;1, ceiling&nbsp;8.
+        The share actually counted is shown <b>next to the figure it concerns</b>, never here
+        &mdash; a provenance that lives at the bottom of a page is a provenance nobody
+        reads.</dd>
 
-        <dt>June is excluded — and so is the opening</dt>
-        <dd>
-          The analysis starts at <code>analysis_start</code>, not at <code>opening_day</code>. The
-          café opened <b>27 May 2026</b>; the weeks that follow carry the run-in and group orders of
-          <b>up to 55 drinks</b>, which would move every median on this page. Excluding them is a
-          judgement, and it is stated in the band at the top of the page rather than buried here.
-          It also means <b>this page cannot compare now against the opening period</b> at all.
-        </dd>
+      <dt>June is excluded, and so is the opening</dt>
+      <dd>The analysis starts at <code>analysis_start</code>, not <code>opening_day</code>. The
+        caf&eacute; opened <b>27 May 2026</b>; the weeks that follow carry the run-in and group
+        orders of up to <b>55 drinks</b>, which would move every median here. So this page
+        <b>cannot compare today against the opening period</b> at all.</dd>
 
-        <dt>Holiday effect — no reference August exists</dt>
-        <dd>
-          This is the café's first summer. There is no earlier August to compare against, so nothing
-          on this page can tell an August dip from a decline, or a holiday lull from a lost habit.
-          That comparison becomes possible in 2027, not before. Until then, treat every movement
-          here as <b>a measurement without a season attached</b>.
-        </dd>
+      <dt>No reference August exists</dt>
+      <dd>This is the caf&eacute;'s first summer. Nothing here tells an August dip from a
+        decline, or a holiday lull from a lost habit. That comparison becomes possible in
+        <b>2027</b>, not before.</dd>
 
-        <dt>No trend, on purpose</dt>
-        <dd>
-          Roughly four weeks of open days sit behind this page. Nothing here is fitted, smoothed,
-          projected or extrapolated: every line that looks like a line is a <b>step of measured
-          window medians</b>, and every comparison is between <b>two named windows with their
-          <code>n</code></b>. A regression on this much data would draw the noise with the
-          authority of a straight line.
-        </dd>
-      </dl>
-    </div>
-  </div>
+      <dt>No trend, on purpose</dt>
+      <dd>Nothing is smoothed, fitted or extended: every line that looks like a line is a
+        <b>step of measured window medians</b>, and every comparison is between <b>two named
+        windows with their <code>n</code></b>. A regression on this few days would draw the
+        noise with the authority of a straight line.</dd>
+    </dl>
+  </details>
 
 </div>
 

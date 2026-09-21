@@ -27,9 +27,8 @@ const tpl = fs.readFileSync(TPL_PATH, 'utf8');
 const NOMS = [
   'fmtTx', 'fmtEur', 'fmtPct', 'fmtDay', 'fmtLongDay', 'fmtRange', 'fmtHour',
   'reasonLabel', 'joinReasons', 'deltaModel', 'reliableWindows', 'pickWindows',
-  'cappedModel', 'answerModel', 'kpiSpecs', 'kpiModels', 'sparkline', 'sparkSvg',
-  'dailyModel', 'windowStep', 'spendModel', 'hourlyModel', 'windowRows',
-  'weekdayRows', 'multiLineModel', 'scopeModel',
+  'cappedModel', 'answerModel', 'sparkline', 'sparkSvg',
+  'dailyModel', 'windowStep', 'hourlyModel', 'weekdayRows',
 ];
 
 function extraire(nom) {
@@ -56,9 +55,8 @@ const M = new Function(
 
 const {
   fmtTx, fmtEur, fmtPct, reasonLabel, joinReasons, deltaModel, reliableWindows,
-  pickWindows, cappedModel, answerModel, kpiModels, sparkline, sparkSvg,
-  dailyModel, spendModel, hourlyModel, windowRows, weekdayRows, multiLineModel,
-  scopeModel,
+  pickWindows, cappedModel, answerModel, sparkline, sparkSvg,
+  dailyModel, hourlyModel, weekdayRows,
 } = M;
 
 let failures = 0, ran = 0;
@@ -207,31 +205,31 @@ console.log('\n— un écart qu’on ne peut pas calculer ne vaut pas zéro');
     f.ok === true && f.text === 'flat' && f.dir === 'flat', JSON.stringify(f));
 }
 
-// ══ 3. covers_median null ⇒ « — » + LA RAISON ═══════════════════════════════
+// ══ 3. covers null ⇒ « — » + LA RAISON ══════════════════════════════════════
+//
+// ⚠️ LA PAGE A PERDU SES QUATRE CELLULES KPI ET SA TABLE DE FENÊTRES ; LA GARANTIE, ELLE, RESTE
+// ENTIÈRE. Elle vit maintenant sur la seule ligne qui parle encore de dépense par personne —
+// l'érosion du bandeau. Supprimer ces vérifications avec l'écran qui les portait aurait rendu
+// la page plus courte ET moins sûre, ce qui n'était pas la demande.
 console.log('\n— une personne non estimée n’est pas zéro personne');
 {
-  const wins = WINDOWS.map((w, i) =>
-    i === 4 ? { ...w, covers_median: null, ca_per_cover: null } : w);
-  const m = kpiModels({ ...PAYLOAD, windows: wins });
-  const covers = m.find(k => k.key === 'covers');
-  const spend = m.find(k => k.key === 'spend');
-  check('covers_median null ⇒ la cellule affiche « — », jamais 0',
-    covers.value === '—', covers.value);
-  check('covers_median null ⇒ aucun écart n’est publié',
-    covers.delta.ok === false && covers.delta.text === null, JSON.stringify(covers.delta));
-  check('covers_median null ⇒ la RAISON accompagne le tiret',
-    covers.note === 'not measured — the API did not report this figure', covers.note);
-  check('ca_per_cover null ⇒ même traitement sur le CA par personne',
-    spend.value === '—' && spend.delta.ok === false && !!spend.note,
-    JSON.stringify([spend.value, spend.note]));
-  check('la sparkline ne compte que les fenêtres RÉELLEMENT mesurées',
-    covers.seriesMeasured === 4 && covers.windows === 5,
-    JSON.stringify([covers.seriesMeasured, covers.windows]));
+  const creux = WINDOWS.map(w => ({ ...w, covers_median: null, ca_per_cover: null }));
+  const a = answerModel({ ...PAYLOAD, windows: creux });
+  check('aucune fenêtre ne mesure la dépense ⇒ l’érosion ne s’invente pas',
+    a.erosion.ok === false, JSON.stringify(a.erosion));
+  check('et elle écrit « — », jamais 0,00 €', a.erosion.last === '—', a.erosion.last);
+  check('mais l’affluence, qui est mesurée, répond quand même',
+    a.ok === true && a.verdict === 'holding');
 
-  const rows = windowRows(wins);
-  check('la table écrit « — » pour la fenêtre sans personnes estimées',
-    rows[0].covers === '—' && rows[0].spend === '—',
-    JSON.stringify([rows[0].covers, rows[0].spend]));
+  // ⚠️ ET UNE SEULE FENÊTRE MUETTE NE DOIT PAS TUER LA MESURE : on se replie sur la dernière
+  // fenêtre RÉELLEMENT mesurée, en la nommant. Effacer l'érosion ici perdrait un chiffre qu'on
+  // a bel et bien.
+  const partiel = WINDOWS.map((w, i) =>
+    i === 4 ? { ...w, covers_median: null, ca_per_cover: null } : w);
+  const b = answerModel({ ...PAYLOAD, windows: partiel });
+  check('une fenêtre muette ⇒ repli sur la dernière MESURÉE, qui est nommée',
+    b.erosion.ok === true && b.erosion.last === '€6.27'
+    && /24 Jul/.test(b.erosion.lastRange), JSON.stringify(b.erosion));
 }
 {
   // Un endpoint qui ne connaît PAS `covers` du tout : la page dégrade, elle ne casse pas.
@@ -242,15 +240,6 @@ console.log('\n— une personne non estimée n’est pas zéro personne');
   });
   const jours = DAYS.map(d => { const c = { ...d }; delete c.covers; return c; });
   const p = { ...PAYLOAD, windows: nus, days: jours };
-  const m = kpiModels(p);
-  check('sans le champ `covers`, la cellule reste à « — » avec sa raison',
-    m[1].value === '—' && m[1].note === 'not measured — the API did not report this figure',
-    JSON.stringify([m[1].value, m[1].note]));
-  const s = spendModel(jours, nus);
-  check('sans personnes estimées, le cadre du bas ne se dessine PAS',
-    s.ok === false && s.reason === 'no-covers', JSON.stringify([s.ok, s.reason]));
-  check('et le refus de dessiner porte une phrase lisible',
-    reasonLabel(s.reason) === 'people were not estimated over this window');
   const a = answerModel(p);
   check('le bandeau ne prétend pas mesurer une érosion qu’il n’a pas',
     a.erosion.ok === false && a.erosion.last === '—', JSON.stringify(a.erosion.last));
@@ -268,17 +257,9 @@ console.log('\n— un plafond atteint se déclare');
   check('et il dit dans quel SENS il déforme : personnes sous-comptées, €/personne sur-estimé',
     /under-counted/.test(c.text) && /over-stated/.test(c.text), c.text);
 
-  const rows = windowRows(wins);
-  const ligne = rows.find(r => r.to === '2026-08-06');
-  check('la fenêtre concernée porte la note dans la table',
-    ligne.capped === 3 && /8-person ceiling reached 3×/.test(ligne.note), ligne.note);
-
   const ok = cappedModel(WINDOWS);
   check('à zéro, rien n’est annoncé — on ne crie pas sur une borne jamais touchée',
     ok.any === false && ok.text === null, JSON.stringify(ok));
-  const rows0 = windowRows(WINDOWS);
-  check('et aucune ligne ne porte de note de plafond',
-    rows0.every(r => !r.note || !/ceiling/.test(r.note)));
 }
 
 // ══ 5. hourly.reason ⇒ UN MESSAGE, PAS UN GRAPHIQUE ════════════════════════
@@ -372,10 +353,9 @@ console.log('\n— rien reçu : « — » partout, aucune exception');
   let boum = null;
   VIDES.forEach((v, i) => {
     try {
-      answerModel(v); kpiModels(v); scopeModel(v); cappedModel(v && v.windows);
-      dailyModel(v && v.days, v && v.windows); spendModel(v && v.days, v && v.windows);
-      hourlyModel(v && v.hourly); windowRows(v && v.windows);
-      weekdayRows(v && v.weekday); multiLineModel(v && v.windows);
+      answerModel(v); cappedModel(v && v.windows);
+      dailyModel(v && v.days, v && v.windows);
+      hourlyModel(v && v.hourly); weekdayRows(v && v.weekday);
       pickWindows(v); reliableWindows(v && v.windows);
     } catch (e) { boum = `payload #${i} : ${e.message}`; }
   });
@@ -388,18 +368,11 @@ console.log('\n— rien reçu : « — » partout, aucune exception');
   check('et il nomme la cause',
     a.note === 'no 7-day window has enough full open days yet', a.note);
 
-  const k = kpiModels({});
-  check('les quatre cellules existent quand même, toutes à « — »',
-    k.length === 4 && k.every(c => c.value === '—'), JSON.stringify(k.map(c => c.value)));
-  check('aucune cellule ne publie d’écart',
-    k.every(c => c.delta.ok === false && !!c.note));
-  check('aucune sparkline n’est dessinée sur du vide',
-    k.every(c => sparkSvg(c.series, 92, 26) === ''));
+  check('aucune sparkline n’est dessinée sur du vide', sparkSvg([], 92, 26) === '');
 
   const d = dailyModel([], []);
   check('aucun jour ⇒ aucune barre, et yMax n’est pas un maximum inventé',
     d.n === 0 && d.bars.length === 0 && d.yMax === 0);
-  check('la table des fenêtres est vide, pas remplie de zéros', windowRows([]).length === 0);
   check('les 7 jours de semaine existent, ceux jamais ouverts à « — »',
     weekdayRows([]).length === 7 && weekdayRows([]).every(r => r.tx === '—' && r.n === 0));
 }
@@ -413,20 +386,19 @@ console.log('\n— une médiane de trois jours n’est pas une journée typique'
       covers_median: 12.0, ca_per_cover: 7.37, reliable: false, reason: 'truncated+too-few-days',
     }),
   ]);
-  const rows = windowRows(wins);
-  const fragile = rows[0];
-  check('la fenêtre fragile garde son n — c’est l’information utile',
-    fragile.n === 1 && fragile.reliable === false, JSON.stringify([fragile.n, fragile.reliable]));
-  check('mais elle perd TOUTES ses médianes',
-    fragile.tx === '—' && fragile.ca === '—' && fragile.basket === '—'
-    && fragile.covers === '—' && fragile.spend === '—');
-  check('et les raisons cumulées sont dépliées, jointes par « · »',
-    fragile.note === 'window truncated — start of the analysis period · '
-      + 'too few full open days in this window for a median', fragile.note);
-  check('elle n’entre dans aucune sparkline ni aucun écart',
+  // ⚠️ LA TABLE DES FENÊTRES A DISPARU DE L'ÉCRAN ; LE REFUS, LUI, RESTE. Une médiane d'un
+  // seul jour ne doit entrer ni dans une comparaison, ni dans une sparkline, ni dans le verdict
+  // du bandeau — c'est là que le danger vivait, pas dans la table qui l'exposait.
+  check('une fenêtre fragile n’entre dans aucune sparkline ni aucun écart',
     reliableWindows(wins).length === 5);
-  check('la table est triée du plus récent au plus ancien',
-    rows[0].to === '2026-08-13' && rows[rows.length - 1].to === '2026-07-09');
+  check('et les raisons cumulées se déplient, jointes par « · »',
+    reasonLabel(joinReasons('truncated', 'too-few-days'))
+      === 'window truncated — start of the analysis period · '
+        + 'too few full open days in this window for a median',
+    reasonLabel(joinReasons('truncated', 'too-few-days')));
+  check('le bandeau ne bâtit pas son verdict sur une fenêtre d’un seul jour',
+    answerModel({ ...PAYLOAD, windows: wins }).range === '31 Jul – 6 Aug',
+    answerModel({ ...PAYLOAD, windows: wins }).range);
 }
 {
   // Le repli quand le headline est muet : on prend la dernière fenêtre FIABLE,
@@ -459,40 +431,18 @@ console.log('\n— une médiane de trois jours n’est pas une journée typique'
   check('la fenêtre courante, elle, reste celle du serveur',
     p.cur.to === '2026-08-06', p.cur && p.cur.to);
 
-  const k = kpiModels({ ...PAYLOAD, windows: wins });
-  check('aucune des quatre cellules ne publie d’écart contre une fenêtre fragile',
-    k.every(c => c.delta.ok === false && c.prevValue === '—'),
-    JSON.stringify(k.map(c => [c.key, c.delta.ok, c.prevValue])));
-  check('et chacune dit pourquoi',
-    k.every(c => /too thin to compare against/.test(c.note || '')),
-    JSON.stringify(k.map(c => c.note)));
+  // ⚠️ LE REFUS VIT DANS `pickWindows`, PAS DANS LE BANDEAU — et c'est une limite qu'il faut
+  // écrire plutôt que de faire semblant de couvrir. L'écart affiché en haut vient du HEADLINE
+  // SERVEUR, qui a sa propre notion de fenêtre précédente : si le serveur compare contre une
+  // fenêtre fragile, la page le répète. Ce qu'elle garantit, c'est que la réserve remonte avec.
+  const a = answerModel({ ...PAYLOAD, windows: wins });
+  check('la fragilité repérée par la page remonte dans la réserve du bandeau',
+    /too thin to compare against/.test(a.caveat || ''), a.caveat);
 }
 
-// ══ 9. LES QUATRE KPI DÉCRIVENT LA MÊME PAIRE DE FENÊTRES ══════════════════
-console.log('\n— quatre chiffres, deux fenêtres, une seule période');
-{
-  const k = kpiModels(PAYLOAD);
-  check('les quatre cellules pointent la même fenêtre courante',
-    k.every(c => c.range === k[0].range) && /31 Jul/.test(k[0].range), k[0].range);
-  check('et la même fenêtre de référence',
-    k.every(c => c.prevRange === k[0].prevRange) && /24 Jul/.test(k[0].prevRange), k[0].prevRange);
-  check('tickets : 26, −7 % contre 28',
-    k[0].value === '26' && k[0].delta.pct === -7, JSON.stringify([k[0].value, k[0].delta.pct]));
-  check('personnes estimées : 33, −6 % contre 35',
-    k[1].value === '33' && k[1].delta.pct === -6, JSON.stringify([k[1].value, k[1].delta.pct]));
-  check('CA par personne : 6,45 €, +3 % contre 6,27 €',
-    k[2].value === '€6.45' && k[2].delta.pct === 3, JSON.stringify([k[2].value, k[2].delta.pct]));
-  check('panier : 10,29 €',
-    k[3].value === '€10.29', k[3].value);
-  check('le libellé des personnes ne dit JAMAIS « customers »',
-    k.every(c => !/customer/i.test(c.label + ' ' + c.hint)),
-    k.map(c => c.label).join(' | '));
-  check('et il annonce que c’est une ESTIMATION, avec sa règle et son sens',
-    /Estimated, not counted/.test(k[1].hint) && /ceiling 8/.test(k[1].hint)
-    && /Runs high/.test(k[1].hint), k[1].hint);
-  check('le CA/personne prévient qu’il ne se retrouve pas en divisant deux colonnes',
-    /not revenue\/day/.test(k[2].hint), k[2].hint);
-}
+// ⚠️ LA SECTION « LES QUATRE KPI DÉCRIVENT LA MÊME PAIRE DE FENÊTRES » EST PARTIE AVEC LES
+// cellules qu'elle protégeait. Sa garantie — quatre chiffres, une seule période — n'a plus
+// d'objet : il ne reste qu'un chiffre, et il nomme sa paire de fenêtres lui-même (§1).
 
 // ══ 10. SPARKLINE — pas de tendance, pas d'interpolation, pas de plancher ══
 console.log('\n— la sparkline est une liste de paliers, pas une pente');
@@ -534,34 +484,13 @@ console.log('\n— la sparkline est une liste de paliers, pas une pente');
     sparkline([], 92, 26).ok === false && sparkline([null, null], 92, 26).ok === false);
 }
 
-// ══ 11. LE PÉRIMÈTRE — JUIN EST EXCLU, ET ÇA SE VOIT ═══════════════════════
-console.log('\n— l’exclusion de juin est annoncée, pas cachée');
-{
-  const m = scopeModel(PAYLOAD);
-  check('l’analyse démarre au 1er juillet', m.analysisStart === '2026-07-01');
-  check('l’ouverture du 27 mai est retenue', m.openingDay === '2026-05-27');
-  check('l’exclusion est DÉTECTÉE et bornée à la veille du démarrage',
-    m.excludes === true && m.excludedFrom === '2026-05-27' && m.excludedTo === '2026-06-30',
-    JSON.stringify([m.excludes, m.excludedFrom, m.excludedTo]));
-  check('elle est écrite en toutes lettres',
-    /27 May 2026/.test(m.excludedText) && /30 Jun 2026/.test(m.excludedText), m.excludedText);
-}
-{
-  // Un endpoint qui ne dit pas où commence l'analyse : on ne l'invente pas, on
-  // retombe sur `from` ET on prévient que c'est un repli.
-  const p = { ...PAYLOAD }; delete p.analysis_start;
-  const m = scopeModel(p);
-  check('sans analysis_start, on retombe sur `from` — et on le DIT',
-    m.analysisStart === '2026-07-01' && /did not report analysis_start/.test(m.note || ''),
-    m.note);
-}
-{
-  const p = { ...PAYLOAD, opening_day: '2026-07-01' };
-  check('ouverture le jour du démarrage ⇒ rien n’est exclu, on n’invente pas de trou',
-    scopeModel(p).excludes === false);
-}
+// ⚠️ LE BANDEAU DE PÉRIMÈTRE A DISPARU DU HAUT DE PAGE, ET C'EST UN ARBITRAGE À DÉFENDRE.
+// L'exclusion de juin reste écrite — dans le bloc replié « Ce que cette page ne peut pas dire »,
+// avec sa date et sa raison. Elle occupait un encart permanent au-dessus du premier chiffre pour
+// une décision prise une fois, il y a trois mois, et qui ne changera plus : elle se relit, elle
+// ne se surveille pas. Le gabarit est vérifié en §15.
 
-// ══ 12. JOURS DE SEMAINE ET MULTI-LIGNES ═══════════════════════════════════
+// ══ 12. JOURS DE SEMAINE ═══════════════════════════════════════════════════
 console.log('\n— le n vit à côté de chaque médiane');
 {
   const r = weekdayRows(PAYLOAD.weekday);
@@ -575,16 +504,9 @@ console.log('\n— le n vit à côté de chaque médiane');
     JSON.stringify([r[3].width, r[0].width]));
   check('un jour sans mesure n’a pas de barre', r[1].width === 0);
 }
-{
-  const m = multiLineModel(WINDOWS);
-  check('la part multi-lignes est lue sur la DERNIÈRE fenêtre fiable, pas moyennée',
-    m.ok === true && m.text === '31.2 %' && m.n === 5, JSON.stringify([m.text, m.n]));
-  const sans = WINDOWS.map(w => ({ ...w, multi_pct: null }));
-  check('non mesurée ⇒ « — » et sa raison, jamais 0,0 %',
-    multiLineModel(sans).text === '—'
-    && /multi-line share not recorded/.test(multiLineModel(sans).note || ''),
-    multiLineModel(sans).note);
-}
+// ⚠️ « TICKETS MULTI-LIGNES » EST PARTI. La mesure était juste et se lisait une fois : elle
+// disait si l'on vend un café AVEC une pâtisserie. Aucune décision n'en est jamais sortie, et
+// elle coûtait une section entière plus trois phrases d'explication sur ce qu'est une ligne.
 
 // ══ 13. FORMAT ET RAISONS ══════════════════════════════════════════════════
 console.log('\n— un null s’écrit « — », jamais 0');
@@ -629,31 +551,41 @@ console.log('\n— une fenêtre sautée change le sens du chiffre affiché');
 console.log('\n— le gabarit');
 {
   const IDS = [
-    'tx-scope-band', 'hl-lead', 'hl-value', 'hl-delta', 'hl-n', 'hl-prev', 'hl-erosion',
-    'hl-rule', 'hl-caveat', 'hl-note', 'tx-kpis', 'tx-chart-grid', 'chart-footfall',
-    'tx-frame-spend', 'chart-spend', 'tx-spend-box', 'tx-spend-empty', 'tx-chart-empty',
-    'tx-chart-foot', 'tx-hours-meta', 'tx-blocks', 'tx-hours-box', 'tx-hours-bars',
-    'tx-hours-empty', 'tx-hours-foot', 'tx-win-body', 'tx-wd-body', 'tx-multi-val',
-    'tx-multi-sub', 'tx-error', 'tx-scope',
+    'hl-lead', 'hl-value', 'hl-delta', 'hl-n', 'hl-erosion', 'hl-caveat',
+    'tx-chart-grid', 'chart-footfall', 'tx-chart-empty', 'tx-chart-foot',
+    'tx-hours-meta', 'tx-blocks', 'tx-hours-box', 'tx-hours-bars',
+    'tx-hours-empty', 'tx-hours-foot', 'tx-wd-body', 'tx-error', 'tx-scope',
   ];
   const manquants = IDS.filter(id => tpl.indexOf('id="' + id + '"') === -1);
   check('tous les points d’ancrage du rendu existent dans le gabarit',
     manquants.length === 0, manquants.join(', '));
 
-  // L'encart FIXE : il reste même quand tout va bien. Sans lui, ces questions se
-  // répondraient par un chiffre inventé.
-  check('l’encart « What this page cannot tell you » est là',
-    /What this page cannot tell you/.test(tpl));
-  check('il porte les regulars et la preuve chiffrée du NIF vide',
-    /Regulars/.test(tpl) && /59 of 60/.test(tpl) && /fiscal_id/.test(tpl));
-  check('il porte l’estimation des personnes, sa règle et son SENS',
-    /1 drink = 1 person/.test(tpl) && /ceiling 8/.test(tpl) && /upper bound/.test(tpl));
+  // ⚠️ LES CINQ LIMITES SONT REPLIÉES, PAS SUPPRIMÉES. Chacune répond à une question qu'on se
+  // poserait autrement avec un chiffre inventé. La page a maigri de 744 mots lus à 181 en
+  // DÉPLAÇANT cette prose, pas en l'effaçant : effacer la mise en garde sans effacer le chiffre
+  // qu'elle protège aurait rendu la page plus courte ET plus fausse.
+  const details = tpl.slice(tpl.indexOf('<details class="tx-limites"'), tpl.indexOf('</details>'));
+  check('le bloc des limites existe et il est REPLIÉ par défaut',
+    details.length > 0 && !/<details class="tx-limites"[^>]*\sopen/.test(tpl));
+  check('il porte les habitués et la preuve chiffrée du NIF vide',
+    /Regulars/.test(details) && /59 of 60 tickets/.test(details) && /fiscal_id/.test(details));
+  check('il porte l’estimation des personnes et sa règle',
+    /1 drink = 1 person/.test(details) && /ceiling&nbsp;8/.test(details));
   check('il porte l’exclusion de juin, avec les 55 boissons',
-    /June is excluded/.test(tpl) && /55 drinks/.test(tpl) && /27 May 2026/.test(tpl));
+    /June is excluded/.test(details) && /55 drinks/.test(details) && /27 May 2026/.test(details));
   check('il porte l’absence d’août de référence',
-    /Holiday effect/.test(tpl) && /2027/.test(tpl));
+    /first summer/.test(details) && /2027/.test(details));
   check('il dit pourquoi il n’y a AUCUNE tendance',
-    /No trend, on purpose/.test(tpl) && /regression/i.test(tpl));
+    /No trend, on purpose/.test(details) && /regression/.test(details));
+
+  // ⚠️ LA PROSE LUE SANS DÉPLIER EST PLAFONNÉE. C'était la demande : « truffée de textes, je
+  // veux lire plus facilement ». Sans chiffre, la page se remplit à nouveau une explication à
+  // la fois, et chacune paraîtra justifiée.
+  const corps = tpl.slice(tpl.indexOf('<div class="page">'), tpl.indexOf('<script src="/static/ui.js'));
+  const ouvert = corps.slice(0, corps.indexOf('<details')) + corps.slice(corps.indexOf('</details>'));
+  const mots = ouvert.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().split(' ').length;
+  check('moins de 220 mots se lisent sans rien déplier (744 avant)', mots < 220, String(mots));
+
   check('le mot « customers » n’est jamais employé pour les personnes estimées',
     !/\d+\s*customers/i.test(tpl));
 }
@@ -677,17 +609,19 @@ console.log('\n— le gabarit');
   // La garde qui compte le plus : rien sur cette page n'a le droit de lisser,
   // d'ajuster ou de projeter. Un `stepped` retiré transformerait chaque palier en
   // pente, et personne ne le verrait dans une revue de diff.
-  check('les deux séries de fenêtre sont des ESCALIERS, jamais des courbes',
-    (src.match(/stepped: 'middle'/g) || []).length === 3,
+  check('la série de fenêtre est un ESCALIER, jamais une courbe',
+    (src.match(/stepped: 'middle'/g) || []).length === 1,
     String((src.match(/stepped: 'middle'/g) || []).length));
   check('aucun trou n’est comblé par interpolation',
-    (src.match(/spanGaps: false/g) || []).length === 4
+    (src.match(/spanGaps: false/g) || []).length === 1
     && !/spanGaps: true/.test(src));
   check('aucune tension de courbe n’est introduite', !/tension:/.test(src));
   check('aucun axe n’est plafonné en douce',
     !/suggestedMax|max:\s*\d/.test(src));
-  check('les deux cadres ne partagent PAS d’axe Y — pas de double axe',
-    !/yAxisID|position: 'right'/.test(src));
+  // ⚠️ IL N'Y A PLUS QU'UN CADRE, ET LE DANGER RESTE LE MÊME. Le jour où une seconde série
+  // reviendra, elle devra reprendre un cadre à elle : caler deux échelles l'une sur l'autre
+  // fabriquerait une corrélation que la donnée ne porte pas.
+  check('aucun double axe Y', !/yAxisID|position: 'right'/.test(src));
 }
 
 // ══ 16. LE RENDU LUI-MÊME, EXÉCUTÉ ════════════════════════════════════════
@@ -744,57 +678,46 @@ function faireDom() {
   check('le rendu complet passe sur le payload réel, sans id manquant', boum === null, boum);
 
   const t = (id) => (dom.ids[id] ? (dom.ids[id].innerHTML || dom.ids[id].textContent) : '@ABSENT');
-  check('le bandeau du haut annonce l’exclusion, avec ses deux bornes',
-    /Analysis starts 1 Jul 2026/.test(t('tx-scope-band'))
-    && /27 May 2026/.test(t('tx-scope-band')) && /30 Jun 2026/.test(t('tx-scope-band')),
-    t('tx-scope-band'));
   check('la réponse est écrite : « Footfall is holding. » avec 26',
     /Footfall is holding\./.test(t('hl-lead')) && t('hl-value') === '26',
     t('hl-lead') + ' / ' + t('hl-value'));
   check('la pastille d’écart est posée, sans classe rouge',
     /−7 %/.test(t('hl-delta')) && !/delta-down|--red/.test(t('hl-delta')), t('hl-delta'));
-  check('l’érosion du CA/personne est bien écrite dans le bandeau',
+  check('l’érosion du CA/personne est bien écrite, avec ses deux fenêtres nommées',
     /€6\.45/.test(t('hl-erosion')) && /€7\.18/.test(t('hl-erosion'))
+    && /31 Jul/.test(t('hl-erosion')) && /3 Jul/.test(t('hl-erosion'))
     && /no trend is fitted/.test(t('hl-erosion')), t('hl-erosion'));
+  // ⚠️ LA PROVENANCE EST COLLÉE AU CHIFFRE. « CA par personne » veut dire deux choses très
+  // différentes selon que Mesa a compté les têtes ou qu'on les a devinées en comptant les
+  // boissons ; une provenance rangée dans le bloc replié serait une provenance qu'on ne lit pas.
+  check('et la provenance des personnes voyage AVEC lui — même inconnue',
+    /did not report where the headcount comes from/.test(t('hl-erosion')),
+    t('hl-erosion').slice(-160));
+  // ⚠️ « TIENT » EST UN JUGEMENT, PAS UNE MESURE. Sans son seuil, le mot prend l'autorité d'un
+  // fait — et avec cinq jours ouverts de chaque côté, une bonne journée le fait basculer.
   check('le seuil du verdict est affiché à l’écran, pas seulement dans le modèle',
     /&plusmn;10/.test(t('hl-rule')), t('hl-rule'));
-  check('les quatre cellules KPI sont posées, avec leurs sparklines',
-    (t('tx-kpis').match(/kpi-cell/g) || []).length === 4
-    && (t('tx-kpis').match(/<svg/g) || []).length === 4, t('tx-kpis').slice(0, 120));
-  // Le tooltip partagé [data-tip] vit dans static/dashboard.js, que cette page ne
-  // charge pas : une réserve rangée là n'existerait nulle part.
-  check('les réserves sont du TEXTE VISIBLE, pas un survol qui n’existe pas ici',
-    (t('tx-kpis').match(/tx-kpi-hint/g) || []).length === 4
-    && /ceiling 8/.test(t('tx-kpis')) && !/data-tip/.test(t('tx-kpis')),
-    t('tx-kpis').slice(0, 200));
-  check('l’axe tronqué du bas s’annonce sous le graphique',
-    /does not start at zero/.test(t('tx-chart-foot')), t('tx-chart-foot'));
+  check('la fenêtre précédente est nommée sous le chiffre, avec son n',
+    /28/.test(t('hl-n')) && /24 Jul/.test(t('hl-n')), t('hl-n'));
   check('le pied de graphique dit que les jours fermés ne sont pas des zéros',
-    /they are not zero-ticket days/.test(t('tx-chart-foot')));
-  check('il dit aussi que les deux cadres NE PARTAGENT PAS d’axe Y',
-    /neither shares a y-axis/.test(t('tx-chart-foot')), t('tx-chart-foot'));
+    /not a zero-ticket day/.test(t('tx-chart-foot')), t('tx-chart-foot'));
   check('le jour partiel est nommé en clair sous le graphique',
     /7 Aug/.test(t('tx-chart-foot')) && /partial/.test(t('tx-chart-foot')));
+  check('et le sommet est annoncé montré en entier',
+    /no scale clipping/.test(t('tx-chart-foot')));
   check('les trois blocs horaires sont rendus avec leurs barres',
     (t('tx-blocks').match(/progress-fill/g) || []).length === 3
     && /50\.4 %/.test(t('tx-blocks')), t('tx-blocks').slice(0, 100));
-  check('la table des fenêtres porte les cinq lignes',
-    (t('tx-win-body').match(/<tr class="">/g) || []).length === 5,
-    String((t('tx-win-body').match(/<tr/g) || []).length));
-  check('et le CA/personne de la dernière fenêtre y figure', /€6\.45/.test(t('tx-win-body')));
   check('les sept jours de semaine sont rendus',
     (t('tx-wd-body').match(/<tr>/g) || []).length === 7);
 
-  // Deux graphiques, deux configurations : aucune ne doit porter deux axes Y.
-  check('deux graphiques sont construits, pas un seul à deux axes',
-    dom.charts.length === 2, String(dom.charts.length));
-  check('chaque graphique n’a qu’UN axe Y',
+  // ⚠️ UN SEUL GRAPHIQUE DÉSORMAIS — et la garde sur le double axe reste, pour le jour où une
+  // seconde série reviendra. Caler deux échelles l'une sur l'autre fabriquerait une corrélation
+  // que la donnée ne porte pas.
+  check('un seul graphique est construit', dom.charts.length === 1, String(dom.charts.length));
+  check('et il n’a qu’UN axe Y',
     dom.charts.every(c => Object.keys(c.options.scales).filter(k => k[0] === 'y').length === 1),
     JSON.stringify(dom.charts.map(c => Object.keys(c.options.scales))));
-  check('les deux partagent exactement les mêmes étiquettes de dates',
-    dom.charts[0].data.labels.join('|') === dom.charts[1].data.labels.join('|'));
-  check('et la même largeur d’axe imposée, sans quoi ils ne s’alignent pas',
-    dom.charts.every(c => typeof c.options.scales.y.afterFit === 'function'));
   check('aucune animation ne masque un re-rendu',
     dom.charts.every(c => c.options.animation === false));
 }
@@ -810,13 +733,13 @@ function faireDom() {
   check('la raison est écrite à la place du chiffre, et l’élément est visible',
     /no 7-day window/.test(t('hl-note')) && dom.ids['hl-note'].style.display === '',
     t('hl-note'));
-  check('les quatre cellules restent à « — », chacune avec sa raison',
-    (t('tx-kpis').match(/>—</g) || []).length === 4
-    && (t('tx-kpis').match(/tx-kpi-reason/g) || []).length >= 4, t('tx-kpis').slice(0, 200));
   check('aucun graphique n’est construit sur du vide', dom.charts.length === 0);
-  check('les deux cadres sont masqués ensemble, pas un seul',
-    dom.ids['tx-chart-grid'].style.display === 'none'
-    && dom.ids['tx-frame-spend'].style.display === 'none');
+  // ⚠️ LE CADRE DISPARAÎT, IL NE RESTE PAS VIDE. Un graphique vide à l'écran ressemble à une
+  // mesure plate — et une mesure plate est une information, l'absence n'en est pas une.
+  check('le cadre du graphique est masqué, pas laissé vide',
+    dom.ids['tx-chart-grid'].style.display === 'none');
+  check('et le refus est écrit à sa place',
+    /No open day/.test(t('tx-chart-empty')), t('tx-chart-empty'));
   check('la répartition horaire affiche son refus, pas des barres',
     /not drawn/.test(t('tx-hours-empty')) && dom.ids['tx-hours-box'].style.display === 'none',
     t('tx-hours-empty'));
@@ -842,30 +765,28 @@ function faireDom() {
   const wins = WINDOWS.map((w, i) => (i === 4 ? { ...w, covers_capped: 3 } : w));
   dom.api.renderAll({ ...PAYLOAD, windows: wins });
   const t = (id) => (dom.ids[id] ? (dom.ids[id].innerHTML || dom.ids[id].textContent) : '@ABSENT');
-  check('le plafond atteint est écrit sous les cellules concernées',
-    (t('tx-kpis').match(/8-person ceiling/g) || []).length === 2, t('tx-kpis').slice(0, 80));
-  check('il est écrit dans la table des fenêtres',
-    /8-person ceiling reached 3×/.test(t('tx-win-body')));
-  check('et sous le graphique, où le chiffre est lu',
+  // ⚠️ LE PLAFOND ATTEINT SE DÉCLARAIT À TROIS ENDROITS ; IL N'EN RESTE QU'UN, ET IL DOIT
+  // TENIR. Une borne touchée veut dire que la fenêtre SOUS-COMPTE ses personnes, donc que son
+  // CA/personne est SUR-estimé : c'est une déformation du chiffre affiché, pas un détail.
+  check('le plafond atteint est écrit sous le graphique, où le chiffre est lu',
     /8-person ceiling/.test(t('tx-chart-foot')), t('tx-chart-foot'));
 }
 {
-  // Sans personnes estimées, le cadre du bas ne se dessine pas — il s'explique.
+  // ⚠️ SANS PERSONNES ESTIMÉES, LA LIGNE D'ÉROSION DOIT DIRE QU'ELLE NE SAIT PAS — et le reste
+  // de la page continue. C'est la garantie qui portait le cadre du bas ; elle a suivi le seul
+  // endroit où la dépense par personne se lit encore.
   const dom = faireDom();
   const nus = WINDOWS.map(w => { const c = { ...w }; delete c.covers_median; delete c.ca_per_cover; return c; });
   const jours = DAYS.map(d => { const c = { ...d }; delete c.covers; return c; });
   dom.api.renderAll({ ...PAYLOAD, windows: nus, days: jours });
   const t = (id) => (dom.ids[id] ? (dom.ids[id].innerHTML || dom.ids[id].textContent) : '@ABSENT');
-  check('le cadre du bas est masqué et remplacé par sa raison',
-    dom.ids['tx-spend-box'].style.display === 'none'
-    && /people were not estimated/.test(t('tx-spend-empty')), t('tx-spend-empty'));
-  check('le cadre du haut, lui, reste dessiné : l’affluence est mesurée',
+  check('l’érosion écrit « — » et sa raison, jamais 0,00 €',
+    /<b>—<\/b>/.test(t('hl-erosion')) && !/€0/.test(t('hl-erosion')), t('hl-erosion'));
+  check('le graphique, lui, reste dessiné : l’affluence est mesurée',
     dom.ids['tx-chart-grid'].style.display === '' && dom.charts.length === 1,
     String(dom.charts.length));
-  check('la légende du cadre absent est masquée avec lui — pas de marques sans tracé',
-    dom.ids['tx-spend-legend'].style.display === 'none');
-  check('et le pied ne parle plus de « deux cadres » quand il n’y en a qu’un',
-    !/both frames/.test(t('tx-chart-foot')), t('tx-chart-foot'));
+  check('et la réponse du haut tient toujours',
+    /26/.test(t('hl-value')), t('hl-value'));
 }
 
 // ══════════════════════════════════════════════════════════════════════════
