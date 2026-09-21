@@ -4,8 +4,19 @@
  * ⚠️ `null` RETIRE L'ATTRIBUT PLUTÔT QUE DE POSER UNE VALEUR NEUTRE. Un indicateur sans donnée
  * n'est pas « bon » : la bande reprend la couleur de la bordure, et l'œil ne s'y arrête pas.
  */
+/**
+ * Pose l'état d'un indicateur sur le CONTENEUR qui le porte.
+ *
+ * ⚠️ LE CHIFFRE RESTE EN ENCRE, C'EST LA BANDE QUI PORTE L'ÉTAT. Un nombre coloré est plus
+ * difficile à lire qu'un nombre noir, et sur douze indicateurs colorés plus rien ne ressort.
+ *
+ * ⚠️ LA LISTE DES CONTENEURS DOIT SUIVRE LES FORMES DE LA PAGE. Elle ne connaissait que
+ * `.kpi-cell` : appelée depuis le bandeau-réponse, qui est une `.tx-answer`, elle ne trouvait
+ * rien et ne faisait RIEN — l'état était calculé puis jeté en silence. Le pire cas : la
+ * fonction a l'air appelée, la couleur n'apparaît jamais, et on cherche le bogue dans le CSS.
+ */
 function etat(el, valeur){
-  var cel = el && el.closest ? el.closest('.kpi-cell') : null;
+  var cel = el && el.closest ? el.closest('.kpi-cell, .tx-answer, .maillon') : null;
   if (!cel) return;
   if (valeur) cel.setAttribute('data-etat', valeur);
   else cel.removeAttribute('data-etat');
@@ -265,6 +276,78 @@ async function rebuildCardVisits() {
 }
 
 // ── Rendu principal ───────────────────────────────────────────────────────────
+/**
+ * LA RÉPONSE DU HAUT : « est-ce qu'on couvre nos coûts ? »
+ *
+ * ⚠️ LA PAGE OUVRAIT SUR HUIT CELLULES DE MÊME POIDS, en deux grilles décrivant la même
+ * période. Aucune ne répondait à la question qu'on se pose en ouvrant un tableau de bord de
+ * café : est-ce que la journée paie ce qu'elle coûte ? On la reconstituait de tête, chaque
+ * matin, à partir du résultat et du point mort lus dans deux coins différents.
+ *
+ * ⚠️ LE VERDICT NOIR QUI VIVAIT ICI NE S'AFFICHAIT QUE SUR « AUJOURD'HUI ». Les six autres
+ * périodes n'avaient pas de réponse du tout — et « ce mois-ci » est précisément celle qu'on
+ * regarde pour décider quelque chose.
+ *
+ * ⚠️ ET « PAS DE DONNÉE » N'EST PAS « À L'ÉQUILIBRE ». Sans prix d'achat, le résultat n'est pas
+ * calculable : la réponse le dit et nomme le geste, au lieu d'afficher un zéro rassurant.
+ */
+function renderReponse(d) {
+  const eco = d.economics || {};
+  const E = (id) => document.getElementById(id);
+  const note = E('db-note');
+  const jours = eco.open_days != null ? eco.open_days : null;
+
+  if (eco.ebitda_ht == null) {
+    E('db-lead').textContent = 'Le résultat n’est pas calculable sur cette période.';
+    E('db-value').textContent = '—';
+    E('db-delta').innerHTML = '';
+    E('db-sub').innerHTML = '';
+    E('db-rule').innerHTML = '';
+    note.innerHTML = 'Il manque les prix d’achat pour connaître la marge. '
+      + '<a href="/cogs">Ouvrir COGS &amp; recettes →</a>';
+    note.style.display = '';
+    etat(E('db-value'), null);
+    return;
+  }
+
+  const couvre = eco.ebitda_ht >= 0;
+  E('db-value').textContent = fmt(eco.ebitda_ht);
+  etat(E('db-value'), couvre ? 'ok' : 'alerte');
+  E('db-lead').textContent = couvre
+    ? 'Les coûts sont couverts.'
+    : 'Les coûts ne sont pas couverts.';
+
+  /* ⚠️ LE MANQUE EST DIT EN EUROS DE CHIFFRE D'AFFAIRES, PAS EN RÉSULTAT. « Il manque 180 € »
+     de résultat n'indique aucun geste ; « il manque 740 € de ventes » se compare à une
+     journée. Les deux diffèrent du taux de marge, et c'est le second qu'on peut viser. */
+  const manque = eco.manque_seuil;
+  E('db-delta').innerHTML = couvre
+    ? '<span class="tx-chip tx-chip-up">au-dessus du point mort</span>'
+    : (manque > 0
+        ? `<span class="tx-chip tx-chip-down">${fmt(manque)} de ventes manquantes</span>`
+        : '');
+
+  const bouts = [];
+  if (eco.ca_ttc != null) bouts.push(`<b>${fmt(eco.ca_ttc)}</b> encaissés`);
+  if (eco.seuil_ca_ttc != null) bouts.push(`point mort <b>${fmt(eco.seuil_ca_ttc)}</b>`);
+  if (jours) bouts.push(`<b>${jours}</b> jour${jours > 1 ? 's' : ''} ouvert${jours > 1 ? 's' : ''}`);
+  E('db-sub').innerHTML = bouts.join(' · ');
+
+  /* ⚠️ CE QUI EST ESTIMÉ SE DIT À CÔTÉ DU CHIFFRE. Sous la couverture COGS complète, la marge
+     est extrapolée — donc le résultat ET le point mort le sont aussi. Le taire ferait lire un
+     résultat mesuré là où il y a une projection. */
+  if (eco.marge_is_estimated === true) {
+    note.innerHTML = `Marge extrapolée sur <b>${eco.cogs_coverage_pct}%</b> des ventes — `
+      + 'le résultat et le point mort en héritent.';
+    note.style.display = '';
+  } else {
+    note.style.display = 'none';
+  }
+
+  E('db-rule').innerHTML = 'Résultat = marge brute &minus; charges fixes et salaires, '
+    + 'répartis sur les jours <b>réellement ouverts</b>.';
+}
+
 function render(d) {
   window._lastData = d;
   loadReturning(d);
@@ -953,36 +1036,24 @@ function hideTxTooltip() {
 const WD_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
 function renderInsights(d) {
+  renderReponse(d);
   const ins = d.insights;
   const monthZone    = document.getElementById('month-zone');
   const patternsZone = document.getElementById('patterns-zone');
-  const verdictEl = document.getElementById('verdict-banner');
   if (!ins) {
     monthZone.style.display = 'none'; patternsZone.style.display = 'none';
-    verdictEl.style.display = 'none';
     return;
   }
 
-  // ── Verdict du jour : la journée en une phrase (vue Today uniquement) ──────
-  const v = ins.verdict;
-  if (d.is_today && v && v.nb > 0) {
-    const dayLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
-    let parts = [`<strong>${fmt(v.ca)}</strong> · ${v.nb} tickets`];
-    if (v.pct_of_typical != null) {
-      const good = v.pct_of_typical >= 100;
-      parts.push(`<span style="color:${good ? '#7ee2a8' : '#ffd27a'}">${v.pct_of_typical}%</span> of a typical ${v.weekday} (${fmt(v.typical_ca)} median, full day)`);
-    }
-    if (v.seuil != null) {
-      parts.push(v.seuil_time
-        ? `<span style="color:#7ee2a8">break-even reached at ${v.seuil_time}</span>`
-        : `<span style="color:#ffd27a">${fmt(Math.max(0, v.seuil - v.ca))} to break-even</span>`);
-    }
-    verdictEl.innerHTML = `✦ ${dayLabel} — ` + parts.join(' · ');
-    verdictEl.style.display = '';
-  } else {
-    verdictEl.style.display = 'none';
-  }
-
+  /* ⚠️ LE BANDEAU NOIR « VERDICT DU JOUR » EST PARTI. Il répondait à la même question que le
+   * bandeau-réponse du haut — « est-ce qu'on couvre nos coûts ? » — mais UNIQUEMENT sur la
+   * période « aujourd'hui ». Les six autres n'avaient pas de réponse du tout, et « ce mois-ci »
+   * est précisément celle qu'on regarde pour décider quelque chose.
+   *
+   * ⚠️ ET DEUX RÉPONSES À LA MÊME QUESTION, C'EST UNE DE TROP. Le jour où elles divergeraient —
+   * un arrondi, une période incluse d'un côté et pas de l'autre — on ne saurait pas laquelle
+   * croire, et on cesserait de croire les deux.
+   */
 
   // Zone 2 "This month" : masquée quand la période EST le mois en cours (doublon).
   const showMonthZone = currentPreset !== 'month' && ins.month && ins.month.days && ins.month.days.length;

@@ -142,9 +142,6 @@
 
   <div id="view-overview">
 
-  <!-- Verdict du jour : la journée en une phrase -->
-  <div id="verdict-banner" style="display:none;margin:0 0 10px;padding:11px 15px;border-radius:10px;background:#111;color:#fff;font-size:13.5px;line-height:1.5;"></div>
-
   <!-- Filtres de période -->
   <div class="period-pills" id="period-pills">
     <button class="pill active" data-preset="today"    onclick="setPreset('today')">Today</button>
@@ -201,79 +198,104 @@
     </div>
   </div>
 
-  <!-- KPIs — label dynamique selon la période -->
-  <div class="section-label" id="kpi-section-label">Today</div>
-  <div style="margin-bottom:32px;">
-    <div class="kpi-grid">
-      <div class="kpi-cell" data-tip="Total charged to customers, VAT included. The line below splits it into revenue excl. VAT and the VAT you collected. 'traffic × basket' explains what drove the change: more customers, or a bigger average spend.">
-        <div class="kpi-label">Revenue (incl. VAT)</div>
-        <div class="kpi-value" id="kpi-ca">—</div>
-        <div class="kpi-delta" id="kpi-ca-delta"></div>
-        <div class="kpi-delta" id="kpi-ca-drivers" style="margin-top:2px;"></div>
-        <div class="kpi-delta" id="kpi-ca-perday" style="margin-top:2px;"></div>
-        <div class="kpi-delta" id="kpi-ca-ht" style="color:var(--muted);margin-top:2px;"></div>
+  <!--
+    ⚠️ HUIT CELLULES DÉCRIVAIENT LA MÊME PÉRIODE, EN DEUX GRILLES SÉPARÉES. « KPIs » portait le
+    CA, les tickets, le ticket moyen et l'EBITDA ; « Today's economics » la marge, les charges,
+    le prime cost et le point mort. Toutes de même poids, certaines à cinq sous-lignes. Une
+    grille où tout pèse pareil ne hiérarchise rien : on la balaie sans rien y lire.
+
+    ⚠️ CE SONT POURTANT LES MAILLONS D'UNE SEULE CHAÎNE. Le CA paie la marchandise, ce qui reste
+    paie les charges, ce qui reste encore est le résultat. Les mettre bout à bout raconte une
+    histoire ; les poser en quatre carrés en oblige le lecteur à la reconstituer de tête, chaque
+    matin.
+
+    ⚠️ ET LES TICKETS ONT LEUR PAGE. `/transactions` les compte par jour, par heure et par jour
+    de semaine ; les répéter ici en pleine taille donnait deux endroits où lire la même chose,
+    et deux endroits à tenir d'accord.
+  -->
+  <div class="tx-section">
+    <div class="tx-card tx-answer">
+      <div class="tx-q">Est-ce qu'on couvre nos co&ucirc;ts&nbsp;?</div>
+      <div class="tx-lead" id="db-lead">&mdash;</div>
+      <div class="tx-answer-main">
+        <span class="tx-value" id="db-value">&mdash;</span>
+        <span class="tx-unit" id="db-unit">de r&eacute;sultat</span>
+        <span id="db-delta"></span>
       </div>
-      <!-- Cliquable vers /transactions. Le lien EMBOÎTE la cellule au lieu de la remplacer :
-           `data-tip` est lu par le tooltip partagé (style.css #hover-tip) sur .kpi-cell, et
-           déplacer l'attribut sur le <a> le ferait disparaître en silence. -->
-      <!-- Pas d'attribut `title` : le tooltip partagé existe pour REMPLACER les title natifs
-           (voir dashboard.js), les deux se superposeraient. L'invitation au clic est dans
-           `data-tip`, que ce tooltip lit déjà. -->
-      <a href="/transactions" class="kpi-link">
-      <div class="kpi-cell" data-tip="Number of sales tickets over the period, refunds deducted. A ticket is one customer checkout, whatever the number of items. Click to open the daily analysis since opening.">
-        <div class="kpi-label">Transactions <span class="kpi-go">→</span></div>
-        <div class="kpi-value" id="kpi-nb">—</div>
-        <div class="kpi-delta" id="kpi-nb-delta"></div>
-        <div class="kpi-delta" id="kpi-nb-perday" style="color:var(--muted);margin-top:2px;"></div>
-      </div>
-      </a>
-      <div class="kpi-cell" data-tip="Revenue ÷ transactions. The median below is the typical ticket — it ignores outliers like one big catering order that inflates the average.">
-        <div class="kpi-label">Average ticket</div>
-        <div class="kpi-value" id="kpi-ticket">—</div>
-        <div class="kpi-delta" id="kpi-ticket-delta"></div>
-        <div class="kpi-delta" id="kpi-ticket-median" style="color:var(--muted);margin-top:2px;"></div>
-      </div>
-      <div class="kpi-cell" data-tip="Estimated operating profit: gross margin minus all costs (fixed + payroll) for the period. Green = the café made money, red = it lost money.">
-        <div class="kpi-label" id="kpi-ebitda-label">Est. EBITDA</div>
-        <div class="kpi-value" id="kpi-ebitda">—</div>
-        <div class="kpi-delta" id="kpi-ebitda-sub" style="color:var(--muted)"></div>
-      </div>
+      <div class="tx-sub" id="db-sub"></div>
+      <div class="tx-rule" id="db-rule"></div>
+      <div class="tx-reason" id="db-note" style="display:none"></div>
     </div>
   </div>
 
-  <!-- Économie -->
-  <div class="section-label" id="eco-label" style="margin-top:32px;">Today's economics</div>
-  <div style="margin-bottom:32px;">
-    <div class="kpi-grid">
-      <div class="kpi-cell vedette" data-tip="Revenue excl. VAT minus the cost of goods sold (from your Vendus cost prices). 'COGS coverage' is the share of sales whose cost is actually known — the rest is estimated.">
-        <div class="kpi-label" id="eco-marge-label">Gross margin</div>
-        <div class="kpi-value" id="eco-marge">—</div>
-        <div class="kpi-delta" id="eco-marge-pct" style="color:var(--muted)"></div>
-      </div>
-      <div class="kpi-cell" data-tip="Fixed costs (rent, subscriptions…) plus payroll for the period, spread over the real open days — not calendar days. Edit these in the Costs tab.">
-        <div class="kpi-label" id="eco-charges-label">Costs (day)</div>
-        <div class="kpi-value" id="eco-charges">—</div>
-        <div class="kpi-delta" id="eco-charges-sub" style="color:var(--muted)"></div>
-      </div>
-      <div class="kpi-cell vedette" data-tip="COGS + labour as a % of revenue — the core restaurant health ratio. Target under 65%. The bar splits it: solid = COGS, light = labour.">
-        <div class="kpi-label" id="eco-prime-label">Prime cost</div>
-        <div class="kpi-value" id="eco-prime">—</div>
-        <div class="kpi-delta" id="eco-prime-sub" style="color:var(--muted)"></div>
-        <div class="progress-wrap">
-          <div style="display:flex;height:4px;border-radius:2px;overflow:hidden;background:var(--bar-bg);" id="eco-prime-bar"></div>
-        </div>
-      </div>
-      <div class="kpi-cell" data-tip="The revenue you need to cover all costs, VAT included. Computed as costs ÷ your real margin. 'avg /open day' and its arrow track whether your break-even is rising or falling vs the comparison period.">
-        <div class="kpi-label" id="eco-seuil-label">Break-even revenue</div>
-        <div class="kpi-value" id="eco-seuil">—</div>
-        <div class="kpi-delta" id="eco-seuil-sub"></div>
-        <div class="kpi-delta" id="eco-seuil-avg" style="margin-top:2px;"></div>
-        <div class="progress-wrap">
-          <div class="progress-track"><div class="progress-fill" id="eco-seuil-bar" style="width:0%"></div></div>
-        </div>
-      </div>
+  <!--
+    ⚠️ LA CHAÎNE DOIT ÊTRE ARITHMÉTIQUEMENT VRAIE. Ma première version enchaînait
+    « CA − marchandise − charges = résultat » : faux, parce que le CA est TTC et la marge se
+    calcule HORS TAXES. Une chaîne qui ne tombe pas juste est pire qu'une grille — elle promet
+    une addition vérifiable, et la promesse se casse au premier calcul mental.
+    Ce qui tombe juste : marge brute − charges = résultat. Le CA reste en tête, comme ce qui
+    entre, et la marchandise vit sous la marge qu'elle a déjà retranchée.
+  -->
+  <div class="section-label" id="kpi-section-label">La cha&icirc;ne</div>
+  <div class="chaine" id="chaine">
+    <div class="maillon" data-tip="Total encaissé auprès des clients, TVA comprise. La ligne du dessous le ventile en chiffre d'affaires hors taxes et TVA collectée.">
+      <div class="maillon-l">Chiffre d'affaires</div>
+      <div class="maillon-v" id="kpi-ca">&mdash;</div>
+      <div class="maillon-s" id="kpi-ca-delta"></div>
+      <div class="maillon-s" id="kpi-ca-drivers"></div>
+      <div class="maillon-s" id="kpi-ca-ht"></div>
+      <div class="maillon-s" id="kpi-ca-perday"></div>
+    </div>
+    <div class="maillon-fleche" aria-hidden="true">&rsaquo;</div>
+    <div class="maillon" data-tip="Chiffre d'affaires hors taxes moins le coût de la marchandise vendue, d'après les prix de revient Vendus. La couverture dit quelle part des ventes a un coût réellement connu.">
+      <div class="maillon-l" id="eco-marge-label">Marge brute</div>
+      <div class="maillon-v" id="eco-marge">&mdash;</div>
+      <div class="maillon-s" id="eco-marge-pct"></div>
+    </div>
+    <div class="maillon-fleche" aria-hidden="true">&minus;</div>
+    <div class="maillon" data-tip="Charges fixes et salaires de la période, répartis sur les jours RÉELLEMENT ouverts — pas sur les jours du calendrier.">
+      <div class="maillon-l" id="eco-charges-label">Charges</div>
+      <div class="maillon-v" id="eco-charges">&mdash;</div>
+      <div class="maillon-s" id="eco-charges-sub"></div>
+    </div>
+    <div class="maillon-fleche" aria-hidden="true">=</div>
+    <div class="maillon fin" data-tip="Ce qu'il reste une fois la marchandise et toutes les charges payées.">
+      <div class="maillon-l" id="kpi-ebitda-label">R&eacute;sultat</div>
+      <div class="maillon-v" id="kpi-ebitda">&mdash;</div>
+      <div class="maillon-s" id="kpi-ebitda-sub"></div>
     </div>
   </div>
+
+  <!-- Le point mort et le prime cost, en barres : « où on en est » d'un coup d'œil. -->
+  <div class="section-label" id="eco-label">O&ugrave; on en est</div>
+  <div class="seuil-strip" id="seuil-strip">
+    <div class="seuil-tete">
+      <span class="seuil-l" id="eco-seuil-label">Point mort</span>
+      <span class="seuil-v" id="eco-seuil">&mdash;</span>
+      <span class="seuil-s" id="eco-seuil-sub"></span>
+      <span class="seuil-s" id="eco-seuil-avg"></span>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="eco-seuil-bar" style="width:0%"></div></div>
+    <div class="seuil-tete" style="margin-top:12px">
+      <span class="seuil-l" id="eco-prime-label">Prime cost</span>
+      <span class="seuil-v" id="eco-prime">&mdash;</span>
+      <span class="seuil-s" id="eco-prime-sub"></span>
+    </div>
+    <div style="display:flex;height:4px;border-radius:2px;overflow:hidden;background:var(--bar-bg);" id="eco-prime-bar"></div>
+  </div>
+
+  <!-- Le volume, en une ligne : il a sa page, il n'a pas besoin d'un quart de l'écran. -->
+  <a class="volume" href="/transactions">
+    <span><b id="kpi-nb">&mdash;</b> tickets</span>
+    <span id="kpi-nb-delta"></span>
+    <span class="volume-sep">&middot;</span>
+    <span><b id="kpi-ticket">&mdash;</b> ticket moyen</span>
+    <span id="kpi-ticket-delta"></span>
+    <span class="volume-sep">&middot;</span>
+    <span id="kpi-ticket-median"></span>
+    <span id="kpi-nb-perday"></span>
+    <span class="volume-go">Affluence &rarr;</span>
+  </a>
 
   <!-- ═══ Bloc Activity — peaks + revenue by hour + rush heatmap, groupés (Mesa) ═══ -->
   <!-- Pics d'activité (conditionnel — jour unique) -->

@@ -49,14 +49,36 @@ def test_le_chiffre_nest_plus_colore():
     assert "prime <= 67 ? 'var(--green)'" not in bloc
 
 
-def test_les_deux_indicateurs_qui_decident_sont_en_vedette():
+def test_un_seul_maillon_est_mis_en_avant():
     """
-    La marge et le prime cost décident d'un geste ; le reste est du contexte. ⚠️ ET PAS PLUS DE
-    DEUX : si tout est en vedette, plus rien ne l'est.
+    ⚠️ SI TOUT EST EN VEDETTE, PLUS RIEN NE L'EST. Les deux grilles de quatre cellules ont fait
+    place à une chaîne — marge brute − charges = résultat — et c'est le RÉSULTAT qu'on vient
+    lire. Sans cet appui, la chaîne se termine sur un chiffre de même poids que son point de
+    départ, et l'œil ne sait pas où s'arrêter.
     """
     index = lire("templates/index.html")
-    assert index.count("kpi-cell vedette") == 2
-    assert ".kpi-cell.vedette .kpi-value" in CSS
+    assert index.count("maillon fin") == 1
+    assert index.count("kpi-cell vedette") == 0, "l'ancienne mise en vedette traîne encore"
+    assert ".maillon.fin .maillon-v" in CSS
+
+
+def test_la_chaine_tombe_juste():
+    """
+    ⚠️ UNE CHAÎNE PROMET UNE ADDITION VÉRIFIABLE. Ma première version enchaînait
+    « CA − marchandise − charges = résultat » : faux, parce que le CA est TTC et la marge se
+    calcule hors taxes. Une chaîne qui ne tombe pas juste est pire qu'une grille — la promesse
+    se casse au premier calcul mental, et plus rien sur la page n'est cru.
+    """
+    index = lire("templates/index.html")
+    i = index.index('<div class="chaine"')
+    bloc = index[i:index.index('<!-- Le point mort', i)]
+    ordre = [m for m in ("kpi-ca", "eco-marge", "eco-charges", "kpi-ebitda")]
+    positions = [bloc.index(f'id="{m}"') for m in ordre]
+    assert positions == sorted(positions), "les maillons ne sont pas dans l'ordre du calcul"
+    # Les opérateurs qui relient MARGE, CHARGES et RÉSULTAT sont une soustraction et une
+    # égalité ; celui qui précède la marge ne l'est pas — le CA n'est pas dans l'addition.
+    operateurs = re.findall(r'class="maillon-fleche"[^>]*>([^<]+)<', bloc)
+    assert operateurs[1:] == ["&minus;", "="], operateurs
 
 
 def test_un_indicateur_sans_donnee_na_pas_detat():
@@ -316,3 +338,16 @@ def test_la_densite_a_monte():
     i = CSS.index(".kpi-cell {")
     assert "padding: 12px 14px 12px 17px" in CSS[i:CSS.index("}", i)]
     assert ".app .page { max-width: none; margin: 0; padding: 20px 20px 64px; }" in CSS
+
+
+def test_la_bande_detat_suit_les_conteneurs_que_la_fonction_connait():
+    """
+    ⚠️ `etat()` NE CONNAISSAIT QUE `.kpi-cell`. Appelée depuis le bandeau-réponse, elle ne
+    trouvait aucun conteneur et ne faisait RIEN : l'état était calculé puis jeté en silence. La
+    fonction a été élargie — la mise en forme doit suivre, sans quoi l'attribut serait posé sans
+    que rien ne l'affiche, ce qui est le même défaut à l'envers.
+    """
+    i = DASH.index("var cel = el && el.closest ? el.closest(")
+    selecteurs = re.findall(r"closest\('([^']+)'\)", DASH[i:i + 200])[0]
+    for sel in [s.strip() for s in selecteurs.split(",")]:
+        assert f'{sel}[data-etat="alerte"]::before' in CSS, f"{sel} n'a pas de bande d'état"

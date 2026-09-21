@@ -241,6 +241,19 @@ body {
 .kpi-cell[data-etat="attention"]::before { background: var(--amber); }
 .kpi-cell[data-etat="alerte"]::before    { background: var(--red); }
 
+/* ⚠️ LE BANDEAU-RÉPONSE ET LES MAILLONS PORTENT LA MÊME BANDE. `etat()` ne connaissait que
+   `.kpi-cell` : appelée depuis le bandeau, elle ne trouvait aucun conteneur et ne faisait rien
+   — l'état était calculé puis jeté en silence. La fonction a été élargie ; la mise en forme
+   doit suivre, sans quoi l'attribut serait posé sans que rien ne l'affiche. */
+.tx-answer, .maillon { position: relative; }
+.tx-answer[data-etat]::before, .maillon[data-etat]::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--border);
+}
+.tx-answer[data-etat="ok"]::before,        .maillon[data-etat="ok"]::before        { background: var(--bar); }
+.tx-answer[data-etat="attention"]::before, .maillon[data-etat="attention"]::before { background: var(--amber); }
+.tx-answer[data-etat="alerte"]::before,    .maillon[data-etat="alerte"]::before    { background: var(--red); }
+
 /* ⚠️ TOUS LES INDICATEURS N'ONT PAS LE MÊME POIDS. Douze chiffres de taille identique ne
    disent pas lequel regarder. Ceux qui décident quelque chose — la marge, le prime cost —
    sont lisibles à deux mètres ; les autres sont du contexte. */
@@ -875,3 +888,85 @@ td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 
 /* ⚠️ `hidden` DOIT GAGNER. Une règle d'affichage plus spécifique sur le panneau le masquerait —
    c'est exactement le bogue de la barre blanche du 19/09 sur la fiche client. */
 .onglet[hidden], .pa-panneau[hidden] { display: none !important; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   LA CHAÎNE DE L'ARGENT — ce qui entre, ce qu'il en reste à chaque étape.
+   ═══════════════════════════════════════════════════════════════════════════════════════════
+
+   ⚠️ HUIT CELLULES DE MÊME POIDS DÉCRIVAIENT LA MÊME PÉRIODE, EN DEUX GRILLES. Une grille où
+   tout pèse pareil ne hiérarchise rien : on la balaie sans rien y lire. Ce sont pourtant les
+   maillons d'une seule chaîne — la marge paie les charges, ce qui reste est le résultat.
+
+   ⚠️ ET LA CHAÎNE DOIT TOMBER JUSTE. Elle promet une addition vérifiable ; si elle ne tombe pas
+   juste, la promesse se casse au premier calcul mental, et plus rien sur la page n'est cru.
+   D'où « marge brute − charges = résultat », et non « CA − marchandise − charges » : le CA est
+   TTC, la marge se calcule hors taxes.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+.chaine {
+  display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+  align-items: stretch; gap: 0; margin-bottom: 14px;
+  border: 1px solid var(--border); border-radius: 4px; background: var(--bg-card);
+  overflow-x: auto;
+}
+.maillon { padding: 15px 17px; min-width: 0; }
+.maillon-l {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 7px; white-space: nowrap;
+}
+.maillon-v {
+  font-size: 25px; font-weight: 600; letter-spacing: -.5px; color: var(--text);
+  line-height: 1.1; font-variant-numeric: tabular-nums;
+}
+.maillon-s {
+  font-size: 11.5px; color: var(--muted); margin-top: 4px; line-height: 1.5;
+}
+.maillon-s:empty { display: none; }
+/* ⚠️ LE DERNIER MAILLON EST CELUI QU'ON VIENT LIRE. Sans cet appui, la chaîne se termine sur
+   un chiffre de même poids que son point de départ, et l'œil ne sait pas où s'arrêter. */
+.maillon.fin { background: var(--bg); }
+.maillon.fin .maillon-v { font-size: 29px; }
+/* Les opérateurs : discrets, mais présents — ce sont eux qui disent que c'est une addition. */
+.maillon-fleche {
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 4px; font-family: var(--mono); font-size: 15px; color: var(--faint);
+  border-left: 1px solid var(--border); border-right: 1px solid var(--border);
+  background: var(--bg);
+}
+@media (max-width: 900px) {
+  .chaine { grid-template-columns: 1fr; }
+  .maillon-fleche { border-left: none; border-right: none;
+    border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 3px 0; }
+}
+
+/* ── Où on en est : deux barres, pas deux cellules ────────────────────────────
+      ⚠️ UN POURCENTAGE SEUL NE DIT PAS S'IL EST BON. La barre le situe entre zéro et
+      le seuil ; c'est la seule forme qui se lit sans connaître la cible par cœur. ── */
+.seuil-strip {
+  border: 1px solid var(--border); border-radius: 4px; background: var(--bg-card);
+  padding: 14px 17px; margin-bottom: 26px;
+}
+.seuil-tete { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 7px; }
+.seuil-l {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--muted); min-width: 92px;
+}
+.seuil-v { font-size: 17px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.seuil-s { font-size: 11.5px; color: var(--muted); }
+.seuil-s:empty { display: none; }
+
+/* ── Le volume, en une ligne ──────────────────────────────────────────────────
+      ⚠️ LES TICKETS ONT LEUR PAGE. `/transactions` les compte par jour, par heure et
+      par jour de semaine ; leur donner un quart du tableau de bord donnait deux
+      endroits où lire la même chose, et deux endroits à tenir d'accord. ── */
+.volume {
+  display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;
+  font-size: 12.5px; color: var(--muted); text-decoration: none;
+  padding: 11px 17px; margin-bottom: 30px;
+  border: 1px solid var(--border); border-radius: 4px; background: var(--bg-card);
+}
+.volume:hover { border-color: var(--text); }
+.volume b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.volume-sep { color: var(--faint); }
+.volume-go { margin-left: auto; color: var(--spec); font-size: 12px; white-space: nowrap; }
