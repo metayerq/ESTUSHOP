@@ -148,3 +148,49 @@ def test_les_jours_ouverts_excluent_les_jours_de_fermeture():
     jours = C.jours_ouverts_entre(date(2026, 9, 14), date(2026, 9, 20), ouvert)
     assert len(jours) == 5
     assert date(2026, 9, 15) not in jours
+
+
+# ── Le cas que le déploiement a failli emporter ──────────────────────────────────────────────
+#
+# ⚠️ AVANT LES DATES, `active` ÉTAIT LA SEULE FAÇON D'ARRÊTER UN POSTE. `daily_economics`
+# filtrait `active=eq.true` ; ce filtre est tombé pour qu'une ligne clôturée compte encore dans
+# les mois passés. Mais une charge éteinte à la main, sans bornes, s'est alors remise à coûter —
+# un logiciel résilié qui reprend 120 € par mois, sans un mot, sur tous les mois à la fois.
+#
+# ⚠️ ET C'EST AUSSI CE QUI TIENT LA PROMESSE DU DÉPLOIEMENT. Le jour de la migration, aucune
+# ligne n'a de bornes : toutes doivent se comporter exactement comme la veille.
+
+DESACTIVEE = {"name": "Ancien logiciel", "amount": 120.0, "frequency": "monthly",
+              "active": False, "valid_from": None, "valid_to": None}
+
+
+def test_une_charge_eteinte_a_la_main_ne_compte_pas():
+    assert C.charges_mensuelles([DESACTIVEE], date(2026, 9, 21)) == 0.0
+
+
+def test_un_salarie_eteint_a_la_main_ne_compte_pas():
+    parti = {"name": "Ana", "gross_monthly": 900, "type": "full_time", "active": False,
+             "valid_from": None, "valid_to": None}
+    assert C.personnel_mensuel([parti], date(2026, 9, 21)) == 0.0
+
+
+def test_active_ne_lemporte_que_faute_de_bornes():
+    """
+    ⚠️ DÈS QU'UNE LIGNE A UNE DATE, C'EST LA DATE QUI COMMANDE. Sinon `active`, que le serveur
+    fait basculer au jour dit, se mettrait à contredire la borne qu'il vient lui-même d'écrire :
+    une ligne clôturée au 1er novembre cesserait de compter en septembre.
+    """
+    close_plus_tard = dict(DESACTIVEE, valid_to="2026-11-01")
+    assert C.applicable(close_plus_tard, date(2026, 9, 21)) is True
+    assert C.applicable(close_plus_tard, date(2026, 11, 1)) is False
+
+
+def test_une_ligne_sans_champ_active_sapplique():
+    """Les vecteurs et les anciennes lignes n'ont pas ce champ — son absence n'est pas un « non »."""
+    assert C.applicable({"amount": 100}, date(2026, 9, 21)) is True
+
+
+def test_active_vrai_ne_force_rien_contre_les_dates():
+    """Une ligne active mais pas encore entrée en vigueur ne compte pas."""
+    future = {"amount": 100, "active": True, "valid_from": "2026-10-01", "valid_to": None}
+    assert C.applicable(future, date(2026, 9, 21)) is False

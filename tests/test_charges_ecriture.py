@@ -368,3 +368,20 @@ def test_seul_ladmin_touche_aux_salaires(monkeypatch, role):
     c = flask_app.app.test_client()
     assert c.patch("/api/employees/e1", json={"gross_monthly": 1}).status_code in (401, 403)
     assert c.delete("/api/employees/e1", json={}).status_code in (401, 403)
+
+
+def test_le_rattrapage_ne_ressuscite_pas_ce_qui_a_ete_eteint_a_la_main(monkeypatch):
+    """
+    ⚠️ LE RATTRAPAGE A FAILLI RALLUMER TOUT CE QUI ÉTAIT ÉTEINT. Une charge désactivée avant que
+    les dates existent n'a aucune borne : `applicable()` la disait applicable, et le rattrapage
+    remettait `active` à vrai. Un logiciel résilié qui se remet à coûter 120 € par mois, et
+    l'écran qui le montre de nouveau actif — sans que personne ait rien fait.
+    """
+    lignes = [{"id": "vieux", "active": False, "valid_from": None, "valid_to": None}]
+    ecrits = []
+    monkeypatch.setattr(flask_app, "_supa_get", lambda t, p: lignes)
+    monkeypatch.setattr(flask_app, "_supa_patch",
+                        lambda t, f, d: (ecrits.append((f, d)), (True, None))[1])
+    monkeypatch.setattr(flask_app, "today_lisbon", lambda: date(2026, 9, 21))
+    assert flask_app._resynchroniser_active("charges_fixes") == 0
+    assert not ecrits

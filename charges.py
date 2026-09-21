@@ -52,6 +52,15 @@ def applicable(ligne, jour):
     """
     debut = _jour(ligne.get("valid_from"))
     fin = _jour(ligne.get("valid_to"))
+    # ⚠️ SANS BORNES, `active` EST LA BORNE. Avant cette migration, une charge désactivée était
+    # écartée de TOUS les calculs : c'était le seul moyen d'arrêter un poste. Retirer le filtre
+    # `active=eq.true` sans honorer ce cas remettait en service tout ce que Quentin avait
+    # éteint — un logiciel résilié qui recommence à coûter 120 € par mois, sans un mot.
+    #
+    # C'est aussi ce qui tient la promesse du déploiement : le jour de la migration, aucune
+    # ligne n'a de bornes, et toutes se comportent donc exactement comme la veille.
+    if debut is None and fin is None and ligne.get("active") is False:
+        return False
     if debut is not None and jour < debut:
         return False
     if fin is not None and jour >= fin:
