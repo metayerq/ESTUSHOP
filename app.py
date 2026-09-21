@@ -3392,6 +3392,98 @@ def api_pourboires():
     })
 
 
+def _eur(v):
+    """« 384,2 » → « 384,20 € ». ⚠️ VIRGULE ET ESPACE INSÉCABLE : c'est du portugais et du
+    français, pas de l'anglais — « 384.20 EUR » se lit comme une sortie de machine."""
+    try:
+        n = f"{float(v):,.2f}".replace(",", " ").replace(".", ",")
+    except (TypeError, ValueError):
+        return "—"
+    return n + "\u00a0€"
+
+
+@app.route("/api/statut")
+def api_statut():
+    """
+    LA BANDE D'ÉTAT — ce qui suit d'une page à l'autre.
+
+    ⚠️ ELLE S'AFFICHE SUR TOUTES LES PAGES, DONC ELLE DOIT ÊTRE LÉGÈRE. Une seule source
+    coûteuse ici et chaque navigation du backoffice paierait une seconde de plus — jusqu'au jour
+    où l'on retirerait la bande pour cette raison. Tout vient du cache du jour et de deux
+    lectures Supabase.
+
+    ⚠️ ET CHAQUE MORCEAU ÉCHOUE SÉPARÉMENT. Si la fidélité est indisponible, le chiffre du jour
+    reste affiché : une bande partiellement remplie vaut mieux qu'une bande vide, et bien mieux
+    qu'une erreur en travers de l'écran de travail.
+    """
+    if _current_role() is None:
+        return jsonify({"error": "unauthorized"}), 401
+
+    out = {"ca": None, "tickets": None, "ca_texte": "—", "moyen_texte": None,
+           "compare": None, "ecarts": 0, "caisse_ok": None, "boissons_dues": 0}
+
+    # ── Le jour courant, depuis le cache que le cron réchauffe toutes les cinq minutes ──────
+    try:
+        docs = _get_today_docs_cached() or []
+        ca = sum(float(d.get("amount_gross") or 0) for d in docs)
+        nb = sum(1 for d in docs if not d.get("_refund"))
+        out["ca"], out["tickets"] = round(ca, 2), nb
+        out["ca_texte"] = _eur(ca)
+        # ⚠️ LE TICKET MOYEN SE DIVISE PAR LES VENTES, PAS PAR LES DOCUMENTS. Les avoirs sont
+        # des documents ; les compter au dénominateur ferait baisser le ticket moyen un jour de
+        # remboursement, alors que rien n'a changé pour les clients qui ont acheté.
+        if nb:
+            out["moyen_texte"] = _eur(ca / nb)
+    except Exception:
+        pass
+
+    # ── Les écarts de caisse ouverts ────────────────────────────────────────────────────────
+    try:
+        hier = today_lisbon() - timedelta(1)
+        debut = hier - timedelta(13)
+        resume = {r["day"]: r for r in _fetch_summaries(debut.isoformat(), hier.isoformat())}
+        terminal = {r["day"]: r for r in _supa_get(
+            "terminal_days", [("day", f"gte.{debut.isoformat()}"),
+                              ("day", f"lte.{hier.isoformat()}")])}
+        ecarts, dernier_ok = 0, None
+        for jour in sorted(resume.keys() | terminal.keys()):
+            t = terminal.get(jour) or {}
+            r = resume.get(jour) or {}
+            reparti = _classer_paiements(r.get("payments"))
+            v_total = round(float(r.get("ca_ttc") or 0) * 100)
+            if reparti is not None and v_total > 0 and not (
+                    reparti["carte_cents"] or reparti["especes_cents"] or reparti["autre_cents"]):
+                reparti = None
+            if reparti is None:
+                continue
+            brut = int(t.get("gross_cents") or 0)
+            if not brut and not reparti["carte_cents"]:
+                continue        # journée fermée : ce n'est pas une anomalie
+            ecart = brut - int(t.get("refunds_cents") or 0) - reparti["carte_cents"]
+            if abs(ecart) > 5:
+                ecarts += 1
+            else:
+                dernier_ok = jour
+        out["ecarts"] = ecarts
+        # ⚠️ ON N'ANNONCE « CAISSE ✓ » QUE S'IL N'Y A AUCUN ÉCART OUVERT. Afficher les deux
+        # côte à côte — « ✓ vendredi » et « 2 à vérifier » — ferait lire le vert et ignorer le
+        # rouge, ce qui est exactement l'inverse de ce qu'une bande d'alerte doit produire.
+        if not ecarts and dernier_ok:
+            out["caisse_ok"] = dernier_ok[8:10] + "/" + dernier_ok[5:7]
+    except Exception:
+        pass
+
+    # ── Les boissons dues ───────────────────────────────────────────────────────────────────
+    try:
+        reglages = _fidelidade_reglages()
+        comptes, _conv, _tr = _fidelidade_donnees(now_lisbon(), reglages)
+        out["boissons_dues"] = sum(c["state"]["rewards_due"] for c in comptes)
+    except Exception:
+        pass
+
+    return jsonify(out)
+
+
 # ── LE RAPPROCHEMENT TRANSACTION PAR TRANSACTION ─────────────────────────────────────────────
 #
 # ⚠️ UN ÉCART CHIFFRÉ NE SE RÉPARE PAS. « 23,40 € » dit qu'il y a un problème ; « paiement de
@@ -3750,9 +3842,14 @@ def _contabilidade_months():
 
 @app.route("/contabilidade")
 def contabilidade_page():
-    if _current_role() not in ("accountant", "admin"):
+    role = _current_role()
+    if role not in ("accountant", "admin"):
         return redirect("/login")
-    return render_template("contabilidade.html")
+    # ⚠️ LE RAIL N'EST PAS POUR LE COMPTABLE. Cette page lui est destinée, et lui montrer la
+    # navigation du backoffice l'inviterait dans des écrans qui ne le regardent pas — dépenses,
+    # fichier clients, marketing. Mais l'admin qui y arrive depuis le rail doit pouvoir en
+    # repartir : sans issue, il ferme l'onglet et n'y revient plus.
+    return render_template("contabilidade.html", rail=(role == "admin"))
 
 @app.route("/api/contabilidade/data")
 def api_contabilidade_data():

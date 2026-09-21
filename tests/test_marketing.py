@@ -355,30 +355,14 @@ def test_la_confirmation_annonce_le_nombre_reellement_coche():
 
 # ── L'enveloppe de la page ───────────────────────────────────────────────────────────────────
 
-def test_la_nav_a_son_style():
-    """
-    ⚠️ CE BOGUE A ÉTÉ LIVRÉ, ET IL RENDAIT LA PAGE ILLISIBLE. La barre de navigation est
-    recopiée dans chaque gabarit, accompagnée d'un bloc `<style>` qui la précède. En fabriquant
-    `marketing.html` à partir de `fidelidade.html`, j'ai pris le `<nav>` sans ce bloc : sans
-    `.nav-menu { display:none }`, TOUS les menus déroulants s'affichent en permanence et la
-    navigation se déverse dans la page.
-
-    ⚠️ ET RIEN NE SIGNALAIT L'ABSENCE. Le HTML était valide, la page se rendait, les tests
-    passaient — une règle CSS manquante ne lève pas.
-    """
-    html = _gabarit()
-    assert '<nav class="topnav"' in html
-    for regle in (".topnav {", ".nav-menu {", ".nav-group {", ".nav-link.active"):
-        assert regle in html, f"règle de navigation absente du gabarit : {regle}"
-
-
-def test_le_style_de_la_nav_precede_la_nav():
-    """Une feuille de style posée après l'élément laisse un clignotement à chaque chargement."""
-    html = _gabarit()
-    assert html.index(".nav-menu {") < html.index('<nav class="topnav"')
-
-
-# ── L'envoi d'essai ──────────────────────────────────────────────────────────────────────────
+# ⚠️ DEUX TESTS ONT DISPARU ICI, LE 21/09/2026 : ils vérifiaient que ce gabarit portait bien
+# sa copie de la feuille de style de la navigation. Cette copie n'existe plus — la coquille est
+# un partiel unique (`_rail.html`), et la classe de bogue qu'ils gardaient a disparu avec elle.
+#
+# ⚠️ LEUR REMPLAÇANT EST PLUS FORT : `tests/test_coquille.py` exige qu'AUCUN gabarit ne recopie
+# la navigation, et vérifie que chacun porte bien le rail et la bande d'état. Un test qui passe
+# parce que la chose qu'il cherchait n'existe plus est pire qu'un test absent : il compte comme
+# de la couverture.
 
 def test_lessai_demande_un_test_et_pas_un_envoi(client, admin, mesa):
     client.post("/api/marketing/test", json={"texte": "Amanha temos pao quente"})

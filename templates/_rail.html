@@ -1,0 +1,122 @@
+{#
+  LA COQUILLE DE TOUTES LES PAGES — rail de navigation et bande d'état.
+
+  ⚠️ UN SEUL FICHIER, ET C'EST LA MOITIÉ DE LA REFONTE. La navigation était recopiée à la main
+  dans treize gabarits : ajouter une page demandait treize modifications, et j'en ai déjà oublié
+  une — la feuille de style de la nav, laissée derrière sur `marketing.html`, qui a rendu la page
+  illisible sans qu'aucun test ne rougisse.
+
+  ⚠️ LE RAIL NE BOUGE JAMAIS, ET C'EST TOUT L'INTÉRÊT. Une barre horizontale à menus déroulants
+  coûtait deux gestes pour changer de page et mangeait la bande la plus précieuse de l'écran.
+  Ici la navigation est toujours au même endroit, et le haut est rendu au travail.
+
+  ⚠️ ET LA BANDE D'ÉTAT SUIT D'UNE PAGE À L'AUTRE. Le chiffre du jour et les anomalies restent
+  sous les yeux même en modifiant une recette — c'est la seule façon qu'un écart de caisse ne
+  soit pas oublié parce qu'il vit sur un autre écran.
+#}
+<div class="app">
+
+<nav class="rail" aria-label="Navigation principale">
+  <a class="marque" href="/">ESTU<span>SHOP</span></a>
+
+  <div class="rail-grp">Pilotage</div>
+  <a href="/" data-p="/">Dashboard</a>
+  <a href="/transactions" data-p="/transactions">Transactions</a>
+  <a href="/contabilidade" data-p="/contabilidade">Contabilidade</a>
+
+  <div class="rail-grp">Marge</div>
+  <a href="/cogs" data-p="/cogs">COGS &amp; recettes</a>
+  <a href="/stock" data-p="/stock">Stock</a>
+  <a href="/charges" data-p="/charges">Charges fixes</a>
+
+  <div class="rail-grp">Caisse</div>
+  <a href="/reconciliation" data-p="/reconciliation">R&eacute;conciliation
+    <span class="badge" id="rail-ecarts" hidden></span></a>
+  <a href="/expenses" data-p="/expenses">D&eacute;penses</a>
+
+  <div class="rail-grp">Clients</div>
+  <a href="/loyalty" data-p="/loyalty">Fid&eacute;lit&eacute;</a>
+  <a href="/marketing" data-p="/marketing">Marketing SMS</a>
+  <a href="/clientes" data-p="/clientes">Clients Vendus</a>
+
+  <div class="rail-grp">Op&eacute;rations</div>
+  <a href="/sop" data-p="/sop">SOP &mdash; checklists</a>
+  <a href="/holidays" data-p="/holidays">Cong&eacute;s</a>
+  <a href="/events" data-p="/events">&Eacute;v&eacute;nements</a>
+</nav>
+
+<main class="zone">
+  {#
+    ⚠️ LA BANDE NE MONTRE QUE DES CHIFFRES QUI DÉCIDENT QUELQUE CHOSE. La tentation est d'y
+    empiler tout ce qu'on sait ; une bande qu'on cesse de lire ne prévient de rien.
+
+    ⚠️ ET ELLE DIT « — » QUAND ELLE NE SAIT PAS, jamais 0. « Pas encore de vente aujourd'hui »
+    et « zéro euro encaissé » mènent à deux lectures opposées à 11 h du matin.
+  #}
+  <div class="statut" id="statut">
+    <div class="st-item">
+      <span class="st-l">Aujourd'hui</span>
+      <span class="st-v" id="st-ca">&mdash;</span>
+      <span class="st-l" id="st-ca-sub"></span>
+    </div>
+    <div class="st-item">
+      <span class="st-l">Tickets</span>
+      <span class="st-v" id="st-nb">&mdash;</span>
+    </div>
+    <div class="st-item">
+      <span class="st-l">Ticket moyen</span>
+      <span class="st-v" id="st-moy">&mdash;</span>
+    </div>
+    <div class="st-item st-fin" id="st-alertes"></div>
+  </div>
+
+<script>
+(function(){
+  /**
+   * ⚠️ LA PAGE COURANTE SE MARQUE ICI, PAS DANS CHAQUE GABARIT. La version précédente
+   * dupliquait ce script treize fois — et le jour où j'ai ajouté une page, j'ai oublié d'y
+   * recopier la feuille de style de la nav. La page s'affichait, illisible, sans qu'aucun test
+   * ne rougisse.
+   */
+  var ici = (location.pathname.replace(/\/+$/, '') || '/');
+  document.querySelectorAll('.rail a[data-p]').forEach(function(a){
+    var p = a.getAttribute('data-p');
+    // ⚠️ L'ÉGALITÉ D'ABORD, LE PRÉFIXE ENSUITE, ET JAMAIS POUR « / ». Sans cette garde, la
+    // racine correspond à TOUTES les pages et le rail annonce « Dashboard » partout.
+    if (p === ici || (p !== '/' && ici.indexOf(p) === 0)) a.setAttribute('aria-current', 'page');
+  });
+
+  /**
+   * LA BANDE D'ÉTAT.
+   *
+   * ⚠️ ELLE EST SERVIE PAR UNE ROUTE À PART, ET DÉLIBÉRÉMENT LÉGÈRE. Elle s'affiche sur TOUTES
+   * les pages : si elle coûtait un rechargement du catalogue Vendus, chaque navigation
+   * paierait une seconde de plus — et on finirait par la retirer.
+   *
+   * ⚠️ ET SON ÉCHEC EST SILENCIEUX. Un bandeau d'information qui affiche une erreur rouge en
+   * travers de l'écran de travail est pire que pas de bandeau du tout : le réseau qui hoquette
+   * ne doit pas ressembler à une panne de caisse.
+   */
+  fetch('/api/statut').then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+    if (!d) return;
+    var E = function(i){ return document.getElementById(i); };
+    if (d.ca !== null && d.ca !== undefined){
+      E('st-ca').textContent = d.ca_texte;
+      if (d.compare) E('st-ca-sub').textContent = d.compare;
+    }
+    if (d.tickets !== null && d.tickets !== undefined) E('st-nb').textContent = d.tickets;
+    if (d.moyen_texte) E('st-moy').textContent = d.moyen_texte;
+
+    var h = [];
+    if (d.ecarts) h.push('<a class="st-puce ko" href="/reconciliation">' + d.ecarts +
+      ' jour(s) à vérifier</a>');
+    else if (d.caisse_ok) h.push('<span class="st-puce ok">Caisse ✓ ' + d.caisse_ok + '</span>');
+    if (d.boissons_dues) h.push('<a class="st-puce at" href="/loyalty">' + d.boissons_dues +
+      ' boisson(s) due(s)</a>');
+    E('st-alertes').innerHTML = h.join(' ');
+
+    var b = E('rail-ecarts');
+    if (d.ecarts){ b.textContent = d.ecarts; b.hidden = false; }
+  }).catch(function(){ /* silence : voir ci-dessus */ });
+})();
+</script>

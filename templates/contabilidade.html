@@ -55,6 +55,7 @@ footer a{color:var(--faint)}
 </style>
 </head>
 <body>
+{% if rail %}{% include "_rail.html" %}{% endif %}
 <div class="page">
   <h1>Contabilidade — Quiet Frequency, Unipessoal LDA</h1>
   <div class="sub">Café Estudantina · Vendas, comissões do terminal Revolut e gorjetas, por mês
@@ -158,5 +159,6 @@ function syncBtn(){
 document.getElementById('msel').addEventListener('change', syncBtn);
 load();
 </script>
+{% if rail %}{% include "_pied.html" %}{% endif %}
 </body>
 </html>

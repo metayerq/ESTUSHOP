@@ -211,21 +211,23 @@ def test_l_ecran_de_correction_n_existe_que_pour_un_compte_avec_numero():
 
 def test_aucun_gabarit_ne_porte_la_nav_sans_son_style():
     """
-    ⚠️ LA NAVIGATION EST RECOPIÉE DANS CHAQUE GABARIT, avec le bloc `<style>` qui la précède.
-    Recopier l'un sans l'autre est une erreur silencieuse : le HTML reste valide, la page se
-    rend, aucun test ne rougit — mais sans `.nav-menu { display:none }` tous les menus
-    déroulants s'affichent en permanence et la page devient illisible.
+    ⚠️ CE TEST GARDAIT UNE NAVIGATION RECOPIÉE DANS TREIZE FICHIERS. Elle n'existe plus : la
+    coquille est un partiel unique depuis le 21/09/2026, et l'oubli qu'il surveillait est
+    devenu impossible.
 
-    C'est arrivé le 20/09/2026 sur `marketing.html`, fabriqué à partir de `fidelidade.html`.
-    Ce test vaut pour tous les gabarits, y compris ceux qui n'existent pas encore.
+    ⚠️ IL PASSERAIT DÉSORMAIS À VIDE — aucun gabarit ne porte plus `<nav class="topnav">`, donc
+    la boucle ne trouverait rien à vérifier. Un test vert parce qu'il ne teste plus rien est
+    pire qu'un test absent : il compte comme de la couverture. Il vérifie donc maintenant
+    l'invariant qui l'a remplacé.
     """
     import glob
 
     racine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    orphelins = []
+    fautifs = []
     for chemin in sorted(glob.glob(os.path.join(racine, "templates", "*.html"))):
         with open(chemin, encoding="utf-8") as f:
             html = f.read()
-        if '<nav class="topnav"' in html and ".nav-menu {" not in html:
-            orphelins.append(os.path.basename(chemin))
-    assert not orphelins, f"navigation sans feuille de style : {', '.join(orphelins)}"
+        if '<nav class="topnav"' in html or ".nav-menu {" in html:
+            fautifs.append(os.path.basename(chemin))
+    assert not fautifs, ("ces gabarits recopient encore la vieille navigation, alors que la "
+                         f"coquille est un partiel : {', '.join(fautifs)}")
