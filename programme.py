@@ -365,4 +365,46 @@ def conversion_series(visits, links, customers, now, weeks=12):
         "opted_out": sum(1 for c in (customers or []) if c.get("opted_out_at")),
         "this_week_customers": derniere["new_customers"] if derniere else 0,
         "this_week_links": derniere["new_links"] if derniere else 0,
+        "headline": conversion_headline(lignes),
+    }
+
+
+def conversion_headline(lignes, recul=4):
+    """
+    La réponse de la page : le programme prend-il, et de combien a-t-il bougé ?
+
+    ⚠️ LA SEMAINE EN COURS N'EN FAIT PAS PARTIE. Elle est tronquée par construction (`fin` est
+    borné à maintenant) : la lire comme les autres ferait annoncer un recul tous les lundis
+    matin, puis une reprise tous les dimanches soir.
+
+    ⚠️ ET L'ÉCART SE COMPTE EN POINTS, PAS EN POURCENTAGE. La série est CUMULATIVE — chaque
+    semaine porte le taux sur tous les revenants depuis le début. Passer de 30 % à 33 %, c'est
+    +3 points ; l'écrire « +10 % » serait vrai arithmétiquement et faux de sens, puisque
+    personne ne lit un taux de rattachement comme une variation relative.
+
+    ⚠️ UN TAUX MANQUANT N'EST PAS UN TAUX DE ZÉRO. Une semaine sans personne de revenu n'a rien
+    mesuré ; la compter pour zéro fabriquerait un effondrement au démarrage du programme.
+    """
+    mesurees = [l for l in (lignes or [])[:-1] if l.get("rate_pct") is not None]
+    if not mesurees:
+        return {"ok": False, "rate_pct": None, "reason": "no-complete-week",
+                "n": None, "week": None, "delta_pts": None, "prev": None,
+                "prev_week": None, "prev_n": None, "weeks_between": 0}
+
+    fin = mesurees[-1]
+    base = mesurees[-(recul + 1)] if len(mesurees) > recul else None
+    return {
+        "ok": True,
+        "rate_pct": fin["rate_pct"],
+        "n": fin["returning"],
+        "linked": fin["linked"],
+        "week": fin["start"],
+        "delta_pts": (round(fin["rate_pct"] - base["rate_pct"], 1) if base else None),
+        "prev": base["rate_pct"] if base else None,
+        "prev_week": base["start"] if base else None,
+        "prev_n": base["returning"] if base else None,
+        "weeks_between": (len(mesurees) - 1 - mesurees.index(base)) if base else 0,
+        # ⚠️ SANS ASSEZ DE RECUL, ON NE COMPARE PAS — on dit pourquoi. Un écart contre la
+        # première semaine du programme comparerait un régime à un démarrage.
+        "reason": None if base else "not-enough-weeks",
     }

@@ -138,6 +138,13 @@
 .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--text);
   color:#fff; padding:10px 18px; border-radius:8px; font-size:13px; opacity:0; transition:all .25s; z-index:200; }
 .toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
+/* ⚠️ LE BANDEAU-RÉPONSE ET LE BLOC REPLIÉ VIENNENT DE `static/style.css`, partagés avec la
+   page Affluence. Les recopier ici donnerait deux jeux de règles à tenir d'accord, et celui
+   qu'on ouvre le moins vieillirait en silence. */
+.bloc-n { font-family: var(--mono); font-size: 10.5px; font-weight: 400; letter-spacing: .04em;
+  text-transform: none; color: var(--faint); margin-left: 8px; }
+.bloc-n em { font-style: italic; }
+
 /* ── Les onglets ── */
 .onglets { display:flex; gap:4px; margin:4px 0 20px; border-bottom:1px solid var(--border); }
 .onglets button { font-family:inherit; font-size:13.5px; font-weight:500; padding:10px 18px;
@@ -171,18 +178,16 @@
 {% include "_rail.html" %}
 <div class="page">
 <main class="wrap" style="max-width:1180px;margin:0 auto;padding:24px 16px 64px">
-  <h1 style="font-size:22px;margin:0 0 4px">Fid&eacute;lit&eacute;</h1>
-  <p class="muted" style="margin:0 0 6px;max-width:760px">
-    <strong>1&nbsp;&euro; d&eacute;pens&eacute; = 1 point. 50 points = une boisson au choix.</strong>
-    Les points valent douze mois et se consomment par les plus anciens.
-    La caisse reconna&icirc;t la carte bancaire ; le num&eacute;ro de t&eacute;l&eacute;phone regroupe
-    plusieurs cartes en un seul compte.
-  </p>
-  <p class="muted" style="margin:0 0 20px;font-size:12px;max-width:760px">
-    Le solde affich&eacute; ici est calcul&eacute; par le m&ecirc;me code que le comptoir et que la page du
-    client&nbsp;&mdash; une divergence entre les trois est un test rouge, pas une surprise au comptoir.
-  </p>
+  <h1 style="font-size:22px;margin:0 0 14px">Fid&eacute;lit&eacute;</h1>
+  {#
+    ⚠️ LES DEUX PARAGRAPHES DE RÈGLES QUI VIVAIENT ICI SONT DESCENDUS DANS LE BLOC REPLIÉ. Ils
+    disaient le barème, la validité des points et l'identité carte/téléphone — trois choses
+    vraies, et trois choses qu'on ne relit pas chaque semaine. En haut d'une page, une règle
+    connue occupe la place du chiffre qu'on vient chercher.
 
+    ⚠️ `regle-active` RESTE, LUI. Il annonce le barème RÉELLEMENT en vigueur, qui peut avoir été
+    changé dans l'onglet Réglages : ce n'est pas un rappel, c'est un état.
+  #}
   <p class="muted" id="regle-active" style="margin:0 0 16px;font-size:12.5px"></p>
   <div id="alerte" style="display:none"></div>
   <div id="alerte-lancement" style="display:none"></div>
@@ -206,17 +211,40 @@
   </nav>
 
   <div class="onglet" id="onglet-apercu" role="tabpanel">
+
+  <!--
+    ⚠️ UNE RÉPONSE, PAS SIX CELLULES. La page ouvrait sur six chiffres de même poids — comptes,
+    taux de liaison, points en circulation, boissons dues, points consommés, habitués — dont un
+    seul répond à la question qu'on se pose en l'ouvrant : est-ce que demander le numéro marche ?
+    Les cinq autres sont du contexte ou du coût, et ils passent en bande sous la réponse.
+
+    ⚠️ ET L'ÉCART SE LIT EN POINTS. La série est CUMULATIVE : chaque semaine porte le taux sur
+    tous les revenants depuis le début. 30 % → 33 % fait +3 points ; « +10 % » serait vrai
+    arithmétiquement et faux de sens.
+  -->
+  <div class="tx-section">
+    <div class="tx-card tx-answer">
+      <div class="tx-q">Le programme prend-il&nbsp;?</div>
+      <div class="tx-lead" id="fd-lead">&mdash;</div>
+      <div class="tx-answer-main">
+        <span class="tx-value" id="fd-value">&mdash;</span>
+        <span class="tx-unit">des clients revenus ont donn&eacute; leur num&eacute;ro</span>
+        <span id="fd-delta"></span>
+      </div>
+      <div class="tx-sub" id="fd-n"></div>
+      <div class="tx-rule" id="fd-rule"></div>
+      <div class="tx-reason" id="fd-note" style="display:none"></div>
+    </div>
+  </div>
+
   <div id="kpis" class="kpi-grid"><div class="muted">Chargement&hellip;</div></div>
 
   <!-- ── Le suivi de conversion : est-ce que demander le num&eacute;ro marche ? ─────────────── -->
   <section class="bloc" id="bloc-conv" style="margin-bottom:22px">
     <div class="conv-tete">
       <div>
-        <h2 class="bloc-titre">Conversion au programme</h2>
-        <p class="muted bloc-note" style="margin:0">
-          Part des clients <strong>revenus au moins deux fois</strong> qui ont donn&eacute; leur num&eacute;ro.
-          Les passants d'un jour ne comptent pas&nbsp;: ils n'avaient aucune raison de le donner.
-        </p>
+        <h2 class="bloc-titre">Semaine apr&egrave;s semaine
+          <span class="bloc-n">taux cumul&eacute; &mdash; un palier mesur&eacute;, pas une tendance</span></h2>
       </div>
       <div class="conv-chiffres">
         <div><div class="kpi-v" id="conv-total">&mdash;</div><div class="kpi-l">inscrits</div></div>
@@ -230,18 +258,66 @@
   <!-- ── Les deux listes qui font agir ──────────────────────────────────────────────────── -->
   <div class="deux-listes">
     <section class="bloc">
-      <h2 class="bloc-titre">Bient&ocirc;t r&eacute;compens&eacute;s</h2>
-      <p class="muted bloc-note">&Agrave; 40 points ou plus. De quoi pr&eacute;voir le co&ucirc;t du mois &mdash; et de quoi relancer quelqu'un avec quelque chose de vrai &agrave; lui dire.</p>
+      <h2 class="bloc-titre">Bient&ocirc;t r&eacute;compens&eacute;s <span class="bloc-n">&agrave; 40 points ou plus</span></h2>
       <div id="liste-proches" class="liste"></div>
     </section>
     <section class="bloc">
-      <h2 class="bloc-titre">Habitu&eacute;s qui ne sont pas revenus</h2>
-      <p class="muted bloc-note">Absents au-del&agrave; de <em>leur</em> rythme habituel, jamais moins de sept jours &mdash; le caf&eacute; ferme deux jours par semaine.</p>
+      <h2 class="bloc-titre">Habitu&eacute;s absents <span class="bloc-n">au-del&agrave; de <em>leur</em> rythme, jamais moins de 7&nbsp;jours</span></h2>
       <div id="liste-risque" class="liste"></div>
     </section>
   </div>
 
-  <!-- ── Les r&eacute;glages, et ce qu'ils co&ucirc;tent ───────────────────────────────────────────── -->
+  <!--
+    ⚠️ CE QUE LA PAGE NE PEUT PAS DIRE RESTE ÉCRIT, MAIS REPLIÉ. Ces limites ne sont pas des
+    précautions de style : chacune répond à une question qu'on se poserait autrement avec un
+    chiffre inventé. Les supprimer rendrait la page plus courte et moins vraie.
+
+    ⚠️ ET LE DÉTAIL EST FERMÉ PAR DÉFAUT, PAS CACHÉ. Fermé, on sait qu'il existe et on l'ouvre
+    le jour où un chiffre surprend — c'est exactement ce jour-là qu'il sert.
+  -->
+  <details class="tx-limites">
+    <summary>La r&egrave;gle, et ce que cette page ne peut pas dire</summary>
+    <dl>
+      <dt>Le bar&egrave;me</dt>
+      <dd><b>1&nbsp;&euro; d&eacute;pens&eacute; = 1 point. 50 points = une boisson au choix.</b> Les
+        points valent douze mois et se consomment par les plus anciens. La caisse reconna&icirc;t
+        la carte bancaire&nbsp;; le num&eacute;ro de t&eacute;l&eacute;phone regroupe plusieurs
+        cartes en un seul compte. Le bar&egrave;me r&eacute;ellement en vigueur est annonc&eacute;
+        en haut de page&nbsp;: il peut avoir &eacute;t&eacute; chang&eacute; dans l'onglet
+        R&eacute;glages.</dd>
+
+      <dt>Le solde d'ici est celui du comptoir</dt>
+      <dd>Il est calcul&eacute; par le <b>m&ecirc;me code</b> que la caisse et que la page du
+        client. Une divergence entre les trois est un test rouge, pas une surprise devant
+        quelqu'un qui r&eacute;clame sa boisson.</dd>
+
+      <dt>Le taux ne compte que les clients REVENUS</dt>
+      <dd>Au d&eacute;nominateur&nbsp;: les cartes vues <b>au moins deux fois</b>. Un touriste
+        venu une fois n'avait aucune raison de donner son num&eacute;ro&nbsp;; l'y compter
+        ferait baisser le taux &agrave; chaque inconnu qui entre, et la courbe mesurerait la
+        fr&eacute;quentation au lieu de l'effort fait au comptoir.</dd>
+
+      <dt>Le taux est cumul&eacute;, et son &eacute;cart se lit en POINTS</dt>
+      <dd>Chaque semaine porte le taux sur <b>tous les revenants depuis le d&eacute;but</b>, pas
+        sur la cohorte de la semaine. Passer de 30&nbsp;% &agrave; 33&nbsp;%, c'est
+        <b>+3 points</b>&nbsp;; l'&eacute;crire «&nbsp;+10&nbsp;%&nbsp;» serait vrai
+        arithm&eacute;tiquement et faux de sens. La semaine en cours n'entre dans aucune
+        comparaison&nbsp;: elle n'est pas finie.</dd>
+
+      <dt>Une semaine sans revenant n'est pas une semaine &agrave; z&eacute;ro</dt>
+      <dd>Elle n'a rien mesur&eacute;. Lui donner 0&nbsp;% fabriquerait un effondrement au
+        d&eacute;marrage du programme &mdash; au moment pr&eacute;cis o&ugrave; l'on regarde si
+        l'id&eacute;e prend. Ces semaines portent «&nbsp;&mdash;&nbsp;», et sont saut&eacute;es
+        dans les comparaisons.</dd>
+
+      <dt>Les rattachements sans date sont compt&eacute;s, pas plac&eacute;s</dt>
+      <dd>Une ligne ancienne peut n'avoir ni date de rattachement ni date de consentement. Elle
+        entre dans le total et <b>pas dans la courbe</b>&nbsp;: la ranger d'office au
+        d&eacute;but gonflerait les premi&egrave;res semaines et ferait croire &agrave; un
+        d&eacute;part en fanfare. Leur nombre est annonc&eacute; sous le graphique.</dd>
+    </dl>
+  </details>
+
   </div><!-- /apercu -->
 
   <div class="onglet" id="onglet-reglages" role="tabpanel" hidden>
@@ -535,25 +611,89 @@ tbody tr:hover { background:var(--bg-hover); }
     return '<span class="anon">carte ' + c.short + '</span>';
   }
 
+  /*
+   * ⚠️ SIX CELLULES DE MÊME POIDS, DONT UNE SEULE RÉPONDAIT À LA QUESTION. « Taux de liaison »
+   * est monté dans le bandeau-réponse ; « Comptes » et « Points consommés » sont partis — le
+   * premier se déduit des deux autres, le second est une curiosité dont aucune décision n'est
+   * jamais sortie. Restent les trois qui engagent de l'argent ou une action.
+   *
+   * ⚠️ ET « POINTS EN CIRCULATION » GARDE SA CONTREPARTIE EN EUROS. Un nombre de points ne dit
+   * rien tant qu'on ne sait pas ce qu'il coûte si tout est réclamé le même mois.
+   */
   function kpis(s){
     var t = [
-      ['Comptes', s.accounts, s.linked + ' avec numéro · ' + s.cards_unlinked + ' cartes seules', false],
-      ['Taux de liaison', s.link_rate_pct===null ? '—' : s.link_rate_pct + ' %',
-       'des ' + s.returning + ' clients revenus au moins deux fois', true],
+      ['Boissons dues', s.rewards_due_now, 'réclamables dès maintenant'],
       ['Points en circulation', s.points_outstanding,
-       'soit ' + eur(s.liability_cents) + ' de matière si tout était réclamé', false],
-      ['Boissons dues', s.rewards_due_now, 'réclamables dès maintenant', false],
-      ['Points consommés', s.redemption_rate_pct===null ? '—' : s.redemption_rate_pct + ' %',
-       s.points_spent + ' bus · ' + s.points_expired + ' périmés', false],
-      ['Habitués', s.regulars, s.at_risk.length + ' ne sont pas revenus', false]
+       eur(s.liability_cents) + ' de matière si tout était réclamé'],
+      ['Habitués', s.regulars, s.at_risk.length + ' ne sont pas revenus']
     ];
     E('kpis').innerHTML = t.map(function(k){
-      return '<div class="kpi' + (k[3] ? ' vedette' : '') + '"><div class="kpi-l">' + k[0] +
+      return '<div class="kpi"><div class="kpi-l">' + k[0] +
              '</div><div class="kpi-v">' + k[1] + '</div><div class="kpi-s">' + k[2] + '</div></div>';
     }).join('');
   }
 
+  /*
+   * LA RÉPONSE : « le programme prend-il ? »
+   *
+   * ⚠️ L'ÉCART SE LIT EN POINTS, PAS EN POURCENTAGE. La série est CUMULATIVE — chaque semaine
+   * porte le taux sur tous les revenants depuis le début. Passer de 30 % à 33 %, c'est
+   * +3 points ; l'écrire « +10 % » serait vrai arithmétiquement et faux de sens.
+   *
+   * ⚠️ ET LE CALCUL VIENT DU SERVEUR. Le refaire ici donnerait deux définitions de la même
+   * réponse, qui divergeraient au premier cas limite — une semaine sans revenant, par exemple.
+   */
+  function reponse(cv){
+    var h = (cv && cv.headline) || {ok:false};
+    var fmtSem = function(iso){
+      if (!iso) return '';
+      var d = new Date(iso);
+      return d.toLocaleDateString('fr-FR', {day:'numeric', month:'short'});
+    };
+
+    if (!h.ok) {
+      E('fd-lead').textContent  = 'Pas encore de semaine complète à lire.';
+      E('fd-value').textContent = '—';
+      E('fd-delta').innerHTML   = '';
+      E('fd-n').textContent     = '';
+      E('fd-rule').textContent  = '';
+      E('fd-note').textContent  = 'La première semaine entière du programme n’est pas terminée.';
+      E('fd-note').style.display = '';
+      return;
+    }
+
+    E('fd-value').textContent = h.rate_pct + ' %';
+    E('fd-n').innerHTML = '<b>' + h.linked + '</b> rattachées sur <b>' + h.n +
+      '</b> cartes revenues au moins deux fois · semaine du ' + fmtSem(h.week);
+
+    if (h.delta_pts === null) {
+      E('fd-lead').textContent = 'Le programme démarre.';
+      E('fd-delta').innerHTML  = '<span class="tx-chip tx-chip-none">pas de recul</span>';
+      E('fd-rule').textContent = '';
+      E('fd-note').textContent = 'Moins de cinq semaines complètes : comparer contre la ' +
+        'première semaine opposerait un régime à un démarrage.';
+      E('fd-note').style.display = '';
+      return;
+    }
+
+    E('fd-note').style.display = 'none';
+    var sens = h.delta_pts > 0 ? 'up' : (h.delta_pts < 0 ? 'down' : 'flat');
+    var signe = h.delta_pts > 0 ? '▲ +' : (h.delta_pts < 0 ? '▼ −' : '= ');
+    E('fd-lead').textContent = h.delta_pts > 0
+      ? 'Le rattachement progresse.'
+      : (h.delta_pts < 0 ? 'Le rattachement recule.' : 'Le rattachement est stable.');
+    E('fd-delta').innerHTML = '<span class="tx-chip tx-chip-' + sens + '">' + signe +
+      Math.abs(h.delta_pts).toFixed(1).replace('.', ',') + ' pts</span>' +
+      '<span class="tx-vs">contre ' + h.prev + ' % le ' + fmtSem(h.prev_week) +
+      ' (sur ' + h.prev_n + ')</span>';
+    /* ⚠️ « POINTS », ET LA RAISON. Sans cette ligne, on lit l'écart comme une variation
+     * relative — et un taux cumulé qui gagne trois points paraît stagner. */
+    E('fd-rule').innerHTML = 'Écart en <b>points de pourcentage</b> sur ' + h.weeks_between +
+      ' semaines complètes — le taux est cumulé depuis le lancement, pas recalculé chaque semaine.';
+  }
+
   function conversion(cv){
+    reponse(cv);
     E('conv-total').textContent   = cv.customers_total;
     E('conv-semaine').textContent = (cv.this_week_customers > 0 ? '+' : '') + cv.this_week_customers;
 
