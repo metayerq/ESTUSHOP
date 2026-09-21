@@ -3312,6 +3312,86 @@ def api_vendus_paiements():
     })
 
 
+@app.route("/api/reconciliation/pourboires")
+def api_pourboires():
+    """
+    LES POURBOIRES D'UNE PÉRIODE, ET LA PART LAISSÉE APRÈS UNE HEURE DONNÉE.
+
+    ⚠️ LA QUESTION N'EST PAS COMPTABLE, ELLE EST SOCIALE. « Combien de pourboires jeudi et
+    vendredi après 18 h » sert à répartir entre les personnes qui étaient là — pas à remplir une
+    déclaration. Un chiffre faux ici se paie en confiance dans l'équipe, ce qui coûte plus long
+    à réparer qu'une écriture.
+
+    ⚠️ L'HEURE EST CELLE DE LISBONNE, PAS CELLE DU SERVEUR. Vercel tourne en UTC : en heure
+    d'été, « après 18 h » calculé en UTC commencerait à 19 h au comptoir et perdrait une heure
+    entière de service — la plus chargée.
+
+    ⚠️ ET UN POURBOIRE REMBOURSÉ N'EST PAS UN POURBOIRE. Les remboursements sont écartés.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    if not _rm.enabled():
+        return jsonify({"error": "REVOLUT_MERCHANT_KEY absente"}), 503
+
+    try:
+        to_d = date.fromisoformat(request.args["to"]) if request.args.get("to") else today_lisbon()
+        from_d = date.fromisoformat(request.args["from"]) if request.args.get("from") else to_d
+    except ValueError:
+        return jsonify({"error": "from/to attendus au format YYYY-MM-DD"}), 400
+    if from_d > to_d:
+        return jsonify({"error": "from après to"}), 400
+    # ⚠️ PLAFONNÉ : chaque jour coûte une vingtaine d'appels à Revolut, et la fonction est tuée
+    # à 60 secondes. Refuser est plus honnête que de s'arrêter au milieu sans le dire.
+    if (to_d - from_d).days > 6:
+        return jsonify({"error": "plage limitée à 7 jours par appel"}), 400
+
+    apres = (request.args.get("after") or "").strip()
+    if apres and not _re.fullmatch(r"\d{1,2}:\d{2}", apres):
+        return jsonify({"error": "after attendu au format HH:MM"}), 400
+    if apres and len(apres) == 4:
+        apres = "0" + apres
+
+    jours, total, total_apres, n, n_apres = [], 0, 0, 0, 0
+    d = from_d
+    while d <= to_d:
+        try:
+            lignes = _rm.fetch_day_rows(d)
+        except Exception as e:
+            return jsonify({"error": f"Revolut le {d} : {type(e).__name__}: {str(e)[:120]}"}), 502
+        j_total = j_apres = j_n = j_n_apres = 0
+        for r in lignes:
+            if r["refund"] or not r["tip"]:
+                continue
+            j_total += r["tip"]
+            j_n += 1
+            # Comparaison de chaînes « HH:MM » : lexicographique et chronologique à la fois.
+            if apres and r["heure"] >= apres:
+                j_apres += r["tip"]
+                j_n_apres += 1
+        jours.append({"day": d.isoformat(), "pourboires_cents": j_total,
+                      "pourboires_apres_cents": j_apres if apres else None,
+                      "transactions_avec_pourboire": j_n,
+                      "transactions_apres": j_n_apres if apres else None})
+        total += j_total
+        total_apres += j_apres
+        n += j_n
+        n_apres += j_n_apres
+        d += timedelta(1)
+
+    return jsonify({
+        "from": from_d.isoformat(), "to": to_d.isoformat(),
+        "apres": apres or None,
+        "jours": jours,
+        "total_cents": total,
+        "total_apres_cents": total_apres if apres else None,
+        "transactions_avec_pourboire": n,
+        "transactions_apres": n_apres if apres else None,
+        # De quoi lire le chiffre sans le convertir à la main.
+        "total_euros": round(total / 100, 2),
+        "total_apres_euros": round(total_apres / 100, 2) if apres else None,
+    })
+
+
 # ── LE RAPPROCHEMENT TRANSACTION PAR TRANSACTION ─────────────────────────────────────────────
 #
 # ⚠️ UN ÉCART CHIFFRÉ NE SE RÉPARE PAS. « 23,40 € » dit qu'il y a un problème ; « paiement de
