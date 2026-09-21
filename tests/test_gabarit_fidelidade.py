@@ -162,7 +162,10 @@ def test_le_tableau_a_autant_de_cellules_que_d_en_tetes():
     """
     entetes = len(re.findall(r"<th[^>]*data-tri=", SOURCE))
 
-    debut = SOURCE.index("E('clients').tBodies[0].innerHTML = vus.map(")
+    # ⚠️ L'ANCRE NE NOMME PLUS LA VARIABLE. Elle s'appelait `vus`, elle s'appelle `coupe`
+    # depuis la pagination — et le test tombait sur un `ValueError` qui ne disait rien du
+    # tableau. Un garde qui casse quand le code est CORRECT finit par être désactivé.
+    debut = SOURCE.index("E('clients').tBodies[0].innerHTML = ")
     ligne = SOURCE[debut:SOURCE.index("}).join('')", debut)]
     cellules = len(re.findall(r"<td[ >]", ligne))
 

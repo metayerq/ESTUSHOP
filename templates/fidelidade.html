@@ -144,6 +144,29 @@
 .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--text);
   color:#fff; padding:10px 18px; border-radius:8px; font-size:13px; opacity:0; transition:all .25s; z-index:200; }
 .toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
+/* ── Les onglets ── */
+.onglets { display:flex; gap:4px; margin:4px 0 20px; border-bottom:1px solid var(--border); }
+.onglets button { font-family:inherit; font-size:13.5px; font-weight:500; padding:10px 18px;
+  background:none; border:1px solid transparent; border-bottom:none; border-radius:8px 8px 0 0;
+  color:var(--muted); cursor:pointer; margin-bottom:-1px; }
+.onglets button:hover { color:var(--text); background:var(--bg-hover); }
+/* ⚠️ L'ONGLET ACTIF SE DISTINGUE PAR TROIS SIGNAUX, pas un seul : la couleur, la graisse et le
+   fond qui rejoint le contenu. Sur un écran mal calibré, une seule nuance de gris ne suffit
+   pas à dire où l'on est. */
+.onglets button[aria-selected="true"] { color:var(--text); font-weight:600;
+  background:var(--bg-card); border-color:var(--border); }
+.onglets button:focus-visible { outline:2px solid var(--spec); outline-offset:-2px; }
+/* ⚠️ `hidden` DOIT GAGNER. Une règle d'affichage plus spécifique sur `.onglet` le masquerait —
+   c'est exactement le bogue de la barre blanche du 19/09 sur la fiche client. */
+.onglet[hidden] { display:none !important; }
+
+/* ── « Voir plus » ── */
+.plus { text-align:center; padding:14px 0 4px; }
+.plus button { font-family:inherit; font-size:13px; font-weight:600; padding:9px 20px;
+  border:1px solid var(--border); border-radius:8px; background:var(--bg-card);
+  color:var(--text); cursor:pointer; }
+.plus button:hover { background:var(--bg-hover); }
+.plus .reste { display:block; font-size:11.5px; color:var(--muted); margin-top:6px; }
 </style>
   <!-- ⚠️ SANS CECI LE THÈME N'EST PAS APPLIQUÉ. Le gabarit a été extrait d'events.html
        avant cette ligne : la page restait en clair pendant que le reste du dashboard
@@ -240,6 +263,24 @@
   <div id="alerte-lancement" style="display:none"></div>
 
   <!-- ── Les chiffres qui d&eacute;cident quelque chose ─────────────────────────────────────── -->
+
+  <!--
+    LES TROIS FAÇONS DE SE SERVIR DE CETTE PAGE.
+    ⚠️ CE N'EST PAS UN DÉCOUPAGE ESTHÉTIQUE, C'EST UN DÉCOUPAGE D'USAGE. « Vue d'ensemble » se
+    lit une fois par semaine ; « Clients » s'ouvre pour chercher quelqu'un, plusieurs fois par
+    jour ; « Réglages » se touche trois fois par an. Les empiler sur une seule page faisait
+    défiler quatre écrans pour atteindre le tableau — celui qu'on vient voir le plus souvent.
+
+    ⚠️ ET LES ALERTES RESTENT AU-DESSUS DES ONGLETS. Une alerte qu'il faut cliquer pour trouver
+    n'est pas une alerte.
+  -->
+  <nav class="onglets" id="onglets" role="tablist" aria-label="Sections de la fidélité">
+    <button role="tab" data-onglet="apercu" aria-selected="true">Vue d'ensemble</button>
+    <button role="tab" data-onglet="clients" aria-selected="false">Clients</button>
+    <button role="tab" data-onglet="reglages" aria-selected="false">R&eacute;glages</button>
+  </nav>
+
+  <div class="onglet" id="onglet-apercu" role="tabpanel">
   <div id="kpis" class="kpi-grid"><div class="muted">Chargement&hellip;</div></div>
 
   <!-- ── Le suivi de conversion : est-ce que demander le num&eacute;ro marche ? ─────────────── -->
@@ -276,6 +317,9 @@
   </div>
 
   <!-- ── Les r&eacute;glages, et ce qu'ils co&ucirc;tent ───────────────────────────────────────────── -->
+  </div><!-- /apercu -->
+
+  <div class="onglet" id="onglet-reglages" role="tabpanel" hidden>
   <section class="bloc" id="reglages" style="margin-top:22px">
     <h2 class="bloc-titre">R&eacute;glages du programme</h2>
     <p class="muted bloc-note">
@@ -372,6 +416,9 @@
   </section>
 
   <!-- ── Tous les clients ──────────────────────────────────────────────────────────────── -->
+  </div><!-- /reglages -->
+
+  <div class="onglet" id="onglet-clients" role="tabpanel" hidden>
   <section class="bloc" style="margin-top:22px">
     <div class="barre">
       <h2 class="bloc-titre" style="margin:0">Clients</h2>
@@ -398,7 +445,9 @@
         <tbody></tbody>
       </table>
     </div>
+    <div class="plus" id="plus-clients" hidden></div>
   </section>
+  </div><!-- /clients -->
 </main>
 
 <!-- ── La fiche d'un client ────────────────────────────────────────────────────────────── -->
@@ -663,8 +712,54 @@ tbody tr:hover { background:var(--bg-hover); }
       if (x === th) x.setAttribute('aria-sort', tri.sens === -1 ? 'descending' : 'ascending');
       else x.removeAttribute('aria-sort');
     });
+    /* ⚠️ LE TRI GARDE L'EXPANSION. Changer de colonne ne change pas l'ensemble affiché, et
+       ramener à cinquante après trois clics sur « voir plus » ferait perdre un geste
+       délibéré. Le filtre et la recherche, eux, changent l'ensemble : ils recoupent. */
     tableau();
   });
+
+  /* ══════════════════════════════════════════════════════════════════════════════
+   * LES ONGLETS
+   * ══════════════════════════════════════════════════════════════════════════════
+   *
+   * ⚠️ L'ONGLET EST DANS L'ADRESSE. Sans ça, l'alerte « pose la date de lancement » qui pointe
+   * vers #reglages n'ouvrirait rien, un signet ramènerait toujours au même endroit, et un
+   * rechargement perdrait la place — trois petites frictions dans un outil qu'on ouvre vingt
+   * fois par jour.
+   */
+  var ONGLETS = ['apercu', 'clients', 'reglages'];
+
+  function activer(nom, pousser){
+    if (ONGLETS.indexOf(nom) < 0) nom = 'apercu';
+    ONGLETS.forEach(function(o){
+      E('onglet-' + o).hidden = (o !== nom);
+    });
+    [].forEach.call(E('onglets').children, function(b){
+      b.setAttribute('aria-selected', String(b.dataset.onglet === nom));
+    });
+    if (pousser && location.hash.slice(1) !== nom) history.replaceState(null, '', '#' + nom);
+    /* ⚠️ LA LARGEUR DU TABLEAU SE CALCULE À L'AFFICHAGE. Rendu dans un panneau masqué, il
+       n'avait aucune dimension : les colonnes sautaient au premier passage sur l'onglet. */
+    if (nom === 'clients' && comptes.length) tableau();
+  }
+
+  E('onglets').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-onglet]');
+    if (b) activer(b.dataset.onglet, true);
+  });
+  /* Les liens internes (« Poser la date de lancement ») ouvrent l'onglet qu'ils visent. */
+  window.addEventListener('hashchange', function(){ activer(location.hash.slice(1), false); });
+
+  /* ══════════════════════════════════════════════════════════════════════════════
+   * LE TABLEAU DES CLIENTS
+   * ══════════════════════════════════════════════════════════════════════════════
+   */
+  /* ⚠️ CINQUANTE LIGNES, PUIS À LA DEMANDE. Tout afficher rendait la page lourde à faire
+     défiler et noyait ce qu'on cherche ; tout cacher derrière une pagination ferait perdre le
+     tri d'ensemble. Le compromis : le TRI ET LE FILTRE portent sur TOUT le fichier, seul
+     l'affichage est coupé. */
+  var PAS = 50;
+  var limite = PAS;
 
   function tableau(){
     var q = E('q').value.trim().toLowerCase();
@@ -683,7 +778,8 @@ tbody tr:hover { background:var(--bg-hover); }
     // propre ordre — celui de l'urgence, pas celui de la colonne cliquée.
     if (tri.cle) vus = vus.slice().sort(comparer);
     E('compte').textContent = vus.length + ' sur ' + comptes.length;
-    E('clients').tBodies[0].innerHTML = vus.map(function(c){
+    var coupe = vus.slice(0, limite);
+    E('clients').tBodies[0].innerHTML = coupe.map(function(c){
       var p = [];
       if (c.state.rewards_due) p.push('<span class="puce due">boisson due</span>');
       if (c.at_risk) p.push('<span class="puce risque">pas revenu</span>');
@@ -700,6 +796,18 @@ tbody tr:hover { background:var(--bg-hover); }
         '<td>' + (c.days_since_last===null ? '—' : c.days_since_last + ' j') + '</td>' +
         '<td>' + (p.join(' ') || '') + '</td></tr>';
     }).join('') || '<tr><td colspan="7" class="vide">Personne ne correspond.</td></tr>';
+
+    /* ⚠️ LE RESTE EST CHIFFRÉ, PAS SEULEMENT SUGGÉRÉ. « Voir plus » sans nombre ne dit pas s'il
+       reste trois lignes ou trois cents — et on clique sans savoir si ça vaut la peine. */
+    var reste = vus.length - coupe.length;
+    var pied = E('plus-clients');
+    pied.hidden = reste <= 0;
+    if (reste > 0){
+      pied.innerHTML = '<button type="button" id="plus-btn">Voir ' +
+        Math.min(PAS, reste) + ' de plus</button>' +
+        '<span class="reste">' + reste + ' client(s) au-delà de cet affichage · ' +
+        'le tri et la recherche portent sur les ' + vus.length + '</span>';
+    }
   }
 
   function fiche(key){
@@ -891,12 +999,20 @@ tbody tr:hover { background:var(--bg-hover); }
   E('fermer').addEventListener('click', fermer);
   E('fiche-fond').addEventListener('click', function(e){ if (e.target===E('fiche-fond')) fermer(); });
   document.addEventListener('keydown', function(e){ if (e.key==='Escape') fermer(); });
-  E('q').addEventListener('input', tableau);
+  /* ⚠️ LA COUPE REPART À CINQUANTE DÈS QUE LA LISTE CHANGE. Garder « 200 affichés » après une
+     recherche qui n'en rend que trois n'a aucun sens, et le garder après un changement de
+     filtre ferait croire qu'on voit tout alors qu'on voit le reliquat du filtre précédent. */
+  function recouper(){ limite = PAS; tableau(); }
+
+  E('q').addEventListener('input', recouper);
+  document.addEventListener('click', function(e){
+    if (e.target && e.target.id === 'plus-btn'){ limite += PAS; tableau(); }
+  });
   E('filtres').addEventListener('click', function(e){
     var b = e.target.closest('button[data-f]'); if (!b) return;
     filtre = b.dataset.f;
     [].forEach.call(E('filtres').children, function(x){ x.classList.toggle('on', x===b); });
-    tableau();
+    recouper();
   });
   document.addEventListener('click', function(e){
     var el = e.target.closest('[data-k]'); if (el) fiche(el.dataset.k);
@@ -1061,6 +1177,10 @@ tbody tr:hover { background:var(--bg-hover); }
              (diff || 'aucun écart') + '<br><span class="q">' + (l.reason || '') + '</span></div>';
     }).join('');
   }
+
+  /* ⚠️ L'ONGLET D'OUVERTURE VIENT DE L'ADRESSE, et « Vue d'ensemble » par défaut. Un signet
+     sur #clients doit rouvrir le tableau ; un rechargement doit rester où l'on était. */
+  activer(location.hash.slice(1) || 'apercu', false);
 
   fetch('/api/fidelidade/config').then(function(r){ return r.json(); }).then(function(d){
     PHRASES = d.consent_phrases || {};
