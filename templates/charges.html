@@ -987,6 +987,15 @@ function effetSuppression(x, mensuel) {
   const fin = x.valid_to && new Date(x.valid_to) < auj ? new Date(x.valid_to) : auj;
   if (Math.round((mensuel || 0) * 100) === 0)
     return { mois: 0, mensuel: 0, texte: 'This line costs nothing — deleting it changes no figure.' };
+  // ⚠️ UNE LIGNE ÉTEINTE À LA MAIN N'A JAMAIS COMPTÉ NULLE PART. Sans bornes, `active` EST la
+  // borne — c'est la règle de `charges.py`, et cette fonction l'ignorait. Elle annonçait donc
+  // « retire 1 200 €/mois de mai à septembre » pour une fiche qui ne pesait rien, puis la
+  // suppression ne changeait aucun chiffre. Le message promettait une catastrophe, le geste
+  // n'avait aucun effet : on ne sait plus lequel des deux croire, et l'avertissement cesse
+  // d'être lu — y compris le jour où il dit vrai.
+  if (!x.valid_from && !x.valid_to && x.active === false)
+    return { mois: 0, mensuel, texte:
+      'This line is switched off and is not counted in any figure — deleting it changes nothing.' };
   if (debut && debut > auj)
     return { mois: 0, mensuel, texte: 'This line has not started yet — deleting it changes no past figure.' };
   // Le nombre de mois entamés entre le début (ou « depuis toujours ») et la fin.

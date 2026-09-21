@@ -627,3 +627,52 @@ def test_les_trois_boutons_existent_et_ne_se_confondent_pas():
     assert g.count(">Reopen…<") == 2        # un arrêt pris se reprend par une ligne neuve
     assert g.count(">Stop…<") == 2          # un poste en cours s'arrête à une date
     assert g.count("supprimerDefinitivement(") == 3   # deux boutons + la définition
+
+
+def test_une_fiche_eteinte_ne_promet_pas_une_catastrophe():
+    """
+    ⚠️ SANS BORNES, `active` EST LA BORNE — et `effetSuppression` l'ignorait. Elle annonçait
+    « retire 1 200 €/mois de mai à septembre » pour une fiche qui ne pesait rien, puis la
+    suppression ne changeait aucun chiffre. Le message promet une catastrophe, le geste n'a
+    aucun effet : on ne sait plus lequel croire, et l'avertissement cesse d'être lu — y compris
+    le jour où il dit vrai.
+    """
+    e = _effet({"active": False}, 1200)
+    assert e["mois"] == 0
+    assert "changes nothing" in e["texte"]
+    assert "May" not in e["texte"]
+
+
+def test_une_fiche_eteinte_mais_bornee_a_bien_compte():
+    """
+    ⚠️ DÈS QU'UNE BORNE EXISTE, C'EST ELLE QUI COMMANDE. Un poste arrêté au 1er juillet est
+    `active=false` aujourd'hui et a pourtant coûté de mai à juin : l'effacer réécrirait ces
+    mois-là pour de bon.
+    """
+    e = _effet({"active": False, "valid_from": "2026-05-01", "valid_to": "2026-07-01"}, 900)
+    assert e["mois"] == 3
+    assert "900.00" in e["texte"]
+
+
+def test_leffet_annonce_et_le_calcul_du_cout_disent_la_meme_chose():
+    """
+    ⚠️ DEUX RÈGLES QUI DIVERGENT, C'EST UN AVERTISSEMENT QUI MENT. Ce que la suppression annonce
+    doit être exactement ce que le coût du jour perdrait.
+    """
+    r = _node(_monde("""
+        const cas = [
+          { active: false },
+          { active: true },
+          { active: false, valid_from: '2026-05-01', valid_to: '2026-07-01' },
+          { valid_from: '2026-11-01' },
+        ];
+        console.log(JSON.stringify(cas.map(x => ({
+          compte: applicableLe(x, aujourdhui()),
+          annonce: effetSuppression(x, 900).mois !== 0,
+        }))));
+    """, "effetSuppression", "arretAVenir"))
+    # Une ligne qui compte aujourd'hui annonce forcément un effet ; l'inverse n'est pas vrai
+    # (une ligne arrêtée en juillet ne compte plus, mais a compté).
+    for cas in r:
+        if cas["compte"]:
+            assert cas["annonce"], "une ligne comptée annonce ne rien changer"
