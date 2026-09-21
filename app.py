@@ -387,26 +387,152 @@ INVESTOR_BLOCKED_PREFIXES = (
     # elle permet de leur ÉCRIRE. Un accès pensé pour consulter des chiffres ne doit pas pouvoir
     # envoyer un SMS au nom du café.
     "/marketing", "/api/marketing",
+    # ⚠️ ET LES RÉGLAGES D'ACCÈS ENCORE MOINS. Un investisseur qui pourrait lire la liste des
+    # comptes connaîtrait la surface d'attaque exacte du backoffice : qui entre, avec quel
+    # niveau, et laquelle de ces portes est la plus ancienne.
+    "/parametres", "/api/comptes",
 )
 
 def _auth_token(role):
     return hmac.new(AUTH_SECRET.encode(), f"estushop-auth-v1:{role}".encode(),
                     hashlib.sha256).hexdigest()
 
-def _current_role():
-    """'admin', 'investor', 'staff', 'accountant' ou None."""
+# ══════════════════════════════════════════════════════════════════════════════
+# LES COMPTES NOMINATIFS — qui a accès, à quoi, et depuis quand
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ LES MOTS DE PASSE PARTAGÉS PAR RÔLE CONTINUENT DE FONCTIONNER, ET C'EST DÉLIBÉRÉ. Ils sont
+# dans l'environnement ; les retirer d'un coup fermerait la porte à celui qui installe cette
+# page, et personne ne pourrait créer le premier compte. Ils restent le trousseau de secours.
+#
+# ⚠️ ET UN COMPTE NOMINATIF L'EMPORTE SUR EUX. Si l'adresse existe et que le mot de passe
+# correspond, c'est ce rôle-là qui s'applique — même si la personne a, par ailleurs, connaissance
+# du mot de passe partagé.
+
+ROLES = ("admin", "accountant", "investor", "staff")
+
+# Ce que chaque rôle peut faire, en une phrase — affichée à l'écran, pas seulement commentée.
+ROLES_DESCRIPTION = {
+    "admin":      "Tout le backoffice, y compris les réglages et les envois SMS.",
+    "accountant": "La seule page Contabilidade : ventes, commissions, TVA. Rien d'autre.",
+    "investor":   "Lecture seule, sans les dépenses ni le fichier clients.",
+    "staff":      "La seule page COGS — recettes et coûts.",
+}
+
+_PBKDF2_TOURS = 200_000
+_COMPTES_CACHE = {"lignes": None, "ts": 0.0}
+_COMPTES_TTL = 60.0
+
+
+def _empreinte_mdp(mdp, sel=None):
+    """
+    PBKDF2-HMAC-SHA256. ⚠️ JAMAIS LE MOT DE PASSE EN CLAIR, ET JAMAIS UN SIMPLE SHA : un hachage
+    rapide se force au dictionnaire en quelques heures sur du matériel ordinaire. Deux cent
+    mille tours coûtent une centaine de millisecondes à la connexion — invisible pour la
+    personne, rédhibitoire pour qui essaie un million de mots.
+    """
+    sel = sel or _secrets.token_hex(16)
+    brut = hashlib.pbkdf2_hmac("sha256", (mdp or "").encode(), bytes.fromhex(sel), _PBKDF2_TOURS)
+    return f"pbkdf2${_PBKDF2_TOURS}${sel}${brut.hex()}"
+
+
+def _verifie_mdp(mdp, empreinte):
+    """⚠️ COMPARAISON À TEMPS CONSTANT. Un `==` sur des empreintes fuit, par sa durée, le nombre
+    de caractères justes — c'est assez pour reconstruire une empreinte octet par octet."""
+    try:
+        marque, tours, sel, attendu = (empreinte or "").split("$")
+        if marque != "pbkdf2":
+            return False
+        calcule = hashlib.pbkdf2_hmac("sha256", (mdp or "").encode(),
+                                      bytes.fromhex(sel), int(tours))
+        return hmac.compare_digest(calcule.hex(), attendu)
+    except (ValueError, AttributeError):
+        return False
+
+
+def _comptes(force=False):
+    """
+    La liste des comptes, en cache une minute.
+
+    ⚠️ `_current_role` TOURNE À CHAQUE REQUÊTE. Une lecture Supabase par requête ajouterait
+    cinquante millisecondes à tout le backoffice, navigation comprise. Le prix du cache est
+    nommé : un accès révoqué peut survivre jusqu'à une minute. C'est acceptable pour retirer un
+    droit ; ça ne le serait pas pour un mot de passe compromis, et dans ce cas il faut changer
+    le mot de passe partagé, qui est hors cache.
+    """
+    if not force and _COMPTES_CACHE["lignes"] is not None \
+            and time.time() - _COMPTES_CACHE["ts"] < _COMPTES_TTL:
+        return _COMPTES_CACHE["lignes"]
+    try:
+        lignes = _supa_get("comptes", {"select": "email,nom,role,empreinte,actif,cree_le,"
+                                                 "cree_par,derniere_connexion"})
+        lignes = lignes if isinstance(lignes, list) else []
+    except Exception:
+        # ⚠️ TABLE ABSENTE OU SUPABASE MUET : on ne bloque personne. Les mots de passe partagés
+        # prennent le relais, et le backoffice reste utilisable — c'est exactement la situation
+        # où l'on a besoin d'y entrer pour réparer.
+        lignes = _COMPTES_CACHE["lignes"] or []
+    _COMPTES_CACHE["lignes"] = lignes
+    _COMPTES_CACHE["ts"] = time.time()
+    return lignes
+
+
+def _compte_par_email(email):
+    e = (email or "").strip().lower()
+    for c in _comptes():
+        if (c.get("email") or "").lower() == e:
+            return c
+    return None
+
+def _identite():
+    """
+    Le rôle ET l'adresse portés par le cookie. Renvoie `(role, email|None)`.
+
+    ⚠️ LE COOKIE D'UN COMPTE NOMINATIF PORTE L'ADRESSE, celui d'un mot de passe partagé n'en a
+    pas. Les deux formes coexistent : sans quoi, déployer cette page déconnecterait tout le
+    monde et il faudrait se reconnecter pour créer le premier compte.
+    """
     cookie = request.cookies.get("estu_auth", "")
     if not cookie:
-        return None
-    if hmac.compare_digest(cookie, _auth_token("admin")):
-        return "admin"
-    if INVESTOR_PASSWORD and hmac.compare_digest(cookie, _auth_token("investor")):
-        return "investor"
-    if STAFF_PASSWORD and hmac.compare_digest(cookie, _auth_token("staff")):
-        return "staff"
-    if ACCOUNTANT_PASSWORD and hmac.compare_digest(cookie, _auth_token("accountant")):
-        return "accountant"
-    return None
+        return None, None
+
+    # Forme nominative : « email|role|signature ».
+    if cookie.count("|") == 2:
+        email, role, signature = cookie.split("|")
+        if role in ROLES and hmac.compare_digest(signature, _signature_compte(email, role)):
+            c = _compte_par_email(email)
+            # ⚠️ LE COMPTE EST RELU À CHAQUE REQUÊTE (via le cache d'une minute). Un cookie
+            # signé resterait valable éternellement ; c'est la relecture qui permet de fermer
+            # une porte sans attendre l'expiration.
+            if c and c.get("actif") and c.get("role") in ROLES:
+                return c["role"], email
+        return None, None
+
+    # Forme historique : le mot de passe partagé du rôle.
+    for role in ROLES:
+        attendu = _auth_token(role)
+        mdp = {"admin": DASHBOARD_PASSWORD, "investor": INVESTOR_PASSWORD,
+               "staff": STAFF_PASSWORD, "accountant": ACCOUNTANT_PASSWORD}[role]
+        if mdp and hmac.compare_digest(cookie, attendu):
+            return role, None
+    return None, None
+
+
+def _signature_compte(email, role):
+    """⚠️ LE RÔLE EST DANS LA SIGNATURE. Sans lui, quelqu'un qui connaît son propre cookie
+    pourrait en changer le rôle et se promouvoir administrateur."""
+    return hmac.new(AUTH_SECRET.encode(), f"{(email or '').lower()}|{role}".encode(),
+                    hashlib.sha256).hexdigest()
+
+
+def _current_email():
+    return _identite()[1]
+
+
+def _current_role():
+    """'admin', 'investor', 'staff', 'accountant' ou None."""
+    return _identite()[0]
+
 
 @app.before_request
 def _require_auth():
@@ -463,7 +589,33 @@ def login():
     error = ""
     if request.method == "POST":
         pw = request.form.get("password", "")
+        email = (request.form.get("email") or "").strip().lower()
         role = None
+
+        # ── Un compte nominatif d'abord ─────────────────────────────────────────────────────
+        # ⚠️ IL L'EMPORTE SUR LE MOT DE PASSE PARTAGÉ. Quelqu'un qui a un compte et qui connaît
+        # aussi l'ancien mot de passe doit entrer par SON compte : c'est la seule façon que la
+        # dernière connexion et les actions journalisées portent son nom.
+        if email:
+            c = _compte_par_email(email)
+            if c and c.get("actif") and _verifie_mdp(pw, c.get("empreinte")):
+                dest = {"staff": "/cogs", "accountant": "/contabilidade"}.get(c["role"], "/")
+                resp = make_response(redirect(dest))
+                resp.set_cookie("estu_auth",
+                                f"{email}|{c['role']}|{_signature_compte(email, c['role'])}",
+                                max_age=30*24*3600, httponly=True, secure=True, samesite="Lax")
+                try:
+                    _supa_patch("comptes", {"email": f"eq.{email}"},
+                                {"derniere_connexion": _utc_iso()})
+                    _COMPTES_CACHE["ts"] = 0.0
+                except Exception:
+                    pass   # ⚠️ une trace qui échoue ne doit pas empêcher d'entrer
+                return resp
+            # ⚠️ ON NE DIT PAS « CETTE ADRESSE N'EXISTE PAS ». Le message serait une liste de
+            # comptes valides offerte à qui essaie des adresses au hasard.
+            error = "Identifiants incorrects"
+            return _page_login(error)
+
         if hmac.compare_digest(pw, DASHBOARD_PASSWORD):
             role = "admin"
         elif INVESTOR_PASSWORD and hmac.compare_digest(pw, INVESTOR_PASSWORD):
@@ -480,6 +632,10 @@ def login():
                             secure=True, samesite="Lax")
             return resp
         error = "Incorrect password"
+    return _page_login(error)
+
+
+def _page_login(error=""):
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -516,14 +672,18 @@ button:hover {{ opacity:.9; }}
 <div class="wrap">
   <div class="eyebrow"><b>◳ ESTUDANTINA</b> · SIGN IN</div>
   <h1>Your numbers, in clear.</h1>
-  <p class="sub">Private dashboard for Estudantina — enter your password to continue.</p>
+  <p class="sub">Tableau de bord priv&eacute; d'Estudantina.</p>
   {f'<div class="err">{error}</div>' if error else ''}
   <form method="POST">
-    <label for="pw">Password</label>
-    <input id="pw" type="password" name="password" placeholder="••••••••" autofocus>
-    <button type="submit">Sign in →</button>
+    <label for="em">Adresse e-mail</label>
+    <input id="em" type="email" name="email" placeholder="vous@exemple.pt" autocomplete="username" autofocus>
+    <label for="pw">Mot de passe</label>
+    <input id="pw" type="password" name="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="current-password">
+    <button type="submit">Se connecter &rarr;</button>
   </form>
-  <div class="note"><b>Private.</b> Access is role-based (owner, staff, investor). Your session stays signed in on this device for 30 days.</div>
+  <div class="note"><b>L'adresse est facultative.</b> Laisse-la vide si tu utilises encore
+  l'ancien mot de passe partag&eacute; ; renseigne-la si un compte t'a &eacute;t&eacute;
+  cr&eacute;&eacute;. La session reste ouverte trente jours sur cet appareil.</div>
 </div>
 </body></html>"""
 
@@ -3482,6 +3642,148 @@ def api_statut():
         pass
 
     return jsonify(out)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LES RÉGLAGES — qui a accès, à quoi
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/parametres")
+def page_parametres():
+    if _current_role() != "admin":
+        return redirect("/")
+    return render_template("parametres.html", moi=_current_email() or "")
+
+
+@app.route("/api/comptes")
+def api_comptes():
+    """
+    ⚠️ L'EMPREINTE NE SORT JAMAIS. Même vers un administrateur, même en lecture : elle n'a
+    aucun usage à l'écran, et tout ce qui traverse le réseau finit un jour dans un journal, un
+    cache de navigateur ou une capture d'écran.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    vus = []
+    for c in sorted(_comptes(force=True), key=lambda x: (x.get("role") or "", x.get("email") or "")):
+        vus.append({k: c.get(k) for k in ("email", "nom", "role", "actif", "cree_le",
+                                          "cree_par", "derniere_connexion")})
+    return jsonify({"comptes": vus, "roles": list(ROLES),
+                    "descriptions": ROLES_DESCRIPTION,
+                    "moi": _current_email(),
+                    # ⚠️ L'ÉCRAN DOIT POUVOIR DIRE QUE LES MOTS DE PASSE PARTAGÉS SONT ENCORE
+                    # ACTIFS. Créer des comptes nominatifs en croyant avoir fermé les anciens
+                    # accès est exactement le genre de fausse sécurité qu'un écran doit refuser
+                    # de laisser croire.
+                    "partages_actifs": [r for r, v in (
+                        ("admin", DASHBOARD_PASSWORD), ("investor", INVESTOR_PASSWORD),
+                        ("staff", STAFF_PASSWORD), ("accountant", ACCOUNTANT_PASSWORD))
+                        if v]})
+
+
+@app.route("/api/comptes", methods=["POST"])
+def api_comptes_creer():
+    """
+    Crée un compte et rend son mot de passe UNE fois.
+
+    ⚠️ LE MOT DE PASSE EST GÉNÉRÉ, PAS CHOISI. Un mot de passe saisi par l'admin pour quelqu'un
+    d'autre est toujours faible : il doit être dictable au téléphone, donc court, donc devinable.
+    Celui-ci fait 128 bits et se transmet une fois, par le canal qu'on veut.
+
+    ⚠️ ET IL N'EST JAMAIS RETROUVABLE. Seule son empreinte est stockée : si la personne le
+    perd, on en régénère un. C'est la seule garantie qui vaille — sinon « qui peut le lire »
+    devient une question sans réponse.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    corps = request.get_json(silent=True) or {}
+    email = (corps.get("email") or "").strip().lower()
+    role = (corps.get("role") or "").strip()
+    nom = (corps.get("nom") or "").strip() or None
+
+    if not _re.fullmatch(r"[^@\s]+@[^@\s]+\.[a-z]{2,}", email):
+        return jsonify({"error": "adresse e-mail invalide"}), 400
+    if role not in ROLES:
+        return jsonify({"error": "rôle inconnu"}), 400
+    if _compte_par_email(email):
+        return jsonify({"error": "cette adresse a déjà un compte"}), 409
+
+    mdp = _secrets.token_urlsafe(16)
+    ok, err = _supa_upsert("comptes", {
+        "email": email, "nom": nom, "role": role,
+        "empreinte": _empreinte_mdp(mdp), "actif": True,
+        "cree_par": _current_email() or "mot de passe partagé",
+    })
+    if not ok:
+        return jsonify({"error": err or "création refusée"}), 502
+    _COMPTES_CACHE["ts"] = 0.0
+    _journal_action(_current_role(), "compte-cree", email[:3] + "…", None,
+                    {"role": role}, f"compte créé pour {email.split('@')[-1]}")
+    # ⚠️ LA SEULE FOIS OÙ CE MOT DE PASSE EXISTE EN CLAIR.
+    return jsonify({"ok": True, "email": email, "role": role, "mot_de_passe": mdp})
+
+
+@app.route("/api/comptes", methods=["PUT"])
+def api_comptes_modifier():
+    """
+    Change un rôle, désactive, réactive, ou régénère un mot de passe.
+
+    ⚠️ ON NE SUPPRIME PAS, ON DÉSACTIVE. Un compte effacé emporte la trace de ce qu'il a fait ;
+    un compte désactivé garde l'historique et ferme la porte — qui est la seule chose qu'on
+    veut vraiment.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    corps = request.get_json(silent=True) or {}
+    email = (corps.get("email") or "").strip().lower()
+    c = _compte_par_email(email)
+    if not c:
+        return jsonify({"error": "compte inconnu"}), 404
+
+    moi = _current_email()
+    maj, rendu = {}, {"ok": True, "email": email}
+
+    if "role" in corps:
+        role = (corps.get("role") or "").strip()
+        if role not in ROLES:
+            return jsonify({"error": "rôle inconnu"}), 400
+        # ⚠️ ON NE SE RETIRE PAS SES PROPRES DROITS. L'erreur est irréversible depuis l'écran :
+        # une fois passé « investisseur », on ne peut plus ouvrir cette page pour se corriger.
+        if moi and email == moi and role != "admin":
+            return jsonify({"error": "tu ne peux pas retirer ton propre accès administrateur"}), 400
+        maj["role"] = role
+
+    if "actif" in corps:
+        actif = bool(corps.get("actif"))
+        if moi and email == moi and not actif:
+            return jsonify({"error": "tu ne peux pas désactiver ton propre compte"}), 400
+        # ⚠️ ET IL DOIT RESTER UN ADMINISTRATEUR ACTIF. Sans ce garde, la dernière désactivation
+        # ferme le backoffice à tout le monde — et il n'y a plus d'écran pour le rouvrir.
+        if not actif and c.get("role") == "admin":
+            autres = [x for x in _comptes()
+                      if x.get("role") == "admin" and x.get("actif")
+                      and (x.get("email") or "").lower() != email]
+            if not autres:
+                return jsonify({"error": "c'est le dernier administrateur actif"}), 400
+        maj["actif"] = actif
+
+    if corps.get("regenerer"):
+        mdp = _secrets.token_urlsafe(16)
+        maj["empreinte"] = _empreinte_mdp(mdp)
+        rendu["mot_de_passe"] = mdp
+
+    if not maj:
+        return jsonify({"error": "rien à modifier"}), 400
+
+    ok, err = _supa_patch("comptes", {"email": f"eq.{email}"}, maj)
+    if not ok:
+        return jsonify({"error": err or "écriture refusée"}), 502
+    _COMPTES_CACHE["ts"] = 0.0
+    _journal_action(_current_role(), "compte-modifie", email[:3] + "…",
+                    {"role": c.get("role"), "actif": c.get("actif")},
+                    {k: v for k, v in maj.items() if k != "empreinte"},
+                    "modification depuis les réglages")
+    return jsonify(rendu)
 
 
 # ── LE RAPPROCHEMENT TRANSACTION PAR TRANSACTION ─────────────────────────────────────────────

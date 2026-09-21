@@ -6,20 +6,28 @@
 <title>Contabilidade · Quiet Frequency</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+{#
+  ⚠️ CETTE PAGE NE CHARGEAIT PAS LA FEUILLE PARTAGÉE. Elle portait son propre `:root` — la
+  palette d'AVANT l'identité Flux — et aucune des règles de la coquille. Résultat le
+  21/09/2026 : le rail s'y affichait en liste de liens nus, sans fond, sans mise en page.
+
+  ⚠️ ET ELLE N'AVAIT PAS DE MODE SOMBRE. Une page isolée de la feuille commune ne vieillit pas
+  avec les autres : elle reste sur la palette du jour où on l'a écrite, et l'écart ne se voit
+  que le jour où quelqu'un l'ouvre à côté d'une autre.
+#}
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#EDEAE3;--card:#fff;--border:#DBD7CB;--text:#26241E;--muted:#6E6A5E;
-      --faint:#A29D8F;--green:#448361;--spec:#2554C7;
-      --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
-body{font-family:'Inter',ui-sans-serif,system-ui,sans-serif;font-size:14px;background:var(--bg);
-     color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
+:root{ /* ⚠️ UN SEUL ALIAS RESTE : `--card` n'existe pas dans la feuille commune, qui l'appelle
+          `--bg-card`. Le définir ici évite de réécrire quarante règles pour un nom. */
+      --card: var(--bg-card); }
 .page{max-width:900px;margin:0 auto;padding:44px 28px 90px}
 h1{font-size:23px;font-weight:700;letter-spacing:-.4px}
-h1::before{content:"◳ ";color:var(--spec)}
+
 .sub{font-size:13px;color:var(--muted);margin:4px 0 26px}
 .label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
        color:var(--muted);margin:26px 0 10px}
-.label::before{content:"— ";color:var(--faint)}
+
 .twrap{border:1px solid var(--border);border-radius: 4px;overflow-x:auto;background:var(--card)}
 table{width:100%;border-collapse:collapse;font-size:12px}
 th{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/static/icons/favicon-32.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Estudantina">
+<meta name="theme-color" content="#EDEAE3">
+<title>Estudantina · Réglages</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<style>
+.pa-bloc { background:var(--bg-card); border:1px solid var(--border); border-radius:4px;
+  padding:16px 18px; margin-bottom:16px; }
+.pa-titre { font-size:13px; font-weight:640; margin:0 0 10px; }
+.pa-aide { font-size:11.5px; color:var(--muted); line-height:1.5; margin:6px 0 0; }
+.pa-l { display:block; font-family:var(--mono); font-size:10px; letter-spacing:.11em;
+  text-transform:uppercase; color:var(--muted); margin:12px 0 5px; }
+.pa-i { width:100%; box-sizing:border-box; font-family:inherit; font-size:13.5px;
+  padding:8px 11px; border:1px solid var(--border); border-radius:6px;
+  background:var(--bg-page); color:var(--text); }
+.pa-form { display:grid; grid-template-columns:1.4fr 1fr 1fr auto; gap:10px; align-items:end; }
+@media (max-width:760px){ .pa-form { grid-template-columns:1fr; } }
+.pa-btn { font-family:inherit; font-size:13px; font-weight:600; padding:9px 16px;
+  border-radius:6px; cursor:pointer; border:1px solid var(--border);
+  background:var(--bg-card); color:var(--text); white-space:nowrap; }
+.pa-btn:hover { background:var(--bg-hover); }
+.pa-btn.fort { background:var(--spec); color:#fff; border-color:transparent; }
+.pa-btn:disabled { opacity:.45; cursor:not-allowed; }
+.pa-mdp { border:1px solid var(--green); border-radius:4px; background:var(--spec-soft);
+  padding:14px 16px; margin-top:14px; }
+.pa-mdp code { font-family:var(--mono); font-size:16px; font-weight:600; color:var(--text);
+  user-select:all; word-break:break-all; }
+.pa-off td { opacity:.5; }
+.pa-role { font-family:inherit; font-size:12.5px; padding:4px 7px; border-radius:5px;
+  border:1px solid var(--border); background:var(--bg-page); color:var(--text); }
+.pa-avert { border:1px solid var(--amber); border-radius:4px; padding:12px 14px;
+  font-size:12.5px; line-height:1.55; margin-bottom:16px; color:var(--text); }
+.pa-etat { font-size:12px; color:var(--muted); margin-top:8px; }
+.vide { color:var(--muted); font-size:12.5px; }
+</style>
+</head>
+<body>
+{% include "_rail.html" %}
+<div class="page">
+
+  <h1 style="font-size:20px;font-weight:600;margin:0 0 4px">R&eacute;glages &mdash; acc&egrave;s</h1>
+  <p class="pa-aide" style="max-width:74ch;margin:0 0 18px">
+    Chaque personne a son adresse et son mot de passe. Retirer l'acc&egrave;s &agrave; quelqu'un
+    ne touche &agrave; personne d'autre &mdash; et les actions journalis&eacute;es portent son nom.
+  </p>
+
+  <div id="pa-partages"></div>
+
+  <div class="pa-bloc">
+    <h2 class="pa-titre">Ajouter quelqu'un</h2>
+    <div class="pa-form">
+      <div><label class="pa-l" for="n-email">Adresse e-mail</label>
+        <input class="pa-i" type="email" id="n-email" placeholder="comptable@exemple.pt"></div>
+      <div><label class="pa-l" for="n-nom">Nom (facultatif)</label>
+        <input class="pa-i" type="text" id="n-nom" placeholder="Ana"></div>
+      <div><label class="pa-l" for="n-role">Acc&egrave;s</label>
+        <select class="pa-i" id="n-role"></select></div>
+      <div><button class="pa-btn fort" type="button" id="n-ok">Cr&eacute;er</button></div>
+    </div>
+    <p class="pa-aide" id="n-desc"></p>
+    <p class="pa-etat" id="n-etat"></p>
+    <div id="n-mdp"></div>
+  </div>
+
+  <div class="pa-bloc">
+    <h2 class="pa-titre">Comptes</h2>
+    <div style="overflow-x:auto"><table id="pa-t">
+      <thead><tr><th>Adresse</th><th>Nom</th><th>Acc&egrave;s</th><th>Derni&egrave;re connexion</th>
+        <th>&Eacute;tat</th><th></th></tr></thead>
+      <tbody><tr><td colspan="6" class="vide">Chargement&hellip;</td></tr></tbody>
+    </table></div>
+  </div>
+
+</div>
+{% include "_pied.html" %}
+<script>
+(function(){
+  var E = function(i){ return document.getElementById(i); };
+  var ROLES = [], DESC = {}, MOI = null;
+
+  function jour(s){
+    if (!s) return '—';
+    var d = new Date(s);
+    return isNaN(d) ? '—' : d.toLocaleDateString('fr-FR',
+      {day:'2-digit', month:'short', year:'numeric'});
+  }
+
+  /**
+   * ⚠️ LE MOT DE PASSE N'EXISTE QU'ICI, UNE FOIS. Il n'est pas stocké en clair : personne, pas
+   * même l'administrateur, ne pourra le relire. L'écran doit le dire au moment où il l'affiche,
+   * sinon on ferme l'onglet et il faut en régénérer un.
+   */
+  function montrerMdp(email, mdp){
+    return '<div class="pa-mdp"><div style="font-size:12.5px;margin-bottom:8px">' +
+      'Mot de passe de <b>' + email + '</b> &mdash; <b>note-le maintenant</b>&nbsp;: ' +
+      'il ne sera plus jamais affich&eacute;.</div><code>' + mdp + '</code>' +
+      '<p class="pa-aide" style="margin-top:8px">Transmets-le par le canal que tu veux. ' +
+      'S\'il est perdu, tu peux en r&eacute;g&eacute;n&eacute;rer un depuis la liste ' +
+      'ci-dessous &mdash; l\'ancien cesse alors de fonctionner.</p></div>';
+  }
+
+  function options(sel, courant){
+    sel.innerHTML = ROLES.map(function(r){
+      return '<option value="' + r + '"' + (r === courant ? ' selected' : '') + '>' + r +
+        '</option>';
+    }).join('');
+  }
+
+  function charger(){
+    fetch('/api/comptes').then(function(r){ return r.json(); }).then(function(d){
+      if (d.error){ E('pa-t').tBodies[0].innerHTML =
+        '<tr><td colspan="6" class="vide">' + d.error + '</td></tr>'; return; }
+      ROLES = d.roles || []; DESC = d.descriptions || {}; MOI = d.moi;
+      options(E('n-role'), 'accountant');
+      E('n-desc').textContent = DESC[E('n-role').value] || '';
+
+      /* ⚠️ LES MOTS DE PASSE PARTAGÉS ENCORE ACTIFS SONT ANNONCÉS. Créer des comptes
+         nominatifs en croyant avoir fermé les anciens accès est exactement la fausse
+         sécurité qu'un écran de réglages ne doit pas laisser s'installer. */
+      var pa = d.partages_actifs || [];
+      E('pa-partages').innerHTML = !pa.length ? '' :
+        '<div class="pa-avert"><b>Les anciens mots de passe partag&eacute;s fonctionnent ' +
+        'encore</b> pour&nbsp;: ' + pa.join(', ') + '. Tant qu\'ils existent dans les ' +
+        'variables Vercel, quiconque les conna&icirc;t entre sans compte nominatif. ' +
+        'Retire-les une fois que chacun a le sien.</div>';
+
+      var cs = d.comptes || [];
+      if (!cs.length){
+        E('pa-t').tBodies[0].innerHTML =
+          '<tr><td colspan="6" class="vide">Aucun compte. Tout le monde entre encore par ' +
+          'les mots de passe partag&eacute;s.</td></tr>';
+        return;
+      }
+      E('pa-t').tBodies[0].innerHTML = '';
+      cs.forEach(function(c){
+        var tr = document.createElement('tr');
+        if (!c.actif) tr.className = 'pa-off';
+        tr.dataset.email = c.email;
+
+        var td = function(txt){ var x = document.createElement('td'); x.textContent = txt; return x; };
+        tr.appendChild(td(c.email + (c.email === MOI ? ' (toi)' : '')));
+        tr.appendChild(td(c.nom || '—'));
+
+        var tdr = document.createElement('td');
+        var sel = document.createElement('select');
+        sel.className = 'pa-role'; sel.dataset.act = 'role';
+        options(sel, c.role);
+        sel.title = DESC[c.role] || '';
+        tdr.appendChild(sel); tr.appendChild(tdr);
+
+        tr.appendChild(td(jour(c.derniere_connexion)));
+        tr.appendChild(td(c.actif ? 'actif' : 'désactivé'));
+
+        var tda = document.createElement('td');
+        tda.innerHTML =
+          '<button class="pa-btn" data-act="mdp">Nouveau mot de passe</button> ' +
+          '<button class="pa-btn" data-act="actif">' +
+          (c.actif ? 'Désactiver' : 'Réactiver') + '</button>';
+        tr.appendChild(tda);
+        E('pa-t').tBodies[0].appendChild(tr);
+      });
+    }).catch(function(){
+      E('pa-t').tBodies[0].innerHTML = '<tr><td colspan="6" class="vide">Liste illisible.</td></tr>';
+    });
+  }
+
+  E('n-role').addEventListener('change', function(){
+    E('n-desc').textContent = DESC[E('n-role').value] || '';
+  });
+
+  E('n-ok').addEventListener('click', function(){
+    var email = E('n-email').value.trim().toLowerCase();
+    if (!email){ E('n-etat').textContent = 'Saisis une adresse.'; return; }
+    E('n-ok').disabled = true; E('n-etat').textContent = 'Création…';
+    fetch('/api/comptes', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({email: email, nom: E('n-nom').value.trim(),
+                            role: E('n-role').value})})
+      .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+      .then(function(x){
+        E('n-ok').disabled = false;
+        if (!x.ok){ E('n-etat').textContent = x.d.error || 'Refusé.'; return; }
+        E('n-etat').textContent = '';
+        E('n-mdp').innerHTML = montrerMdp(x.d.email, x.d.mot_de_passe);
+        E('n-email').value = ''; E('n-nom').value = '';
+        charger();
+      }).catch(function(){ E('n-ok').disabled = false;
+        E('n-etat').textContent = 'Échec réseau — rien n\'a été créé.'; });
+  });
+
+  function modifier(email, corps, confirmation){
+    if (confirmation && !confirm(confirmation)) return;
+    fetch('/api/comptes', {method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(Object.assign({email: email}, corps))})
+      .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+      .then(function(x){
+        if (!x.ok){ alert(x.d.error || 'Refusé.'); charger(); return; }
+        if (x.d.mot_de_passe) E('n-mdp').innerHTML = montrerMdp(email, x.d.mot_de_passe);
+        charger();
+      }).catch(function(){ alert('Échec réseau.'); });
+  }
+
+  E('pa-t').addEventListener('change', function(e){
+    var sel = e.target.closest('select[data-act="role"]');
+    if (!sel) return;
+    var email = sel.closest('tr').dataset.email;
+    modifier(email, {role: sel.value});
+  });
+
+  E('pa-t').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-act]');
+    if (!b) return;
+    var tr = b.closest('tr'), email = tr.dataset.email;
+    if (b.dataset.act === 'mdp'){
+      /* ⚠️ UNE CONFIRMATION QUI DIT CE QU'ELLE CASSE. Régénérer invalide l'ancien mot de
+         passe : la personne est déconnectée du prochain essai, pas plus tard. */
+      modifier(email, {regenerer: true},
+        'Générer un nouveau mot de passe pour ' + email + ' ?\n\n' +
+        'L\'ancien cessera immédiatement de fonctionner.');
+    } else {
+      var off = tr.classList.contains('pa-off');
+      modifier(email, {actif: off}, off ? null :
+        'Désactiver ' + email + ' ?\n\nSon accès est fermé au plus tard dans la minute. ' +
+        'Le compte et son historique sont conservés.');
+    }
+  });
+
+  charger();
+})();
+</script>
+</body>
+</html>
