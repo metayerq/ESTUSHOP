@@ -325,6 +325,18 @@
     que renvoyer vers la première. Un chiffre qui existe pour être cliqué n'a pas besoin d'un
     quart de l'écran d'accueil ; le rail y mène en un geste.
   #}
+  <details class="repli">
+    <summary>Quand l'argent entre<span class="repli-quoi">par heure, et ce qui le compose</span></summary>
+    {#
+      ⚠️ CES DEUX GRAPHIQUES SE CONSULTENT, ILS NE SE SURVEILLENT PAS. On les ouvre pour
+      répondre à « à quelle heure faut-il du monde au comptoir ? » ou « qu'est-ce qui porte le
+      chiffre ? » — deux questions qu'on se pose une fois par semaine, pas chaque matin. Les
+      laisser déroulés poussait la réponse du haut hors de l'écran.
+
+      ⚠️ ET UN GRAPHIQUE REPLIÉ SE DESSINE DANS UN CANVAS DE TAILLE NULLE. Chart.js mesure son
+      conteneur au moment du tracé : dans un `<details>` fermé, il vaut zéro, et le graphique
+      sort écrasé à l'ouverture. `dashboard.js` le redimensionne au dépliage.
+    #}
   <div class="charts-row">
     <div class="chart-block">
       <div class="section-label" id="time-chart-label" style="margin-bottom:4px;">Revenue by hour</div>
@@ -348,6 +360,8 @@
     </div>
   </div>
 
+  </details>
+
   {#
     ⚠️ « PAYMENT METHODS » DONNAIT LA RÉPARTITION DÉCLARÉE PAR VENDUS. `/reconciliation` donne
     la même chose MESURÉE sur le terminal Revolut, ligne à ligne, avec l'écart entre les deux —
@@ -361,6 +375,13 @@
     <div class="ins-card" id="ins-seat"></div>
   </div>
 
+  <details class="repli">
+    <summary>L'allure de la journée<span class="repli-quoi">le cumul heure par heure — jour unique</span></summary>
+    {#
+      ⚠️ ELLE N'EXISTE QUE SUR UN JOUR UNIQUE, et le bloc reste donc vide le reste du temps.
+      Replié, un bloc vide ne coûte qu'une ligne ; déroulé, il laissait un cadre blanc qu'on
+      prenait pour un graphique qui n'a pas chargé.
+    #}
   <!-- Courbe cumulative (conditionnel — jour unique) -->
   <div id="curve-section" style="display:none;margin-bottom:32px;">
     <div class="section-label">Sales evolution</div>
@@ -368,6 +389,14 @@
       <canvas id="chart-curve" height="90"></canvas>
     </div>
   </div>
+
+  <details class="repli">
+    <summary>Ce qui s'est vendu<span class="repli-quoi">le détail par produit, avec la marge</span></summary>
+    {#
+      ⚠️ UN TABLEAU DE QUARANTE LIGNES NE SE LIT PAS D'UN COUP D'ŒIL. On l'ouvre pour chercher
+      un produit, comparer deux marges, décider d'une carte — jamais pour prendre le pouls.
+    #}
+  </details>
 
   <!-- Produits — suit la période sélectionnée -->
   <div id="top-products-section">
@@ -391,6 +420,8 @@
     </div>
   </div><!-- /top-products-section -->
 
+  </details>
+
   {#
     ⚠️ « RECENT TRANSACTIONS » LISTAIT LES VINGT DERNIERS TICKETS. `/reconciliation` les détaille
     tous, jour par jour, avec leur moyen de paiement mesuré, leurs pourboires et leur
@@ -398,6 +429,13 @@
     fait seulement douter de laquelle est à jour.
   #}
 
+  <details class="repli">
+    <summary>Le mois en cours<span class="repli-quoi">quand on regarde une autre période</span></summary>
+    {#
+      ⚠️ CE BLOC EXISTE POUR LE CONTEXTE, PAS POUR LA DÉCISION. Il rappelle où en est le mois
+      pendant qu'on lit une semaine — utile, et jamais urgent. Il se masque déjà tout seul quand
+      la période EST le mois en cours : le replier finit le travail.
+    #}
   <!-- ═══ ZONE 2 · Le mois en cours (toujours mois calendaire, masquée si période = This month) ═══ -->
   <div id="month-zone" style="display:none;margin-top:44px;">
     <div class="zone-head">
@@ -410,6 +448,16 @@
     </div>
   </div>
 
+  </details>
+
+  <details class="repli">
+    <summary>Tendances<span class="repli-quoi">fenêtres fixes — insensibles au sélecteur de période</span></summary>
+    {#
+      ⚠️ CES FENÊTRES NE SUIVENT PAS LE SÉLECTEUR, et c'est écrit dans le résumé. Un bloc qui
+      ignore le filtre alors que tout le reste le suit est la façon la plus sûre de faire lire
+      un chiffre pour un autre — d'autant plus quand il est déroulé au milieu de blocs qui,
+      eux, obéissent.
+    #}
   <!-- ═══ ZONE 3 · Patterns structurels (fenêtres fixes, insensibles au sélecteur) ═══ -->
   <div id="patterns-zone" style="display:none;margin-top:44px;">
     <div class="zone-head">
@@ -449,6 +497,8 @@
       </div>
     </div>
   </div>
+  </details>
+
 
 
 </div><!-- /page -->

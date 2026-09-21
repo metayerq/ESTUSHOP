@@ -282,6 +282,33 @@ function renderReponse(d) {
     + 'répartis sur les jours <b>réellement ouverts</b>.';
 }
 
+/**
+ * REDIMENSIONNE LES GRAPHIQUES D'UN BLOC QU'ON VIENT D'OUVRIR.
+ *
+ * ⚠️ CHART.JS MESURE SON CONTENEUR AU MOMENT DU TRACÉ. Dans un `<details>` fermé, ce conteneur
+ * vaut zéro : le graphique est dessiné écrasé, et il le reste à l'ouverture. Rien ne lève, rien
+ * n'est rouge — on voit juste un trait au lieu d'une courbe, et on cherche le bogue dans les
+ * données.
+ *
+ * ⚠️ ON INTERROGE CHART.JS PLUTÔT QUE DE TENIR NOTRE PROPRE LISTE. `Chart.getChart(canvas)`
+ * rend l'instance attachée : une liste maison se périmerait au premier graphique ajouté, et le
+ * suivant serait écrasé sans que personne ne fasse le lien avec ce code-ci.
+ */
+function reveillerGraphiques(bloc) {
+  if (typeof Chart === 'undefined' || !bloc) return;
+  bloc.querySelectorAll('canvas').forEach(function (c) {
+    var g = Chart.getChart(c);
+    if (g) g.resize();
+  });
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('toggle', function (e) {
+    var d = e.target;
+    if (d && d.tagName === 'DETAILS' && d.open) reveillerGraphiques(d);
+  }, true);   // `toggle` ne remonte pas : on l'écoute à la capture
+}
+
 function render(d) {
   window._lastData = d;
   /* ⚠️ « RETURNING CUSTOMERS » A DEUX PAGES À LUI : `/clientes` analyse les empreintes de

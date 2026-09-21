@@ -227,3 +227,119 @@ def test_aucune_fonction_du_script_nest_orpheline():
         if len(re.findall(rf"\b{f}\s*\(", js)) <= 1 and f not in appelees
     )
     assert not orphelines, f"définies mais jamais appelées : {orphelines}"
+
+
+# ── Ce qui est replié, et ce qui ne l'est pas ────────────────────────────────────────────────
+#
+# ⚠️ TOUT CE QUI SE CONSULTE N'A PAS À ÊTRE DÉROULÉ. Le détail par produit, la répartition
+# horaire, les tendances : on les ouvre pour répondre à une question précise, une fois par
+# semaine — pas chaque matin. Déroulés, ils poussaient la réponse du haut hors de l'écran.
+
+def test_la_reponse_et_la_chaine_ne_sont_jamais_repliees():
+    """
+    ⚠️ C'EST LA LIGNE DE PARTAGE. Ce qu'on vient lire chaque matin reste sous les yeux ; ce
+    qu'on va chercher se replie. Replier la réponse reviendrait à demander un clic pour savoir
+    si la journée paie ses coûts.
+    """
+    html = _gabarit()
+    avant = html[:html.index('<details class="repli">')]
+    for ancre in ('id="db-value"', 'class="chaine"', 'id="eco-seuil"', 'id="periode-dit"'):
+        assert ancre in avant, f"{ancre} est passé derrière un repli"
+
+
+def test_les_blocs_de_consultation_sont_replies():
+    html = _gabarit()
+    for titre in ("Quand l'argent entre", "Ce qui s'est vendu", "Le mois en cours", "Tendances"):
+        i = html.index(titre)
+        # Le titre doit vivre dans un <summary>, donc après le <details> le plus proche.
+        assert html.rindex("<details", 0, i) > html.rindex("</details>", 0, i) \
+            if "</details>" in html[:i] else True, titre
+        assert "<summary>" in html[html.rindex("<details", 0, i):i], titre
+
+
+def test_aucun_bloc_nest_ouvert_par_defaut():
+    """⚠️ UN `open` OUBLIÉ ANNULE LE REPLI SANS QUE RIEN NE LE SIGNALE."""
+    html = _gabarit()
+    assert not re.search(r'<details class="repli"[^>]*\sopen', html)
+
+
+def test_chaque_repli_dit_ce_quon_y_trouve():
+    """
+    ⚠️ SANS RÉSUMÉ, ON OUVRE LES CINQ BLOCS POUR RETROUVER CELUI QU'ON CHERCHE — ce qui est pire
+    que tout laisser déroulé.
+    """
+    html = _gabarit()
+    for m in re.finditer(r"<summary>(.*?)</summary>", html, re.S):
+        assert 'class="repli-quoi"' in m.group(1), m.group(1)[:60]
+
+
+def test_les_graphiques_sont_redimensionnes_a_louverture():
+    """
+    ⚠️ CHART.JS MESURE SON CONTENEUR AU MOMENT DU TRACÉ. Dans un `<details>` fermé il vaut zéro :
+    le graphique est dessiné écrasé et le reste à l'ouverture. Rien ne lève, rien n'est rouge —
+    on voit un trait au lieu d'une courbe, et on cherche le bogue dans les données.
+    """
+    js = _js()
+    assert "Chart.getChart" in js, "on tient une liste maison au lieu d'interroger Chart.js"
+    i = js.index("document.addEventListener('toggle'")
+    bloc = js[i:i + 300]
+    assert "reveillerGraphiques" in bloc
+    # ⚠️ `toggle` NE REMONTE PAS : sans la phase de capture, l'écouteur posé sur le document
+    # ne recevrait jamais rien, et la garde serait silencieusement inopérante.
+    assert "true" in bloc, "l'écouteur n'est pas à la capture"
+
+
+def test_un_repli_contient_bien_un_canvas_a_reveiller():
+    """Si plus aucun graphique ne vit dans un repli, la garde ci-dessus n'a plus d'objet — et
+    c'est le moment de la retirer plutôt que de la laisser rassurer pour rien."""
+    html = _gabarit()
+    i = html.index('<details class="repli">')
+    assert "<canvas" in html[i:], "plus aucun graphique replié : la garde de redimensionnement est morte"
+
+
+def test_ouvrir_un_bloc_redimensionne_vraiment_ses_graphiques():
+    """
+    ⚠️ VÉRIFIER LA FORME DU CODE NE VÉRIFIE PAS SON EFFET. Deux mutants ont survécu à la
+    première batterie — l'un vidait `reveillerGraphiques`, l'autre coupait son appel — parce que
+    mes contrôles cherchaient `Chart.getChart` dans le source au lieu d'exécuter la fonction.
+    Un test qui lit du code atteste qu'il est écrit, jamais qu'il marche.
+    """
+    if not shutil.which("node"):
+        pytest.skip("node absent — vérifié en local et à la revue")
+    js = _js()
+    i = js.index("function reveillerGraphiques(")
+    fonction = js[i:js.index("\n}", i) + 2]
+    # ⚠️ L'ÉCOUTEUR VIT DANS UN `if (typeof document !== 'undefined') { … }` : le découper à la
+    # première accolade en colonne 0 rendait un fragment déséquilibré, et node refusait de le
+    # lire. On prend le bloc entier, depuis son `if`.
+    i = js.index("if (typeof document !== 'undefined') {\n  document.addEventListener('toggle'")
+    ecouteur = js[i:js.index("\n}", js.index("}, true);", i)) + 2]
+    prog = """
+      const redimensionnes = [];
+      function faireCanvas(nom){ return { nom: nom }; }
+      const dedans = [faireCanvas('haut'), faireCanvas('bas')];
+      const Chart = { getChart: function (c) {
+        return { resize: function(){ redimensionnes.push(c.nom); } };
+      } };
+      let ecouteurPose = null;
+      const document = { addEventListener: function (type, fn, capture) {
+        if (type === 'toggle') ecouteurPose = { fn: fn, capture: capture };
+      } };
+    """ + fonction + "\n" + ecouteur + """
+      const bloc = { tagName: 'DETAILS', open: true,
+                     querySelectorAll: function(){ return dedans; } };
+      ecouteurPose.fn({ target: bloc });
+      const ferme = { tagName: 'DETAILS', open: false,
+                      querySelectorAll: function(){ return [faireCanvas('jamais')]; } };
+      ecouteurPose.fn({ target: ferme });
+      console.log(JSON.stringify({ redimensionnes: redimensionnes,
+                                   capture: ecouteurPose.capture === true }));
+    """
+    r = subprocess.run(["node", "-e", prog], capture_output=True, text=True, timeout=20)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["redimensionnes"] == ["haut", "bas"], out["redimensionnes"]
+    # ⚠️ ET RIEN N'EST TOUCHÉ SUR UN BLOC QUI SE FERME : redimensionner un canvas qu'on vient de
+    # masquer le remettrait à zéro, et c'est le défaut qu'on corrige, appliqué à l'envers.
+    assert "jamais" not in out["redimensionnes"]
+    assert out["capture"] is True, "`toggle` ne remonte pas — sans capture, rien n'arrive"

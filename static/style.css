@@ -983,3 +983,41 @@ td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 
 .periode-dit:empty { display: none; }
 .periode-dit b { color: var(--text); font-weight: 600; }
 .periode-dit .att { color: var(--amber); }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   LES BLOCS REPLIÉS DU TABLEAU DE BORD.
+   ═══════════════════════════════════════════════════════════════════════════════════════════
+
+   ⚠️ TOUT CE QUI SE CONSULTE N'A PAS À ÊTRE DÉROULÉ. Le détail par produit, la répartition
+   horaire, les tendances : on les ouvre pour répondre à une question précise, une fois par
+   semaine — pas chaque matin. Déroulés, ils poussaient la réponse du haut hors de l'écran.
+
+   ⚠️ FERMÉ, PAS CACHÉ. Le titre reste lu, et le résumé dit ce qu'on trouvera dedans : sans
+   lui, on ouvre les cinq blocs pour retrouver celui qu'on cherche, ce qui est pire que tout
+   laisser ouvert.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+.repli {
+  border: 1px solid var(--border); border-radius: 4px; background: var(--bg-card);
+  margin-bottom: 12px;
+}
+.repli > summary {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); padding: 13px 17px; cursor: pointer; list-style: none;
+}
+.repli > summary::-webkit-details-marker { display: none; }
+.repli > summary::before { content: "▸"; color: var(--faint); margin-right: -4px; }
+.repli[open] > summary::before { content: "▾"; }
+.repli > summary:hover { color: var(--text); }
+.repli[open] > summary { border-bottom: 1px solid var(--border); }
+.repli > summary:focus-visible { outline: 2px solid var(--spec); outline-offset: -2px; }
+/* Ce qu'on trouvera dedans — sans quoi on ouvre les cinq pour trouver le bon. */
+.repli-quoi {
+  font-family: var(--font, inherit); font-size: 11.5px; letter-spacing: 0;
+  text-transform: none; color: var(--faint); font-weight: 400;
+}
+/* Le contenu reprend sa respiration une fois ouvert. */
+.repli > *:not(summary) { padding: 0 17px; }
+.repli > *:not(summary):last-child { padding-bottom: 14px; }
