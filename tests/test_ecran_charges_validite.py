@@ -227,7 +227,7 @@ def test_aucun_bouton_ne_promet_plus_une_suppression():
     """
     g = _gabarit()
     assert "Delete this cost" not in g and "Delete this employee" not in g
-    assert g.count("Stop…") == 2
+    assert g.count(">Stop…<") == 2
 
 
 def test_la_bascule_muette_a_disparu():
@@ -539,3 +539,91 @@ def test_seules_les_dates_a_venir_sont_retenues():
         console.log(JSON.stringify({ q: prochainChangement().quand.toISOString().slice(0,10) }));
     """))
     assert r["q"] == "2026-11-01"
+
+
+# ── Ce que la suppression efface, dit avant de confirmer ─────────────────────────────────────
+#
+# ⚠️ LE CHOIX ENTRE « STOP » ET « DELETE » SE PREND EN VOYANT CE QUE CHACUN FAIT. Effacer une
+# fiche d'essai ne change rien ; effacer quelqu'un qui a été payé de mai à septembre retire son
+# coût de ces cinq mois, et ces mois-là ont déjà servi à décider quelque chose. Les deux gestes
+# sont le même clic — seule la conséquence diffère, donc c'est elle qu'il faut montrer.
+
+def _effet(ligne, mensuel):
+    return _node(_monde(f"""
+        console.log(JSON.stringify(effetSuppression({json.dumps(ligne)}, {mensuel})));
+    """, "effetSuppression", "arretAVenir"))
+
+
+def test_effacer_une_fiche_qui_ne_coute_rien_ne_change_rien():
+    """Une ligne d'essai à 0 € n'a aucun passé à préserver — et l'écran doit le dire, pas
+    brandir un avertissement qui ferait hésiter sur le bon geste."""
+    e = _effet({"valid_from": "2026-05-01"}, 0)
+    assert e["mois"] == 0
+    assert "changes no figure" in e["texte"]
+
+
+def test_effacer_un_poste_paye_depuis_mai_annonce_les_cinq_mois():
+    e = _effet({"valid_from": "2026-05-01"}, 1200)
+    assert e["mois"] == 5                       # mai, juin, juillet, août, septembre
+    assert "May 2026 to September 2026" in e["texte"]
+    assert "1200.00" in e["texte"]
+    assert "Stop" in e["texte"], "l'autre porte n'est pas proposée"
+
+
+def test_une_ligne_sans_date_de_debut_a_compte_partout():
+    """
+    ⚠️ `valid_from` NUL VEUT DIRE « DEPUIS TOUJOURS ». Annoncer « 1 mois » pour une ligne sans
+    borne ferait croire l'effacement anodin alors qu'il touche tout l'historique.
+    """
+    e = _effet({}, 700)
+    assert e["mois"] is None
+    assert "every month on record" in e["texte"]
+
+
+def test_un_poste_deja_arrete_ne_compte_que_jusqua_son_arret():
+    e = _effet({"valid_from": "2026-05-01", "valid_to": "2026-07-01"}, 900)
+    assert e["mois"] == 3                       # mai, juin, juillet
+    assert "July 2026" in e["texte"]
+
+
+def test_un_poste_qui_na_pas_encore_commence_nefface_aucun_passe():
+    """La ligne de remplacement créée ce matin pour le 1er octobre : rien à réécrire."""
+    e = _effet({"valid_from": "2026-11-01"}, 750)
+    assert e["mois"] == 0
+    assert "not started yet" in e["texte"]
+
+
+def test_un_seul_mois_se_dit_au_singulier():
+    e = _effet({"valid_from": "2026-09-01"}, 300)
+    assert e["mois"] == 1
+    assert "(1 month)" in e["texte"] and "(1 months)" not in e["texte"]
+
+
+# ── Annuler un arrêt, ou rouvrir : deux gestes différents ────────────────────────────────────
+
+@pytest.mark.parametrize("ligne,attendu", [
+    ({"valid_to": "2026-10-01"}, True),     # programmé, pas encore pris
+    ({"valid_to": "2026-09-21"}, False),    # aujourd'hui : la borne est franchie
+    ({"valid_to": "2026-08-01"}, False),    # déjà pris
+    ({}, False),
+])
+def test_on_nannule_que_ce_qui_nest_pas_encore_arrive(ligne, attendu):
+    """
+    ⚠️ RETIRER UNE BORNE DÉJÀ FRANCHIE REMETTRAIT LE POSTE EN SERVICE SUR TOUTE L'INTERRUPTION.
+    Après la date, la bonne porte est « Reopen… », qui ouvre une ligne neuve et laisse
+    l'interruption dans l'historique.
+    """
+    r = _node(_monde(f"console.log(JSON.stringify({{ a: arretAVenir({json.dumps(ligne)}) }}));",
+                     "arretAVenir"))
+    assert r["a"] is attendu
+
+
+def test_les_trois_boutons_existent_et_ne_se_confondent_pas():
+    g = _gabarit()
+    # ⚠️ ON COMPTE DES BOUTONS, PAS DES OCCURRENCES. « Stop… » apparaît aussi dans le texte qui
+    # explique la suppression — chercher la chaîne nue comptait ce libellé-là et passait au vert
+    # même si le bouton avait disparu.
+    assert g.count(">Cancel stop<") == 2    # un arrêt programmé s'annule
+    assert g.count(">Reopen…<") == 2        # un arrêt pris se reprend par une ligne neuve
+    assert g.count(">Stop…<") == 2          # un poste en cours s'arrête à une date
+    assert g.count("supprimerDefinitivement(") == 3   # deux boutons + la définition

@@ -247,6 +247,11 @@ select.field-input { cursor:pointer; }
 .sum-attente b{color:var(--text);font-weight:600}
 .sum-attente .hausse{color:var(--red,#b3261e)}
 .sum-attente .baisse{color:var(--green)}
+
+/* ⚠️ DISCRET, PAS CACHÉ. Effacer est parfois la bonne réponse — une fiche d'essai n'a aucun
+   passé à garder — mais ce n'est jamais le geste courant. */
+.effacer{color:var(--faint);padding-left:7px;padding-right:7px}
+.effacer:hover{color:var(--red,#b3261e);border-color:var(--red,#b3261e)}
 </style>
 </head>
 <body>
@@ -591,9 +596,13 @@ function renderCharges() {
         <td class="right" style="font-weight:600;">${c.frequency !== 'monthly' ? fmt(monthly) : '—'}</td>
         <td class="right" style="white-space:nowrap;">
           <button class="btn-ghost" onclick="editCharge('${c.id}')" style="margin-right:4px;">Edit</button>
-          ${c.valid_to || c.active === false
+          ${arretAVenir(c)
+            ? `<button class="btn-ghost" onclick="annulerArret('charges', '${c.id}')">Cancel stop</button>`
+            : c.valid_to || c.active === false
             ? `<button class="btn-ghost" onclick="rouvrir('charges', '${c.id}')">Reopen…</button>`
             : `<button class="btn-danger" onclick="deleteCharge('${c.id}')">Stop…</button>`}
+          <button class="btn-ghost effacer" onclick="supprimerDefinitivement('charges', '${c.id}')"
+                  title="Delete permanently — for a line created by mistake">✕</button>
         </td>
       </tr>`;
     }
@@ -693,9 +702,13 @@ function renderEmployees() {
         </div>
         <div class="emp-actions">
           <button class="btn-ghost" onclick="editEmployee('${e.id}')">Edit</button>
-          ${e.valid_to || e.active === false
+          ${arretAVenir(e)
+            ? `<button class="btn-ghost" onclick="annulerArret('employees', '${e.id}')">Cancel stop</button>`
+            : e.valid_to || e.active === false
             ? `<button class="btn-ghost" onclick="rouvrir('employees', '${e.id}')">Reopen…</button>`
             : `<button class="btn-danger" onclick="deleteEmployee('${e.id}')">Stop…</button>`}
+          <button class="btn-ghost effacer" onclick="supprimerDefinitivement('employees', '${e.id}')"
+                  title="Delete permanently — for a line created by mistake">✕</button>
         </div>
       </div>
       <div class="emp-grid">${detailCells}</div>
@@ -958,6 +971,76 @@ async function rouvrir(table, id) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const d = await r.json();
   if (d.ok) { showToast('Restarted'); loadAll(); } else showToast('Error: ' + (d.error || ''));
+}
+
+/**
+ * Ce qu'une suppression définitive effacerait — en euros et en mois.
+ *
+ * ⚠️ LE CHOIX ENTRE « STOP » ET « DELETE » SE PREND EN VOYANT CE QUE CHACUN FAIT. Effacer une
+ * fiche d'essai ne change rien ; effacer quelqu'un qui a été payé de mai à septembre retire son
+ * coût de ces cinq mois, et ces mois-là ont déjà servi à décider quelque chose. Les deux gestes
+ * sont le même clic — seule la conséquence diffère, donc c'est elle qu'il faut montrer.
+ */
+function effetSuppression(x, mensuel) {
+  const auj = aujourdhui();
+  const debut = x.valid_from ? new Date(x.valid_from) : null;
+  const fin = x.valid_to && new Date(x.valid_to) < auj ? new Date(x.valid_to) : auj;
+  if (Math.round((mensuel || 0) * 100) === 0)
+    return { mois: 0, mensuel: 0, texte: 'This line costs nothing — deleting it changes no figure.' };
+  if (debut && debut > auj)
+    return { mois: 0, mensuel, texte: 'This line has not started yet — deleting it changes no past figure.' };
+  // Le nombre de mois entamés entre le début (ou « depuis toujours ») et la fin.
+  const mois = debut
+    ? Math.max(1, (fin.getFullYear() - debut.getFullYear()) * 12 + fin.getMonth() - debut.getMonth() + 1)
+    : null;
+  const j = d => d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  const periode = debut ? `${j(debut)} to ${j(fin)} (${mois} month${mois > 1 ? 's' : ''})`
+                        : `every month on record, up to ${j(fin)}`;
+  return { mois, mensuel, texte:
+    `Deleting removes ${fmt(mensuel)}/month from ${periode}. ` +
+    `Those months have already been read. Use "Stop…" instead if this cost was real.` };
+}
+
+/**
+ * Efface une ligne pour de bon — après avoir dit ce que ça change.
+ *
+ * ⚠️ NE PAS OFFRIR CETTE PORTE REVENAIT À DEMANDER DE VIVRE AVEC SES FAUTES DE SAISIE. Personne
+ * ne le fait : on met le montant à zéro, et la ligne fausse reste, avec un zéro que plus rien
+ * n'explique.
+ */
+async function supprimerDefinitivement(table, id) {
+  const src = (table === 'charges' ? chargesData : employeesData).find(x => x.id === id);
+  if (!src) return;
+  const mensuel = table === 'charges' ? toMonthly(src.amount, src.frequency)
+                                      : calcEmpCost(src).monthly;
+  const e = effetSuppression(src, mensuel);
+  if (!confirm(`Delete "${src.name}" permanently?\n\n${e.texte}\n\nThis cannot be undone.`)) return;
+  const r = await fetch(`/api/${table}/${id}/definitif`, { method: 'DELETE' });
+  const d = await r.json();
+  if (d.ok) { showToast('Deleted'); loadAll(); } else showToast('Error: ' + (d.error || ''));
+}
+
+/**
+ * Annule un arrêt PROGRAMMÉ — le poste continue, comme si de rien n'était.
+ *
+ * ⚠️ CE N'EST PAS « REOPEN ». Rouvrir crée une ligne neuve à une date, ce qui est juste après
+ * une interruption réelle et absurde pour un arrêt décidé le matin et regretté l'après-midi :
+ * on se retrouverait avec deux fiches pour quelqu'un qui n'est jamais parti.
+ */
+async function annulerArret(table, id) {
+  const src = (table === 'charges' ? chargesData : employeesData).find(x => x.id === id);
+  if (!src) return;
+  const j = new Date(src.valid_to).toLocaleDateString('en-GB',
+    { day: 'numeric', month: 'long', year: 'numeric' });
+  if (!confirm(`Cancel the stop scheduled for ${j}?\n\n"${src.name}" carries on as before.`)) return;
+  const r = await fetch(`/api/${table}/${id}/annuler`, { method: 'POST' });
+  const d = await r.json();
+  if (d.ok) { showToast('Stop cancelled'); loadAll(); } else showToast(d.error || 'Refused');
+}
+
+/** Un arrêt est-il programmé sans être encore pris ? */
+function arretAVenir(x) {
+  return !!x.valid_to && new Date(x.valid_to) > aujourdhui();
 }
 
 /** Remet le bloc à zéro à l'ouverture d'une fenêtre. */

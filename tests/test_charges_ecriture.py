@@ -449,3 +449,109 @@ def test_lecriture_fusionnante_existe_toujours_pour_qui_en_a_besoin(monkeypatch)
                         lambda url, json, headers: (vus.update(headers), Reponse())[1])
     flask_app._supa_upsert("card_visits", {"pid": "x"})
     assert "merge-duplicates" in vus.get("Prefer", "")
+
+
+# ── Se raviser ───────────────────────────────────────────────────────────────────────────────
+#
+# ⚠️ ANNULER UN ARRÊT PROGRAMMÉ ÉTAIT IMPOSSIBLE. « Reopen… » ouvre une ligne NEUVE à une date :
+# juste pour une reprise après interruption, absurde pour un arrêt décidé le matin et regretté
+# l'après-midi — on se retrouvait avec deux fiches pour quelqu'un qui n'était jamais parti.
+
+@pytest.fixture
+def programmee(monkeypatch):
+    ecrits = []
+    monkeypatch.setattr(flask_app, "_supa_get",
+                        lambda t, p: [dict(SALARIE, valid_to="2026-10-01")])
+    monkeypatch.setattr(flask_app, "_supa_patch",
+                        lambda t, f, d: (ecrits.append(d), (True, None))[1])
+    return ecrits
+
+
+def test_annuler_un_arret_a_venir_remet_le_poste_en_service(admin, programmee):
+    r = admin.post("/api/employees/e1/annuler")
+    assert r.status_code == 200
+    assert programmee[0] == {"valid_to": None, "active": True}
+
+
+def test_annuler_un_arret_deja_pris_est_refuse(admin, monkeypatch):
+    """
+    ⚠️ RETIRER UNE BORNE DÉJÀ FRANCHIE REMET LE POSTE EN SERVICE SUR TOUTE L'INTERRUPTION. Des
+    mois déjà lus qui changent d'EBITDA — précisément ce que ce mécanisme existe pour empêcher.
+    Après la date, la bonne porte est « Reopen… », qui laisse l'interruption dans l'historique.
+    """
+    ecrits = []
+    monkeypatch.setattr(flask_app, "_supa_get",
+                        lambda t, p: [dict(SALARIE, valid_to="2026-08-01")])
+    monkeypatch.setattr(flask_app, "_supa_patch",
+                        lambda t, f, d: (ecrits.append(d), (True, None))[1])
+    r = admin.post("/api/employees/e1/annuler")
+    assert r.status_code == 400
+    assert "Reopen" in r.get_json()["error"]
+    assert not ecrits
+
+
+def test_la_borne_atteinte_aujourdhui_nest_plus_annulable(admin, monkeypatch):
+    """La journée a déjà pu être lue : la borne du jour est franchie."""
+    monkeypatch.setattr(flask_app, "_supa_get",
+                        lambda t, p: [dict(SALARIE, valid_to="2026-09-21")])
+    monkeypatch.setattr(flask_app, "_supa_patch", lambda t, f, d: (True, None))
+    assert admin.post("/api/employees/e1/annuler").status_code == 400
+
+
+def test_annuler_sans_arret_programme_le_dit(admin, equipe):
+    r = admin.post("/api/employees/e1/annuler")
+    assert r.status_code == 400
+    assert not equipe
+
+
+# ── Effacer ce qui n'aurait jamais dû exister ────────────────────────────────────────────────
+#
+# ⚠️ CETTE PORTE EST DANGEREUSE ET ELLE EST NÉCESSAIRE. Une fiche créée par erreur n'a aucun
+# passé à préserver, et « Stop… » la laisserait dans la liste pour toujours. Ne pas l'offrir
+# revient à demander de vivre avec ses fautes de saisie — ce que personne ne fait : on met le
+# montant à zéro, et la ligne fausse reste, avec un zéro que plus rien n'explique.
+
+def test_la_suppression_definitive_efface_vraiment(admin, monkeypatch):
+    supprimes = []
+    monkeypatch.setattr(flask_app, "_supa_get", lambda t, p: [dict(SALARIE)])
+    monkeypatch.setattr(flask_app, "_supa_delete",
+                        lambda t, c, v: supprimes.append((t, v)) or True)
+    r = admin.delete("/api/employees/e1/definitif")
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    assert supprimes == [("employees", "e1")]
+
+
+def test_la_ligne_est_journalisee_avant_de_disparaitre(admin, monkeypatch):
+    """
+    ⚠️ APRÈS, IL NE RESTE RIEN À DÉCRIRE. C'est la seule trace qui dira un jour pourquoi un mois
+    a changé de chiffre — et elle doit être écrite pendant que la ligne existe encore.
+    """
+    ordre = []
+    monkeypatch.setattr(flask_app, "_supa_get", lambda t, p: [dict(SALARIE)])
+    monkeypatch.setattr(flask_app, "_supa_delete",
+                        lambda t, c, v: ordre.append("efface") or True)
+    monkeypatch.setattr(flask_app, "_journal_action",
+                        lambda *a: ordre.append(("journal", a[3])) or "écrit")
+    admin.delete("/api/employees/e1/definitif")
+    assert [o[0] if isinstance(o, tuple) else o for o in ordre] == ["journal", "efface"]
+    assert ordre[0][1]["name"] == "Ana", "la ligne effacée n'est pas dans le journal"
+
+
+def test_supprimer_un_poste_inconnu_nefface_rien(admin, monkeypatch):
+    supprimes = []
+    monkeypatch.setattr(flask_app, "_supa_get", lambda t, p: [])
+    monkeypatch.setattr(flask_app, "_supa_delete",
+                        lambda t, c, v: supprimes.append(v) or True)
+    assert admin.delete("/api/charges/inconnu/definitif").status_code == 404
+    assert not supprimes
+
+
+@pytest.mark.parametrize("role", [None, "investor", "staff", "accountant"])
+def test_seul_ladmin_efface_ou_annule(monkeypatch, role):
+    monkeypatch.setattr(flask_app, "_current_role", lambda: role)
+    flask_app.app.config["TESTING"] = True
+    c = flask_app.app.test_client()
+    assert c.delete("/api/employees/e1/definitif").status_code in (401, 403)
+    assert c.delete("/api/charges/c1/definitif").status_code in (401, 403)
+    assert c.post("/api/employees/e1/annuler").status_code in (401, 403)
+    assert c.post("/api/charges/c1/annuler").status_code in (401, 403)

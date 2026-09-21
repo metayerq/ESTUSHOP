@@ -3051,6 +3051,95 @@ def _cloturer_poste(table, poste_id, data):
     return jsonify({"ok": ok, "error": err, "effet": effet.isoformat()})
 
 
+def _annuler_programme(table, poste_id):
+    """
+    Annule un changement PROGRAMMÉ : la borne de fin repart à `NULL`, le poste continue.
+
+    ⚠️ SANS ÇA, SE RAVISER ÉTAIT IMPOSSIBLE. « Reopen… » ouvre une ligne NEUVE à une date :
+    parfait pour une reprise après une interruption, absurde pour un arrêt décidé ce matin et
+    regretté cet après-midi — on se retrouvait avec deux fiches pour une personne qui n'était
+    jamais partie.
+
+    ⚠️ ET SEULEMENT SI LA DATE N'EST PAS PASSÉE. Retirer une borne déjà franchie remettrait le
+    poste en service sur toute la période où il était arrêté : des mois déjà lus qui changent
+    d'EBITDA, précisément ce que ce mécanisme existe pour empêcher. Après la date, la bonne
+    porte est « Reopen… », qui ouvre une ligne neuve et laisse l'interruption dans l'historique.
+    """
+    if _current_role() != "admin":
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    lignes = _supa_get(table, {"id": f"eq.{poste_id}", "limit": 1})
+    if not lignes:
+        return jsonify({"ok": False, "error": "poste inconnu"}), 404
+    ligne = lignes[0]
+
+    fin = _ch._jour(ligne.get("valid_to"))
+    if fin is None:
+        return jsonify({"ok": False, "error": "aucun arrêt programmé sur ce poste"}), 400
+    if fin <= today_lisbon():
+        return jsonify({"ok": False,
+                        "error": f"cet arrêt a pris effet le {fin.isoformat()} — l'annuler "
+                                 f"remettrait le poste en service sur les mois écoulés. "
+                                 f"Utiliser « Reopen… » pour repartir à une date."}), 400
+
+    ok, err = _supa_patch(table, {"id": f"eq.{poste_id}"}, {"valid_to": None, "active": True})
+    if ok:
+        _journal_action(_current_role(), f"{table}-annulation",
+                        str(ligne.get("name") or poste_id)[:24],
+                        {"valid_to": fin.isoformat()}, {"valid_to": None},
+                        "arrêt programmé annulé")
+    return jsonify({"ok": ok, "error": err})
+
+
+def _supprimer_definitivement(table, poste_id):
+    """
+    Efface une ligne pour de bon. Réservé à ce qui n'aurait jamais dû exister.
+
+    ⚠️ CETTE PORTE EST DANGEREUSE ET ELLE EST NÉCESSAIRE. Une fiche créée par erreur — un essai,
+    une faute de frappe, un homonyme — n'a aucun passé à préserver, et « Stop… » la laisserait
+    dans la liste pour toujours. Ne pas l'offrir revenait à demander de vivre avec ses erreurs
+    de saisie, ce que personne ne fait : on finit par mettre le montant à zéro, et la ligne
+    fausse reste, avec un zéro que plus rien n'explique.
+
+    ⚠️ MAIS EFFACER UN POSTE QUI A COMPTÉ RÉÉCRIT LES MOIS OÙ IL COMPTAIT. C'est pourquoi
+    l'écran annonce l'effet AVANT de demander confirmation : le choix entre « Stop… » et
+    « Delete » se prend en voyant ce que chacun fait, pas en devinant.
+    """
+    if _current_role() != "admin":
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    lignes = _supa_get(table, {"id": f"eq.{poste_id}", "limit": 1})
+    if not lignes:
+        return jsonify({"ok": False, "error": "poste inconnu"}), 404
+    ligne = lignes[0]
+
+    # ⚠️ ON JOURNALISE AVANT D'EFFACER. Après, il ne reste rien à décrire — et c'est la seule
+    # trace qui dira un jour pourquoi un mois a changé de chiffre.
+    _journal_action(_current_role(), f"{table}-suppression",
+                    str(ligne.get("name") or poste_id)[:24], ligne, None,
+                    "ligne effacée définitivement")
+    ok = _supa_delete(table, "id", poste_id)
+    return jsonify({"ok": bool(ok)})
+
+
+@app.route("/api/charges/<string:charge_id>/annuler", methods=["POST"])
+def api_charges_annuler(charge_id):
+    return _annuler_programme("charges_fixes", charge_id)
+
+
+@app.route("/api/employees/<string:emp_id>/annuler", methods=["POST"])
+def api_employees_annuler(emp_id):
+    return _annuler_programme("employees", emp_id)
+
+
+@app.route("/api/charges/<string:charge_id>/definitif", methods=["DELETE"])
+def api_charges_supprimer(charge_id):
+    return _supprimer_definitivement("charges_fixes", charge_id)
+
+
+@app.route("/api/employees/<string:emp_id>/definitif", methods=["DELETE"])
+def api_employees_supprimer(emp_id):
+    return _supprimer_definitivement("employees", emp_id)
+
+
 @app.route("/api/charges/<string:charge_id>", methods=["DELETE"])
 def api_charges_delete(charge_id):
     return _cloturer_poste("charges_fixes", charge_id, request.get_json(silent=True) or {})
