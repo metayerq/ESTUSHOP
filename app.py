@@ -2827,7 +2827,7 @@ def api_charges_post():
         # sur `PATCH`, que l'écran n'appelle jamais pour un montant. Une protection qu'aucun
         # chemin réel ne traverse ne protège rien.
         return _modifier_charge(data["id"], data)
-    ok, err = _supa_upsert("charges_fixes", row)
+    ok, err = _supa_insert("charges_fixes", row)
     return jsonify({"ok": ok, "error": err})
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2893,7 +2893,7 @@ def _cloturer_et_remplacer(table, ligne, maj, effet, motif, role):
     neuve["valid_from"] = effet.isoformat()
     neuve["valid_to"] = None
     neuve["active"] = effet <= today_lisbon()
-    ok, err = _supa_upsert(table, neuve)
+    ok, err = _supa_insert(table, neuve)
     if not ok:
         # ⚠️ ON REMET LA LIGNE D'ORIGINE EN SERVICE. Sans ce retour en arrière, un échec à
         # mi-chemin laisserait la charge clôturée et aucune ligne pour la remplacer : le poste
@@ -3091,7 +3091,7 @@ def api_employees_post():
         # ⚠️ L'ÉCRAN ENREGISTRE PAR `POST`, MÊME POUR UNE AUGMENTATION. Cet upsert écrasait la
         # fiche : la nouvelle paie remontait jusqu'à l'embauche.
         return _modifier_poste("employees", data["id"], data)
-    ok, err = _supa_upsert("employees", row)
+    ok, err = _supa_insert("employees", row)
     return jsonify({"ok": ok, "error": err})
 
 @app.route("/api/employees/<string:emp_id>", methods=["PATCH"])
@@ -4754,6 +4754,28 @@ def _supa_upsert(table, data):
     except Exception:
         msg = r.text
     return False, msg
+
+def _supa_insert(table, data):
+    """
+    Insertion FRANCHE, sans fusion. Renvoie `(ok, erreur)`.
+
+    ⚠️ `_supa_upsert` ENVOIE `resolution=merge-duplicates`. Sur une contrainte d'unicité, il
+    fusionne au lieu d'ajouter : la ligne de remplacement écraserait la ligne clôturée, c'est-
+    à-dire précisément l'historique que tout ce mécanisme existe pour garder. Le même piège
+    qu'avec `card_campaigns`, où une campagne relancée effaçait sa propre trace.
+
+    ⚠️ ET UN ÉCHEC ICI DOIT ÊTRE BRUYANT. Mieux vaut un message d'erreur et une clôture annulée
+    qu'un passé réécrit en silence — c'est la seule des deux issues qui se voit.
+    """
+    r = _req.post(f"{SUPA_URL}/rest/v1/{table}", json=data, headers=_supa_headers())
+    if r.ok:
+        return True, None
+    try:
+        msg = r.json().get("message") or r.json().get("error") or r.text
+    except Exception:
+        msg = r.text
+    return False, msg
+
 
 def _supa_patch(table, filtre, data):
     """

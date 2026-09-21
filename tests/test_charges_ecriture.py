@@ -36,8 +36,12 @@ def base(monkeypatch):
     monkeypatch.setattr(flask_app, "_supa_get", lambda t, p: [dict(LIGNE)])
     monkeypatch.setattr(flask_app, "_supa_patch",
                         lambda t, f, d: (ecrits.append(("patch", t, f, d)), (True, None))[1])
+    monkeypatch.setattr(flask_app, "_supa_insert",
+                        lambda t, r: (ecrits.append(("insert", t, r)), (True, None))[1])
+    # ⚠️ LA FUSION EST PIÉGÉE, PAS SIMULÉE. Une ligne de remplacement qui passerait par
+    # `merge-duplicates` écraserait la ligne clôturée — l'historique que tout ceci protège.
     monkeypatch.setattr(flask_app, "_supa_upsert",
-                        lambda t, r: (ecrits.append(("upsert", t, r)), (True, None))[1])
+                        lambda t, r: (ecrits.append(("fusion", t, r)), (True, None))[1])
     return ecrits
 
 
@@ -78,7 +82,7 @@ def test_decembre_bascule_sur_lannee_suivante(admin, base, monkeypatch):
 def test_un_changement_de_montant_clot_et_remplace(admin, base):
     admin.patch("/api/charges/c1", json={"amount": 750, "reason": "hausse annuelle"})
     patch = [e for e in base if e[0] == "patch"][0]
-    upsert = [e for e in base if e[0] == "upsert"][0]
+    upsert = [e for e in base if e[0] == "insert"][0]
     assert patch[3]["valid_to"] == "2026-10-01"
     assert upsert[2]["valid_from"] == "2026-10-01"
     assert upsert[2]["amount"] == 750
@@ -91,14 +95,14 @@ def test_la_nouvelle_ligne_nherite_pas_de_lancien_identifiant(admin, base):
     le bogue que cette migration corrige, reproduit d'une autre manière.
     """
     admin.patch("/api/charges/c1", json={"amount": 750, "reason": "hausse"})
-    upsert = [e for e in base if e[0] == "upsert"][0]
+    upsert = [e for e in base if e[0] == "insert"][0]
     assert "id" not in upsert[2]
 
 
 def test_la_nouvelle_ligne_garde_le_nom_et_la_categorie(admin, base):
     """Sinon le poste change d'identité au moindre changement de montant."""
     admin.patch("/api/charges/c1", json={"amount": 750, "reason": "hausse"})
-    upsert = [e for e in base if e[0] == "upsert"][0]
+    upsert = [e for e in base if e[0] == "insert"][0]
     assert upsert[2]["name"] == "Loyer"
     assert upsert[2]["category"] == "local"
 
@@ -112,7 +116,7 @@ def test_active_ne_devance_pas_la_date_deffet(admin, base):
     """
     admin.patch("/api/charges/c1", json={"amount": 750, "reason": "hausse"})
     patch = [e for e in base if e[0] == "patch"][0]
-    upsert = [e for e in base if e[0] == "upsert"][0]
+    upsert = [e for e in base if e[0] == "insert"][0]
     assert patch[3]["active"] is True, "la charge en cours a cessé de compter trop tôt"
     assert upsert[2]["active"] is False, "le nouveau montant compte déjà"
 
@@ -126,7 +130,7 @@ def test_un_effet_immediat_bascule_tout_de_suite(admin, base, monkeypatch):
     assert not base
     admin.patch("/api/charges/c1",
                 json={"amount": 750, "reason": "hausse", "effective_from": "2026-10-02"})
-    assert [e for e in base if e[0] == "upsert"][0][2]["active"] is False
+    assert [e for e in base if e[0] == "insert"][0][2]["active"] is False
 
 
 def test_le_rattrapage_fait_basculer_le_jour_venu(monkeypatch):
@@ -158,7 +162,7 @@ def test_un_echec_a_mi_chemin_remet_la_ligne_en_service(admin, monkeypatch):
     monkeypatch.setattr(flask_app, "_supa_get", lambda t, p: [dict(LIGNE)])
     monkeypatch.setattr(flask_app, "_supa_patch",
                         lambda t, f, d: (ecrits.append(d), (True, None))[1])
-    monkeypatch.setattr(flask_app, "_supa_upsert", lambda t, r: (False, "refusé"))
+    monkeypatch.setattr(flask_app, "_supa_insert", lambda t, r: (False, "refusé"))
     r = admin.patch("/api/charges/c1", json={"amount": 750, "reason": "hausse"})
     assert r.status_code == 502
     assert ecrits[-1] == {"valid_to": None, "active": True}, "la ligne est restée clôturée"
@@ -180,14 +184,14 @@ def test_corriger_un_libelle_nexige_ni_motif_ni_date(admin, base):
     """
     r = admin.patch("/api/charges/c1", json={"name": "Loyer (Rua da Indústria)"})
     assert r.status_code == 200
-    assert not [e for e in base if e[0] == "upsert"], "une nouvelle ligne a été créée"
+    assert not [e for e in base if e[0] == "insert"], "une nouvelle ligne a été créée"
 
 
 def test_un_montant_identique_nest_pas_un_changement(admin, base):
     """Réenregistrer sans rien changer ne doit pas créer une ligne ni exiger un motif."""
     r = admin.patch("/api/charges/c1", json={"amount": 700, "notes": "à revoir"})
     assert r.status_code == 200
-    assert not [e for e in base if e[0] == "upsert"]
+    assert not [e for e in base if e[0] == "insert"]
 
 
 # ── La suppression devient une clôture ───────────────────────────────────────────────────────
@@ -235,7 +239,7 @@ def test_enregistrer_le_formulaire_ne_reecrit_pas_le_passe(admin, base):
                    json={"id": "c1", "name": "Loyer", "amount": 750, "frequency": "monthly",
                          "reason": "hausse annuelle"})
     assert r.status_code == 200
-    upsert = [e for e in base if e[0] == "upsert"][0]
+    upsert = [e for e in base if e[0] == "insert"][0]
     assert "id" not in upsert[2], "la ligne d'origine a été écrasée"
     assert upsert[2]["valid_from"] == "2026-10-01"
 
@@ -251,7 +255,7 @@ def test_creer_une_charge_reste_un_simple_ajout(admin, base):
     """Un poste NOUVEAU n'a rien à clôturer, et n'a pas à se justifier."""
     r = admin.post("/api/charges", json={"name": "Wi-Fi", "amount": 40, "frequency": "monthly"})
     assert r.status_code == 200
-    assert [e for e in base if e[0] == "upsert"]
+    assert [e for e in base if e[0] == "insert"]
 
 
 def test_une_charge_creee_ne_sapplique_pas_aux_mois_clos(admin, base):
@@ -260,14 +264,14 @@ def test_une_charge_creee_ne_sapplique_pas_aux_mois_clos(admin, base):
     en septembre l'ajoutait à mai, juin et juillet — trois mois clos qui changeaient d'EBITDA.
     """
     admin.post("/api/charges", json={"name": "Wi-Fi", "amount": 40, "frequency": "monthly"})
-    assert [e for e in base if e[0] == "upsert"][0][2]["valid_from"] == "2026-09-01"
+    assert [e for e in base if e[0] == "insert"][0][2]["valid_from"] == "2026-09-01"
 
 
 def test_on_peut_enregistrer_une_charge_oubliee_qui_court_depuis_mai(admin, base):
     """Une date passée est permise à la CRÉATION : elle est écrite, pas subie."""
     admin.post("/api/charges",
                json={"name": "Assurance", "amount": 60, "effective_from": "2026-05-01"})
-    assert [e for e in base if e[0] == "upsert"][0][2]["valid_from"] == "2026-05-01"
+    assert [e for e in base if e[0] == "insert"][0][2]["valid_from"] == "2026-05-01"
 
 
 # ── Les salariés ─────────────────────────────────────────────────────────────────────────────
@@ -289,8 +293,12 @@ def equipe(monkeypatch):
     monkeypatch.setattr(flask_app, "_supa_get", lambda t, p: [dict(SALARIE)])
     monkeypatch.setattr(flask_app, "_supa_patch",
                         lambda t, f, d: (ecrits.append(("patch", t, d)), (True, None))[1])
+    monkeypatch.setattr(flask_app, "_supa_insert",
+                        lambda t, r: (ecrits.append(("insert", t, r)), (True, None))[1])
+    # ⚠️ LA FUSION EST PIÉGÉE, PAS SIMULÉE. Une ligne de remplacement qui passerait par
+    # `merge-duplicates` écraserait la ligne clôturée — l'historique que tout ceci protège.
     monkeypatch.setattr(flask_app, "_supa_upsert",
-                        lambda t, r: (ecrits.append(("upsert", t, r)), (True, None))[1])
+                        lambda t, r: (ecrits.append(("fusion", t, r)), (True, None))[1])
     return ecrits
 
 
@@ -299,7 +307,7 @@ def test_une_augmentation_ne_change_pas_la_paie_de_juin(admin, equipe):
                    json={"id": "e1", "name": "Ana", "gross_monthly": 1000,
                          "reason": "augmentation annuelle"})
     assert r.status_code == 200
-    upsert = [e for e in equipe if e[0] == "upsert"][0]
+    upsert = [e for e in equipe if e[0] == "insert"][0]
     assert "id" not in upsert[2], "la fiche a été écrasée"
     assert upsert[2]["gross_monthly"] == 1000
     assert upsert[2]["valid_from"] == "2026-10-01"
@@ -316,12 +324,12 @@ def test_passer_en_extra_est_un_changement_de_cout(admin, equipe):
     """Un extra n'a ni 14e mois ni carte repas : le type change le coût de 40 %."""
     r = admin.patch("/api/employees/e1", json={"type": "extra", "reason": "passage en extra"})
     assert r.status_code == 200
-    assert [e for e in equipe if e[0] == "upsert"][0][2]["type"] == "extra"
+    assert [e for e in equipe if e[0] == "insert"][0][2]["type"] == "extra"
 
 
 def test_lexemption_tsu_est_un_changement_de_cout(admin, equipe):
     r = admin.patch("/api/employees/e1", json={"tsu_exempt": True, "reason": "1er emploi"})
-    assert [e for e in equipe if e[0] == "upsert"][0][2]["tsu_exempt"] is True
+    assert [e for e in equipe if e[0] == "insert"][0][2]["tsu_exempt"] is True
 
 
 def test_corriger_un_horaire_indicatif_ne_demande_rien(admin, equipe):
@@ -332,7 +340,7 @@ def test_corriger_un_horaire_indicatif_ne_demande_rien(admin, equipe):
     """
     r = admin.patch("/api/employees/e1", json={"hours_week": 35})
     assert r.status_code == 200
-    assert not [e for e in equipe if e[0] == "upsert"]
+    assert not [e for e in equipe if e[0] == "insert"]
 
 
 def test_un_depart_cloture_la_fiche(admin, equipe):
@@ -353,7 +361,7 @@ def test_un_depart_neface_pas_les_mois_ou_la_personne_a_ete_payee(monkeypatch, a
 
 def test_une_embauche_nest_pas_payee_depuis_mai(admin, equipe):
     admin.post("/api/employees", json={"name": "Rui", "gross_monthly": 870})
-    assert [e for e in equipe if e[0] == "upsert"][0][2]["valid_from"] == "2026-09-01"
+    assert [e for e in equipe if e[0] == "insert"][0][2]["valid_from"] == "2026-09-01"
 
 
 @pytest.mark.parametrize("role", [None, "investor", "staff", "accountant"])
@@ -385,3 +393,59 @@ def test_le_rattrapage_ne_ressuscite_pas_ce_qui_a_ete_eteint_a_la_main(monkeypat
     monkeypatch.setattr(flask_app, "today_lisbon", lambda: date(2026, 9, 21))
     assert flask_app._resynchroniser_active("charges_fixes") == 0
     assert not ecrits
+
+
+def test_la_ligne_de_remplacement_ne_passe_jamais_par_une_fusion(admin, base):
+    """
+    ⚠️ `_supa_upsert` ENVOIE `resolution=merge-duplicates`. Sur une contrainte d'unicité, il
+    fusionne au lieu d'ajouter : la ligne neuve écraserait la ligne clôturée — l'historique que
+    tout ce mécanisme existe pour garder. Le même piège qu'avec `card_campaigns`, où une
+    campagne relancée effaçait sa propre trace.
+
+    ⚠️ ET UN ÉCHEC DOIT ÊTRE BRUYANT. Mieux vaut un message d'erreur et une clôture annulée
+    qu'un passé réécrit en silence : des deux issues, une seule se voit.
+    """
+    admin.patch("/api/charges/c1", json={"amount": 750, "reason": "hausse"})
+    assert not [e for e in base if e[0] == "fusion"]
+
+
+def test_creer_une_charge_ne_fusionne_pas_avec_une_homonyme(admin, base):
+    """
+    ⚠️ AVEC LE VERSIONNEMENT, « LOYER » EXISTE LÉGITIMEMENT PLUSIEURS FOIS. Une fusion sur le
+    nom écraserait la ligne précédente au lieu d'en ouvrir une neuve — et c'est précisément ce
+    que fait le bouton « Reopen… » : rouvrir un poste qui porte déjà son nom dans l'historique.
+    """
+    admin.post("/api/charges", json={"name": "Loyer", "amount": 750})
+    assert not [e for e in base if e[0] == "fusion"]
+    assert [e for e in base if e[0] == "insert"]
+
+
+def test_linsertion_franche_ne_demande_aucune_fusion(monkeypatch):
+    """
+    ⚠️ LA GARANTIE VIT DANS UN EN-TÊTE, ET RIEN NE LE REGARDAIT. Les tests ci-dessus simulent
+    `_supa_insert` : ils prouvent qu'on l'appelle, pas qu'il insère. Un `Prefer:
+    resolution=merge-duplicates` ajouté ici un jour écraserait la ligne clôturée, et les douze
+    tests du dessus continueraient de passer au vert.
+    """
+    vus = {}
+
+    class Reponse:
+        ok = True
+
+    monkeypatch.setattr(flask_app._req, "post",
+                        lambda url, json, headers: (vus.update(headers), Reponse())[1])
+    assert flask_app._supa_insert("charges_fixes", {"name": "Loyer"}) == (True, None)
+    assert "merge-duplicates" not in vus.get("Prefer", "")
+
+
+def test_lecriture_fusionnante_existe_toujours_pour_qui_en_a_besoin(monkeypatch):
+    """`_supa_upsert` reste légitime ailleurs — les visites carte s'y appuient (upsert sur pid)."""
+    vus = {}
+
+    class Reponse:
+        ok = True
+
+    monkeypatch.setattr(flask_app._req, "post",
+                        lambda url, json, headers: (vus.update(headers), Reponse())[1])
+    flask_app._supa_upsert("card_visits", {"pid": "x"})
+    assert "merge-duplicates" in vus.get("Prefer", "")
