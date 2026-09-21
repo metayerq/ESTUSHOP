@@ -241,3 +241,22 @@ def test_le_detail_dit_sa_tolerance():
     html = _gabarit()
     assert "Appariement au centime près" in html
     assert "d.fenetre_minutes" in html
+
+
+def test_la_colonne_especes_dit_ce_quelle_nest_pas():
+    """
+    ⚠️ « ESPÈCES » N'EST PAS « CE QU'IL Y A DANS LE TIROIR ». C'est ce que Vendus DÉCLARE en
+    espèces — et un paiement espèces tapé « carte » met de l'argent dans le tiroir sans jamais
+    apparaître dans cette colonne. Laisser le lecteur confondre les deux lui ferait compter un
+    manque qui n'existe pas.
+    """
+    html = _gabarit()
+    assert "d&eacute;clare encaiss&eacute; en esp&egrave;ces" in html
+    assert "moins" in html and "tiroir" in html
+
+
+def test_la_part_autre_saffiche_quand_elle_existe():
+    """Sinon la ligne ne s'additionne pas, et on croit à une erreur d'arrondi."""
+    html = _gabarit()
+    assert "autre_cents ?" in html
+    assert "autre</span>" in html

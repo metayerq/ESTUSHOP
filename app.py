@@ -3176,12 +3176,21 @@ def api_reconciliation_daily():
     def somme(cle):
         return sum(j[cle] or 0 for j in jours)
 
+    # ⚠️ LES TROIS PARTS DE VENDUS SOMMÉES À PART. Sans elles, l'écran affiche une colonne
+    # « espèces » par jour mais pas son total — et le patron additionne à la main une colonne
+    # qu'on a déjà calculée.
+    def somme_vendus(cle):
+        return sum((j["vendus"] or {}).get(cle) or 0 for j in jours)
+
     return jsonify({
         "from": from_d.isoformat(), "to": to_d.isoformat(),
         "jours": jours,
-        "totaux": {c: somme(c) for c in ("terminal_cents", "pourboires_cents",
-                                         "remboursements_cents", "frais_cents",
-                                         "net_cents", "vendus_total_cents", "transactions")},
+        "totaux": {**{c: somme(c) for c in ("terminal_cents", "pourboires_cents",
+                                            "remboursements_cents", "frais_cents",
+                                            "net_cents", "vendus_total_cents", "transactions")},
+                   "vendus_carte_cents": somme_vendus("carte_cents"),
+                   "vendus_especes_cents": somme_vendus("especes_cents"),
+                   "vendus_autre_cents": somme_vendus("autre_cents")},
         "taux_frais": taux,
         "taux_calibre_sur": mois_calibre,
         "genere": now_lisbon().strftime("%d/%m/%Y %H:%M"),

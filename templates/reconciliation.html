@@ -247,7 +247,8 @@ tr.cliquable:hover { background:var(--bg-hover); }
     <div class="sum-item"><div class="sum-label">Pourboires</div><div class="sum-val" id="s-tips" style="color:var(--green);">&mdash;</div><div class="sum-sub">mesur&eacute;s</div></div>
     <div class="sum-item"><div class="sum-label">Frais Revolut</div><div class="sum-val" id="s-fees" style="color:var(--red);">&mdash;</div><div class="sum-sub" id="s-fees-sub"></div></div>
     <div class="sum-item"><div class="sum-label">Net re&ccedil;u</div><div class="sum-val" id="s-net">&mdash;</div><div class="sum-sub">ventes + pourboires &minus; frais</div></div>
-    <div class="sum-item"><div class="sum-label">Factur&eacute; Vendus</div><div class="sum-val" id="s-vendus">&mdash;</div></div>
+    <div class="sum-item"><div class="sum-label">Factur&eacute; Vendus</div><div class="sum-val" id="s-vendus">&mdash;</div><div class="sum-sub" id="s-vendus-sub"></div></div>
+    <div class="sum-item"><div class="sum-label">Esp&egrave;ces</div><div class="sum-val" id="s-cash">&mdash;</div><div class="sum-sub">d&eacute;clar&eacute;es dans Vendus</div></div>
     <div class="sum-item"><div class="sum-label">&Eacute;cart carte</div><div class="sum-val" id="s-delta">&mdash;</div><div class="sum-sub">devrait &ecirc;tre &asymp; 0</div></div>
   </div>
 
@@ -261,12 +262,23 @@ tr.cliquable:hover { background:var(--bg-hover); }
         <th class="right">Pourboires</th>
         <th class="right">Frais</th>
         <th class="right">Factur&eacute; carte</th>
+        <th class="right">Esp&egrave;ces</th>
         <th class="right">&Eacute;cart</th>
         <th>&nbsp;</th>
       </tr></thead>
-      <tbody id="tbody"><tr><td colspan="7" class="empty">Chargement&hellip;</td></tr></tbody>
+      <tbody id="tbody"><tr><td colspan="8" class="empty">Chargement&hellip;</td></tr></tbody>
     </table>
   </div>
+
+  <p class="hint" style="margin-top:10px">
+    <b>Esp&egrave;ces</b> = ce que Vendus d&eacute;clare encaiss&eacute; en esp&egrave;ces.
+    &Ccedil;a n'est pas tout &agrave; fait ce que contient le tiroir&nbsp;:
+    <b>si l'&eacute;cart n'est pas nul, le tiroir contient ces esp&egrave;ces
+    <i>moins</i> l'&eacute;cart</b>. Un paiement esp&egrave;ces tap&eacute; «&nbsp;carte&nbsp;»
+    donne un &eacute;cart n&eacute;gatif et de l'argent en plus dans le tiroir&nbsp;; une facture
+    oubli&eacute;e donne un &eacute;cart positif et ne change rien au cash. Le calculateur plus
+    bas fait cette correction tout seul.
+  </p>
 
   <!--
     ⚠️ LE DÉTAIL NE S'OUVRE QUE SUR DEMANDE. C'est la seule partie de cet écran qui touche une
@@ -588,7 +600,7 @@ function render(){
 
   const tbody = document.getElementById('tbody');
   if (!jours.length){
-    tbody.innerHTML = '<tr><td colspan="7" class="empty">Aucune donnée sur la période.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">Aucune donnée sur la période.</td></tr>';
     document.getElementById('summary').style.display = 'none';
     updateCashCalc();
     return;
@@ -603,7 +615,7 @@ function render(){
     const dow = d.toLocaleDateString('fr-FR', { weekday: 'short' });
     /* Une journée sans rien n'est pas une anomalie : le café ferme mardi et mercredi. */
     if (vide) return `<tr class="jour-ferme"><td class="date">${dow} ${j.day.slice(8)}/${j.day.slice(5,7)}</td>` +
-      `<td class="num" colspan="5" style="text-align:left; color:var(--faint)">fermé</td><td></td></tr>`;
+      `<td class="num" colspan="6" style="text-align:left; color:var(--faint)">fermé</td><td></td></tr>`;
     const pastille = j.aujourdhui ? '<span class="pastille">en cours</span>'
       : `<span class="pastille ${c}">${c === 'ok' ? '✓' : c === 'doute' ? 'à vérifier' : 'écart'}</span>`;
     return `<tr class="cliquable" data-jour="${j.day}">
@@ -612,6 +624,11 @@ function render(){
       <td class="num" style="color:var(--green)">${j.pourboires_cents ? fmt(eu(j.pourboires_cents)) : ''}</td>
       <td class="num ${j.frais_mesures ? '' : 'est'}">${j.frais_cents ? (j.frais_mesures ? '−' : '≈−') + fmt(eu(j.frais_cents)) : ''}</td>
       <td class="num">${j.vendus ? fmt(eu(j.vendus.carte_cents)) : '<span style="color:var(--faint)">—</span>'}</td>
+      <td class="num">${j.vendus ? fmt(eu(j.vendus.especes_cents)) +
+        /* ⚠️ « AUTRE » S'AFFICHE QUAND IL EXISTE, sinon la ligne ne s'additionne pas et le
+           lecteur croit à une erreur d'arrondi. */
+        (j.vendus.autre_cents ? ` <span class="est">+${fmt(eu(j.vendus.autre_cents))} autre</span>` : '')
+        : '<span style="color:var(--faint)">—</span>'}</td>
       <td class="num">${j.ecart_cents === null ? '<span style="color:var(--faint)">—</span>' : fmt(eu(j.ecart_cents))}</td>
       <td>${j.aujourdhui || !vide ? pastille : ''}</td>
     </tr>`;
@@ -637,6 +654,9 @@ function render(){
     : `estimés à ${(tauxFrais * 100).toFixed(2)} %`;
   document.getElementById('s-net').textContent    = fmt(eu(totaux.net_cents));
   document.getElementById('s-vendus').textContent = fmt(eu(totaux.vendus_total_cents));
+  document.getElementById('s-vendus-sub').textContent =
+    `dont ${fmt(eu(totaux.vendus_carte_cents))} carte`;
+  document.getElementById('s-cash').textContent = fmt(eu(totaux.vendus_especes_cents));
   const dEl = document.getElementById('s-delta');
   const dTot = jours.reduce((s, j) => s + (j.ecart_cents || 0), 0);
   dEl.textContent = fmt(eu(dTot));

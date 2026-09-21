@@ -222,3 +222,29 @@ def test_la_route_est_fermee(monkeypatch, role):
     monkeypatch.setattr(flask_app, "_current_role", lambda: role)
     flask_app.app.config["TESTING"] = True
     assert flask_app.app.test_client().get("/api/reconciliation/daily").status_code == 401
+
+
+# ── Les parts de Vendus, totalisées ──────────────────────────────────────────────────────────
+
+def test_les_trois_parts_de_vendus_sont_totalisees(client, monkeypatch):
+    """
+    ⚠️ SANS CES TOTAUX, l'écran affiche une colonne « espèces » par jour mais pas sa somme — et
+    on additionne à la main une colonne qu'on a déjà calculée.
+    """
+    poser(monkeypatch,
+          resume=[{"day": JOUR, "ca_ttc": 150.0,
+                   "payments": {"Cartão": 100.0, "Dinheiro": 45.0, "Cheque": 5.0}}],
+          terminal=[{"day": JOUR, "gross_cents": 10000}])
+    t = client.get(f"/api/reconciliation/daily?from={JOUR}&to={JOUR}").get_json()["totaux"]
+    assert t["vendus_carte_cents"] == 10000
+    assert t["vendus_especes_cents"] == 4500
+    assert t["vendus_autre_cents"] == 500
+
+
+def test_un_jour_sans_repartition_ne_casse_pas_les_totaux(client, monkeypatch):
+    """`vendus` vaut `None` : sommer dessus sans précaution lèverait, et la page tomberait."""
+    poser(monkeypatch,
+          resume=[{"day": JOUR, "ca_ttc": 150.0}],
+          terminal=[{"day": JOUR, "gross_cents": 10000}])
+    t = client.get(f"/api/reconciliation/daily?from={JOUR}&to={JOUR}").get_json()["totaux"]
+    assert t["vendus_especes_cents"] == 0
