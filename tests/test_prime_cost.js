@@ -41,11 +41,21 @@ function rendre(eco, primePerso) {
   };
   const document = { getElementById: id => els[id] };
   const fmt = n => '€' + Number(n).toFixed(2);
-  new Function('document', 'eco', 'primePerso', 'fmt', bloc)(document, eco, primePerso, fmt);
+  // ⚠️ LES DEUX AUXILIAIRES DE PRÉSENTATION SONT SIMULÉS, PAS EXTRAITS. `etat` et
+  // `marquerSeuil` touchent au DOM — une bande d'accent, un repère sur une barre — et ce
+  // fichier teste l'ARITHMÉTIQUE du prime cost. Les extraire ferait dépendre ce test de la
+  // mise en forme ; les omettre le fait tomber sur une ReferenceError qui ne dit rien du
+  // calcul. On garde la trace de ce qu'ils auraient reçu : c'est l'état, et il se vérifie.
+  let vuEtat = null;
+  const etat = (el, v) => { vuEtat = v; };
+  const marquerSeuil = () => {};
+  new Function('document', 'eco', 'primePerso', 'fmt', 'etat', 'marquerSeuil', bloc)(
+    document, eco, primePerso, fmt, etat, marquerSeuil);
   return {
     valeur: parseFloat(els['eco-prime'].textContent),
     sous:   els['eco-prime-sub'].innerHTML,
     couleur: els['eco-prime'].style.color,
+    etat:    vuEtat,
   };
 }
 
@@ -82,24 +92,28 @@ const PARTIEL = {
 
 // Le cas qui change vraiment le verdict à l'écran : matière 350 + personnel 350 = 70 %,
 // au-delà du seuil vert de 67 %. L'ancien calcul (cogs_ht 210 + 350 = 56 %) l'affichait en
-// vert — un prime cost au-dessus de la cible qui se donnait pour sain.
+// Un prime cost au-dessus de la cible ne doit pas se donner pour sain.
 {
   const bascule = { ca_ht: 1000, cogs_ht: 210, marge_brute_ht: 650,
                     marge_brute_ht_pct: 65, marge_is_estimated: true, cogs_coverage_pct: 60 };
   const r = rendre(bascule, 350);
-  check('un prime cost réellement au-dessus du seuil n’est plus affiché en vert',
-    Math.abs(r.valeur - 70.0) < 0.05 && r.couleur !== 'var(--green)',
-    `${r.valeur}% / ${r.couleur}`);
+  // ⚠️ CE TEST VÉRIFIAIT LA COULEUR DU CHIFFRE. Depuis le 21/09/2026, l'état est porté par la
+  // bande d'accent et le chiffre reste en encre — le test serait devenu VERT À VIDE, puisque
+  // `couleur` vaut désormais toujours la chaîne vide. Il vérifie l'état, qui est la chose
+  // qu'on voulait dire depuis le début.
+  check('un prime cost réellement au-dessus du seuil n’est pas annoncé comme sain',
+    Math.abs(r.valeur - 70.0) < 0.05 && r.etat !== 'ok',
+    `${r.valeur}% / état=${r.etat}`);
 }
 
-// Un prime cost sain reste vert.
+// Un prime cost sain est annoncé sain.
 {
   const sain = { ca_ht: 1000, cogs_ht: 250, marge_brute_ht: 750,
                  marge_brute_ht_pct: 75, marge_is_estimated: false, cogs_coverage_pct: 100 };
   const r = rendre(sain, 300);
-  check('55 % reste sous la cible et s’affiche en vert',
-    Math.abs(r.valeur - 55.0) < 0.05 && r.couleur === 'var(--green)',
-    `${r.valeur}% / ${r.couleur}`);
+  check('55 % reste sous la cible et est annoncé sain',
+    Math.abs(r.valeur - 55.0) < 0.05 && r.etat === 'ok',
+    `${r.valeur}% / état=${r.etat}`);
 }
 
 // Aucune couleur codée en dur hors des tokens Flux.

@@ -206,11 +206,36 @@ body {
   gap: 12px;
 }
 .kpi-cell {
-  padding: 18px;
+  padding: 18px 18px 18px 21px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg-card);
+  position: relative;
+  overflow: hidden;
 }
+/* ⚠️ L'ÉTAT EST PORTÉ PAR UNE BANDE, PAS PAR LA COULEUR DU CHIFFRE. Un nombre coloré est plus
+   difficile à lire qu'un nombre en encre — et sur douze indicateurs colorés, plus rien ne
+   ressort. La bande dit l'état ; le chiffre reste lisible. */
+.kpi-cell::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--border);
+}
+.kpi-cell[data-etat="ok"]::before        { background: var(--bar); }
+.kpi-cell[data-etat="attention"]::before { background: var(--amber); }
+.kpi-cell[data-etat="alerte"]::before    { background: var(--red); }
+
+/* ⚠️ TOUS LES INDICATEURS N'ONT PAS LE MÊME POIDS. Douze chiffres de taille identique ne
+   disent pas lequel regarder. Ceux qui décident quelque chose — la marge, le prime cost —
+   sont lisibles à deux mètres ; les autres sont du contexte. */
+.kpi-cell.vedette .kpi-value { font-size: 34px; letter-spacing: -.025em; }
+
+/* ⚠️ VOIR DE COMBIEN ON DÉPASSE VAUT MIEUX QUE SAVOIR QU'ON DÉPASSE. Une barre sans repère
+   dit « c'est trop » ; avec le repère, elle dit « de deux points ». */
+.seuil-wrap { position: relative; }
+.seuil-marque { position: absolute; top: -4px; bottom: -4px; width: 1.5px;
+  background: var(--text); opacity: .5; }
+.seuil-l { font-family: var(--mono); font-size: 9px; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--faint); }
 .kpi-label {
   font-family: var(--mono);
   font-size: 11px;

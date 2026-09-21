@@ -60,6 +60,17 @@
   border-right:1px solid var(--border);
 }
 .sum-item:last-child { border-right:none; }
+/* ⚠️ MÊME LANGAGE QUE LE DASHBOARD : la bande porte l'état, le chiffre reste en encre. Deux
+   grammaires visuelles dans un même outil obligent à réapprendre à chaque page. */
+.sum-item { position:relative; }
+.sum-item::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+  background:transparent; }
+.sum-item[data-etat="ok"]::before        { background:var(--bar); }
+.sum-item[data-etat="attention"]::before { background:var(--amber); }
+.sum-item[data-etat="alerte"]::before    { background:var(--red); }
+.sum-item[data-etat] { padding-left:17px; }
+/* La couverture décide de tout le reste : c'est elle qu'on lit en premier. */
+.sum-item.vedette .sum-val { font-size:27px; letter-spacing:-.6px; }
 .sum-label { font-size:10px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
 .sum-val { font-size:20px; font-weight:600; letter-spacing:-.4px; color:var(--text); }
 
@@ -618,11 +629,13 @@
 
   <!-- Summary -->
   <div class="summary-bar" id="summary-bar" style="display:none;">
-    <div class="sum-item"><div class="sum-label">Products</div><div class="sum-val" id="s-total">—</div></div>
-    <div class="sum-item"><div class="sum-label">With recipe</div><div class="sum-val" id="s-recipe">—</div></div>
-    <div class="sum-item"><div class="sum-label">Avg margin</div><div class="sum-val" id="s-avg">—</div></div>
-    <div class="sum-item clickable" title="View worst margins" onclick="showWorstMargins()"><div class="sum-label">Min margin</div><div class="sum-val" id="s-min">—</div></div>
-    <div class="sum-item clickable" title="View best margins" onclick="showBestMargins()"><div class="sum-label">Max margin</div><div class="sum-val" id="s-max">—</div></div>
+    <div class="sum-item vedette" id="i-couv" title="Part des produits dont le prix d'achat est connu. Tant qu'elle n'est pas proche de 100 %, la marge moyenne est calculée sur une partie seulement du catalogue.">
+      <div class="sum-label">Couverture</div><div class="sum-val" id="s-couv">—</div></div>
+    <div class="sum-item"><div class="sum-label">Produits</div><div class="sum-val" id="s-total">—</div></div>
+    <div class="sum-item"><div class="sum-label">Avec recette</div><div class="sum-val" id="s-recipe">—</div></div>
+    <div class="sum-item vedette" id="i-avg"><div class="sum-label">Marge moyenne</div><div class="sum-val" id="s-avg">—</div></div>
+    <div class="sum-item clickable" id="i-min" title="Voir les pires marges" onclick="showWorstMargins()"><div class="sum-label">Marge mini</div><div class="sum-val" id="s-min">—</div></div>
+    <div class="sum-item clickable" title="View best margins" onclick="showBestMargins()"><div class="sum-label">Marge maxi</div><div class="sum-val" id="s-max">—</div></div>
   </div>
 
   <!-- Marge négative : une perte à chaque vente, elle doit trouver le lecteur -->
@@ -1406,6 +1419,16 @@ function renderIssuesBanner() {
 // ══════════════════════════════════════════════════════════
 // SUMMARY
 // ══════════════════════════════════════════════════════════
+/**
+ * ⚠️ `null` RETIRE L'ATTRIBUT plutôt que de poser une valeur neutre. Un indicateur sans donnée
+ * n'est pas « bon » : sa bande reste transparente, et l'œil ne s'y arrête pas.
+ */
+function marquerEtat(id, valeur){
+  var el = document.getElementById(id);
+  if (!el) return;
+  if (valeur) el.setAttribute('data-etat', valeur); else el.removeAttribute('data-etat');
+}
+
 function buildSummary(products) {
   // Si appelée sans argument, utilise tous les produits (chargement initial)
   const list = products || allProducts;
@@ -1417,6 +1440,23 @@ function buildSummary(products) {
   document.getElementById('s-recipe').textContent = wr.length;
   document.getElementById('s-avg').textContent    = avg !== '—' ? avg + ' %' : '—';
   document.getElementById('s-min').textContent    = ms.length ? Math.min(...ms).toFixed(1) + ' %' : '—';
+
+  /**
+   * LA COUVERTURE — le chiffre qui conditionne tous les autres.
+   *
+   * ⚠️ UNE MARGE MOYENNE DE 75 % SUR 96 % DU CATALOGUE ET LA MÊME SUR 55 % NE SONT PAS LA MÊME
+   * INFORMATION, et c'est la seconde qui appelle un geste. L'afficher à côté de la marge, à la
+   * même taille, laissait le lecteur décider lequel des deux compte.
+   */
+  var couv = list.length ? (wr.length / list.length * 100) : null;
+  document.getElementById('s-couv').textContent = couv === null ? '—' : couv.toFixed(0) + ' %';
+  marquerEtat('i-couv', couv === null ? null
+              : couv >= 95 ? 'ok' : couv >= 60 ? 'attention' : 'alerte');
+  marquerEtat('i-avg', avg === '—' ? null : 'ok');
+  /* ⚠️ UNE MARGE NÉGATIVE EST UNE PERTE À CHAQUE VENTE. Elle doit trouver le lecteur même
+     s'il n'ouvre jamais la liste des pires marges. */
+  marquerEtat('i-min', !ms.length ? null : (Math.min(...ms) < 0 ? 'alerte'
+              : Math.min(...ms) < 20 ? 'attention' : 'ok'));
   document.getElementById('s-max').textContent    = ms.length ? Math.max(...ms).toFixed(1) + ' %' : '—';
   document.getElementById('summary-bar').style.display = 'flex';
 }

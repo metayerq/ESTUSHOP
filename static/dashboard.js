@@ -1,3 +1,36 @@
+/**
+ * L'ÉTAT D'UN INDICATEUR, PORTÉ PAR SA BANDE D'ACCENT.
+ *
+ * ⚠️ `null` RETIRE L'ATTRIBUT PLUTÔT QUE DE POSER UNE VALEUR NEUTRE. Un indicateur sans donnée
+ * n'est pas « bon » : la bande reprend la couleur de la bordure, et l'œil ne s'y arrête pas.
+ */
+function etat(el, valeur){
+  var cel = el && el.closest ? el.closest('.kpi-cell') : null;
+  if (!cel) return;
+  if (valeur) cel.setAttribute('data-etat', valeur);
+  else cel.removeAttribute('data-etat');
+}
+
+/**
+ * Pose un repère de cible sur une barre de progression.
+ *
+ * ⚠️ LE REPÈRE EST DANS LA BARRE, PAS À CÔTÉ. Une légende « cible 65 % » sous le graphique
+ * oblige à convertir mentalement une largeur en pourcentage — c'est exactement le calcul qu'un
+ * repère évite.
+ */
+function marquerSeuil(barre, pct, libelle){
+  if (!barre || !barre.parentElement) return;
+  var enveloppe = barre.parentElement;
+  enveloppe.classList.add('seuil-wrap');
+  var vieux = enveloppe.querySelector('.seuil-marque');
+  if (vieux) vieux.remove();
+  var m = document.createElement('div');
+  m.className = 'seuil-marque';
+  m.style.left = Math.max(0, Math.min(100, pct)) + '%';
+  if (libelle) m.title = libelle;
+  enveloppe.appendChild(m);
+}
+
 const COLORS = ['#2554C7','rgba(37,84,199,.7)','rgba(37,84,199,.5)','rgba(37,84,199,.35)','rgba(37,84,199,.2)','rgba(37,84,199,.12)'];
 const BAR_ACTIVE = '#2554C7';
 const BAR_IDLE   = 'rgba(37,84,199,.12)';
@@ -400,8 +433,13 @@ function render(d) {
       : `<span style="color:var(--red)">Loss</span>`)
       + (ebitdaEst ? ` <span style="color:#b07d00">on an extrapolated margin</span>` : '');
   } else {
-    ebitdaEl.textContent = '—'; ebitdaEl.style.color = 'var(--text)';
-    ebitdaSub.innerHTML = '<span style="color:var(--muted)">not measurable</span>';
+    /* ⚠️ UNE CASE VIDE NOMME LE GESTE. L'EBITDA se calcule à partir de la marge, qui se
+       calcule à partir des prix d'achat : dire « pas mesurable » sans dire pourquoi laisse
+       chercher la panne au mauvais endroit. */
+    ebitdaEl.textContent = '—'; ebitdaEl.style.color = '';
+    etat(ebitdaEl, null);
+    ebitdaSub.innerHTML = '<span style="color:var(--muted)">Se calcule à partir de la marge. ' +
+      '<a href="/cogs" style="color:var(--accent)">Ouvrir COGS &amp; recettes →</a></span>';
   }
 
   // ── Strip "Today" (période multi-jours incluant aujourd'hui) ──────────────
@@ -454,9 +492,19 @@ function render(d) {
       document.getElementById('eco-marge-pct').innerHTML =
         `${eco.marge_brute_ht_pct}%${est ? ' <span style="color:#b07d00">est.</span>' : ''}` +
         ` <span style="color:var(--faint)">· COGS ${fmt(eco.cogs_ht)} · </span>${covStr}`;
+      /* ⚠️ L'ÉTAT DE LA MARGE, C'EST SA COUVERTURE — pas sa valeur. Une marge de 75 % mesurée
+         sur 96 % des ventes et la même mesurée sur 55 % ne sont pas la même information, et
+         c'est la seconde qui appelle un geste. La bande le dit sans une ligne de texte de
+         plus. */
+      etat(document.getElementById('eco-marge'), !est ? 'ok'
+           : (cov != null && cov >= 60) ? 'attention' : 'alerte');
     } else {
+      /* ⚠️ UNE CASE VIDE DIT CE QUI LA REMPLIRA, avec le lien pour y aller. « No COGS set »
+         laisse devant un écran mort. */
+      etat(document.getElementById('eco-marge'), null);
       document.getElementById('eco-marge-pct').innerHTML =
-        '<span style="color:var(--muted)">no COGS set — complete your recipe sheets</span>';
+        '<span style="color:var(--muted)">Aucun prix d\'achat renseigné. ' +
+        '<a href="/cogs" style="color:var(--accent)">Ouvrir COGS &amp; recettes →</a></span>';
     }
 
     // Charges — utilise les totaux période et open_days (pas n_days calendaires)
@@ -470,8 +518,9 @@ function render(d) {
       document.getElementById('eco-charges-sub').innerHTML =
         '<span style="color:var(--muted)">aucun jour d\'ouverture sur la période</span>';
       document.getElementById('eco-prime').textContent = '—';
+      etat(document.getElementById('eco-prime'), null);
       document.getElementById('eco-prime-sub').innerHTML =
-        '<span style="color:var(--muted)">—</span>';
+        '<span style="color:var(--muted)">Aucun jour d\'ouverture sur la période.</span>';
       document.getElementById('eco-prime-bar').innerHTML = '';
       document.getElementById('eco-seuil').textContent = '—';
       document.getElementById('eco-seuil-sub').innerHTML =
@@ -507,16 +556,28 @@ function render(d) {
       const labPct  = primePerso / eco.ca_ht * 100;
       const est     = eco.marge_is_estimated === true;
       primeEl.textContent = prime.toFixed(1) + '%';
-      primeEl.style.color = prime <= 67 ? 'var(--green)' : prime <= 75 ? 'var(--amber)' : 'var(--red)';
+      /* ⚠️ LE CHIFFRE RESTE EN ENCRE ; C'EST LA BANDE QUI PORTE L'ÉTAT. Un nombre coloré est
+         plus difficile à lire qu'un nombre noir, et sur douze indicateurs colorés plus rien ne
+         ressort. */
+      primeEl.style.color = '';
+      etat(primeEl, prime <= 65 ? 'ok' : prime <= 75 ? 'attention' : 'alerte');
       primeSub.innerHTML = `COGS ${cogsPct.toFixed(0)}% · Labour ${labPct.toFixed(0)}%`
         + (est ? ` <span style="color:var(--amber)">· matière extrapolée sur ${eco.cogs_coverage_pct}% des ventes</span>` : '')
         + ` <span style="color:var(--faint)">· target &lt;65%</span>`;
       primeBar.innerHTML =
         `<div style="width:${Math.min(100,cogsPct)}%;background:var(--flux-leave);"></div>` +
         `<div style="width:${Math.min(100,labPct)}%;background:var(--flux-tax);"></div>`;
+      /* ⚠️ LE REPÈRE DE CIBLE, À 65 %. Une barre sans repère dit « c'est trop » ; avec le
+         repère, elle dit « de deux points ». La barre est graduée sur 100 % du CA : la cible
+         s'y place donc à 65 % de sa largeur. */
+      marquerSeuil(primeBar, 65, 'cible 65 %');
     } else {
-      primeEl.textContent = '—'; primeEl.style.color = 'var(--text)';
-      primeSub.innerHTML = '<span style="color:var(--muted)">not measurable</span>';
+      /* ⚠️ UN TIRET, PAS UN ZÉRO — et une phrase qui dit ce qui le remplira. « Not
+         measurable » laisse devant un écran mort sans indiquer le geste. */
+      primeEl.textContent = '—'; primeEl.style.color = '';
+      etat(primeEl, null);
+      primeSub.innerHTML = '<span style="color:var(--muted)">Il manque les prix d\'achat. ' +
+        '<a href="/cogs" style="color:var(--accent)">Ouvrir COGS &amp; recettes →</a></span>';
       primeBar.innerHTML = '';
     }
 
@@ -540,7 +601,9 @@ function render(d) {
       document.getElementById('eco-seuil-bar').style.width = Math.min(100, eco.pct_seuil) + '%';
     } else {
       document.getElementById('eco-seuil').textContent = '—';
-      seuilSub.innerHTML = '<span style="color:var(--muted)">real margin not measurable</span>';
+      etat(document.getElementById('eco-seuil'), null);
+      seuilSub.innerHTML = '<span style="color:var(--muted)">Le point mort se calcule ' +
+        'charges ÷ marge réelle. <a href="/cogs" style="color:var(--accent)">Ouvrir COGS →</a></span>';
       document.getElementById('eco-seuil-bar').style.width = '0%';
     }
 
