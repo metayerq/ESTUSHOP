@@ -379,12 +379,11 @@ def conversion_series(visits, links, customers, now, weeks=12):
         "opted_out": sum(1 for c in (customers or []) if c.get("opted_out_at")),
         "this_week_customers": derniere["new_customers"] if derniere else 0,
         "this_week_links": derniere["new_links"] if derniere else 0,
-        "headline": conversion_headline(lignes, hors_mesure=(
-            rattachees_connues + undated - rattachees_revenues)),
+        "headline": conversion_headline(lignes),
     }
 
 
-def conversion_headline(lignes, recul=4, hors_mesure=0):
+def conversion_headline(lignes, recul=4):
     """
     La réponse de la page : le programme prend-il, et de combien a-t-il bougé ?
 
@@ -403,23 +402,22 @@ def conversion_headline(lignes, recul=4, hors_mesure=0):
     mesurees = [l for l in (lignes or [])[:-1] if l.get("rate_pct") is not None]
     if not mesurees:
         return {"ok": False, "rate_pct": None, "reason": "no-complete-week",
-                "hors_mesure": hors_mesure or None,
                 "n": None, "week": None, "delta_pts": None, "prev": None,
                 "prev_week": None, "prev_n": None, "weeks_between": 0}
 
     fin = mesurees[-1]
     base = mesurees[-(recul + 1)] if len(mesurees) > recul else None
 
-    # ⚠️ LA RÉSERVE VOYAGE AVEC LE CHIFFRE, PAS EN NOTE SOUS LE GRAPHIQUE. Une carte rattachée
-    # que la caisse n'a pas revue n'entre ni au numérateur ni au dénominateur : quand ces
-    # cartes-là sont aussi nombreuses que celles comptées, le taux affiché n'est plus une
-    # mesure de l'effort au comptoir, c'est une mesure de ce que `card_visits` a enregistré.
-    reserve = None
-    if hors_mesure > 0 and hors_mesure >= max(1, fin["linked"]):
-        reserve = hors_mesure
-
+    # ⚠️ UNE RÉSERVE A VÉCU ICI, ET ELLE EST PARTIE PARCE QU'ELLE CRIAIT POUR DEUX CARTES. Le
+    # seuil était RELATIF au nombre de cartes comptées : quand ce nombre tombe à un ou deux — ce
+    # qui est précisément le cas au démarrage — deux cartes hors mesure suffisaient à le
+    # franchir. Un avertissement qui se déclenche sur un effectif minuscule apprend à ignorer
+    # les avertissements, et le prochain, qui dira vrai, ne sera pas lu.
+    #
+    # ⚠️ LA LIMITE, ELLE, RESTE RÉELLE : une carte rattachée que la caisse n'a pas revue n'entre
+    # ni au numérateur ni au dénominateur. Elle est comptée par `/api/loyalty/diag`, qu'on ouvre
+    # quand le chiffre surprend — pas affichée en permanence à côté de lui.
     return {
-        "hors_mesure": reserve,
         "ok": True,
         "rate_pct": fin["rate_pct"],
         "n": fin["returning"],

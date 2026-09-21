@@ -115,41 +115,15 @@ def test_la_reponse_voyage_avec_la_serie():
 
 # ── La limite de la mesure, portée par la réponse ────────────────────────────────────────────
 
-def test_une_carte_rattachee_jamais_revue_ne_compte_nulle_part():
-    """
-    ⚠️ NI AU NUMÉRATEUR, NI AU DÉNOMINATEUR. Le taux porte sur les cartes vues au moins deux
-    fois : celles que la caisse n'a pas revues sortent du calcul des deux côtés. Dix personnes
-    inscrites dans la journée peuvent donc ne déplacer le chiffre d'aucun point — ce n'est pas
-    une erreur de calcul, c'est une limite de la mesure, et la taire ferait lire « le programme
-    ne prend pas » là où il faut lire « la caisse ne les a pas encore revues ».
-    """
-    h = conversion_headline(SERIE, hors_mesure=40)
-    assert h["hors_mesure"] == 40
-    assert h["rate_pct"] == 42.3, "le taux mesuré disparaît alors qu'il est connu"
-
-
-def test_la_reserve_se_tait_quand_elle_ne_pese_pas():
-    """
-    ⚠️ UN AVERTISSEMENT PERMANENT EST UN AVERTISSEMENT QU'ON CESSE DE LIRE. Deux cartes hors
-    mesure à côté de onze comptées ne changent aucune décision ; quarante, si.
-    """
-    assert conversion_headline(SERIE, hors_mesure=2)["hors_mesure"] is None
-    assert conversion_headline(SERIE, hors_mesure=0)["hors_mesure"] is None
-
-
-def test_le_seuil_est_le_nombre_de_cartes_reellement_comptees():
-    """Autant de cartes hors mesure que de cartes comptées : le taux dit au moins autant sur
-    l'instrumentation que sur le programme."""
-    h = SERIE[-2]           # 11 rattachées comptées
-    assert conversion_headline(SERIE, hors_mesure=11)["hors_mesure"] == 11
-    assert conversion_headline(SERIE, hors_mesure=10)["hors_mesure"] is None
-
-
-def test_la_reserve_survit_a_labsence_de_semaine_complete():
-    """Si rien n'est lisible ET que des cartes manquent, les deux doivent être dits."""
-    h = conversion_headline([sem("2026-08-10", 28, 12)], hors_mesure=40)
-    assert h["ok"] is False and h["hors_mesure"] == 40
-
+# ⚠️ QUATRE TESTS D'UNE RÉSERVE AFFICHÉE ONT DISPARU AVEC ELLE. Elle criait pour deux cartes :
+# son seuil était RELATIF au nombre de cartes comptées, et ce nombre vaut un ou deux au
+# démarrage du programme. Un avertissement qui se déclenche sur un effectif minuscule apprend à
+# ignorer les avertissements.
+#
+# ⚠️ LA LIMITE QU'ELLE DÉCRIVAIT RESTE VRAIE, ET RESTE MESURÉE. Une carte rattachée que la
+# caisse n'a pas revue n'entre ni au numérateur ni au dénominateur du taux : `linked_total` et
+# `linked_counted` la comptent toujours, et `/api/loyalty/diag` les rend. La différence est
+# qu'on va les chercher quand le chiffre surprend, au lieu de les subir en permanence.
 
 def test_la_serie_annonce_ce_quelle_compte_et_ce_quelle_laisse():
     from datetime import datetime, timezone
