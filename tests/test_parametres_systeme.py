@@ -144,7 +144,11 @@ def test_les_trois_onglets_existent_et_sont_disjoints():
 
 def test_le_panneau_masque_lest_vraiment():
     """⚠️ Le bogue de la barre blanche du 19/09 : une règle d'affichage écrasait `hidden`."""
-    assert ".pa-panneau[hidden] { display:none !important; }" in GABARIT
+    # ⚠️ LA RÈGLE VIT DÉSORMAIS DANS LA FEUILLE COMMUNE, avec la barre d'onglets partagée.
+    import os
+    commun = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                               "static", "style.css"), encoding="utf-8").read()
+    assert ".pa-panneau[hidden] { display: none !important; }" in commun
 
 
 def test_longlet_economie_renvoie_et_ne_duplique_pas():

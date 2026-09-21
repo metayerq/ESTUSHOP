@@ -826,3 +826,52 @@ td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 
   display: block; font-size: 10.5px; color: var(--faint); margin-top: 4px; line-height: 1.4;
 }
 
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   LES ONGLETS — un segmenté, plus un soulignement.
+   ═══════════════════════════════════════════════════════════════════════════════════════════
+
+   ⚠️ DEUX PAGES PORTAIENT LA MÊME BARRE, ÉCRITE DEUX FOIS (`.onglets` sur Fidélité,
+   `.pa-onglets` sur Réglages). Deux copies d'une même forme, c'est une forme qui diverge : on
+   corrige l'une, on oublie l'autre, et la page qu'on ouvre le moins reste dans l'ancien style.
+
+   ⚠️ L'ONGLET ACTIF SE DISTINGUE PAR TROIS SIGNAUX, pas un seul : le fond plein, la graisse et
+   la couleur du texte. Sur un écran mal calibré — ou en plein soleil, ce qui est le cas d'un
+   comptoir — une seule nuance de gris ne suffit pas à dire où l'on est.
+
+   ⚠️ ET CE N'EST PAS `.tx-segment`. Celui-là FILTRE la donnée (journée / soir) ; celui-ci
+   CHANGE d'écran. Leur donner la même apparence ferait croire qu'on filtre quand on navigue.
+   La différence se voit : le segmenté d'onglets est plein et posé sur un creux, le filtre est
+   une rangée de cartes bordées.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+.nav-seg {
+  display: inline-flex; gap: 2px; padding: 3px; margin: 2px 0 22px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
+  max-width: 100%; overflow-x: auto;
+}
+.nav-seg button {
+  font-family: inherit; font-size: 13px; font-weight: 500; line-height: 1;
+  padding: 8px 15px; border: 1px solid transparent; border-radius: 5px;
+  background: transparent; color: var(--muted); cursor: pointer; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 7px;
+}
+.nav-seg button:hover { color: var(--text); }
+.nav-seg button[aria-selected="true"] {
+  background: var(--bg-card); color: var(--text); font-weight: 600;
+  border-color: var(--border);
+}
+.nav-seg button:focus-visible { outline: 2px solid var(--spec); outline-offset: -1px; }
+
+/* Le compteur d'un onglet : ce qu'il contient, sans avoir à l'ouvrir. */
+.nav-seg .n {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+  padding: 1px 6px; border-radius: 9px;
+  background: var(--bar-bg); color: var(--faint);
+}
+.nav-seg button[aria-selected="true"] .n { background: var(--spec-soft); color: var(--green); }
+
+/* ⚠️ `hidden` DOIT GAGNER. Une règle d'affichage plus spécifique sur le panneau le masquerait —
+   c'est exactement le bogue de la barre blanche du 19/09 sur la fiche client. */
+.onglet[hidden], .pa-panneau[hidden] { display: none !important; }

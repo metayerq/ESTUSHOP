@@ -44,16 +44,8 @@
 .pa-etat { font-size:12px; color:var(--muted); margin-top:8px; }
 .vide { color:var(--muted); font-size:12.5px; }
 /* ── Les onglets ── */
-.pa-onglets { display:flex; gap:4px; margin:4px 0 20px; border-bottom:1px solid var(--border); }
-.pa-onglets button { font-family:inherit; font-size:13.5px; font-weight:500; padding:10px 18px;
-  background:none; border:1px solid transparent; border-bottom:none; border-radius:4px 4px 0 0;
-  color:var(--muted); cursor:pointer; margin-bottom:-1px; }
-.pa-onglets button:hover { color:var(--text); background:var(--bg-hover); }
-.pa-onglets button[aria-selected="true"] { color:var(--text); font-weight:600;
-  background:var(--bg-card); border-color:var(--border); }
-.pa-onglets button:focus-visible { outline:2px solid var(--spec); outline-offset:-2px; }
-/* ⚠️ `hidden` DOIT GAGNER — le bogue de la barre blanche du 19/09. */
-.pa-panneau[hidden] { display:none !important; }
+/* ⚠️ LES ONGLETS VIENNENT DE `static/style.css` (`.nav-seg`), partagés avec la page Fidélité. */
+
 /* ── L'inventaire ── */
 .pa-ligne { display:grid; grid-template-columns:minmax(150px,1.1fr) 2fr auto; gap:14px;
   padding:9px 0; border-top:1px solid var(--border); align-items:baseline; font-size:12.5px; }
@@ -97,7 +89,7 @@
     ne touche &agrave; personne d'autre &mdash; et les actions journalis&eacute;es portent son nom.
   </p>
 
-  <nav class="pa-onglets" id="pa-onglets" role="tablist" aria-label="Sections des r&eacute;glages">
+  <nav class="nav-seg" id="pa-onglets" role="tablist" aria-label="Sections des r&eacute;glages">
     <button role="tab" data-o="acces" aria-selected="true">Acc&egrave;s</button>
     <button role="tab" data-o="economie" aria-selected="false">&Eacute;conomie</button>
     <button role="tab" data-o="menu" aria-selected="false">Menu</button>

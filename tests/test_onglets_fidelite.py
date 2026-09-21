@@ -54,15 +54,56 @@ def test_le_panneau_masque_le_reste_vraiment():
     l'attribut `hidden`, et un élément « caché » occupait toujours la place. La même faute ici
     laisserait trois panneaux empilés.
     """
-    assert ".onglet[hidden] { display:none !important; }" in _gabarit()
+    # ⚠️ LA RÈGLE A DÉMÉNAGÉ DANS LA FEUILLE COMMUNE avec la barre d'onglets elle-même. La
+    # chercher dans le gabarit ferait échouer un test sur un déplacement, pas sur une
+    # régression — et la couvrir POUR LES DEUX PAGES vaut mieux que pour une seule.
+    import os
+    commun = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                               "static", "style.css"), encoding="utf-8").read()
+    assert ".onglet[hidden], .pa-panneau[hidden] { display: none !important; }" in commun
 
 
 def test_longlet_actif_se_distingue_par_plus_quune_couleur():
-    """Sur un écran mal calibré, une seule nuance de gris ne dit pas où l'on est."""
-    html = _gabarit()
-    i = html.index('.onglets button[aria-selected="true"]')
-    bloc = html[i:i + 200]
-    assert "font-weight" in bloc and "background" in bloc
+    """
+    Sur un écran mal calibré — ou en plein soleil, ce qui est le cas d'un comptoir — une seule
+    nuance de gris ne dit pas où l'on est.
+    """
+    import os
+    commun = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                               "static", "style.css"), encoding="utf-8").read()
+    i = commun.index('.nav-seg button[aria-selected="true"] {')
+    bloc = commun[i:i + 220]
+    assert "font-weight" in bloc and "background" in bloc and "border-color" in bloc
+
+
+def test_la_barre_donglets_nest_ecrite_quune_fois():
+    """
+    ⚠️ DEUX COPIES D'UNE MÊME FORME, C'EST UNE FORME QUI DIVERGE. On corrige l'une, on oublie
+    l'autre, et la page qu'on ouvre le moins reste dans l'ancien style — c'est déjà arrivé ici
+    avec la feuille de nav laissée sur `marketing.html`.
+    """
+    import os
+    racine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for page in ("fidelidade.html", "parametres.html"):
+        g = open(os.path.join(racine, "templates", page), encoding="utf-8").read()
+        bloc = g[g.index("<style>"):g.index("</style>")]
+        assert ".onglets button" not in bloc and ".pa-onglets button" not in bloc, page
+        assert 'class="nav-seg"' in g, page
+
+
+def test_les_onglets_ne_ressemblent_pas_au_filtre_de_donnees():
+    """
+    ⚠️ `.tx-segment` FILTRE LA DONNÉE (journée / soir), `.nav-seg` CHANGE D'ÉCRAN. Leur donner
+    la même apparence ferait croire qu'on filtre quand on navigue — et chercher ensuite le
+    bouton qui « remet tout », qui n'existe pas pour des onglets.
+    """
+    import os
+    commun = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                               "static", "style.css"), encoding="utf-8").read()
+    nav = commun[commun.index(".nav-seg {"):commun.index(".nav-seg button {")]
+    seg = commun[commun.index(".tx-segment {"):commun.index(".tx-segment button {")] \
+        if ".tx-segment {" in commun else ""
+    assert nav != seg
 
 
 def test_longlet_est_dans_ladresse():
@@ -160,3 +201,16 @@ def test_le_decoupage_rend_bien_cinquante_lignes_puis_le_reste():
     assert r.returncode == 0, r.stderr
     import json
     assert json.loads(r.stdout) == [[50, 87], [100, 37], [137, 0], [137, 0]]
+
+
+def test_longlet_clients_annonce_combien_il_en_contient():
+    """
+    ⚠️ ET IL DIT LE TOTAL, PAS LE FILTRÉ. Un compteur qui suivrait la recherche en cours
+    afficherait 3 après avoir tapé un prénom, et ferait croire que le fichier a fondu.
+    """
+    html = _gabarit()
+    assert 'id="onglet-n-clients"' in html
+    js = _js()
+    i = js.index("onglet-n-clients")
+    bloc = js[max(0, i - 400):i + 120]
+    assert "comptes.length" in bloc and "vus.length" not in bloc.split("nOnglet")[-1]

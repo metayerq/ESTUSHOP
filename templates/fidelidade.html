@@ -145,21 +145,8 @@
   text-transform: none; color: var(--faint); margin-left: 8px; }
 .bloc-n em { font-style: italic; }
 
-/* ── Les onglets ── */
-.onglets { display:flex; gap:4px; margin:4px 0 20px; border-bottom:1px solid var(--border); }
-.onglets button { font-family:inherit; font-size:13.5px; font-weight:500; padding:10px 18px;
-  background:none; border:1px solid transparent; border-bottom:none; border-radius:8px 8px 0 0;
-  color:var(--muted); cursor:pointer; margin-bottom:-1px; }
-.onglets button:hover { color:var(--text); background:var(--bg-hover); }
-/* ⚠️ L'ONGLET ACTIF SE DISTINGUE PAR TROIS SIGNAUX, pas un seul : la couleur, la graisse et le
-   fond qui rejoint le contenu. Sur un écran mal calibré, une seule nuance de gris ne suffit
-   pas à dire où l'on est. */
-.onglets button[aria-selected="true"] { color:var(--text); font-weight:600;
-  background:var(--bg-card); border-color:var(--border); }
-.onglets button:focus-visible { outline:2px solid var(--spec); outline-offset:-2px; }
-/* ⚠️ `hidden` DOIT GAGNER. Une règle d'affichage plus spécifique sur `.onglet` le masquerait —
-   c'est exactement le bogue de la barre blanche du 19/09 sur la fiche client. */
-.onglet[hidden] { display:none !important; }
+/* ⚠️ LES ONGLETS VIENNENT DE `static/style.css` (`.nav-seg`), partagés avec la page Réglages.
+   Les écrire deux fois, c'est une forme qui diverge : on corrige l'une, on oublie l'autre. */
 
 /* ── « Voir plus » ── */
 .plus { text-align:center; padding:14px 0 4px; }
@@ -204,9 +191,10 @@
     ⚠️ ET LES ALERTES RESTENT AU-DESSUS DES ONGLETS. Une alerte qu'il faut cliquer pour trouver
     n'est pas une alerte.
   -->
-  <nav class="onglets" id="onglets" role="tablist" aria-label="Sections de la fidélité">
+  <nav class="nav-seg" id="onglets" role="tablist" aria-label="Sections de la fidélité">
     <button role="tab" data-onglet="apercu" aria-selected="true">Vue d'ensemble</button>
-    <button role="tab" data-onglet="clients" aria-selected="false">Clients</button>
+    <button role="tab" data-onglet="clients" aria-selected="false">Clients
+      <span class="n" id="onglet-n-clients"></span></button>
     <button role="tab" data-onglet="reglages" aria-selected="false">R&eacute;glages</button>
   </nav>
 
@@ -843,6 +831,11 @@ tbody tr:hover { background:var(--bg-hover); }
     // propre ordre — celui de l'urgence, pas celui de la colonne cliquée.
     if (tri.cle) vus = vus.slice().sort(comparer);
     E('compte').textContent = vus.length + ' sur ' + comptes.length;
+    /* ⚠️ LE COMPTEUR DE L'ONGLET DIT LE TOTAL, PAS LE FILTRÉ. Il doit répondre « combien de
+     * clients y a-t-il » sans ouvrir l'onglet ; s'il suivait le filtre en cours, il afficherait
+     * 3 après une recherche et ferait croire que le fichier a fondu. */
+    var nOnglet = E('onglet-n-clients');
+    if (nOnglet) nOnglet.textContent = comptes.length;
     var coupe = vus.slice(0, limite);
     E('clients').tBodies[0].innerHTML = coupe.map(function(c){
       var p = [];
