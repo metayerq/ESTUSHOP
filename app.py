@@ -3207,6 +3207,76 @@ def api_reconciliation_daily():
     })
 
 
+@app.route("/api/vendus/paiements")
+def api_vendus_paiements():
+    """
+    LES LIBELLÉS DE PAIEMENT D'UNE JOURNÉE, AUX TROIS ÉTAPES DE LA CHAÎNE.
+
+    ⚠️ CETTE SONDE EXISTE PARCE QUE J'AI SUPPOSÉ DEUX FOIS. « Facturé carte = 0 » peut venir de
+    trois endroits, et ils appellent trois corrections différentes :
+      1. Vendus ne rend pas le champ `payments` → il n'y a rien à classer ;
+      2. il le rend, mais le cache `daily_summary` a été rempli avant le correctif ;
+      3. il le rend, le cache l'a, mais le LIBELLÉ n'est pas dans ma liste des moyens carte.
+    Les trois produisent le même zéro à l'écran. Seule une lecture des trois étapes tranche.
+
+    ⚠️ DES LIBELLÉS ET DES TOTAUX, rien d'autre : ce sont les moyens de paiement du café, pas
+    les tickets de ses clients.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    jour = (request.args.get("day") or "").strip()
+    if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", jour):
+        return jsonify({"error": "day attendu au format YYYY-MM-DD"}), 400
+
+    # ── Étape 1 : ce que Vendus rend, brut ──────────────────────────────────────────────────
+    live, erreur = {}, None
+    docs_vus = docs_avec_paiements = 0
+    try:
+        for d in get_documents(jour, jour, detailed=True) or []:
+            docs_vus += 1
+            lignes = d.get("payments")
+            if not isinstance(lignes, list):
+                continue
+            if lignes:
+                docs_avec_paiements += 1
+            for x in lignes:
+                t = (x.get("title") or "(sans titre)").strip() or "(sans titre)"
+                live[t] = round(live.get(t, 0.0) + float(x.get("amount") or 0), 2)
+    except Exception as e:
+        erreur = f"{type(e).__name__}: {str(e)[:150]}"
+
+    # ── Étape 2 : ce que le cache a retenu ──────────────────────────────────────────────────
+    cache, ca = None, None
+    try:
+        lignes = _supa_get("daily_summary", {"select": "day,ca_ttc,payments",
+                                             "day": f"eq.{jour}", "limit": 1})
+        if lignes:
+            cache = lignes[0].get("payments")
+            ca = lignes[0].get("ca_ttc")
+    except Exception:
+        pass
+
+    # ── Étape 3 : comment ces libellés sont classés ─────────────────────────────────────────
+    def ranger(titres):
+        out = {"carte": [], "especes": [], "autre": []}
+        for t in titres or []:
+            n = _sans_accent(t)
+            out["carte" if n in TITRES_CARTE
+                else "especes" if n in TITRES_ESPECES else "autre"].append(t)
+        return out
+
+    return jsonify({
+        "jour": jour,
+        "vendus_live": {"titres": live, "documents": docs_vus,
+                        "documents_avec_paiements": docs_avec_paiements, "erreur": erreur},
+        "cache_daily_summary": {"payments": cache, "ca_ttc": ca,
+                                "present": cache is not None},
+        "classement": {"live": ranger(live.keys()),
+                       "cache": ranger((cache or {}).keys())},
+        "connus": {"carte": sorted(TITRES_CARTE), "especes": sorted(TITRES_ESPECES)},
+    })
+
+
 # ── LE RAPPROCHEMENT TRANSACTION PAR TRANSACTION ─────────────────────────────────────────────
 #
 # ⚠️ UN ÉCART CHIFFRÉ NE SE RÉPARE PAS. « 23,40 € » dit qu'il y a un problème ; « paiement de
