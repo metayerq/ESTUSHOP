@@ -199,3 +199,31 @@ def test_une_marge_extrapolee_est_annoncee_a_cote_du_chiffre():
 def test_une_marge_mesuree_ne_declenche_aucune_reserve():
     """Un avertissement permanent est un avertissement qu'on cesse de lire."""
     assert _rendre(ECO)["noteVisible"] is False
+
+
+def test_aucune_fonction_du_script_nest_orpheline():
+    """
+    ⚠️ DU CODE MORT PASSE TOUS LES TESTS. Le tiroir de transaction et son infobulle — deux cents
+    lignes — ont survécu à la disparition de la liste qui les ouvrait : plus rien ne les
+    appelait, mais leurs ancrages existaient toujours dans le gabarit, donc le contrôle de
+    cohérence restait vert. Il vérifiait qu'ils s'accordaient entre eux, pas qu'un chemin y mène.
+
+    ⚠️ ET CE N'EST PAS UNE QUESTION DE PROPRETÉ. Une fonction qu'on croit vivante se maintient,
+    se relit, se corrige — et le jour où quelqu'un s'étonne qu'un clic ne fasse rien, il cherche
+    dans du code qui n'est plus branché depuis des mois.
+    """
+    js, html = _js(), _gabarit()
+    # ⚠️ LE PREMIER NIVEAU SEULEMENT, ET C'EST VOULU. Une fonction imbriquée est portée par
+    # celle qui la contient : si la contenante est appelée, elle l'est aussi, et si elle ne
+    # l'est pas, c'est la contenante qui est signalée. Les inclure ferait crier sur des
+    # fermetures locales parfaitement branchées — et un test qui crie sur du correct finit
+    # désactivé, emportant avec lui le cas qu'il devait attraper (le tiroir, deux cents lignes).
+    definies = set(re.findall(r"^(?:async )?function (\w+)\s*\(", js, re.M))
+    appelees = set(re.findall(r"\b(\w+)\s*\(", html)) | set(
+        re.findall(r"\b(\w+)\s*\(", re.sub(r"^(?:async )?function \w+\s*\(", "", js, flags=re.M)))
+    # Une fonction n'est pas appelée par sa propre déclaration.
+    orphelines = sorted(
+        f for f in definies
+        if len(re.findall(rf"\b{f}\s*\(", js)) <= 1 and f not in appelees
+    )
+    assert not orphelines, f"définies mais jamais appelées : {orphelines}"

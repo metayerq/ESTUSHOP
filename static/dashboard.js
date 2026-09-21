@@ -205,75 +205,9 @@ async function loadData(force = false) {
 // ── Clients récurrents (empreintes de cartes, voir revolut_merchant.py) ──────
 // Chargé à part : petite table Supabase, inutile d'alourdir /api/data.
 let _retReq = 0;
-async function loadReturning(d) {
-  const sec = document.getElementById('returning-section');
-  if (!sec) return;
-  const from = d.from_date || d.date, to = d.to_date || d.date;
-  if (!from || !to) return;
-  const my = ++_retReq;
-  try {
-    const r = await fetch(`/api/returning?from=${from}&to=${to}`);
-    const m = await r.json();
-    if (my !== _retReq) return;                 // période changée entre-temps
-    if (!m.enabled || m.empty) {
-      sec.style.display = m.enabled ? '' : 'none';
-      if (m.enabled) {
-        ['ret-pct','ret-cards','ret-regulars','ret-risk'].forEach(id => document.getElementById(id).textContent = '—');
-        document.getElementById('ret-note').textContent = 'No card visits yet — rebuild the history to start.';
-        document.getElementById('ret-rebuild').style.display = '';
-      }
-      return;
-    }
-    sec.style.display = '';
-    const p = m.period, a = m.all;
-    document.getElementById('returning-label').textContent =
-      'Returning customers' + (d.period_label ? ` — ${d.period_label.toLowerCase()}` : '');
-    document.getElementById('ret-pct').textContent = p.returning_pct != null ? `${p.returning_pct}%` : '—';
-    document.getElementById('ret-sub').textContent =
-      p.visits ? `${p.returning} of ${p.visits} card payments` : 'no card payments';
-    document.getElementById('ret-cards').textContent = p.cards;
-    document.getElementById('ret-cards-sub').textContent = `${p.known_cards} known · ${p.new_cards} new`;
-    document.getElementById('ret-regulars').textContent = p.regulars;
-    document.getElementById('ret-regulars-sub').textContent =
-      p.regulars_visit_pct != null ? `${p.regulars_visit_pct}% of the period's card payments` : '';
-    const k = m.at_risk || {};
-    document.getElementById('ret-risk').textContent = k.count != null ? k.count : '—';
-    document.getElementById('ret-risk-sub').textContent = k.regulars
-      ? `of ${k.regulars} regulars · absent > 3× their usual interval` : '';
-    document.getElementById('ret-note').textContent =
-      `Card payments only · ${a.since} → ${a.until} · ±5 pts (same card type + last four digits are merged; phone wallets count as a second card)`;
-    document.getElementById('ret-rebuild').style.display = '';
-  } catch (e) { /* section optionnelle */ }
-}
 
 // Reconstruction : 10 jours par appel (timeout serverless), de l'ouverture à
 // aujourd'hui. Admin seulement — un 403 arrête tout et le dit.
-async function rebuildCardVisits() {
-  const btn = document.getElementById('ret-rebuild');
-  const note = document.getElementById('ret-note');
-  btn.disabled = true;
-  const iso = x => x.toISOString().slice(0, 10);
-  let cur = new Date('2026-05-27T12:00:00Z'), today = new Date(), total = 0, n = 0;
-  try {
-    while (cur <= today) {
-      const to = new Date(Math.min(cur.getTime() + 9 * 864e5, today.getTime()));
-      n++; btn.textContent = `Rebuilding… ${iso(cur)}`;
-      const r = await fetch('/api/card-visits/sync', {method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({from: iso(cur), to: iso(to)})});
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || r.status);
-      total += j.visits || 0;
-      cur = new Date(to.getTime() + 864e5);
-    }
-    note.textContent = `History rebuilt: ${total} card payments in ${n} batches.`;
-    if (window._lastData) loadReturning(window._lastData);
-  } catch (e) {
-    note.textContent = 'Rebuild failed: ' + e.message;
-  } finally {
-    btn.disabled = false; btn.textContent = 'Rebuild history';
-  }
-}
 
 // ── Rendu principal ───────────────────────────────────────────────────────────
 /**
@@ -350,7 +284,10 @@ function renderReponse(d) {
 
 function render(d) {
   window._lastData = d;
-  loadReturning(d);
+  /* ⚠️ « RETURNING CUSTOMERS » A DEUX PAGES À LUI : `/clientes` analyse les empreintes de
+   * cartes du terminal, `/loyalty` suit le rattachement au programme. Les tuiles d'ici ne
+   * faisaient que renvoyer vers la première.
+   */
   // Bandeau warnings — sources de données en échec
   const warnBanner = document.getElementById('warn-banner');
   if (d.warnings && d.warnings.length) {
@@ -773,161 +710,16 @@ function render(d) {
     hideHourlySwitch();
   }
 
-  // ── Paiements compacts (remplace le donut) ───────────────────────────────
-  const payEl = document.getElementById('payment-compact');
-  if (!d.payments.labels.length) {
-    payEl.innerHTML = '<p style="font-size:12px;color:var(--muted);">No movements recorded.</p>';
-  } else {
-    const total = d.payments.values.reduce((a, b) => a + b, 0);
-    payEl.innerHTML = d.payments.labels.map((l, i) => {
-      const val = d.payments.values[i];
-      const pct = total > 0 ? Math.round(val / total * 100) : 0;
-      return `<div class="pay-compact-row">
-        <span class="pay-label">
-          <span class="pay-dot" style="background:${COLORS[i]}"></span>${l}
-        </span>
-        <span class="pay-nums">${fmt(val)} · ${pct}%</span>
-      </div>
-      <div class="pay-bar-track">
-        <div class="pay-bar-fill" style="width:${pct}%;background:${COLORS[i]}"></div>
-      </div>`;
-    }).join('');
-  }
+  /* ⚠️ LA RÉPARTITION DES PAIEMENTS EST PARTIE VERS `/reconciliation`. Celle d'ici venait de
+   * ce que Vendus DÉCLARE ; celle de là-bas est MESURÉE sur le terminal Revolut, ligne à
+   * ligne, avec l'écart entre les deux. Garder les deux, c'était offrir le choix entre une
+   * mesure et une déclaration — et celui qui choisit mal ne le saura jamais.
+   */
 
-  // ── Mix produits + rentabilité par groupe ────────────────────────────────
-  const MIX_COLORS = {'Drinks':'#2554C7','Food':'#2554C7','Viennoiserie':'#2554C7','Retail':'#2554C7'};
-  if (d.mix && d.mix.length) {
-    document.getElementById('mix-bars').innerHTML = d.mix.map(m => {
-      const margeStr = m.marge_pct != null
-        ? `margin ${marginBadge(m.marge_pct)} · ${fmt(m.marge_eur)}`
-        : '<span style="color:var(--faint)">margin unknown</span>';
-      return `
-      <div style="margin-bottom:12px;">
-        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;">
-          <span style="color:var(--text);font-weight:500">${m.label}</span>
-          <span style="font-weight:500">${m.pct}% <span style="color:var(--muted);font-weight:400">· ${fmt(m.amount_ttc ?? m.amount)} incl.VAT <span style="color:var(--faint)">(${fmt(m.amount)} excl.VAT)</span></span></span>
-        </div>
-        <div style="height:4px;background:var(--bar-bg);border-radius:2px;">
-          <div style="height:4px;background:${MIX_COLORS[m.label]||'#888'};border-radius:2px;width:${m.pct}%"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:3px;">
-          <span>${margeStr}</span>
-          ${m.coverage != null && m.coverage < 95 ? `<span style="color:var(--faint)">cov. ${m.coverage}%</span>` : ''}
-        </div>
-      </div>`;
-    }).join('');
-  } else {
-    document.getElementById('mix-bars').innerHTML =
-      '<span style="font-size:12px;color:var(--muted);">No data</span>';
-  }
-
-  // Distribution tickets et TVA retirés du flux principal
-
-  // ── WoW strip (sous sparkline) ────────────────────────────────────────────
-  const wowStrip = document.getElementById('wow-strip');
-  if (d.wow) {
-    wowStrip.style.display = 'flex';
-    document.getElementById('kpi-wow-ca').textContent = fmt(d.wow.cur_ca);
-    document.getElementById('kpi-wow-ca-delta').innerHTML = d.wow.growth_ca != null
-      ? `<span class="${d.wow.growth_ca >= 0 ? 'delta-up' : 'delta-down'}">${d.wow.growth_ca >= 0 ? '+' : ''}${d.wow.growth_ca}%</span>`
-      : '';
-    document.getElementById('kpi-wow-nb').textContent = d.wow.cur_nb;
-    document.getElementById('kpi-wow-nb-delta').innerHTML = d.wow.growth_nb != null
-      ? `<span class="${d.wow.growth_nb >= 0 ? 'delta-up' : 'delta-down'}">${d.wow.growth_nb >= 0 ? '+' : ''}${d.wow.growth_nb}%</span>`
-      : '';
-  } else {
-    wowStrip.style.display = 'none';
-  }
-  if (d.weekdays && d.weekdays.length) {
-    const best = d.weekdays[0];
-    document.getElementById('kpi-best-day').textContent = best.day;
-    document.getElementById('kpi-best-day-sub').textContent =
-      `moy. ${fmt(best.avg_ca)}`;
-  }
-
-  // ── Courbe cumulative (jour unique) ───────────────────────────────────────
-  const curveSection = document.getElementById('curve-section');
-  if (d.is_single_day && d.curve && d.curve.length > 1) {
-    curveSection.style.display = '';
-    const cCtx = document.getElementById('chart-curve').getContext('2d');
-    if (chartCurve) chartCurve.destroy();
-    // Référence semaine passée : rééchantillonnée sur les heures d'aujourd'hui
-    // (chaque journée a ses propres horaires de transaction) → courbe en escalier.
-    const cPrev = d.curve_prev;
-    let prevSeries = null;
-    if (cPrev && cPrev.length > 1) {
-      let j = 0, last = 0;
-      prevSeries = d.curve.map(p => {
-        while (j < cPrev.length && cPrev[j].time <= p.time) { last = cPrev[j].ca_cum; j++; }
-        return last;
-      });
-    }
-    const prevLblCurve = (d.comp_label || '').replace(/^vs\s+/, '').replace(/\s+same time$/, '') || 'last week';
-
-    chartCurve = new Chart(cCtx, {
-      type: 'line',
-      data: {
-        labels: d.curve.map(p => p.time),
-        datasets: [{
-          label: 'Today',
-          data: d.curve.map(p => p.ca_cum),
-          borderColor: BAR_ACTIVE,
-          backgroundColor: 'rgba(37,84,199,0.06)',
-          borderWidth: 2, fill: true, tension: 0.3,
-          pointRadius: d.curve.map((_, i) => i === 0 ? 0 : 4),
-          pointBackgroundColor: BAR_ACTIVE, pointBorderColor: '#fff', pointBorderWidth: 2,
-        }].concat(prevSeries ? [{
-          label: prevLblCurve,
-          data: prevSeries,
-          borderColor: 'rgba(120,119,111,0.55)',
-          borderWidth: 1.5, borderDash: [5, 4],
-          fill: false, tension: 0.3, pointRadius: 0,
-        }] : [])
-      },
-      options: {
-        plugins: {
-          legend: prevSeries ? {
-            display: true, position: 'top', align: 'end',
-            labels: { boxWidth: 18, boxHeight: 2, font: { size: 11 },
-                      color: 'rgba(120,119,111,1)', usePointStyle: false }
-          } : { display: false },
-          tooltip: {
-            callbacks: {
-              title: ctx => ctx[0].label,
-              label: ctx => {
-                if (ctx.datasetIndex === 1) return ` ${prevLblCurve} : ${fmt(ctx.raw)}`;
-                const pt = d.curve[ctx.dataIndex];
-                const lines = [` Cumul : ${fmt(ctx.raw)}`];
-                if (pt.ca_tx) lines.push(` + ${fmt(pt.ca_tx)}  (${pt.nb})`);
-                if (prevSeries) {
-                  const diff = ctx.raw - prevSeries[ctx.dataIndex];
-                  lines.push(` ${diff >= 0 ? '+' : ''}${fmt(diff)} vs ${prevLblCurve}`);
-                }
-                return lines;
-              }
-            }
-          }
-        },
-        scales: {
-          y: { beginAtZero: true, ticks:{callback:v=>v+' €',font:{size:11},color:'rgba(120,119,111,1)'}, grid:{color:'rgba(55,53,47,0.06)'}, border:{display:false} },
-          x: { ticks:{font:{size:11},color:'rgba(120,119,111,1)',maxTicksLimit:12}, grid:{display:false}, border:{display:false} }
-        }
-      }
-    });
-  } else {
-    curveSection.style.display = 'none';
-  }
-
-  // ── Rush detector (jour unique) ────────────────────────────────────────────
-  const rushSection = document.getElementById('rush-section');
-  if (d.is_single_day && d.rush && d.rush.length) {
-    rushSection.style.display = '';
-    document.getElementById('rush-list').innerHTML = d.rush.map(r =>
-      `<span class="rush-badge">⚡ ${r.start}–${r.end} · ${r.count} tx</span>`
-    ).join('');
-  } else {
-    rushSection.style.display = 'none';
-  }
+  /* ⚠️ LES PICS D'ACTIVITÉ RÉSUMAIENT LE GRAPHIQUE SITUÉ JUSTE EN DESSOUS. Trois pastilles
+   * au-dessus d'une courbe qui dit la même chose, en mieux : on lisait deux fois, puis on
+   * cessait de lire les deux.
+   */
 
   // ── Produits (toggle période / 7j) ───────────────────────────────────────
   const topSection = document.getElementById('top-products-section');
@@ -971,66 +763,14 @@ function render(d) {
     }
   }
 
-  // ── Transactions récentes ────────────────────────────────────────────────
-  if (!d.recent || !d.recent.length) {
-    document.getElementById('recent-body').innerHTML =
-      '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">No transactions.</td></tr>';
-    return;
-  }
-  window._txData = d.recent;
-  const recCount = document.getElementById('recent-count');
-  if (recCount) recCount.textContent = d.is_single_day
-    ? `${d.recent.length} transaction${d.recent.length > 1 ? 's' : ''}`
-    : `${d.recent.length} latest`;
-  const recLabel = document.getElementById('recent-label');
-  if (recLabel) recLabel.textContent = d.is_single_day ? "Today's transactions" : 'Recent transactions';
-  document.getElementById('recent-body').innerHTML = d.recent.map((t, i) => `
-    <tr style="cursor:pointer;" onclick="openDrawer(${i})"
-        onmouseenter="showTxTooltip(event, ${i})" onmousemove="moveTxTooltip(event)" onmouseleave="hideTxTooltip()">
-      <td class="time">${t.time}</td>
-      <td class="num">${t.number}</td>
-      <td><span class="badge">${t.type}</span></td>
-      <td class="amount">${fmt(t.amount)}</td>
-    </tr>`).join('');
+  /* ⚠️ LES VINGT DERNIERS TICKETS SONT PARTIS VERS `/reconciliation`, qui les détaille TOUS,
+   * jour par jour, avec leur moyen de paiement mesuré, leurs pourboires et leur rapprochement
+   * bancaire. Une liste tronquée à côté d'une liste complète n'ajoute rien — elle fait
+   * seulement douter de laquelle est à jour.
+   */
 }
 
 // ── Tooltip survol transaction ───────────────────────────────────────────────
-function showTxTooltip(e, idx) {
-  const t = window._txData[idx];
-  if (!t) return;
-  const tip = document.getElementById('tx-tooltip');
-  const itemsHtml = (t.items && t.items.length)
-    ? t.items.map(it => `
-        <div style="display:flex;justify-content:space-between;gap:14px;padding:2px 0;">
-          <span>${it.qty > 1 ? `<span style="color:var(--muted)">${it.qty}×</span> ` : ''}${it.name}</span>
-          <span style="color:var(--muted);white-space:nowrap;">${fmt(it.total)}</span>
-        </div>`).join('')
-    : '<div style="color:var(--muted);">Detail unavailable</div>';
-  const payHtml = (t.payments && t.payments.length)
-    ? `<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;color:var(--muted);">${t.payments.map(p => p.label).join(' · ')}</div>`
-    : '';
-  tip.innerHTML = `
-    <div style="font-weight:600;margin-bottom:6px;">${t.number} · ${t.time}</div>
-    ${itemsHtml}
-    <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:6px;padding-top:6px;font-weight:600;">
-      <span>Total</span><span>${fmt(t.amount)}</span>
-    </div>${payHtml}`;
-  tip.style.display = 'block';
-  moveTxTooltip(e);
-}
-function moveTxTooltip(e) {
-  const tip = document.getElementById('tx-tooltip');
-  if (tip.style.display === 'none') return;
-  const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
-  let x = e.clientX + pad, y = e.clientY + pad;
-  if (x + w > window.innerWidth)  x = e.clientX - w - pad;
-  if (y + h > window.innerHeight) y = e.clientY - h - pad;
-  tip.style.left = x + 'px';
-  tip.style.top  = y + 'px';
-}
-function hideTxTooltip() {
-  document.getElementById('tx-tooltip').style.display = 'none';
-}
 
 // ── Insights visuels ───────────────────────────────────────────────────────
 const WD_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -1386,34 +1126,8 @@ function renderDailyChart(daily) {
 }
 
 // ── Drawer ticket ──────────────────────────────────────────────────────────
-function openDrawer(idx) {
-  const t = window._txData[idx];
-  document.getElementById('drawer-number').textContent = t.number;
-  document.getElementById('drawer-meta').textContent   = t.time + ' · ' + t.client;
-  document.getElementById('drawer-items').innerHTML = t.items.length
-    ? t.items.map(item => `
-        <tr>
-          <td class="dt-name">${item.name}</td>
-          <td class="dt-qty">${item.qty > 1 ? item.qty + ' ×' : ''} ${fmt(item.unit)}</td>
-          <td class="dt-amt">${fmt(item.total)}</td>
-        </tr>`).join('')
-    : '<tr><td colspan="3" style="color:var(--muted);font-size:12px;padding:8px 0;">Detail unavailable</td></tr>';
-  document.getElementById('drawer-payments').innerHTML = t.payments.map(p => `
-    <div class="drawer-pay-row">
-      <span>${p.label}</span>
-      <span>${fmt(p.amount)}</span>
-    </div>`).join('');
-  document.getElementById('drawer-total').innerHTML = `<span>Total</span><span>${fmt(t.amount)}</span>`;
-  document.getElementById('drawer').classList.add('open');
-  document.getElementById('drawer-overlay').classList.add('open');
-}
 
-function closeDrawer() {
-  document.getElementById('drawer').classList.remove('open');
-  document.getElementById('drawer-overlay').classList.remove('open');
-}
 
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
 
 // ── Overview / Cashflow ───────────────────────────────────────────────────
 let cashflowData = null;   // chargé une seule fois, mis en cache côté client

@@ -312,48 +312,21 @@
 
   <!-- ═══ Bloc Activity — peaks + revenue by hour + rush heatmap, groupés (Mesa) ═══ -->
   <!-- Pics d'activité (conditionnel — jour unique) -->
-  <div id="rush-section" style="display:none;margin-bottom:16px;">
-    <div class="section-label">Activity peaks</div>
-    <div id="rush-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
-  </div>
+  {#
+    ⚠️ « ACTIVITY PEAKS » RÉSUMAIT LE GRAPHIQUE SITUÉ JUSTE EN DESSOUS. Trois pastilles
+    « 12h — 14 tickets » au-dessus d'une courbe qui dit la même chose, en mieux : on lisait
+    deux fois, puis on cessait de lire les deux. Et « Quand les tickets tombent » sur
+    /transactions porte la même question sur tout l'historique.
+  #}
 
-  <!-- Clients récurrents — empreintes de cartes du terminal Revolut.
-       Aucune identité : un hash salé de (4 derniers chiffres + libellé puce). -->
-  <div id="returning-section" style="display:none;margin-bottom:32px;">
-    <div class="section-label" id="returning-label">Returning customers</div>
-    <!-- Chaque tuile mène à /clientes, comme Transactions mène à /transactions :
-         le dashboard donne le pouls, la page détaillée donne l'analyse. -->
-    <div class="kpi-grid">
-      <a href="/clientes" class="kpi-link"><div class="kpi-cell" data-tip="Share of card payments in the period made with a card already seen before that ticket, anywhere in the history. Cards only — cash is invisible. Read it as ±5 points: two people with the same card type and last four digits are merged, and a phone wallet counts as a second card. Click to open the customer analysis.">
-        <div class="kpi-label">Returning visits <span class="kpi-go">→</span></div>
-        <div class="kpi-value" id="ret-pct">—</div>
-        <div class="kpi-delta" id="ret-sub" style="color:var(--muted)"></div>
-      </div></a>
-      <a href="/clientes" class="kpi-link"><div class="kpi-cell" data-tip="Distinct cards seen in the period: first seen before the period (known) versus never seen before (new). Click to open the customer analysis.">
-        <div class="kpi-label">Cards this period <span class="kpi-go">→</span></div>
-        <div class="kpi-value" id="ret-cards">—</div>
-        <div class="kpi-delta" id="ret-cards-sub" style="color:var(--muted)"></div>
-      </div></a>
-      <a href="/clientes" class="kpi-link"><div class="kpi-cell" data-tip="Regulars = cards with 4 or more visits since opening. Their share of this period's card payments says how much of your business rests on a core of habitués. Click to open the customer analysis.">
-        <div class="kpi-label">Regulars (4+ visits) <span class="kpi-go">→</span></div>
-        <div class="kpi-value" id="ret-regulars">—</div>
-        <div class="kpi-delta" id="ret-regulars-sub" style="color:var(--muted)"></div>
-      </div></a>
-      <a href="/clientes" class="kpi-link"><div class="kpi-cell" data-tip="Regulars you have stopped seeing: absent for longer than 3× their own usual interval between visits (at least 7 days, because the café closes two days a week). The one number here that calls for action. Click to open the customer analysis.">
-        <div class="kpi-label">At risk <span class="kpi-go">→</span></div>
-        <div class="kpi-value" id="ret-risk" style="color:var(--amber)">—</div>
-        <div class="kpi-delta" id="ret-risk-sub" style="color:var(--muted)"></div>
-      </div></a>
-    </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--faint);margin-top:8px;">
-      <span id="ret-note"></span>
-      <button id="ret-rebuild" onclick="rebuildCardVisits()" style="display:none;border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:6px;padding:3px 9px;font-size:11px;cursor:pointer;">Rebuild history</button>
-    </div>
-  </div>
-
-  <!-- Revenue by hour — pleine largeur -->
-  <div class="chart-block" style="margin-bottom:12px;">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+  {#
+    ⚠️ « RETURNING CUSTOMERS » A DEUX PAGES À LUI. `/clientes` analyse les empreintes de cartes
+    du terminal, `/loyalty` suit le rattachement au programme — et les tuiles d'ici ne faisaient
+    que renvoyer vers la première. Un chiffre qui existe pour être cliqué n'a pas besoin d'un
+    quart de l'écran d'accueil ; le rail y mène en un geste.
+  #}
+  <div class="charts-row">
+    <div class="chart-block">
       <div class="section-label" id="time-chart-label" style="margin-bottom:4px;">Revenue by hour</div>
       <div class="hswitch" id="hourly-switch" style="display:none;">
         <button class="hswitch-btn active" id="hsw-abs" onclick="setHourlyMode('abs')">Revenue</button>
@@ -373,11 +346,14 @@
         <span style="font-size:12px;color:var(--muted);">Loading…</span>
       </div>
     </div>
-    <div class="chart-block">
-      <div class="section-label" style="margin-bottom:12px;">Payment methods</div>
-      <div id="payment-compact" class="pay-compact"></div>
-    </div>
   </div>
+
+  {#
+    ⚠️ « PAYMENT METHODS » DONNAIT LA RÉPARTITION DÉCLARÉE PAR VENDUS. `/reconciliation` donne
+    la même chose MESURÉE sur le terminal Revolut, ligne à ligne, avec l'écart entre les deux —
+    c'est-à-dire l'information que celle-ci prétendait porter, plus le moyen de savoir si elle
+    est juste. Garder les deux, c'était offrir le choix entre une mesure et une déclaration.
+  #}
 
   <!-- Insights de la période (suivent le sélecteur) -->
   <div class="ins-grid on" style="margin-bottom:32px;">
@@ -415,28 +391,12 @@
     </div>
   </div><!-- /top-products-section -->
 
-  <!-- Transactions récentes -->
-  <div style="display:flex;align-items:baseline;justify-content:space-between;">
-    <div class="section-label" id="recent-label">Recent transactions</div>
-    <div class="section-label" id="recent-count" style="color:var(--faint);"></div>
-  </div>
-  <div class="table-wrap">
-    <div id="recent-list">
-      <table>
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>Document</th>
-            <th>Type</th>
-            <th class="right">Amount</th>
-          </tr>
-        </thead>
-        <tbody id="recent-body">
-          <tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">Loading…</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
+  {#
+    ⚠️ « RECENT TRANSACTIONS » LISTAIT LES VINGT DERNIERS TICKETS. `/reconciliation` les détaille
+    tous, jour par jour, avec leur moyen de paiement mesuré, leurs pourboires et leur
+    rapprochement bancaire. Une liste tronquée à côté d'une liste complète n'ajoute rien — elle
+    fait seulement douter de laquelle est à jour.
+  #}
 
   <!-- ═══ ZONE 2 · Le mois en cours (toujours mois calendaire, masquée si période = This month) ═══ -->
   <div id="month-zone" style="display:none;margin-top:44px;">
@@ -531,21 +491,12 @@
   </div>
 </div>
 
-<div id="drawer-overlay" onclick="closeDrawer()"></div>
-<div id="drawer">
-  <div class="drawer-header">
-    <div>
-      <div class="drawer-title" id="drawer-number"></div>
-      <div class="drawer-sub" id="drawer-meta"></div>
-    </div>
-    <button class="drawer-close" onclick="closeDrawer()">✕</button>
-  </div>
-  <div class="drawer-section-label">Items</div>
-  <table class="drawer-table" id="drawer-items"></table>
-  <div class="drawer-section-label" style="margin-top:20px;">Payment</div>
-  <div id="drawer-payments"></div>
-  <div class="drawer-total" id="drawer-total"></div>
-</div>
+{#
+  ⚠️ LE TIROIR DE TRANSACTION EST PARTI AVEC LA LISTE QUI L'OUVRAIT. Plus rien ne l'appelait :
+  du balisage et deux cents lignes de script qui passaient tous les tests, puisque les tests
+  vérifiaient leur cohérence entre eux — pas qu'un chemin y mène. `/reconciliation` détaille
+  chaque transaction, avec son rapprochement bancaire en plus.
+#}
 
 <script src="/static/ui.js?v={{ v }}"></script>
 <script src="/static/dashboard.js?v={{ v }}"></script>
