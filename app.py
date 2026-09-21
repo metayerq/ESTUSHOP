@@ -342,8 +342,42 @@ PRESET_LABELS = {
 app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 300   # statiques : 5 min de cache max
 
-# Version des assets — bump à chaque changement de dashboard.js/style.css
-ASSET_VERSION = "20260916d"
+def _version_assets():
+    """
+    L'empreinte du CONTENU des fichiers statiques, tronquée à douze caractères.
+
+    ⚠️ CETTE VERSION ÉTAIT ÉCRITE À LA MAIN, ET ELLE A ÉTÉ OUBLIÉE. Elle valait « 20260916d »
+    le 21 septembre, après une journée passée à déplacer des règles dans `style.css` : chaque
+    navigateur servait donc l'ancienne feuille, où les nouvelles classes n'existaient pas. Les
+    onglets sont sortis en boutons nus et le bandeau-réponse sans mise en forme — une page
+    cassée, alors que le serveur rendait exactement ce qu'il fallait.
+
+    ⚠️ ET C'EST LA PIRE FAMILLE DE BOGUE : le déploiement réussit, les tests passent, la page
+    est juste, et l'écran est faux. On cherche l'erreur dans le code qu'on vient d'écrire, qui
+    n'a rien à se reprocher.
+
+    ⚠️ LE CONTENU, PAS LA DATE DE MODIFICATION. `mtime` change à chaque `git clone` — donc à
+    chaque déploiement Vercel — et forcerait un rechargement complet des assets même quand rien
+    n'a bougé. L'empreinte ne change que si les octets changent.
+    """
+    import hashlib as _h
+    dossier = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+    empreinte = _h.sha256()
+    try:
+        for nom in sorted(os.listdir(dossier)):
+            if not nom.endswith((".css", ".js")):
+                continue
+            with open(os.path.join(dossier, nom), "rb") as f:
+                empreinte.update(nom.encode())
+                empreinte.update(f.read())
+    except OSError:
+        # ⚠️ UN REPLI QUI CHANGE À CHAQUE DÉMARRAGE, pas une constante. Statiques illisibles :
+        # mieux vaut faire recharger trop souvent que servir une feuille périmée en silence.
+        return "boot" + str(int(time.time()))
+    return empreinte.hexdigest()[:12]
+
+
+ASSET_VERSION = _version_assets()
 
 @app.context_processor
 def _inject_asset_version():
