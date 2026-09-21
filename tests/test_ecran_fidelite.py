@@ -293,3 +293,87 @@ def test_le_total_des_inscrits_reste_annonce_juste():
     """
     r = _reponse({**H, "hors_mesure": 40})
     assert "juste" in r["reserve"]
+
+
+# ── Le relevé doit savoir dire ce qui lui arrive ─────────────────────────────────────────────
+#
+# ⚠️ UN DIAGNOSTIC QUI TOMBE SANS DIRE POURQUOI NE SERT À RIEN. La première version rendait une
+# page d'erreur générique : on apprenait qu'il y avait un problème, pas lequel — et on en était
+# réduit à deviner une deuxième fois, sur le diagnostic cette fois.
+
+import app as flask_app
+
+
+@pytest.fixture
+def admin_diag(monkeypatch):
+    monkeypatch.setattr(flask_app, "_current_role", lambda: "admin")
+    monkeypatch.setattr(flask_app, "DASHBOARD_PASSWORD", "")
+    flask_app.app.config["TESTING"] = True
+    return flask_app.app.test_client()
+
+
+VISITES = [{"fp": "a", "ts": "2026-09-20T10:00:00Z"}, {"fp": "a", "ts": "2026-09-21T10:00:00Z"},
+           {"fp": "b", "ts": "2026-09-21T11:00:00Z"}]
+LIENS = [{"fp": "a", "phone": "+351900", "linked_at": "2026-09-21T10:00:00Z"},
+         {"fp": "b", "phone": "+351901", "linked_at": "2026-09-21T11:00:00Z"}]
+FICHES = [{"phone": "+351900", "consent_at": "2026-09-21T10:00:00Z"},
+          {"phone": "+351901", "consent_at": "2026-09-21T11:00:00Z"}]
+
+
+def _sert(monkeypatch, **remplace):
+    table = {"card_visits": (VISITES, False), "card_links": (LIENS, False),
+             "customers": (FICHES, False)}
+    table.update(remplace)
+
+    def faux(t, p, **k):
+        v = table[t]
+        if isinstance(v, Exception):
+            raise v
+        return v
+    monkeypatch.setattr(flask_app, "_supa_all", faux)
+    monkeypatch.setattr(flask_app, "today_lisbon", lambda: __import__("datetime").date(2026, 9, 21))
+
+
+def test_le_releve_distingue_la_carte_vue_une_fois_de_celle_vue_deux(admin_diag, monkeypatch):
+    """
+    ⚠️ C'EST LA LIGNE QUI EXPLIQUE TOUT. Un rattachement dont la carte n'a qu'un passage
+    enregistré n'entre NI au numérateur NI au dénominateur du taux : dix inscrits dans la
+    journée peuvent ne déplacer le chiffre d'aucun point.
+    """
+    _sert(monkeypatch)
+    d = admin_diag.get("/api/loyalty/diag").get_json()
+    assert d["ok"] is True
+    assert d["rattachements_carte_vue_2_fois"] == 1    # « a » a deux passages
+    assert d["rattachements_carte_vue_1_fois"] == 1    # « b » n'en a qu'un
+    assert d["rattachements_aujourd_hui"] == 2
+
+
+def test_une_lecture_qui_echoue_est_rapportee_pas_masquee(admin_diag, monkeypatch):
+    _sert(monkeypatch, card_links=RuntimeError("colonne absente"))
+    r = admin_diag.get("/api/loyalty/diag")
+    assert r.status_code == 200, "le relevé rend une page d'erreur au lieu de se décrire"
+    d = r.get_json()
+    assert d["ok"] is False
+    assert "card_links" in d["echecs"] and "colonne absente" in d["echecs"]["card_links"]
+    # ⚠️ ET LE RESTE EST QUAND MÊME RENDU : une table illisible ne doit pas emporter les deux
+    # autres, qui portent peut-être déjà la réponse.
+    assert d["cartes_vues"] == 2
+
+
+def test_une_lecture_tronquee_est_annoncee(admin_diag, monkeypatch):
+    """
+    ⚠️ UNE TRONCATURE MUETTE FAUSSE LE RELEVÉ LUI-MÊME. On compterait « 300 cartes vues une
+    fois » sur un échantillon, et on conclurait sur le mauvais chiffre — avec l'assurance que
+    donne un diagnostic.
+    """
+    _sert(monkeypatch, card_visits=(VISITES, True))
+    d = admin_diag.get("/api/loyalty/diag").get_json()
+    assert d["ok"] is False and "tronqué" in d["echecs"]["card_visits"]
+
+
+def test_le_releve_reste_ferme_aux_autres_roles(monkeypatch):
+    """Il énumère des empreintes de cartes et des numéros : c'est un fichier clients."""
+    for role in (None, "investor", "staff", "accountant"):
+        monkeypatch.setattr(flask_app, "_current_role", lambda r=role: r)
+        flask_app.app.config["TESTING"] = True
+        assert flask_app.app.test_client().get("/api/loyalty/diag").status_code in (401, 403)
