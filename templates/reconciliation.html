@@ -36,10 +36,15 @@
 
 .summary-bar { display:flex; gap:0; background:var(--bg-card); border:1px solid var(--border);
   border-radius:8px; overflow:hidden; margin-bottom:24px; }
-.sum-item { flex:1; padding:14px 18px; border-right:1px solid var(--border); }
+.sum-item { flex:1 1 0; min-width:0; padding:14px 14px; border-right:1px solid var(--border); }
 .sum-item:last-child { border-right:none; }
-.sum-label { font-family:var(--mono); font-size:9px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
-.sum-val { font-size:18px; font-weight:600; letter-spacing:-.4px; font-variant-numeric:tabular-nums; }
+.sum-label { font-family:var(--mono); font-size:9px; font-weight:600; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted); margin-bottom:4px;
+  /* ⚠️ DEUX LIGNES RÉSERVÉES, MÊME QUAND UNE SUFFIT. Sans ça, un intitulé qui passe à la ligne
+     décale sa valeur vers le bas et la barre se lit comme des colonnes désalignées. */
+  min-height:24px; }
+.sum-val { font-size:17px; font-weight:600; letter-spacing:-.4px; font-variant-numeric:tabular-nums;
+  white-space:nowrap; }
 .sum-sub { font-size:10.5px; color:var(--faint); margin-top:2px; }
 
 .controls { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:18px; }
@@ -66,6 +71,9 @@
 
 .table-wrap { border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:16px; background:var(--bg-card); }
 td.num { font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+/* ⚠️ UN EN-TÊTE QUI PASSE À LA LIGNE CHANGE LA HAUTEUR DE LA RANGÉE et donne l'impression que
+   les colonnes ne sont pas alignées. Ils tiennent sur une ligne, quitte à être serrés. */
+thead th { white-space:nowrap; }
 th.right { text-align:right; }
 td.date { color:var(--muted); white-space:nowrap; }
 .st { font-size:10px; font-weight:600; padding:2px 8px; border-radius:9px; white-space:nowrap; }
@@ -243,13 +251,13 @@ tr.cliquable:hover { background:var(--bg-hover); }
   </div>
 
   <div class="summary-bar" id="summary" style="display:none;">
-    <div class="sum-item"><div class="sum-label">Ventes terminal</div><div class="sum-val" id="s-gross">&mdash;</div><div class="sum-sub" id="s-tx"></div></div>
+    <div class="sum-item"><div class="sum-label">Terminal</div><div class="sum-val" id="s-gross">&mdash;</div><div class="sum-sub" id="s-tx"></div></div>
     <div class="sum-item"><div class="sum-label">Pourboires</div><div class="sum-val" id="s-tips" style="color:var(--green);">&mdash;</div><div class="sum-sub">mesur&eacute;s</div></div>
-    <div class="sum-item"><div class="sum-label">Frais Revolut</div><div class="sum-val" id="s-fees" style="color:var(--red);">&mdash;</div><div class="sum-sub" id="s-fees-sub"></div></div>
+    <div class="sum-item"><div class="sum-label">Frais</div><div class="sum-val" id="s-fees" style="color:var(--red);">&mdash;</div><div class="sum-sub" id="s-fees-sub"></div></div>
     <div class="sum-item"><div class="sum-label">Net re&ccedil;u</div><div class="sum-val" id="s-net">&mdash;</div><div class="sum-sub">ventes + pourboires &minus; frais</div></div>
-    <div class="sum-item"><div class="sum-label">Factur&eacute; Vendus</div><div class="sum-val" id="s-vendus">&mdash;</div><div class="sum-sub" id="s-vendus-sub"></div></div>
+    <div class="sum-item"><div class="sum-label">Factur&eacute;</div><div class="sum-val" id="s-vendus">&mdash;</div><div class="sum-sub" id="s-vendus-sub"></div></div>
     <div class="sum-item"><div class="sum-label">Esp&egrave;ces</div><div class="sum-val" id="s-cash">&mdash;</div><div class="sum-sub">d&eacute;clar&eacute;es dans Vendus</div></div>
-    <div class="sum-item"><div class="sum-label">&Eacute;cart carte</div><div class="sum-val" id="s-delta">&mdash;</div><div class="sum-sub">devrait &ecirc;tre &asymp; 0</div></div>
+    <div class="sum-item"><div class="sum-label">&Eacute;cart</div><div class="sum-val" id="s-delta">&mdash;</div><div class="sum-sub">devrait &ecirc;tre &asymp; 0</div></div>
   </div>
 
   <div id="inconnus" class="inc-note" style="display:none;"></div>
@@ -257,14 +265,14 @@ tr.cliquable:hover { background:var(--bg-hover); }
   <div class="table-wrap">
     <table>
       <thead><tr>
-        <th>Jour</th>
+        <th style="width:104px">Jour</th>
         <th class="right">Ventes terminal</th>
         <th class="right">Pourboires</th>
         <th class="right">Frais</th>
         <th class="right">Factur&eacute; carte</th>
         <th class="right">Esp&egrave;ces</th>
         <th class="right">&Eacute;cart</th>
-        <th>&nbsp;</th>
+        <th style="width:96px">&nbsp;</th>
       </tr></thead>
       <tbody id="tbody"><tr><td colspan="8" class="empty">Chargement&hellip;</td></tr></tbody>
     </table>

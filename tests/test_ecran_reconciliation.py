@@ -260,3 +260,60 @@ def test_la_part_autre_saffiche_quand_elle_existe():
     html = _gabarit()
     assert "autre_cents ?" in html
     assert "autre</span>" in html
+
+
+# ── L'alignement ─────────────────────────────────────────────────────────────────────────────
+#
+# ⚠️ AUCUN DE CES DÉFAUTS NE LÈVE. Une page dont les colonnes dansent reste « fonctionnelle » :
+# elle se lit mal, on s'y trompe de ligne, et on finit par ne plus l'ouvrir.
+
+def test_len_tete_et_les_lignes_ont_le_meme_nombre_de_colonnes():
+    """
+    ⚠️ LE DÉFAUT LE PLUS BANAL EN AJOUTANT UNE COLONNE : l'en-tête en a huit, les lignes sept,
+    et tout le tableau se décale d'une case à partir de là.
+    """
+    html = _gabarit()
+    thead = re.search(r"<thead>(.*?)</thead>", html, re.S).group(1)
+    assert len(re.findall(r"<th", thead)) == 8
+
+    # Les `colspan` des lignes spéciales doivent couvrir exactement le reste.
+    for m in re.finditer(r'<td[^>]*colspan="(\d+)"', html):
+        assert int(m.group(1)) <= 8
+
+
+def test_les_colonnes_de_bord_ont_une_largeur_fixe():
+    """
+    ⚠️ LA DERNIÈRE COLONNE PORTE « ✓ » OU « à vérifier » selon les jours. En largeur
+    automatique, elle change de taille d'un affichage à l'autre — et toutes les autres bougent
+    avec elle.
+    """
+    html = _gabarit()
+    thead = re.search(r"<thead>(.*?)</thead>", html, re.S).group(1)
+    assert 'style="width:104px"' in thead, "la colonne Jour n'a pas de largeur"
+    assert 'style="width:96px"' in thead, "la colonne de statut n'a pas de largeur"
+
+
+def test_les_intitules_den_tete_ne_passent_pas_a_la_ligne():
+    """Un en-tête sur deux lignes change la hauteur de la rangée et déforme la lecture."""
+    assert "thead th { white-space:nowrap; }" in _gabarit()
+
+
+def test_les_cases_du_bandeau_reservent_la_meme_hauteur_de_libelle():
+    """
+    ⚠️ SEPT CASES SE PARTAGENT LA LARGEUR. Certains intitulés tiennent sur une ligne, d'autres
+    passent à deux : sans hauteur réservée, les valeurs ne démarrent pas au même niveau et la
+    barre se lit comme des colonnes désalignées.
+    """
+    html = _gabarit()
+    assert "min-height:24px" in html
+    # Et les valeurs ne se coupent pas en deux.
+    assert ".sum-val" in html and "white-space:nowrap" in html
+
+
+def test_les_intitules_du_bandeau_restent_courts():
+    """Sept cases sur 1 060 px : un intitulé long déborde ou casse la grille."""
+    html = _gabarit()
+    for label in re.findall(r'class="sum-label">([^<]+)<', html):
+        # Les entités HTML comptent pour un caractère à l'affichage.
+        visible = re.sub(r"&[a-z]+;", "x", label)
+        assert len(visible) <= 12, f"intitulé trop long pour la barre : {label}"
