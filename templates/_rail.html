@@ -19,31 +19,19 @@
 <nav class="rail" aria-label="Navigation principale">
   <a class="marque" href="/">ESTU<span>SHOP</span></a>
 
-  <div class="rail-grp">Pilotage</div>
-  <a href="/" data-p="/">Dashboard</a>
-  <a href="/transactions" data-p="/transactions">Transactions</a>
-  <a href="/contabilidade" data-p="/contabilidade">Contabilidade</a>
-
-  <div class="rail-grp">Marge</div>
-  <a href="/cogs" data-p="/cogs">COGS &amp; recettes</a>
-  <a href="/stock" data-p="/stock">Stock</a>
-  <a href="/charges" data-p="/charges">Charges fixes</a>
-
-  <div class="rail-grp">Caisse</div>
-  <a href="/reconciliation" data-p="/reconciliation">R&eacute;conciliation
-    <span class="badge" id="rail-ecarts" hidden></span></a>
-  <a href="/expenses" data-p="/expenses">D&eacute;penses</a>
-
-  <div class="rail-grp">Clients</div>
-  <a href="/loyalty" data-p="/loyalty">Fid&eacute;lit&eacute;</a>
-  <a href="/marketing" data-p="/marketing">Marketing SMS</a>
-  <a href="/clientes" data-p="/clientes">Clients Vendus</a>
-
-  <div class="rail-grp">Op&eacute;rations</div>
-  <a href="/parametres" data-p="/parametres">R&eacute;glages &mdash; acc&egrave;s</a>
-  <a href="/sop" data-p="/sop">SOP &mdash; checklists</a>
-  <a href="/holidays" data-p="/holidays">Cong&eacute;s</a>
-  <a href="/events" data-p="/events">&Eacute;v&eacute;nements</a>
+  {#
+    ⚠️ LE RANGEMENT VIENT DE LA BASE, L'INVENTAIRE DU CODE. On ne peut pas inventer une page
+    depuis les réglages — elle n'existerait pas ; on peut la renommer, la déplacer, la masquer.
+    Et une page ajoutée au code apparaît ici SANS qu'on touche aux réglages : voir `menu.py`,
+    c'est le garde-fou central, sans lequel un écran neuf resterait invisible pour toujours.
+  #}
+  {% for groupe in menu %}
+  <div class="rail-grp">{{ groupe.titre }}</div>
+  {% for e in groupe.entrees %}
+  <a href="{{ e.chemin }}" data-p="{{ e.chemin }}">{{ e.libelle }}{% if e.pastille %}
+    <span class="badge" id="{{ e.pastille }}" hidden></span>{% endif %}</a>
+  {% endfor %}
+  {% endfor %}
 </nav>
 
 <main class="zone">

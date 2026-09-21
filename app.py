@@ -29,6 +29,7 @@ from programme import build_accounts, conversion_series, programme_summary
 from sms import campagne_apercu
 from campagnes import recap_depense
 import charges as _ch
+import menu as _menu
 
 from flask import Flask, jsonify, render_template, request, redirect, make_response, g
 from vendus import (
@@ -4122,6 +4123,93 @@ def api_comptes_modifier():
                     {k: v for k, v in maj.items() if k != "empreinte"},
                     "modification depuis les réglages")
     return jsonify(rendu)
+
+
+def _reglage(cle, defaut=None):
+    """
+    Un réglage enregistré, ou le défaut du code.
+
+    ⚠️ UN RÉGLAGE ABSENT N'EST JAMAIS UNE PANNE, et une base injoignable non plus. Le menu
+    s'affiche sur TOUTES les pages : s'il dépendait d'une lecture Supabase réussie, un hoquet
+    réseau viderait la navigation de tout le site. On retombe sur les valeurs d'usine, en
+    silence — c'est la seule façon de rester capable d'aller réparer.
+    """
+    try:
+        lignes = _supa_get("reglages", {"cle": f"eq.{cle}", "limit": 1})
+        if lignes:
+            return lignes[0].get("valeur", defaut)
+    except Exception:
+        pass
+    return defaut
+
+
+# ⚠️ LE MENU EST RELU À CHAQUE PAGE, ET IL EST EN CACHE COURT. Sans cache, chaque navigation
+# paierait un aller-retour Supabase avant d'afficher quoi que ce soit ; avec un cache long, un
+# réglage enregistré ne se verrait pas et on le ré-enregistrerait en boucle.
+_MENU_CACHE = {"t": 0.0, "v": None}
+
+
+def _menu_courant():
+    maintenant = time.time()
+    if _MENU_CACHE["v"] is not None and maintenant - _MENU_CACHE["t"] < 30:
+        return _MENU_CACHE["v"]
+    structure = _menu.construire(_reglage("menu"))
+    _MENU_CACHE.update({"t": maintenant, "v": structure})
+    return structure
+
+
+@app.context_processor
+def _injecter_menu():
+    """⚠️ TOUS LES GABARITS EN ONT BESOIN, ET AUCUN NE DOIT AVOIR À LE DEMANDER. Une page qui
+    oublierait de passer le menu à `render_template` s'afficherait sans navigation — c'est
+    exactement l'oubli, recopié treize fois, que la coquille partagée a supprimé."""
+    return {"menu": _menu_courant()}
+
+
+@app.route("/api/parametres/menu", methods=["GET"])
+def api_menu_get():
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    return jsonify({"entrees": _menu.a_plat(_reglage("menu"))})
+
+
+@app.route("/api/parametres/menu", methods=["PUT"])
+def api_menu_put():
+    """
+    Enregistre l'organisation du menu.
+
+    ⚠️ ON ENREGISTRE CE QUI A ÉTÉ RECONSTRUIT, PAS CE QUI A ÉTÉ ENVOYÉ. `a_plat` écarte les
+    chemins inconnus, comble les libellés vides et refuse de masquer les réglages : écrire le
+    JSON brut laisserait entrer en base ce que le module passe ensuite son temps à corriger — et
+    un jour quelqu'un lirait la table en croyant y voir la vérité.
+    """
+    if _current_role() != "admin":
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    data = request.get_json(silent=True) or {}
+    entrees = data.get("entrees")
+    if not isinstance(entrees, list) or not entrees:
+        return jsonify({"ok": False, "error": "aucune entrée reçue"}), 400
+
+    propre = [{k: e[k] for k in ("chemin", "libelle", "groupe", "masque")}
+              for e in _menu.a_plat(entrees)]
+    ok, err = _supa_upsert("reglages", {"cle": "menu", "valeur": propre,
+                                        "maj_le": _utc_iso(), "maj_par": _identite()[1]})
+    if ok:
+        _MENU_CACHE["v"] = None     # la page suivante doit voir le changement
+        _journal_action(_current_role(), "menu-organise", "menu", None, None,
+                        "organisation du menu modifiée")
+    return jsonify({"ok": ok, "error": err})
+
+
+@app.route("/api/parametres/menu/defaut", methods=["POST"])
+def api_menu_defaut():
+    """⚠️ IL FAUT TOUJOURS UNE PORTE DE SORTIE. Un menu réorganisé jusqu'à l'illisible doit
+    pouvoir revenir à l'état d'usine sans passer par la base."""
+    if _current_role() != "admin":
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    ok = _supa_delete("reglages", "cle", "menu")
+    _MENU_CACHE["v"] = None
+    return jsonify({"ok": bool(ok)})
 
 
 @app.route("/api/parametres/systeme")

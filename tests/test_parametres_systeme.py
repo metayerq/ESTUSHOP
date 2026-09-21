@@ -160,16 +160,23 @@ def test_longlet_economie_renvoie_et_ne_duplique_pas():
     assert "<input" not in bloc, "un éditeur a été dupliqué dans l'onglet Économie"
 
 
-def test_le_danger_des_charges_est_annonce():
+def test_lavertissement_sur_les_charges_ne_survit_pas_a_sa_correction():
     """
-    ⚠️ MODIFIER UN MONTANT RÉÉCRIT LA MARGE DES MOIS PASSÉS, et supprimer un poste le retire de
-    tout l'historique. Tant que ce n'est pas corrigé, l'écran doit le dire — sinon il invite à
-    un geste dont personne ne mesure la portée.
+    ⚠️ CET ÉCRAN METTAIT EN GARDE CONTRE UN DANGER CORRIGÉ LE 21/09/2026 : « modifier un montant
+    réécrit la marge des mois passés ». C'est faux depuis qu'un changement porte une date d'effet.
+    Un avertissement qui décrit un péril disparu apprend à ignorer les avertissements de l'écran
+    — y compris ceux qui disent encore vrai.
+
+    ⚠️ ET LE DÉCOUPAGE SE FAIT SUR L'ONGLET SUIVANT, QUEL QU'IL SOIT. La version d'avant coupait
+    à `pa-systeme` ; l'onglet Menu s'est glissé entre les deux, et la tranche a silencieusement
+    doublé de taille — le test cherchait alors ses mots dans un bloc qui n'était plus le sien.
     """
     i = GABARIT.index('id="pa-economie"')
-    bloc = GABARIT[i:GABARIT.index('id="pa-systeme"')]
-    assert "mois pass" in bloc
-    assert "historique" in bloc
+    fin = min(j for j in (GABARIT.find('id="pa-menu"', i), GABARIT.find('id="pa-systeme"', i))
+              if j > 0)
+    bloc = GABARIT[i:fin]
+    assert "réécrit" not in bloc and "r&eacute;&eacute;crit" not in bloc
+    assert "date d'effet" in bloc, "l'écran ne dit pas ce qui protège désormais les mois passés"
 
 
 def test_linventaire_ne_se_charge_quen_ouvrant_son_onglet():

@@ -104,18 +104,52 @@ def test_le_contenu_est_dans_la_zone_de_travail(nom):
 
 # ── Le rail lui-même ─────────────────────────────────────────────────────────────────────────
 
+def _rail_rendu(config=None):
+    """
+    Le rail TEL QU'IL S'AFFICHE, pas tel qu'il est écrit.
+
+    ⚠️ LE GABARIT NE CONTIENT PLUS DE CHEMINS — il boucle sur une structure. Lire le fichier ne
+    dit donc plus rien des liens produits : ce test cherchait `data-p="…"` et trouvait
+    `data-p="{{ e.chemin }}"`. Un contrôle qui inspecte la source d'un gabarit à boucle vérifie
+    la boucle, pas le résultat.
+    """
+    import menu as _menu
+    from flask import render_template_string
+    with flask_app.app.test_request_context("/"):
+        return render_template_string("{% include '_rail.html' %}",
+                                      menu=_menu.construire(config))
+
+
 def test_toutes_les_destinations_du_rail_existent():
     """
     ⚠️ UN LIEN MORT DANS UNE NAVIGATION PERMANENTE SE CLIQUE TOUS LES JOURS. Il mène à une 404
     ou, pire, à une redirection vers la connexion — qui se lit comme une déconnexion.
     """
-    with open(os.path.join(RACINE, "templates", "_rail.html"), encoding="utf-8") as f:
-        rail = f.read()
-    chemins = re.findall(r'data-p="([^"]+)"', rail)
+    chemins = re.findall(r'data-p="([^"]+)"', _rail_rendu())
     assert len(chemins) >= 10
     connues = {str(r.rule) for r in flask_app.app.url_map.iter_rules()}
     for c in chemins:
         assert c in connues, f"le rail pointe vers {c}, qui n'est pas une route"
+
+
+def test_le_rail_survit_a_une_configuration_abimee():
+    """
+    ⚠️ LE RAIL EST SUR TOUTES LES PAGES. Une configuration de menu absurde enregistrée en base
+    ne doit pas vider la navigation de tout le site : il faut toujours pouvoir revenir aux
+    réglages et réparer.
+    """
+    chemins = re.findall(r'data-p="([^"]+)"', _rail_rendu([{"chemin": "/nexiste-pas"}]))
+    assert "/parametres" in chemins
+    assert len(chemins) >= 10
+
+
+def test_la_pastille_des_ecarts_est_rendue():
+    """
+    ⚠️ LE SCRIPT DE LA BANDE D'ÉTAT ÉCRIT DANS `rail-ecarts`. Si la boucle du rail cessait de
+    produire cet identifiant, le compteur de jours à vérifier disparaîtrait sans erreur — et
+    l'alerte qu'on ne doit jamais perdre serait la première partie.
+    """
+    assert 'id="rail-ecarts"' in _rail_rendu()
 
 
 def test_la_racine_ne_sallume_pas_sur_toutes_les_pages():

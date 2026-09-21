@@ -67,6 +67,24 @@
 .pa-renvoi { display:inline-block; font-size:12.5px; color:var(--spec); text-decoration:none;
   margin-top:4px; }
 @media (max-width:700px){ .pa-ligne { grid-template-columns:1fr; gap:3px; } }
+
+/* ── L'organisation du menu ─────────────────────────────────────────────────────────────── */
+.me-liste { border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+.me-l { display:grid; grid-template-columns:1.1fr 1fr auto auto; gap:10px; align-items:center;
+  padding:7px 10px; border-top:1px solid var(--border); }
+.me-l:first-child { border-top:none; }
+.me-l.masquee { opacity:.5; }
+.me-l input[type=text] { font:inherit; font-size:12.5px; width:100%; padding:4px 7px;
+  border:1px solid var(--border); border-radius:3px; background:var(--bg-card); color:var(--text); }
+.me-l .che { font-family:var(--mono); font-size:10px; color:var(--faint); }
+.me-fl { display:flex; gap:2px; }
+.me-fl button { font:inherit; font-size:12px; line-height:1; padding:4px 7px; cursor:pointer;
+  border:1px solid var(--border); border-radius:3px; background:var(--bg-card); color:var(--muted); }
+.me-fl button:hover:not(:disabled) { color:var(--text); border-color:var(--text); }
+.me-fl button:disabled { opacity:.3; cursor:default; }
+.me-l label { font-size:11.5px; color:var(--muted); display:flex; gap:5px; align-items:center;
+  white-space:nowrap; cursor:pointer; }
+@media (max-width:760px){ .me-l { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -82,6 +100,7 @@
   <nav class="pa-onglets" id="pa-onglets" role="tablist" aria-label="Sections des r&eacute;glages">
     <button role="tab" data-o="acces" aria-selected="true">Acc&egrave;s</button>
     <button role="tab" data-o="economie" aria-selected="false">&Eacute;conomie</button>
+    <button role="tab" data-o="menu" aria-selected="false">Menu</button>
     <button role="tab" data-o="systeme" aria-selected="false">Syst&egrave;me</button>
   </nav>
 
@@ -124,11 +143,12 @@
       <h2 class="pa-titre">Charges fixes et salaires</h2>
       <p class="pa-aide">Quinze postes de charges et les salaires vivent en base, pas dans le
         code. Ils sont lus en direct par le tableau de bord <b>et par la caisse</b>.</p>
-      <p class="pa-aide" style="color:var(--amber)">&#9888; Modifier un montant aujourd'hui
-        r&eacute;&eacute;crit la marge des mois pass&eacute;s&nbsp;: la lecture est en direct,
-        sans date d'effet. Et supprimer un poste le retire de tout l'historique. Les deux sont
-        &agrave; corriger &mdash; d'ici l&agrave;, pr&eacute;f&egrave;re ajouter un poste
-        plut&ocirc;t que d'en modifier un.</p>
+      <!-- ⚠️ CET AVERTISSEMENT DÉCRIVAIT UN DÉFAUT CORRIGÉ LE 21/09/2026. Un écran qui met en
+           garde contre un danger disparu apprend à ignorer ses propres avertissements. -->
+      <p class="pa-aide">Un changement de montant porte une <b>date d'effet</b> et un motif&nbsp;:
+        les mois pass&eacute;s ne bougent plus. Arr&ecirc;ter un poste le borne au jour o&ugrave;
+        il cesse au lieu de l'effacer &mdash; il continue de compter dans les mois o&ugrave; il a
+        r&eacute;ellement &eacute;t&eacute; pay&eacute;.</p>
       <a class="pa-renvoi" href="/charges">Ouvrir Charges fixes &rarr;</a>
     </div>
     <div class="pa-bloc">
@@ -140,6 +160,35 @@
       <a class="pa-renvoi" href="/loyalty#reglages">Ouvrir les r&eacute;glages fid&eacute;lit&eacute; &rarr;</a>
     </div>
   </div><!-- /economie -->
+
+  <!--
+    ⚠️ LE RANGEMENT DU MENU ÉTAIT ÉCRIT EN DUR, ET IL AVAIT TORT. « Dépenses » vivait sous
+    « Caisse » alors que ce sont des achats datés qui pèsent sur le mois, pas sur le tiroir.
+    Une catégorie fausse apprend à chercher au mauvais endroit, et on finit par ne plus ouvrir
+    la page. Corriger demandait un déploiement ; le prochain désaccord aussi.
+  -->
+  <div class="pa-panneau" id="pa-menu" role="tabpanel" hidden>
+    <div class="pa-bloc">
+      <h2 class="pa-titre">Organisation du menu</h2>
+      <p class="pa-aide" style="max-width:76ch">
+        Renomme, d&eacute;place et range les entr&eacute;es du menu de gauche. Le titre de
+        cat&eacute;gorie se saisit librement&nbsp;: deux entr&eacute;es qui portent le m&ecirc;me
+        titre se retrouvent dans le m&ecirc;me groupe, et l'ordre des groupes suit celui de leur
+        premi&egrave;re entr&eacute;e.
+      </p>
+      <p class="pa-aide" style="max-width:76ch">
+        &#9888; <b>Masquer range l'&eacute;cran, &ccedil;a ne ferme aucune porte.</b> Une page
+        masqu&eacute;e reste accessible par son adresse&nbsp;: les droits se g&egrave;rent dans
+        l'onglet Acc&egrave;s, et nulle part ailleurs.
+      </p>
+      <div id="me-liste" class="me-liste">Chargement&hellip;</div>
+      <div class="pa-form" style="margin-top:14px;grid-template-columns:auto auto 1fr">
+        <div><button class="pa-btn fort" type="button" id="me-ok">Enregistrer</button></div>
+        <div><button class="pa-btn" type="button" id="me-defaut">Revenir au rangement d'origine</button></div>
+        <div><p class="pa-etat" id="me-etat" style="margin:0"></p></div>
+      </div>
+    </div>
+  </div><!-- /menu -->
 
   <div class="pa-panneau" id="pa-systeme" role="tabpanel" hidden>
     <p class="pa-aide" style="max-width:74ch;margin:0 0 16px">
@@ -308,7 +357,7 @@
    * rechargement doit rester où l'on était — comme sur /loyalty, pour que les deux pages se
    * comportent pareil.
    */
-  var ONGLETS = ['acces', 'economie', 'systeme'];
+  var ONGLETS = ['acces', 'economie', 'menu', 'systeme'];
 
   function activer(nom, pousser){
     if (ONGLETS.indexOf(nom) < 0) nom = 'acces';
@@ -318,6 +367,7 @@
     });
     if (pousser && location.hash.slice(1) !== nom) history.replaceState(null, '', '#' + nom);
     if (nom === 'systeme' && !E('sys').dataset.charge) systeme();
+    if (nom === 'menu' && !MENU.charge) chargerMenu();
   }
 
   E('pa-onglets').addEventListener('click', function(e){
@@ -445,6 +495,110 @@
       E('sys').appendChild(b7);
     }).catch(function(){ E('sys').innerHTML = '<p class="vide">Inventaire illisible.</p>'; });
   }
+
+  /* ══ L'ORGANISATION DU MENU ═══════════════════════════════════════════════════════════
+   *
+   * ⚠️ LE RANGEMENT ÉTAIT ÉCRIT EN DUR, ET IL AVAIT TORT. « Dépenses » vivait sous « Caisse »
+   * alors que ce sont des achats datés qui pèsent sur le mois, pas sur le tiroir. Une catégorie
+   * fausse apprend à chercher au mauvais endroit, et on finit par ne plus ouvrir la page.
+   *
+   * ⚠️ L'ÉCRAN NE CONNAÎT PAS LA LISTE DES PAGES, IL LA REÇOIT. La recopier ici ferait deux
+   * inventaires à tenir d'accord : une page ajoutée au code apparaîtrait dans le menu et
+   * manquerait dans l'écran qui sert à le ranger.
+   */
+  var MENU = { charge: false, entrees: [] };
+
+  function chargerMenu(){
+    fetch('/api/parametres/menu').then(function(r){ return r.json(); }).then(function(d){
+      MENU.charge = true;
+      MENU.entrees = d.entrees || [];
+      rendreMenu();
+    }).catch(function(){ E('me-liste').textContent = 'Menu illisible.'; });
+  }
+
+  function rendreMenu(){
+    var l = E('me-liste');
+    l.innerHTML = '';
+    MENU.entrees.forEach(function(e, i){
+      var d = document.createElement('div');
+      d.className = 'me-l' + (e.masque ? ' masquee' : '');
+
+      var g = document.createElement('div');
+      var gi = document.createElement('input');
+      gi.type = 'text'; gi.value = e.groupe; gi.setAttribute('aria-label', 'Catégorie');
+      gi.setAttribute('list', 'me-groupes');
+      gi.oninput = function(){ e.groupe = gi.value; };
+      var gc = document.createElement('div'); gc.className = 'che'; gc.textContent = e.chemin;
+      g.appendChild(gi); g.appendChild(gc);
+
+      var n = document.createElement('input');
+      n.type = 'text'; n.value = e.libelle; n.setAttribute('aria-label', 'Libellé');
+      n.oninput = function(){ e.libelle = n.value; };
+
+      /* ⚠️ MONTER ET DESCENDRE, PAS DE GLISSER-DÉPOSER. Le glisser-déposer se teste mal, se
+       * rate au doigt sur un iPad, et n'apporte rien sur quinze lignes. */
+      var f = document.createElement('div'); f.className = 'me-fl';
+      var h = document.createElement('button'); h.type = 'button'; h.textContent = '↑';
+      h.title = 'Monter'; h.disabled = i === 0;
+      h.onclick = function(){ deplacer(i, -1); };
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = '↓';
+      b.title = 'Descendre'; b.disabled = i === MENU.entrees.length - 1;
+      b.onclick = function(){ deplacer(i, 1); };
+      f.appendChild(h); f.appendChild(b);
+
+      var lab = document.createElement('label');
+      var cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = !!e.masque; cb.disabled = !!e.verrouille;
+      /* ⚠️ VERROUILLÉ, ET IL FAUT DIRE POURQUOI. Une case grisée sans explication se lit comme
+       * une panne ; celle-ci protège la seule porte qui permet de rouvrir les autres. */
+      if (e.verrouille) lab.title = 'Cette page contient ce réglage — la masquer fermerait la ' +
+        'porte de l\'intérieur.';
+      cb.onchange = function(){ e.masque = cb.checked; rendreMenu(); };
+      lab.appendChild(cb); lab.appendChild(document.createTextNode('Masquer'));
+
+      d.appendChild(g); d.appendChild(n); d.appendChild(f); d.appendChild(lab);
+      l.appendChild(d);
+    });
+
+    /* Les catégories déjà utilisées, proposées à la saisie — pour qu'on retombe sur le même
+     * titre au caractère près, sinon on crée un groupe jumeau sans le vouloir. */
+    var dl = document.createElement('datalist'); dl.id = 'me-groupes';
+    var vus = {};
+    MENU.entrees.forEach(function(e){
+      if (e.groupe && !vus[e.groupe]){ vus[e.groupe] = 1;
+        var o = document.createElement('option'); o.value = e.groupe; dl.appendChild(o); }
+    });
+    l.appendChild(dl);
+  }
+
+  function deplacer(i, d){
+    var j = i + d;
+    if (j < 0 || j >= MENU.entrees.length) return;
+    var t = MENU.entrees[i]; MENU.entrees[i] = MENU.entrees[j]; MENU.entrees[j] = t;
+    rendreMenu();
+  }
+
+  E('me-ok').addEventListener('click', function(){
+    E('me-etat').textContent = 'Enregistrement…';
+    fetch('/api/parametres/menu', { method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entrees: MENU.entrees }) })
+      .then(function(r){ return r.json(); }).then(function(d){
+        /* ⚠️ LE MENU DE CETTE PAGE EST DÉJÀ RENDU : il ne changera qu'au prochain chargement.
+         * Sans ce rechargement, on enregistre, rien ne bouge à gauche, et on recommence. */
+        if (d.ok) { E('me-etat').textContent = 'Enregistré.'; location.reload(); }
+        else E('me-etat').textContent = 'Refusé : ' + (d.error || '');
+      }).catch(function(){ E('me-etat').textContent = 'Réseau indisponible.'; });
+  });
+
+  E('me-defaut').addEventListener('click', function(){
+    if (!confirm('Revenir au rangement d\'origine ?\n\nTes renommages et déplacements sont perdus.')) return;
+    fetch('/api/parametres/menu/defaut', { method: 'POST' })
+      .then(function(r){ return r.json(); }).then(function(d){
+        if (d.ok) location.reload();
+        else E('me-etat').textContent = 'Refusé.';
+      });
+  });
 
   activer(location.hash.slice(1) || 'acces', false);
   charger();
