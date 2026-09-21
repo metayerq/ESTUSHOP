@@ -158,3 +158,88 @@ def test_une_marge_negative_alerte_meme_sans_ouvrir_la_liste():
     """Une perte à chaque vente doit trouver le lecteur."""
     i = COGS.index("marquerEtat('i-min'")
     assert "< 0 ? 'alerte'" in COGS[i:i + 200]
+
+
+# ── Le langage des sections ──────────────────────────────────────────────────────────────────
+
+def test_les_conteneurs_sont_plats():
+    """
+    ⚠️ LES COINS ARRONDIS ET LES OMBRES FONT « APPLICATION GRAND PUBLIC ». Un outil de gestion
+    se lit mieux en surfaces franches séparées par des filets — c'est la moitié du changement
+    de registre, et c'est ce qui manquait quand seul le menu avait changé.
+    """
+    for regle in (".card {", ".chart-block {", ".table-wrap {"):
+        i = CSS.index(regle)
+        bloc = CSS[i:i + 260]
+        rayons = re.findall(r"border-radius:\s*(\d+)px", bloc)
+        assert rayons, f"{regle} n'a plus de rayon déclaré"
+        assert int(rayons[0]) <= 4, f"{regle} est encore arrondi à {rayons[0]}px"
+
+
+def test_la_grille_dindicateurs_est_un_seul_bloc():
+    """
+    ⚠️ LES GOUTTIÈRES FAISAIENT LIRE DOUZE OBJETS INDÉPENDANTS. Les filets font lire un tableau
+    de bord, et l'œil compare les colonnes au lieu de les parcourir une à une.
+    """
+    i = CSS.index(".kpi-grid {")
+    bloc = CSS[i:CSS.index("}", i)]
+    assert "gap: 0;" in bloc
+    assert "border: 1px solid" in bloc
+    assert "overflow: hidden" in bloc
+
+
+def test_les_separateurs_survivent_a_nimporte_quel_nombre_de_colonnes():
+    """
+    ⚠️ LA GRILLE EST EN `auto-fit` : on ne sait pas à l'avance quelle cellule est en bout de
+    ligne. Les deux anciennes règles `nth-child` rattrapaient ça à la main, et n'étaient justes
+    que pour deux et quatre colonnes — pas trois. Une ombre interne coupée par le conteneur
+    marche pour tous les cas.
+    """
+    i = CSS.index(".kpi-cell {")
+    bloc = CSS[i:CSS.index("}", i)]
+    assert "box-shadow:" in bloc
+    assert ".kpi-cell:nth-child" not in CSS, "le rattrapage manuel est revenu"
+
+
+def test_les_chiffres_salignent_verticalement():
+    """Sans chasse tabulaire, deux montants superposés n'ont pas la même largeur — et une
+    colonne de nombres cesse d'être comparable d'un coup d'œil."""
+    # ⚠️ ANCRÉ EN DÉBUT DE LIGNE. `.kpi-cell.vedette .kpi-value {` CONTIENT la chaîne
+    # `.kpi-value {` : chercher la sous-chaîne tombait sur la règle de vedette, qui ne porte
+    # que la taille. Le test échouait sur du code correct.
+    m = re.search(r"(?m)^\.kpi-value \{([^}]*)\}", CSS)
+    assert m, "la règle .kpi-value a disparu"
+    assert "tabular-nums" in m.group(1)
+
+
+def test_le_tiret_decoratif_a_disparu():
+    """
+    ⚠️ UN SIGNE STRUCTUREL DOIT ENCODER QUELQUE CHOSE DE VRAI — un ordre, un niveau, un état.
+    Le « — » devant chaque titre de section n'encodait rien : il ajoutait du bruit sur quinze
+    pages.
+    """
+    assert '.section-label::before' not in CSS
+
+
+def test_ce_quon_clique_garde_ses_arrondis():
+    """
+    ⚠️ TOUT APLATIR RENDRAIT UN BOUTON INDISCERNABLE D'UN CADRE. L'arrondi dit « ceci répond au
+    doigt » ; il reste sur les contrôles et sur les surfaces flottantes.
+    """
+    i = CSS.index(".btn-refresh {")
+    assert re.search(r"border-radius:\s*[6-9]px", CSS[i:i + 300])
+
+
+def test_lancienne_navigation_ne_laisse_aucun_style_mort():
+    """
+    ⚠️ SOIXANTE-DIX RÈGLES MORTES DANS DIX FICHIERS. Du CSS qu'aucun balisage n'utilise ne se
+    voit pas — il se recopie, se maintient, et finit par être modifié « au cas où ». La nav
+    qu'il habillait n'existe plus.
+    """
+    import glob
+    restes = []
+    for chemin in glob.glob(os.path.join(RACINE, "templates", "*.html")):
+        with open(chemin, encoding="utf-8") as f:
+            if ".app-nav" in f.read():
+                restes.append(os.path.basename(chemin))
+    assert not restes, f"styles de l'ancienne navigation encore présents : {restes}"

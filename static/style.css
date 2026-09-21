@@ -180,38 +180,55 @@ body {
 }
 
 /* ── Section label — mono sobre façon Mesa (— TODAY) ── */
+/* ⚠️ LE TIRET DÉCORATIF A SAUTÉ. Un signe structurel doit encoder quelque chose de vrai —
+   un ordre, un niveau, un état. Celui-ci n'encodait rien : il ajoutait du bruit devant chaque
+   titre, sur quinze pages. */
 .section-label {
   font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 400;
-  letter-spacing: .08em;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .12em;
   text-transform: uppercase;
   color: var(--muted);
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
-.section-label::before { content: "— "; color: var(--faint); }
 
-/* ── Card wrapper ── */
+/* ── Conteneurs ────────────────────────────────────────────────────────────────────────────
+   ⚠️ PLATS, ET C'EST LA MOITIÉ DU CHANGEMENT DE REGISTRE. Les coins arrondis et les ombres
+   font « carte d'application grand public » ; un outil de gestion se lit mieux en surfaces
+   franches séparées par des filets. Les arrondis restent sur ce qu'on CLIQUE — boutons,
+   pastilles, champs — où ils disent « ceci répond au doigt ». */
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 4px;
   overflow: hidden;
 }
 
-/* ── KPI grid — cartes séparées (Mesa) ── */
+/* ── La grille d'indicateurs ───────────────────────────────────────────────────────────────
+   ⚠️ UN SEUL BLOC, DIVISÉ PAR DES FILETS — plus douze cartes flottantes séparées par des
+   gouttières. Les gouttières faisaient lire douze objets indépendants ; les filets font lire
+   un tableau de bord, et l'œil compare les colonnes au lieu de les parcourir une à une.
+
+   ⚠️ LES SÉPARATEURS SONT DES OMBRES INTERNES, PAS DES BORDURES. Le nombre de colonnes varie
+   avec la largeur (`auto-fit`) : impossible de savoir à l'avance quelle cellule est en bout de
+   ligne. L'ombre déborde, et le `overflow:hidden` du conteneur la coupe proprement. */
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-card);
+  overflow: hidden;
 }
 .kpi-cell {
-  padding: 18px 18px 18px 21px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  padding: 15px 16px 15px 19px;
+  border: none;
+  border-radius: 0;
   background: var(--bg-card);
+  box-shadow: 1px 0 0 var(--border), 0 1px 0 var(--border);
   position: relative;
-  overflow: hidden;
 }
 /* ⚠️ L'ÉTAT EST PORTÉ PAR UNE BANDE, PAS PAR LA COULEUR DU CHIFFRE. Un nombre coloré est plus
    difficile à lire qu'un nombre en encre — et sur douze indicateurs colorés, plus rien ne
@@ -247,7 +264,11 @@ body {
 }
 .kpi-value {
   font-family: var(--mono);
-  font-size: 26px;
+  /* ⚠️ CHASSE TABULAIRE : sans elle, « 1 842,10 » et « 9 218,40 » n'ont pas la même largeur,
+     et deux indicateurs superposés ne s'alignent pas. C'est ce qui empêche de comparer d'un
+     coup d'œil une colonne de montants. */
+  font-variant-numeric: tabular-nums;
+  font-size: 25px;
   font-weight: 600;
   letter-spacing: -.01em;
   color: var(--text);
@@ -340,17 +361,17 @@ body {
   gap: 12px;
 }
 .chart-block {
-  padding: 18px;
+  padding: 16px;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 4px;
 }
 @media (max-width: 760px) { .charts-grid { grid-template-columns: 1fr; } }
 
 /* ── Tables ── */
 .table-wrap {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 4px;
   overflow: hidden;
   background: var(--bg-card);
 }
@@ -566,8 +587,10 @@ td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 
 @media (max-width: 768px) {
   .page { padding: 20px 14px 60px; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
-  .kpi-cell:nth-child(2n)  { border-right: none; }
-  .kpi-cell:nth-child(4n)  { border-right: 1px solid var(--border); }
+  /* ⚠️ LES DEUX RÈGLES `nth-child` ONT SAUTÉ AVEC LES BORDURES. Elles rattrapaient à la main
+     les cellules de bout de ligne — un calcul qui n'était juste que pour deux et quatre
+     colonnes. Les filets sont maintenant des ombres internes coupées par le conteneur : ça
+     marche pour n'importe quel nombre de colonnes, y compris trois. */
   .charts-grid { grid-template-columns: 1fr; }
   .chart-block + .chart-block { border-left: none; border-top: 1px solid var(--border); }
   /* Tables : scroll horizontal au lieu d'être coupées */
