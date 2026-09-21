@@ -102,6 +102,29 @@ td.date { color:var(--muted); white-space:nowrap; }
 .cc-total { border-top:2px solid var(--text); }
 .cc-total .cc-label { font-weight:700; font-size:14px; }
 .cc-result { font-family:var(--mono); font-size:23px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-.5px; }
+/* ── Le verdict du dernier jour clos ── */
+.verdict { border:1px solid var(--border); border-radius:12px; padding:16px 18px; margin:6px 0 14px;
+  background:var(--bg-card); font-size:15px; line-height:1.5; }
+.verdict .quand { font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--muted); display:block; margin-bottom:5px; }
+.verdict.ok { border-color:#bcd9bd; background:#f3f9f3; }
+.verdict.doute { border-color:#e8c9a0; background:#fdf2e6; }
+.verdict.alerte { border-color:#f5c2bd; background:#fdecea; }
+.verdict b { font-weight:700; }
+.verdict .causes { margin:10px 0 0; padding-left:18px; font-size:13px; line-height:1.6; color:var(--text); }
+.verdict .causes li { margin-bottom:3px; }
+.encours { border:1px dashed var(--border); border-radius:12px; padding:12px 16px; margin-bottom:16px;
+  font-size:13.5px; color:var(--text); background:var(--bg-page); }
+.encours .tag { font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--muted); margin-right:8px; }
+/* ⚠️ CE QUI EST ESTIMÉ NE DOIT PAS SE LIRE COMME CE QUI EST MESURÉ. */
+.est { color:var(--muted); }
+.jour-ferme td { opacity:.45; }
+.pastille { display:inline-block; padding:1px 7px; border-radius:20px; font-size:10.5px; font-weight:600;
+  border:1px solid var(--border); color:var(--muted); }
+.pastille.ok { background:#f3f9f3; border-color:#bcd9bd; color:#2f5d33; }
+.pastille.doute { background:#fdf2e6; border-color:#e8c9a0; color:#6b4a1e; }
+.pastille.alerte { background:#fdecea; border-color:#f5c2bd; color:#7d2019; }
 </style>
 </head>
 <body>
@@ -180,13 +203,23 @@ td.date { color:var(--muted); white-space:nowrap; }
 
   <div class="header">
     <div>
-      <div class="header-title">Reconciliation</div>
-      <div class="header-sub">Revolut terminal vs Vendus certified invoices — monthly close</div>
+      <div class="header-title">Réconciliation</div>
+      <div class="header-sub">Ce que le terminal a encaissé, contre ce que Vendus a facturé</div>
     </div>
   </div>
 
-  <p class="hint">Le terminal Revolut encaisse <b>brut + pourboires − frais</b> ; Vendus facture le montant certifié <b>sans pourboires</b>.
-  L'écart attendu par jour est donc ≈ 0 une fois les tips retirés. Δ = Revolut (hors tips) − Vendus facturé.</p>
+  <!--
+    ⚠️ TROIS STATUTS, JAMAIS MÉLANGÉS. Ce qui est MESURÉ s'écrit en chiffres pleins ; ce qui est
+    ESTIMÉ porte un « ≈ » et reste gris ; ce qui est INCONNU s'écrit « — », jamais 0. Un écran
+    qui confond les trois est pire qu'un écran vide : il fait prendre des décisions sur des
+    chiffres qu'on croit mesurés.
+  -->
+
+  <!-- Le verdict du dernier jour clos. C'est la question à trois secondes. -->
+  <div id="verdict" class="verdict">Chargement&hellip;</div>
+
+  <!-- Aujourd'hui, jamais jugé : il n'est pas fini. -->
+  <div id="encours" class="encours" style="display:none"></div>
 
   <div class="controls">
     <div>
@@ -194,42 +227,35 @@ td.date { color:var(--muted); white-space:nowrap; }
       <input type="month" class="field-input" id="f-from">
     </div>
     <div>
-      <label class="field-label">À</label>
+      <label class="field-label">&Agrave;</label>
       <input type="month" class="field-input" id="f-to">
     </div>
     <span class="parse-info" id="src-info" style="color:var(--muted); align-self:center;"></span>
   </div>
 
-  <div class="paytypes" id="paytypes" style="display:none;">
-    <span style="font-weight:600; color:var(--text);">Vendus payment types counted as terminal:</span>
-  </div>
-
   <div class="summary-bar" id="summary" style="display:none;">
-    <div class="sum-item"><div class="sum-label">Collected (gross)</div><div class="sum-val" id="s-gross">—</div><div class="sum-sub" id="s-tx"></div></div>
-    <div class="sum-item"><div class="sum-label">Tips</div><div class="sum-val" id="s-tips" style="color:var(--green);">—</div></div>
-    <div class="sum-item"><div class="sum-label">Revolut fees</div><div class="sum-val" id="s-fees" style="color:var(--red);">—</div></div>
-    <div class="sum-item"><div class="sum-label">Net received</div><div class="sum-val" id="s-net">—</div></div>
-    <div class="sum-item"><div class="sum-label">Invoiced (Vendus)</div><div class="sum-val" id="s-vendus">—</div></div>
-    <div class="sum-item"><div class="sum-label">Écart (excl. tips)</div><div class="sum-val" id="s-delta">—</div><div class="sum-sub">should be ≈ 0</div></div>
+    <div class="sum-item"><div class="sum-label">Ventes terminal</div><div class="sum-val" id="s-gross">&mdash;</div><div class="sum-sub" id="s-tx"></div></div>
+    <div class="sum-item"><div class="sum-label">Pourboires</div><div class="sum-val" id="s-tips" style="color:var(--green);">&mdash;</div><div class="sum-sub">mesur&eacute;s</div></div>
+    <div class="sum-item"><div class="sum-label">Frais Revolut</div><div class="sum-val" id="s-fees" style="color:var(--red);">&mdash;</div><div class="sum-sub" id="s-fees-sub"></div></div>
+    <div class="sum-item"><div class="sum-label">Net re&ccedil;u</div><div class="sum-val" id="s-net">&mdash;</div><div class="sum-sub">ventes + pourboires &minus; frais</div></div>
+    <div class="sum-item"><div class="sum-label">Factur&eacute; Vendus</div><div class="sum-val" id="s-vendus">&mdash;</div></div>
+    <div class="sum-item"><div class="sum-label">&Eacute;cart carte</div><div class="sum-val" id="s-delta">&mdash;</div><div class="sum-sub">devrait &ecirc;tre &asymp; 0</div></div>
   </div>
 
-  <div class="inc-note" id="inc-note" style="display:none;">
-    <b>Dernier jour incomplet :</b> les ventes du jour où le relevé a été généré settlent le lendemain et n'y figurent pas encore. Cette ligne est grisée et exclue des totaux — refais un export Revolut le lendemain pour la clôturer.
-  </div>
+  <div id="inconnus" class="inc-note" style="display:none;"></div>
 
   <div class="table-wrap">
     <table>
       <thead><tr>
-        <th>Date</th>
-        <th class="right">Revolut gross</th>
-        <th class="right">Tips</th>
-        <th class="right">Fees</th>
-        <th class="right">Net received</th>
-        <th class="right">Vendus invoiced</th>
-        <th class="right">Δ (excl. tips)</th>
-        <th style="width:70px;"></th>
+        <th>Jour</th>
+        <th class="right">Ventes terminal</th>
+        <th class="right">Pourboires</th>
+        <th class="right">Frais</th>
+        <th class="right">Factur&eacute; carte</th>
+        <th class="right">&Eacute;cart</th>
+        <th>&nbsp;</th>
       </tr></thead>
-      <tbody id="tbody"><tr><td colspan="8" class="empty">Choose a month, paste the Revolut statement, hit Parse.</td></tr></tbody>
+      <tbody id="tbody"><tr><td colspan="7" class="empty">Chargement&hellip;</td></tr></tbody>
     </table>
   </div>
 
@@ -335,10 +361,12 @@ const fmt = v => new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR',
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400); }
 
 let vendusDays = {};        // date → {total, payments:{title:amount}}
-let payTitles = [];         // tous les moyens de paiement Vendus vus sur la période
-let selectedTypes = new Set();
 let revolutDays = {};       // date → {gross, tips, fees, net, tx}
-let revolutCutoff = '';     // jour de génération du relevé → dernier jour incomplet
+/* ⚠️ RESTE VIDE, ET C'EST UN VESTIGE ASSUMÉ. La notion de « dernier jour incomplet »
+   appartenait au relevé de settlement, qui arrive avec trois jours de retard. On lit
+   maintenant les CAPTURES, complètes le jour même. Le calculateur de tiroir teste encore
+   cette variable ; la retirer demanderait de le réécrire, et il marche. */
+let revolutCutoff = '';
 let fromM = '', toM = '';
 
 // ── Période par défaut : mois précédent → mois courant ───────────────────────
@@ -349,7 +377,11 @@ let fromM = '', toM = '';
   const cur  = ym(y, m);
   const prev = m === 1 ? ym(y - 1, 12) : ym(y, m - 1);
   const fEl = document.getElementById('f-from'), tEl = document.getElementById('f-to');
-  fEl.value = prev; tEl.value = cur;
+  /* ⚠️ UN SEUL MOIS PAR DÉFAUT. L'écran répond d'abord à « la caisse d'hier est-elle bonne » ;
+     deux mois de lignes repoussent le verdict sous la ligne de flottaison. Le mois précédent
+     reste à une saisie. */
+  fEl.value = cur; tEl.value = cur;
+  void prev;
   fEl.addEventListener('change', onRangeChange);
   tEl.addEventListener('change', onRangeChange);
   onRangeChange();
@@ -373,30 +405,72 @@ function onRangeChange(){
 }
 
 // Charge tous les mois de la période et fusionne (dates uniques → merge direct).
+/* ══════════════════════════════════════════════════════════════════════════════
+ * LES DONNÉES — une seule requête, tout vient de Supabase
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ⚠️ PLUS UN SEUL APPEL VENDUS POUR LE PASSÉ. L'ancienne version rechargeait chaque mois
+ * document par document : la rafale dépassait le timeout serverless et la page s'affichait à
+ * zéro. Le cache `daily_summary` et la table `terminal_days` portent maintenant tout.
+ *
+ * ⚠️ ET LES MONTANTS ARRIVENT EN CENTIMES ENTIERS. On les convertit ICI, une fois, pour le
+ * calculateur de tiroir qui raisonne en euros. Un facteur cent ne lève jamais.
+ */
+const eu = c => (c || 0) / 100;
+
+let jours = [];      // la réponse brute de l'API, en centimes
+let totaux = {};
+let tauxFrais = 0;
+let calibre = null;
+
+function bornes(){
+  const f = document.getElementById('f-from').value;
+  const t = document.getElementById('f-to').value;
+  if (!f || !t) return null;
+  const [a, b] = f <= t ? [f, t] : [t, f];
+  const [by, bm] = b.split('-').map(Number);
+  const fin = bm === 12 ? `${by + 1}-01-01` : `${by}-${String(bm + 1).padStart(2, '0')}-01`;
+  const d = new Date(fin + 'T00:00:00Z'); d.setUTCDate(0);   // dernier jour du mois `b`
+  return { from: `${a}-01`, to: d.toISOString().slice(0, 10) };
+}
+
 async function loadRange(){
+  const b = bornes();
+  if (!b) return;
   if (window.uiLoadStart) uiLoadStart();
   try {
-    const months = monthsBetween(fromM, toM);
+    const r = await fetch(`/api/reconciliation/daily?from=${b.from}&to=${b.to}`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    jours = d.jours || [];
+    totaux = d.totaux || {};
+    tauxFrais = d.taux_frais || 0;
+    calibre = d.taux_calibre_sur;
+
+    /* Le calculateur de tiroir raisonne en euros et n'a pas besoin d'être réécrit : on lui
+       reconstruit les deux tables qu'il attend. ⚠️ `revolutCutoff` RESTE VIDE — la notion de
+       « dernier jour incomplet » appartenait au relevé de settlement ; on lit maintenant les
+       captures, qui sont complètes le jour même. */
     vendusDays = {}; revolutDays = {}; revolutCutoff = '';
-    const titles = new Set(); let note = '';
-    for (const mo of months){
-      const r = await fetch('/api/reconciliation?month=' + mo);
-      const d = await r.json();
-      if (d.error) continue;
-      (d.days || []).forEach(x => vendusDays[x.date] = x);
-      (d.payment_titles || []).forEach(t => titles.add(t));
-      if (d.revolut && d.revolut.days){
-        Object.assign(revolutDays, d.revolut.days);
-        if (d.revolut.cutoff && d.revolut.cutoff > revolutCutoff) revolutCutoff = d.revolut.cutoff;
-        if (d.revolut.note) note = d.revolut.note;
+    jours.forEach(j => {
+      if (!j.vendus_absent) {
+        const p = {};
+        if (j.vendus) {
+          p['Cartão'] = eu(j.vendus.carte_cents);
+          p['Dinheiro'] = eu(j.vendus.especes_cents);
+        }
+        vendusDays[j.day] = { date: j.day, total: eu(j.vendus_total_cents), payments: p };
       }
-    }
-    payTitles = [...titles].sort();
+      if (!j.terminal_absent) {
+        revolutDays[j.day] = {
+          gross: eu(j.terminal_cents), tips: eu(j.pourboires_cents),
+          fees: eu(j.frais_cents), net: eu(j.net_cents), tx: j.transactions,
+        };
+      }
+    });
+
     const src = document.getElementById('src-info');
-    if (src) src.textContent = months.length > 1
-      ? `${months.length} mois · ${months[0]} → ${months[months.length-1]}`
-      : `relevé pré-chargé${note ? ' — ' + note : ''}`;
-    buildPayTypes();
+    if (src) src.textContent = `${jours.length} jour(s) · généré ${d.genere}`;
     render();
   } catch(e){
     showToast('Chargement échoué — ' + e.message);
@@ -405,95 +479,152 @@ async function loadRange(){
   }
 }
 
-// ── Moyens de paiement comptés côté "terminal" ───────────────────────────────
-function buildPayTypes(){
-  const box = document.getElementById('paytypes');
-  const saved = localStorage.getItem('recon_types');
-  if (saved) selectedTypes = new Set(JSON.parse(saved));
-  else if (!selectedTypes.size) {
-    // défaut : tout sauf l'espèce (le terminal encaisse tout le reste)
-    payTitles.forEach(t => { if (!/dinheiro|cash|numer[áa]rio|esp[èe]ce/i.test(t)) selectedTypes.add(t); });
+/* ══════════════════════════════════════════════════════════════════════════════
+ * LE VERDICT — la question à trois secondes
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ⚠️ UN ÉCART N'EST JAMAIS UN NOMBRE ROUGE SEUL. Il se décompose en causes classées par
+ * vraisemblance, chacune avec le geste à faire. « 23,40 € » ne dit rien ; « un paiement sans
+ * facture Vendus — facture oubliée ? » dit quoi vérifier.
+ */
+function causes(j){
+  const e = j.ecart_cents;
+  const out = [];
+  if (e === null) return out;
+  if (e > 0) {
+    out.push(`Un encaissement carte <b>sans facture Vendus en face</b> : une facture oubliée ` +
+             `de ~${fmt(eu(e))} ? Regarde les tickets du jour dans Vendus.`);
+    out.push(`Ou un paiement enregistré sur le mauvais jour — vérifie la veille et le lendemain.`);
+  } else if (e < 0) {
+    out.push(`Vendus facture <b>plus en carte</b> que le terminal n'a encaissé : un paiement ` +
+             `<b>espèces tapé « carte »</b> de ~${fmt(eu(-e))} ?`);
+    out.push(`Si c'est ça, le tiroir doit contenir <b>${fmt(eu(-e))} de plus</b> que le théorique.`);
   }
-  box.style.display = payTitles.length ? 'flex' : 'none';
-  box.querySelectorAll('label').forEach(l => l.remove());
-  payTitles.forEach(t => {
-    const l = document.createElement('label');
-    l.innerHTML = `<input type="checkbox" ${selectedTypes.has(t)?'checked':''}> ${t}`;
-    l.querySelector('input').addEventListener('change', ev => {
-      ev.target.checked ? selectedTypes.add(t) : selectedTypes.delete(t);
-      localStorage.setItem('recon_types', JSON.stringify([...selectedTypes]));
-      render();
-    });
-    box.appendChild(l);
-  });
+  if (j.remboursements_cents) {
+    out.push(`Un avoir de ${fmt(eu(j.remboursements_cents))} a été rendu ce jour-là — il est ` +
+             `compté, mais vérifie qu'il l'est aussi dans Vendus.`);
+  }
+  return out;
 }
 
-// ── Comparaison + rendu ──────────────────────────────────────────────────────
-function vendusFor(day){
-  const v = vendusDays[day];
-  if (!v) return 0;
-  let s = 0;
-  for (const [t, a] of Object.entries(v.payments || {})) if (selectedTypes.has(t)) s += a;
-  return s;
+function classe(j){
+  if (j.ecart_cents === null) return 'doute';
+  // ⚠️ LE SEUIL EST EN CENTIMES ET IL EST BAS. Un écart « acceptable » trop large avale
+  // précisément les erreurs qu'on cherche.
+  if (Math.abs(j.ecart_cents) <= 5) return 'ok';
+  return j.ecart_cents < 0 ? 'alerte' : 'doute';
+}
+
+function jourCourt(iso){
+  const d = new Date(iso + 'T12:00:00');
+  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function verdict(){
+  const el = document.getElementById('verdict');
+  /* ⚠️ LE DERNIER JOUR CLOS, PAS « HIER ». Le café ferme mardi et mercredi : un jeudi matin,
+     « hier » est un mercredi vide, et l'écran dirait « rien à vérifier » sur une journée où il
+     n'y avait rien à vérifier — en masquant le lundi qui, lui, demandait un regard. */
+  const clos = jours.filter(j => !j.aujourdhui && (!j.terminal_absent || !j.vendus_absent)
+                                 && (j.terminal_cents || j.vendus_total_cents));
+  const j = clos[clos.length - 1];
+  if (!j){
+    el.className = 'verdict';
+    el.innerHTML = `<span class="quand">Dernier jour clos</span>Aucune journée avec des ` +
+      `données sur cette période. Si l'historique n'a jamais été reconstruit, déplie ` +
+      `<b>Reconstruire l'historique</b> en bas de page.`;
+    return;
+  }
+  const c = classe(j);
+  el.className = 'verdict ' + c;
+  let phrase;
+  if (j.ecart_cents === null){
+    phrase = `<b>Écart non calculable</b> — la répartition carte/espèces de Vendus manque pour ` +
+      `ce jour. Reconstruis l'historique pour l'obtenir.`;
+  } else if (c === 'ok'){
+    phrase = `<b>Rien à vérifier.</b> Terminal ${fmt(eu(j.terminal_cents))} = facturé carte ` +
+      `${fmt(eu(j.vendus.carte_cents))}` +
+      (j.pourboires_cents ? `, plus ${fmt(eu(j.pourboires_cents))} de pourboires` : '') + `.`;
+  } else {
+    phrase = `<b>${fmt(eu(Math.abs(j.ecart_cents)))} d'écart</b> entre le terminal ` +
+      `(${fmt(eu(j.terminal_cents))}) et le facturé carte (${fmt(eu(j.vendus.carte_cents))}).`;
+  }
+  const liste = causes(j);
+  el.innerHTML = `<span class="quand">${jourCourt(j.day)}</span>${phrase}` +
+    (liste.length ? `<ul class="causes">${liste.map(x => `<li>${x}</li>`).join('')}</ul>` : '');
+}
+
+function enCours(){
+  const el = document.getElementById('encours');
+  const j = jours.find(x => x.aujourdhui);
+  if (!j || (!j.terminal_cents && !j.vendus_total_cents)){ el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  /* ⚠️ AUCUN VERDICT SUR UN JOUR QUI N'EST PAS FINI. Le marquer « en cours » est la seule
+     lecture honnête : un écart en milieu de journée ne veut rien dire. */
+  el.innerHTML = `<span class="tag">Aujourd'hui · en cours</span>` +
+    `Terminal ${fmt(eu(j.terminal_cents))} · ${j.transactions} transaction(s) · ` +
+    `facturé ${fmt(eu(j.vendus_total_cents))}. Pas de verdict avant la fin du service.`;
 }
 
 function render(){
-  const allDays = [...new Set([...Object.keys(revolutDays), ...Object.keys(vendusDays)])].sort();
+  verdict();
+  enCours();
+
   const tbody = document.getElementById('tbody');
-  const hasRevolut = Object.keys(revolutDays).length > 0;
-  if (!allDays.length){
-    tbody.innerHTML = '<tr><td colspan="8" class="empty">Aucune donnée sur cette période.</td></tr>';
+  if (!jours.length){
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">Aucune donnée sur la période.</td></tr>';
     document.getElementById('summary').style.display = 'none';
     updateCashCalc();
     return;
   }
 
-  let T = { gross:0, tips:0, fees:0, net:0, vendus:0, tx:0 };
-  let hasIncomplete = false;
-  const rows = allDays.map(day => {
-    const r = revolutDays[day] || { gross:0, tips:0, fees:0, net:0, tx:0 };
-    const vd = vendusFor(day);
-    const delta = (r.gross - r.tips) - vd;
-    // Jour incomplet : >= date de génération du relevé (settlement en cours) →
-    // exclu des totaux et grisé, le Δ n'a pas de sens.
-    const incomplete = hasRevolut && revolutCutoff && day >= revolutCutoff;
-    if (incomplete) hasIncomplete = true;
-    if (!incomplete) {
-      T.gross += r.gross; T.tips += r.tips; T.fees += r.fees; T.net += r.net; T.vendus += vd; T.tx += r.tx;
-    }
-    const ad = Math.abs(delta);
-    const st = incomplete ? '<span class="st st-inc">settlement en cours</span>' :
-      !hasRevolut ? '' :
-      ad < 0.05 ? '<span class="st st-ok">✓ match</span>' :
-      ad < 5    ? '<span class="st st-mid">check</span>' :
-                  '<span class="st st-bad">mismatch</span>';
-    const dcls = ad < 0.05 ? '' : (delta > 0 ? 'delta-pos' : 'delta-neg');
-    const dow = new Date(day + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short' });
-    return `<tr${incomplete ? ' class="row-inc"' : ''}>
-      <td class="date">${dow} ${day.slice(8)}/${day.slice(5,7)}</td>
-      <td class="num">${r.tx ? fmt(r.gross) : '<span style="color:var(--faint)">—</span>'}</td>
-      <td class="num" style="color:var(--green);">${r.tips ? fmt(r.tips) : ''}</td>
-      <td class="num" style="color:var(--red);">${r.fees ? '−' + fmt(r.fees) : ''}</td>
-      <td class="num">${r.tx ? fmt(r.net) : ''}</td>
-      <td class="num">${vd ? fmt(vd) : '<span style="color:var(--faint)">—</span>'}</td>
-      <td class="num ${incomplete ? '' : dcls}">${incomplete ? '<span style="color:var(--faint)">—</span>' : (r.tx || vd ? fmt(delta) : '')}</td>
-      <td>${st}</td>
+  const inconnus = new Set();
+  const rows = jours.map(j => {
+    (j.vendus?.titres_inconnus || []).forEach(t => inconnus.add(t));
+    const vide = !j.terminal_cents && !j.vendus_total_cents;
+    const c = classe(j);
+    const d = new Date(j.day + 'T12:00:00');
+    const dow = d.toLocaleDateString('fr-FR', { weekday: 'short' });
+    /* Une journée sans rien n'est pas une anomalie : le café ferme mardi et mercredi. */
+    if (vide) return `<tr class="jour-ferme"><td class="date">${dow} ${j.day.slice(8)}/${j.day.slice(5,7)}</td>` +
+      `<td class="num" colspan="5" style="text-align:left; color:var(--faint)">fermé</td><td></td></tr>`;
+    const pastille = j.aujourdhui ? '<span class="pastille">en cours</span>'
+      : `<span class="pastille ${c}">${c === 'ok' ? '✓' : c === 'doute' ? 'à vérifier' : 'écart'}</span>`;
+    return `<tr>
+      <td class="date">${dow} ${j.day.slice(8)}/${j.day.slice(5,7)}</td>
+      <td class="num">${j.terminal_cents ? fmt(eu(j.terminal_cents)) : '<span style="color:var(--faint)">—</span>'}</td>
+      <td class="num" style="color:var(--green)">${j.pourboires_cents ? fmt(eu(j.pourboires_cents)) : ''}</td>
+      <td class="num ${j.frais_mesures ? '' : 'est'}">${j.frais_cents ? (j.frais_mesures ? '−' : '≈−') + fmt(eu(j.frais_cents)) : ''}</td>
+      <td class="num">${j.vendus ? fmt(eu(j.vendus.carte_cents)) : '<span style="color:var(--faint)">—</span>'}</td>
+      <td class="num">${j.ecart_cents === null ? '<span style="color:var(--faint)">—</span>' : fmt(eu(j.ecart_cents))}</td>
+      <td>${j.aujourdhui || !vide ? pastille : ''}</td>
     </tr>`;
   });
   tbody.innerHTML = rows.join('');
-  document.getElementById('inc-note').style.display = hasIncomplete ? 'block' : 'none';
+
+  /* ⚠️ LES LIBELLÉS NON CLASSÉS SONT NOMMÉS. Un moyen de paiement tombé dans « autre »
+     produirait un écart permanent dont personne ne trouverait la cause. */
+  const incEl = document.getElementById('inconnus');
+  if (inconnus.size){
+    incEl.style.display = 'block';
+    incEl.innerHTML = `<b>Moyens de paiement non classés :</b> ${[...inconnus].join(', ')}. ` +
+      `Ils comptent dans « autre » et faussent l'écart — dis-le-moi pour que je les range.`;
+  } else incEl.style.display = 'none';
 
   document.getElementById('summary').style.display = 'flex';
-  document.getElementById('s-gross').textContent  = fmt(T.gross);
-  document.getElementById('s-tx').textContent     = T.tx + ' transactions';
-  document.getElementById('s-tips').textContent   = fmt(T.tips);
-  document.getElementById('s-fees').textContent   = '−' + fmt(T.fees);
-  document.getElementById('s-net').textContent    = fmt(T.net);
-  document.getElementById('s-vendus').textContent = fmt(T.vendus);
+  document.getElementById('s-gross').textContent  = fmt(eu(totaux.terminal_cents));
+  document.getElementById('s-tx').textContent     = (totaux.transactions || 0) + ' transactions';
+  document.getElementById('s-tips').textContent   = fmt(eu(totaux.pourboires_cents));
+  document.getElementById('s-fees').textContent   = '≈−' + fmt(eu(totaux.frais_cents));
+  document.getElementById('s-fees-sub').textContent = calibre
+    ? `estimés à ${(tauxFrais * 100).toFixed(2)} % (relevé ${calibre})`
+    : `estimés à ${(tauxFrais * 100).toFixed(2)} %`;
+  document.getElementById('s-net').textContent    = fmt(eu(totaux.net_cents));
+  document.getElementById('s-vendus').textContent = fmt(eu(totaux.vendus_total_cents));
   const dEl = document.getElementById('s-delta');
-  const dTot = (T.gross - T.tips) - T.vendus;
-  dEl.textContent = fmt(dTot);
-  dEl.style.color = Math.abs(dTot) < 1 ? 'var(--green)' : 'var(--red)';
+  const dTot = jours.reduce((s, j) => s + (j.ecart_cents || 0), 0);
+  dEl.textContent = fmt(eu(dTot));
+  dEl.style.color = Math.abs(dTot) < 100 ? 'var(--green)' : 'var(--red)';
 
   updateCashCalc();
 }
