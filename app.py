@@ -29,6 +29,7 @@ from programme import build_accounts, conversion_series, programme_summary
 from sms import campagne_apercu
 from campagnes import recap_depense
 import charges as _ch
+import segments as _seg
 import menu as _menu
 
 from flask import Flask, jsonify, render_template, request, redirect, make_response, g
@@ -2632,9 +2633,10 @@ def api_transactions_daily():
         rows = rows + [{"day": today_real.isoformat(),
                         **_summarize_docs_items(today_docs, catalog)}]
 
+    segment = _seg.normaliser(request.args.get("segment"))
     return jsonify({"ok": True, "analysis_start": debut.isoformat(),
                     "opening_day": OPENING_DAY,
-                    **_transactions_payload(rows, debut, today_real)})
+                    **_transactions_payload(rows, debut, today_real, segment)})
 
 
 @app.route("/cogs")
@@ -6068,7 +6070,12 @@ def _median(values):
     zéro ticket » sont deux constats opposés ; les confondre fabriquerait de
     l'information à partir d'une absence.
     """
-    vals = sorted(float(v) for v in values)
+    # ⚠️ UN `None` DANS LA SÉRIE EST UNE ABSENCE, PAS UN ZÉRO — et il ne doit pas non plus
+    # faire tomber le calcul. Depuis le découpage jour/soir, le CA d'un jour filtré vaut `None`
+    # (le cache le stocke par JOUR, pas par heure) : sans cette garde la route entière levait,
+    # et avec un `float(v or 0)` elle aurait rendu une médiane de paniers à zéro — un chiffre
+    # plausible et faux, ce qui est pire qu'une panne.
+    vals = sorted(float(v) for v in values if v is not None)
     if not vals:
         return None
     n = len(vals)
@@ -6218,7 +6225,12 @@ def _tx_window_stats(records, w_from, w_to, window_days=TX_WINDOW_DAYS,
 
     tx     = _median([d["nb"] for d in full])
     ca     = _median([d["ca_ttc"] for d in full])
-    basket = _median([d["ca_ttc"] / d["nb"] for d in full])
+    # ⚠️ UN JOUR SANS CA N'A PAS UN PANIER DE ZÉRO. Depuis le découpage jour/soir, le CA d'un
+    # jour filtré vaut `None` — le cache le stocke par JOUR, pas par heure. Diviser quand même
+    # levait ; diviser un `0` à la place aurait rendu un panier plausible et faux, ce qui est
+    # pire qu'une panne. Le panier n'existe tout simplement pas pour un demi-service.
+    basket = _median([d["ca_ttc"] / d["nb"] for d in full
+                      if d["ca_ttc"] is not None and d["nb"]])
     tickets = sum(d["nb"] for d in full)
     couverts = [d["covers"] for d in full if d.get("covers") is not None]
     ca_pers  = [d["ca_ttc"] / d["covers"] for d in full
@@ -6378,23 +6390,47 @@ def _tx_headline(windows, min_full=TX_MIN_FULL_DAYS):
     }
 
 
-def _transactions_payload(rows, opening_day, today_real):
+def _transactions_payload(rows, opening_day, today_real, segment="all"):
     """
     Assemble la réponse de /api/transactions/daily à partir des lignes du cache.
 
     Fonction PURE : elle ne connaît ni Supabase, ni Vendus, ni l'horloge — le
     jour courant lui est passé. C'est ce qui rend testable la règle la plus
     facile à casser du lot (« aujourd'hui n'entre dans aucune médiane »).
+
+    ⚠️ LE DÉCOUPAGE SE FAIT ICI, PAS DANS LE NAVIGATEUR. Les médianes n'ont qu'UNE définition,
+    et elle vit côté serveur : la refaire dans la page pour les vues filtrées donnerait deux
+    façons de calculer une journée typique, qui divergeraient au premier cas limite.
+
+⚠️ LE DÉFAUT DE CETTE FONCTION EST « TOUT », CELUI DE L'ÉCRAN EST « HORS SOIR ». Les deux
+    sont voulus : ici le neutre est de ne RIEN écarter, pour qu'un appelant qui oublie le
+    paramètre perde des jours bruyamment plutôt que silencieusement ; le choix de produit —
+    comparer des journées sans les soirées d'événement — vit dans `segments.normaliser`, au
+    bord HTTP, là où il se discute.
+
+    ⚠️ ET LA RÉPARTITION HORAIRE, ELLE, N'EST JAMAIS FILTRÉE. C'est le graphique qui MONTRE le
+    soir : le filtrer par « soir exclu » le viderait de sa moitié droite, et l'écran cesserait
+    de pouvoir justifier le filtre qu'il applique.
     """
-    records = _tx_day_records(rows, today_real)
+    tous = _tx_day_records(rows, today_real)
+    records, sans_mesure = _seg.appliquer(tous, segment)
     windows = _tx_windows(records, opening_day, today_real)
     public  = ("day", "nb", "ca_ttc", "covers", "weekday", "partial")
     return {
         "from":     opening_day.isoformat(),
         "to":       today_real.isoformat(),
+        "segment":  segment,
+        # ⚠️ COMBIEN DE JOURS ONT ÉTÉ ÉCARTÉS, ET SUR COMBIEN. Un historique à moitié
+        # instrumenté qui se tairait se lirait comme un historique complet — et les médianes
+        # du soir porteraient sur trois jours sans que personne le sache.
+        "segment_days_dropped": sans_mesure,
+        "segment_days_total":   len(tous),
+        # ⚠️ CE QUI NE PEUT PAS ÊTRE DÉCOUPÉ EST ANNONCÉ, PAS DEVINÉ. Le cache garde le CA par
+        # JOUR : tout ce qui en dérive — panier, CA par personne — n'existe pas par segment.
+        "segment_money": segment == "all",
         "days":     [{k: d[k] for k in public} for d in records],
         "windows":  windows,
-        "hourly":   _tx_hourly(records),
+        "hourly":   _tx_hourly(tous),
         "weekday":  _tx_by_weekday(records),
         "headline": _tx_headline(windows),
     }

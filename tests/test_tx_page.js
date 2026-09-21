@@ -152,17 +152,11 @@ console.log('\n— le récit de la page');
     m.threshold === 10);
 
   // La vraie information de la page.
-  check('l’érosion du CA/personne est portée par le bandeau',
-    m.erosion.ok === true && m.erosion.first === '€7.18' && m.erosion.last === '€6.45',
-    JSON.stringify([m.erosion.first, m.erosion.last]));
-  check('l’érosion vaut −10 % entre deux fenêtres NOMMÉES et datées',
-    m.erosion.delta.pct === -10
-    && /3 Jul/.test(m.erosion.firstRange) && /6 Aug/.test(m.erosion.lastRange),
-    JSON.stringify([m.erosion.delta.pct, m.erosion.firstRange, m.erosion.lastRange]));
-  check('les deux bouts portent leur n — 5 jours contre 5 jours',
-    m.erosion.firstN === 5 && m.erosion.lastN === 5);
-  check('les fenêtres intermédiaires sont comptées, pas escamotées',
-    m.erosion.windows === 5, String(m.erosion.windows));
+  // ⚠️ LA LIGNE « CA PAR PERSONNE » A ÉTÉ RETIRÉE LE 21/09/2026, À LA DEMANDE. Elle traînait
+  // la seule dépendance au CHIFFRE D'AFFAIRES d'une page qui ne parle que de tickets — et
+  // c'est ce qui bloquait le découpage jour/soir : le cache compte les passages en caisse
+  // heure par heure, mais stocke le CA par JOUR. Une vue « soir seulement » aurait mêlé des
+  // tickets filtrés à un CA de journée entière.
 }
 
 // ══ 2. delta_pct null ⇒ LA RAISON, JAMAIS « 0 % » ═══════════════════════════
@@ -205,47 +199,10 @@ console.log('\n— un écart qu’on ne peut pas calculer ne vaut pas zéro');
     f.ok === true && f.text === 'flat' && f.dir === 'flat', JSON.stringify(f));
 }
 
-// ══ 3. covers null ⇒ « — » + LA RAISON ══════════════════════════════════════
-//
-// ⚠️ LA PAGE A PERDU SES QUATRE CELLULES KPI ET SA TABLE DE FENÊTRES ; LA GARANTIE, ELLE, RESTE
-// ENTIÈRE. Elle vit maintenant sur la seule ligne qui parle encore de dépense par personne —
-// l'érosion du bandeau. Supprimer ces vérifications avec l'écran qui les portait aurait rendu
-// la page plus courte ET moins sûre, ce qui n'était pas la demande.
-console.log('\n— une personne non estimée n’est pas zéro personne');
-{
-  const creux = WINDOWS.map(w => ({ ...w, covers_median: null, ca_per_cover: null }));
-  const a = answerModel({ ...PAYLOAD, windows: creux });
-  check('aucune fenêtre ne mesure la dépense ⇒ l’érosion ne s’invente pas',
-    a.erosion.ok === false, JSON.stringify(a.erosion));
-  check('et elle écrit « — », jamais 0,00 €', a.erosion.last === '—', a.erosion.last);
-  check('mais l’affluence, qui est mesurée, répond quand même',
-    a.ok === true && a.verdict === 'holding');
-
-  // ⚠️ ET UNE SEULE FENÊTRE MUETTE NE DOIT PAS TUER LA MESURE : on se replie sur la dernière
-  // fenêtre RÉELLEMENT mesurée, en la nommant. Effacer l'érosion ici perdrait un chiffre qu'on
-  // a bel et bien.
-  const partiel = WINDOWS.map((w, i) =>
-    i === 4 ? { ...w, covers_median: null, ca_per_cover: null } : w);
-  const b = answerModel({ ...PAYLOAD, windows: partiel });
-  check('une fenêtre muette ⇒ repli sur la dernière MESURÉE, qui est nommée',
-    b.erosion.ok === true && b.erosion.last === '€6.27'
-    && /24 Jul/.test(b.erosion.lastRange), JSON.stringify(b.erosion));
-}
-{
-  // Un endpoint qui ne connaît PAS `covers` du tout : la page dégrade, elle ne casse pas.
-  const nus = WINDOWS.map(w => {
-    const c = { ...w };
-    delete c.covers_median; delete c.ca_per_cover; delete c.covers_capped;
-    return c;
-  });
-  const jours = DAYS.map(d => { const c = { ...d }; delete c.covers; return c; });
-  const p = { ...PAYLOAD, windows: nus, days: jours };
-  const a = answerModel(p);
-  check('le bandeau ne prétend pas mesurer une érosion qu’il n’a pas',
-    a.erosion.ok === false && a.erosion.last === '—', JSON.stringify(a.erosion.last));
-  check('mais il répond quand même sur l’affluence, qui est mesurée',
-    a.ok === true && a.verdict === 'holding');
-}
+// ⚠️ LA SECTION « UNE PERSONNE NON ESTIMÉE N'EST PAS ZÉRO PERSONNE » EST PARTIE AVEC LE SEUL
+// chiffre de la page qui parlait de personnes. La règle générale — un `null` s'écrit « — » et
+// traîne sa raison, jamais 0 — est tenue par §7 (payload vide), §8 (fenêtres fragiles) et §13
+// (format et raisons), qui ne dépendent d'aucun écran en particulier.
 
 // ══ 4. covers_capped ⇒ LA TRONCATURE ANNONCE CE QU'ELLE CACHE ═══════════════
 console.log('\n— un plafond atteint se déclare');
@@ -551,7 +508,7 @@ console.log('\n— une fenêtre sautée change le sens du chiffre affiché');
 console.log('\n— le gabarit');
 {
   const IDS = [
-    'hl-lead', 'hl-value', 'hl-delta', 'hl-n', 'hl-erosion', 'hl-caveat',
+    'hl-lead', 'hl-value', 'hl-delta', 'hl-n', 'hl-rule', 'hl-note', 'hl-caveat',
     'tx-chart-grid', 'chart-footfall', 'tx-chart-empty', 'tx-chart-foot',
     'tx-hours-meta', 'tx-blocks', 'tx-hours-box', 'tx-hours-bars',
     'tx-hours-empty', 'tx-hours-foot', 'tx-wd-body', 'tx-error', 'tx-scope',
@@ -655,10 +612,22 @@ function faireDom() {
   }
   const charts = [];
   function Chart(ctx, cfg) { this.cfg = cfg; this.destroy = function () {}; charts.push(cfg); }
+  // ⚠️ LE DOM MINIMAL DOIT RESTER MINIMAL, MAIS PAS MENTEUR. Le sélecteur jour/soir interroge
+  // le document au chargement : un `querySelector` absent faisait échouer le fichier entier à
+  // l'exécution, ce qui est le bon comportement du harnais — il refuse de tester une page qu'il
+  // ne sait pas monter, plutôt que d'en tester la moitié en silence.
+  const boutons = ['day', 'evening', 'all'].map(function (seg) {
+    return { dataset: { seg }, attrs: {},
+             setAttribute(k, v) { this.attrs[k] = v; },
+             getAttribute(k) { return this.attrs[k]; } };
+  });
+  const barre = { addEventListener() {} };
   const document = {
     documentElement: {},
     getElementById: (id) => (Object.prototype.hasOwnProperty.call(ids, id) ? ids[id] : null),
     createElement: () => ({ width: 0, height: 0, getContext: ctx2d }),
+    querySelector: (sel) => (sel === '.tx-segment' ? barre : null),
+    querySelectorAll: () => boutons,
     addEventListener() {},
   };
   const win = { matchMedia: null, uiLoadStart: null, uiLoadEnd: null };
@@ -666,9 +635,10 @@ function faireDom() {
   const fetch = () => new Promise(() => {});   // inerte : on appelle renderAll nous-mêmes
   const api = new Function(
     'document', 'window', 'getComputedStyle', 'Chart', 'fetch',
-    src + '\nreturn { renderAll: renderAll, renderCharts: renderCharts };'
+    src + '\nreturn { renderAll: renderAll, renderCharts: renderCharts,'
+        + ' majSegment: majSegment, segment: function (v) { if (v) segment = v; return segment; } };'
   )(document, win, getComputedStyle, Chart, fetch);
-  return { ids, charts, api };
+  return { ids, charts, api, boutons };
 }
 
 {
@@ -683,16 +653,6 @@ function faireDom() {
     t('hl-lead') + ' / ' + t('hl-value'));
   check('la pastille d’écart est posée, sans classe rouge',
     /−7 %/.test(t('hl-delta')) && !/delta-down|--red/.test(t('hl-delta')), t('hl-delta'));
-  check('l’érosion du CA/personne est bien écrite, avec ses deux fenêtres nommées',
-    /€6\.45/.test(t('hl-erosion')) && /€7\.18/.test(t('hl-erosion'))
-    && /31 Jul/.test(t('hl-erosion')) && /3 Jul/.test(t('hl-erosion'))
-    && /no trend is fitted/.test(t('hl-erosion')), t('hl-erosion'));
-  // ⚠️ LA PROVENANCE EST COLLÉE AU CHIFFRE. « CA par personne » veut dire deux choses très
-  // différentes selon que Mesa a compté les têtes ou qu'on les a devinées en comptant les
-  // boissons ; une provenance rangée dans le bloc replié serait une provenance qu'on ne lit pas.
-  check('et la provenance des personnes voyage AVEC lui — même inconnue',
-    /did not report where the headcount comes from/.test(t('hl-erosion')),
-    t('hl-erosion').slice(-160));
   // ⚠️ « TIENT » EST UN JUGEMENT, PAS UNE MESURE. Sans son seuil, le mot prend l'autorité d'un
   // fait — et avec cinq jours ouverts de chaque côté, une bonne journée le fait basculer.
   check('le seuil du verdict est affiché à l’écran, pas seulement dans le modèle',
@@ -780,13 +740,61 @@ function faireDom() {
   const jours = DAYS.map(d => { const c = { ...d }; delete c.covers; return c; });
   dom.api.renderAll({ ...PAYLOAD, windows: nus, days: jours });
   const t = (id) => (dom.ids[id] ? (dom.ids[id].innerHTML || dom.ids[id].textContent) : '@ABSENT');
-  check('l’érosion écrit « — » et sa raison, jamais 0,00 €',
-    /<b>—<\/b>/.test(t('hl-erosion')) && !/€0/.test(t('hl-erosion')), t('hl-erosion'));
-  check('le graphique, lui, reste dessiné : l’affluence est mesurée',
+  check('le graphique reste dessiné : l’affluence est mesurée',
     dom.ids['tx-chart-grid'].style.display === '' && dom.charts.length === 1,
     String(dom.charts.length));
   check('et la réponse du haut tient toujours',
     /26/.test(t('hl-value')), t('hl-value'));
+}
+
+// ══ 17. LE DÉCOUPAGE JOUR / SOIR ══════════════════════════════════════════
+//
+// ⚠️ UN ÉVÉNEMENT DU SOIR FAUSSE LA COMPARAISON DES JOURS. Un concert un vendredi ajoute
+// quarante tickets à ce vendredi-là ; la médiane du vendredi monte, et l'on conclut que le
+// vendredi se tient mieux que le jeudi. C'est l'événement qu'on mesure, pas le café.
+console.log('\n— le découpage jour / soir');
+{
+  check('le gabarit propose les trois vues, et une seule',
+    (tpl.match(/data-seg="/g) || []).length === 3
+    && /data-seg="day"\s+aria-pressed="true"/.test(tpl),
+    String((tpl.match(/data-seg="/g) || []).length));
+  // ⚠️ LE DÉFAUT DOIT EXCLURE LE SOIR DES DEUX CÔTÉS. Un écran qui demande « tout » pendant que
+  // le serveur croit rendre « hors soir » afficherait les soirées d'événement sous un bouton
+  // qui dit les exclure — le pire des deux mondes, puisque l'erreur est invisible.
+  check('et le défaut du navigateur est « hors soir », comme celui du serveur',
+    /^let segment = 'day';$/m.test(src));
+  check('le segment voyage dans l’URL, encodé',
+    /segment=' \+ encodeURIComponent\(segment\)/.test(src));
+
+  const dom = faireDom();
+  check('au chargement, c’est « Journée hors soir » qui est enfoncé',
+    dom.api.segment() === 'day');
+
+  dom.api.majSegment({ segment_days_dropped: 0, segment_days_total: 40 });
+  check('aucun jour écarté ⇒ aucune note, pas un « 0 jour exclu » qui inquiète pour rien',
+    dom.ids['tx-segment-note'].innerHTML === '', dom.ids['tx-segment-note'].innerHTML);
+
+  dom.api.majSegment({ segment_days_dropped: 12, segment_days_total: 40 });
+  check('des jours écartés ⇒ combien, sur combien, et qu’ils ne valent pas zéro',
+    /12 jour\(s\) sur 40/.test(dom.ids['tx-segment-note'].innerHTML)
+    && /pas compt/.test(dom.ids['tx-segment-note'].innerHTML),
+    dom.ids['tx-segment-note'].innerHTML);
+
+  dom.api.majSegment(null);
+  check('et sans payload, la note se tait plutôt que d’afficher « undefined »',
+    dom.ids['tx-segment-note'].innerHTML === '', dom.ids['tx-segment-note'].innerHTML);
+
+  dom.api.segment('evening');
+  dom.api.majSegment(null);
+  check('le bouton enfoncé suit le segment choisi',
+    dom.boutons.filter(b => b.getAttribute('aria-pressed') === 'true')
+      .map(b => b.dataset.seg).join() === 'evening',
+    dom.boutons.map(b => b.dataset.seg + '=' + b.getAttribute('aria-pressed')).join(' '));
+
+  // ⚠️ LE SOIR DU FILTRE EST CELUI DU GRAPHIQUE. Deux définitions qui dérivent, et le bloc
+  // « evening » cesserait de correspondre au bouton qui prétend l'exclure.
+  check('le libellé du bouton annonce les mêmes bornes que le bloc du serveur',
+    /19h&ndash;23h/.test(tpl), tpl.slice(tpl.indexOf('data-seg="evening"'), tpl.indexOf('data-seg="evening"') + 120));
 }
 
 // ══════════════════════════════════════════════════════════════════════════

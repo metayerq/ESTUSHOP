@@ -200,6 +200,30 @@
   .tx-bar-cell { display: none; }
   .tx-table { min-width: 560px; }
 }
+
+/* ── Le découpage jour / soir ─────────────────────────────────────────────────
+      ⚠️ LE SÉLECTEUR EST EN HAUT, AVANT LE PREMIER CHIFFRE. Tout ce qui suit dépend
+      de lui : le placer sous les graphiques ferait lire une médiane sans savoir sur
+      quelle partie de la journée elle porte. ── */
+.tx-segment { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 22px; }
+.tx-segment button {
+  font-family: inherit; font-size: 12.5px; line-height: 1.3;
+  padding: 7px 13px; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg-card); color: var(--muted); cursor: pointer; text-align: left;
+}
+.tx-segment button span { display: block; font-family: var(--mono); font-size: 10px;
+  color: var(--faint); letter-spacing: .04em; }
+.tx-segment button:hover { color: var(--text); border-color: var(--text); }
+.tx-segment button[aria-pressed="true"] {
+  color: var(--text); font-weight: 600; border-color: var(--green);
+  background: var(--spec-soft);
+}
+.tx-segment button[aria-pressed="true"] span { color: var(--green); }
+.tx-segment button:focus-visible { outline: 2px solid var(--spec); outline-offset: 1px; }
+/* ⚠️ COMBIEN DE JOURS MANQUENT À L'APPEL, ET POURQUOI. Un historique à moitié
+   instrumenté qui se tairait se lirait comme un historique complet. */
+.tx-segment-note { flex-basis: 100%; font-size: 11.5px; color: var(--amber); line-height: 1.55; }
+.tx-segment-note:empty { display: none; }
 </style>
 </head>
 <body>
@@ -218,6 +242,26 @@
   </div>
 
   <div id="tx-error"></div>
+
+  <!--
+    ⚠️ UN ÉVÉNEMENT DU SOIR FAUSSE LA COMPARAISON DES JOURS. Un concert un vendredi ajoute
+    quarante tickets à ce vendredi-là ; la médiane du vendredi monte, et l'on conclut que le
+    vendredi se tient mieux que le jeudi. C'est l'événement qu'on mesure, pas le café.
+
+    ⚠️ LE DÉFAUT EXCLUT DONC LE SOIR, ET C'EST UN CHOIX QUI SE DÉFEND. Comparer des jours entre
+    eux est ce qu'on vient faire ici ; les soirées d'événement sont l'exception qui le fausse.
+    Un défaut qui inclut tout donnerait raison à l'exception.
+
+    ⚠️ TROIS BOUTONS PLUTÔT QU'UNE CASE À COCHER. « Exclure le soir » décoché ne dit pas si
+    l'on regarde la journée entière ou seulement le soir — il faudrait une case ET un mode,
+    donc deux commandes pour un seul choix à trois issues.
+  -->
+  <div class="tx-segment" role="group" aria-label="Partie de la journée">
+    <button type="button" data-seg="day"     aria-pressed="true">Journ&eacute;e <span>hors soir</span></button>
+    <button type="button" data-seg="evening" aria-pressed="false">Soir <span>19h&ndash;23h</span></button>
+    <button type="button" data-seg="all"     aria-pressed="false">Tout <span>la journ&eacute;e enti&egrave;re</span></button>
+    <div class="tx-segment-note" id="tx-segment-note"></div>
+  </div>
 
   {#
     ⚠️ CETTE PAGE DÉFENDAIT SA MÉTHODE À CHAQUE ÉTAPE : 744 mots de prose, dont 426 en notes de
@@ -250,10 +294,17 @@
            l'empêche d'affirmer plus qu'elle ne sait. -->
       <div class="tx-rule" id="hl-rule"></div>
       <div class="tx-reason" id="hl-note" style="display:none"></div>
-      <!-- ⚠️ LE SEUL AUTRE CHIFFRE DU BLOC, ET C'EST LE PLUS UTILE DE LA PAGE : « ils viennent
-           autant mais dépensent moins » ne se lit nulle part ailleurs. Il portait un graphique
-           entier et trois paragraphes ; il tient en une ligne, avec sa provenance. -->
-      <div class="tx-erosion" id="hl-erosion"></div>
+      <!--
+        ⚠️ LA LIGNE « CA PAR PERSONNE » A ÉTÉ RETIRÉE LE 21/09/2026, À LA DEMANDE. Elle
+        répondait à une question que personne ne se posait devant cet écran, et elle traînait
+        la seule dépendance au CHIFFRE D'AFFAIRES d'une page qui ne parle que de tickets.
+
+        ⚠️ ET SON DÉPART DÉBLOQUE LE DÉCOUPAGE JOUR / SOIR. Le cache compte les passages en
+        caisse heure par heure, mais stocke le CA par JOUR : tant qu'un chiffre d'argent vivait
+        ici, une vue « soir seulement » aurait mêlé des tickets filtrés à un CA de journée
+        entière. La page ne parlant plus que de tickets, le filtre s'applique partout sans
+        réserve à écrire.
+      -->
       <div class="tx-reason" id="hl-caveat" style="display:none"></div>
     </div>
   </div>

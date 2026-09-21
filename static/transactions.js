@@ -263,27 +263,6 @@ function pickWindows(payload) {
 // annulerait tout le bénéfice. `null` tant que rien n'est classé — pas « 0 % mesuré »,
 // qui affirmerait qu'on a regardé.
 
-function coversSourceModel(windows) {
-  const src = Array.isArray(windows) ? windows : [];
-  let best = null;
-  for (let i = 0; i < src.length; i++) {
-    const w = src[i];
-    if (!w || typeof w.covers_measured_pct !== 'number' || !isFinite(w.covers_measured_pct))
-      continue;
-    best = w.covers_measured_pct;
-  }
-  if (best === null) return { known: false, text: null };
-  return {
-    known: true,
-    pct: best,
-    text: best >= 99.5
-      ? 'people are <b>counted</b>, not estimated — every ticket here carries a real headcount'
-      : best <= 0.5
-        ? 'people are <b>estimated</b> from drinks (1 drink = 1 person) — no ticket here carries a real headcount'
-        : Math.round(best) + '% of tickets carry a <b>counted</b> headcount from the POS; '
-          + 'the rest is <b>estimated</b> from drinks',
-  };
-}
 
 function cappedModel(windows) {
   const src = Array.isArray(windows) ? windows : [];
@@ -332,7 +311,6 @@ function answerModel(payload) {
     prevValue: '—', prevN: null, prevRange: '',
     delta: { ok: false, text: null, dir: 'none', reason: null },
     covers: null,
-    erosion: null,
     windowsUsed: rel.length,
     reason: joinReasons(h.reason, pick.reason),
     // Une réserve qui vaut MÊME QUAND LE CHIFFRE EXISTE. « latest-window-skipped »
@@ -407,32 +385,6 @@ function answerModel(payload) {
     out.note = reasonLabel(out.delta.reason || 'no-prev-window');
   }
 
-  // ── Clause b : l'érosion du CA par personne ────────────────────────────────
-  const spend = rel.filter(function (w) {
-    return typeof w.ca_per_cover === 'number' && isFinite(w.ca_per_cover);
-  });
-  if (spend.length >= 2) {
-    const first = spend[0], last = spend[spend.length - 1];
-    const d = deltaModel(last.ca_per_cover, first.ca_per_cover);
-    out.erosion = {
-      ok: d.ok,
-      last: fmtEur(last.ca_per_cover), lastRange: fmtRange(last.from, last.to),
-      lastN: (typeof last.full_days === 'number') ? last.full_days : null,
-      first: fmtEur(first.ca_per_cover), firstRange: fmtRange(first.from, first.to),
-      firstN: (typeof first.full_days === 'number') ? first.full_days : null,
-      delta: d,
-      windows: spend.length,
-      reason: d.ok ? null : d.reason,
-    };
-  } else {
-    out.erosion = {
-      ok: false, last: '—', lastRange: '', lastN: null,
-      first: '—', firstRange: '', firstN: null,
-      delta: { ok: false, text: null, dir: 'none', reason: 'not-measured' },
-      windows: spend.length,
-      reason: spend.length ? 'no-prev-window' : 'not-measured',
-    };
-  }
   return out;
 }
 
@@ -849,43 +801,10 @@ function renderAnswer(d) {
         : '')
     : '';
 
-  // La clause qui porte la vraie information : l'affluence tient, la dépense
-  // par personne recule. Deux points nommés, jamais une pente.
-  const ero = el('hl-erosion');
-  const e = m.erosion;
-  if (e && e.ok) {
-    // ⚠️ LA PROVENANCE EST COLLÉE AU CHIFFRE, PAS RANGÉE EN BAS DE PAGE. « CA par personne »
-    // veut dire deux choses très différentes selon que Mesa a compté les têtes ou qu'on les a
-    // devinées en comptant les boissons — et une provenance qui vit dans un bloc replié est
-    // une provenance qu'on ne lit pas.
-    const src = coversSourceModel((d || {}).windows);
-    ero.innerHTML = 'What moves instead — <b>revenue per person</b>: '
-      + '<b>' + esc(e.last) + '</b> <span class="tx-dim">(' + esc(e.lastRange)
-      + ', n=' + (e.lastN == null ? '?' : e.lastN) + ')</span> against '
-      + '<b>' + esc(e.first) + '</b> <span class="tx-dim">(' + esc(e.firstRange)
-      + ', n=' + (e.firstN == null ? '?' : e.firstN) + ')</span> '
-      + chipHtml(e.delta)
-      + ' <span class="tx-dim">· two named windows compared directly, ' + e.windows
-      + ' measured in between — no trend is fitted.'
-      // ⚠️ UN SILENCE SE LIT COMME « COMPTÉ ». Ne rien dire quand la provenance est inconnue
-      // laisserait croire que la caisse a compté des têtes — exactement le malentendu que
-      // toute cette mécanique existe pour dissiper. On dit qu'on ne sait pas.
-      + '<br>' + (src.known ? src.text
-        : 'the API did not report where the headcount comes from')
-      + '</span>';
-    ero.style.display = '';
-  } else if (e) {
-    ero.innerHTML = 'Revenue per person — <b>—</b> <span class="tx-dim">'
-      + esc(reasonLabel(e.reason) || 'not measured') + '</span>';
-    ero.style.display = '';
-  } else {
-    ero.style.display = 'none';
-  }
-
-  const rule = el('hl-rule');
   // ⚠️ « TIENT » EST UN JUGEMENT, PAS UNE MESURE. Le seuil doit rester écrit : sans lui, le mot
   // prend l'autorité d'un fait, et avec cinq jours ouverts de chaque côté, une bonne journée
   // suffit à le faire basculer.
+  const rule = el('hl-rule');
   rule.innerHTML = m.delta.ok
     ? '&laquo;&nbsp;holding&nbsp;&raquo; = within &plusmn;' + m.threshold
       + '&nbsp;% of the previous window — a convention set on this page, not a measurement.'
@@ -1102,25 +1021,56 @@ function renderAll(d) {
   renderWeekday(lastPayload);
 }
 
+// ── Le découpage jour / soir ──────────────────────────────────────────────────
+//
+// ⚠️ UN ÉVÉNEMENT DU SOIR FAUSSE LA COMPARAISON DES JOURS. Un concert un vendredi ajoute
+// quarante tickets à ce vendredi-là ; la médiane du vendredi monte, et l'on conclut que le
+// vendredi se tient mieux que le jeudi. C'est l'événement qu'on mesure, pas le café.
+//
+// ⚠️ LE DÉCOUPAGE EST FAIT PAR LE SERVEUR, PAS ICI. Les médianes n'ont qu'UNE définition ; la
+// refaire dans le navigateur pour les vues filtrées donnerait deux façons de calculer une
+// journée typique, qui divergeraient au premier cas limite.
+let segment = 'day';
+
+function majSegment(d) {
+  const boutons = document.querySelectorAll('.tx-segment button[data-seg]');
+  for (let i = 0; i < boutons.length; i++) {
+    boutons[i].setAttribute('aria-pressed', String(boutons[i].dataset.seg === segment));
+  }
+  // ⚠️ LES JOURS ÉCARTÉS SE DISENT. Les lignes de cache écrites avant la mesure horaire n'ont
+  // pas « zéro ticket le soir », elles n'ont pas la mesure : elles sont exclues des médianes
+  // filtrées. Un historique à moitié instrumenté qui se tairait se lirait comme un historique
+  // complet — et les médianes du soir porteraient sur trois jours sans que personne le sache.
+  const note = el('tx-segment-note');
+  const perdus = d && d.segment_days_dropped;
+  note.innerHTML = perdus
+    ? perdus + ' jour(s) sur ' + d.segment_days_total + ' n’ont pas de mesure horaire et sont '
+      + '<b>exclus</b> de cette vue — ils ne sont pas comptés à zéro.'
+    : '';
+}
+
 async function loadTx() {
   const err = el('tx-error');
   err.style.display = 'none';
   if (window.uiLoadStart) window.uiLoadStart();
   try {
-    const r = await fetch('/api/transactions/daily');
+    const r = await fetch('/api/transactions/daily?segment=' + encodeURIComponent(segment));
     const d = await r.json();
     if (!d || d.ok === false) {
       err.textContent = 'The daily cache did not answer'
         + (d && d.error ? ' — ' + d.error : '') + '. Nothing below is loaded — and nothing below is zero.';
       err.style.display = '';
       renderAll({});                     // la page reste lisible, tout est à « — »
+      majSegment(null);
       return;
     }
     renderAll(d);
+    majSegment(d);
   } catch (e) {
     err.textContent = 'Network error — the figures below are not loaded (which is not the same as zero).';
     err.style.display = '';
     renderAll({});
+    majSegment(null);
   } finally {
     if (window.uiLoadEnd) window.uiLoadEnd();
   }
@@ -1136,4 +1086,16 @@ if (typeof window !== 'undefined' && window.matchMedia) {
   else if (mq.addListener) mq.addListener(redraw);
 }
 
-if (typeof document !== 'undefined') loadTx();
+if (typeof document !== 'undefined') {
+  const barre = document.querySelector('.tx-segment');
+  if (barre) {
+    barre.addEventListener('click', function (e) {
+      const b = e.target.closest ? e.target.closest('button[data-seg]') : null;
+      if (!b || b.dataset.seg === segment) return;
+      segment = b.dataset.seg;
+      majSegment(null);                  // la sélection bouge tout de suite, la donnée suit
+      loadTx();
+    });
+  }
+  loadTx();
+}

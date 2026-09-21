@@ -427,7 +427,9 @@ def test_la_forme_de_la_reponse_est_celle_attendue_par_la_page():
     jours = ["2026-07-24", "2026-07-25", "2026-07-26", "2026-07-27", "2026-07-30", "2026-07-31"]
     out = app._transactions_payload(_rows({d: 20 for d in jours}), OUVERTURE, today)
 
-    assert set(out) == {"from", "to", "days", "windows", "hourly", "weekday", "headline"}
+    assert set(out) == {"from", "to", "days", "windows", "hourly", "weekday", "headline",
+                        "segment", "segment_days_dropped", "segment_days_total",
+                        "segment_money"}
     assert (out["from"], out["to"]) == ("2026-05-27", "2026-08-07")
     assert set(out["days"][0]) == {"day", "nb", "ca_ttc", "covers", "weekday", "partial"}
     # `covers_measured_pct` : part des personnes COMPTÉES (note du POS) plutôt qu'estimées.
@@ -498,7 +500,10 @@ def test_la_route_repond_avec_le_cache_et_le_jour_courant_monte_en_memoire(monke
          "items": [{"title": "Café", "qty": 1,
                     "amounts": {"net_total": 10.6, "gross_total": 12.0}}]}])
 
-    rep = app.app.test_client().get("/api/transactions/daily")
+    # ⚠️ EN « JOURNÉE ENTIÈRE » : la route filtre le soir PAR DÉFAUT, et le document du jour
+    # n'a pas d'heure dans ce bouchon. Ce test-ci porte sur la borne du cache et sur le montage
+    # en mémoire du jour courant, pas sur le découpage — le découpage a ses propres tests.
+    rep = app.app.test_client().get("/api/transactions/daily?segment=all")
     assert rep.status_code == 200
     data = rep.get_json()
     assert data["ok"] is True
@@ -687,3 +692,112 @@ def test_plusieurs_colonnes_neuves_peuvent_manquer_ensemble(monkeypatch):
     # perdrait des mesures qu'aucune erreur ne demandait d'abandonner.
     assert essais[-1] == ["covers_capped"], essais
     assert len(essais) == 3, f"un essai par colonne refusée, puis le bon : {essais}"
+
+
+# ── Le découpage jour / soir, vu de la route ────────────────────────────────────────────────
+#
+# ⚠️ UN ÉVÉNEMENT DU SOIR FAUSSE LA COMPARAISON DES JOURS. Un concert un vendredi ajoute
+# quarante tickets à ce vendredi-là ; la médiane du vendredi monte, et l'on conclut que le
+# vendredi se tient mieux que le jeudi. C'est l'événement qu'on mesure, pas le café.
+
+def _jour_heures(iso, heures):
+    total = sum(heures.values())
+    return {"day": iso, "nb": total, "ca_ttc": total * 10.0, "covers": total,
+            "covers_capped": 0, "covers_measured": 0, "covers_estimated": total,
+            "multi_count": 0, "hours": {str(h): n for h, n in heures.items()}}
+
+
+def _client_avec(monkeypatch, lignes, aujourd_hui=date(2026, 8, 7)):
+    monkeypatch.setattr(app, "DASHBOARD_PASSWORD", "")
+    monkeypatch.setattr(app, "today_lisbon", lambda: aujourd_hui)
+    monkeypatch.setattr(app, "get_catalog", lambda: {})
+    monkeypatch.setattr(app, "_ensure_summaries", lambda a, b, c: lignes)
+    monkeypatch.setattr(app, "_get_today_docs_cached", lambda: [])
+    return app.app.test_client()
+
+
+JOURS_MIXTES = [
+    _jour_heures("2026-07-24", {9: 10, 20: 30}),   # un vendredi d'événement
+    _jour_heures("2026-07-31", {9: 12, 20: 4}),    # un vendredi ordinaire
+]
+
+
+def test_par_defaut_la_route_exclut_le_soir(monkeypatch):
+    """C'est la demande : comparer des jours sans que les soirées d'événement les déforment."""
+    d = _client_avec(monkeypatch, JOURS_MIXTES).get("/api/transactions/daily").get_json()
+    assert d["segment"] == "day"
+    assert [j["nb"] for j in d["days"]] == [10, 12]
+
+
+def test_le_mode_soir_ne_garde_que_le_soir(monkeypatch):
+    d = _client_avec(monkeypatch, JOURS_MIXTES).get(
+        "/api/transactions/daily?segment=evening").get_json()
+    assert [j["nb"] for j in d["days"]] == [30, 4]
+
+
+def test_le_mode_journee_entiere_rend_le_total(monkeypatch):
+    d = _client_avec(monkeypatch, JOURS_MIXTES).get(
+        "/api/transactions/daily?segment=all").get_json()
+    assert [j["nb"] for j in d["days"]] == [40, 16]
+
+
+def test_un_segment_inconnu_ne_fait_pas_tomber_la_route(monkeypatch):
+    """⚠️ ET IL RETOMBE SUR LE DÉFAUT, pas sur « tout » : une faute de frappe dans l'URL ne doit
+    pas rendre en douce les soirées qu'on croit exclues."""
+    d = _client_avec(monkeypatch, JOURS_MIXTES).get(
+        "/api/transactions/daily?segment=nimporte").get_json()
+    assert d["segment"] == "day" and [j["nb"] for j in d["days"]] == [10, 12]
+
+
+def test_le_ca_se_tait_des_que_le_soir_est_filtre(monkeypatch):
+    """
+    ⚠️ LE CACHE STOCKE LE CA PAR JOUR, PAS PAR HEURE. Laisser le CA de la journée entière à
+    côté d'un compte de tickets filtré donnerait un panier faux d'un facteur trois, sans que
+    rien à l'écran ne le dise.
+    """
+    for seg in ("day", "evening"):
+        d = _client_avec(monkeypatch, JOURS_MIXTES).get(
+            f"/api/transactions/daily?segment={seg}").get_json()
+        assert d["segment_money"] is False
+        assert all(j["ca_ttc"] is None for j in d["days"])
+    d = _client_avec(monkeypatch, JOURS_MIXTES).get(
+        "/api/transactions/daily?segment=all").get_json()
+    assert d["segment_money"] is True
+
+
+def test_les_jours_sans_mesure_horaire_sont_comptes_et_annonces(monkeypatch):
+    """
+    ⚠️ UN HISTORIQUE À MOITIÉ INSTRUMENTÉ QUI SE TAIT SE LIT COMME UN HISTORIQUE COMPLET. Les
+    médianes du soir porteraient sur trois jours sans que personne le sache.
+    """
+    lignes = JOURS_MIXTES + [{"day": "2026-08-01", "nb": 20, "ca_ttc": 200.0, "covers": 20,
+                              "covers_capped": 0, "covers_measured": 0, "covers_estimated": 20,
+                              "multi_count": 0}]
+    d = _client_avec(monkeypatch, lignes).get("/api/transactions/daily").get_json()
+    assert d["segment_days_dropped"] == 1
+    assert d["segment_days_total"] == 3
+    assert "2026-08-01" not in [j["day"] for j in d["days"]]
+
+
+def test_la_repartition_horaire_nest_jamais_filtree(monkeypatch):
+    """
+    ⚠️ C'EST LE GRAPHIQUE QUI MONTRE LE SOIR. Le filtrer par « soir exclu » le viderait de sa
+    moitié droite, et l'écran cesserait de pouvoir justifier le filtre qu'il applique.
+    """
+    lignes = [_jour_heures(f"2026-07-{j:02d}", {9: 10, 20: 30}) for j in (20, 21, 22, 23, 24, 25)]
+    d = _client_avec(monkeypatch, lignes).get("/api/transactions/daily").get_json()
+    soir = [b for b in d["hourly"]["blocks"] if b["block"] == "evening"]
+    assert soir and soir[0]["tickets"] == 180, d["hourly"]
+
+
+def test_une_absence_ne_devient_jamais_un_zero_dans_une_mediane():
+    """
+    ⚠️ `float(v or 0)` EST LA FAÇON LA PLUS NATURELLE D'ÉCRIRE CETTE GARDE, ET ELLE EST FAUSSE.
+    Un jour sans mesure deviendrait un jour à zéro : la médiane chuterait d'autant plus que
+    l'historique est peu instrumenté, ce qui ressemblerait exactement à une tendance.
+    """
+    assert app._median([10, None, 20]) == 15
+    assert app._median([None, None]) is None
+    assert app._median([]) is None
+    # Et un vrai zéro compte, lui : « ouvert, personne n'est venu » est une mesure.
+    assert app._median([0, 10, 20]) == 10
