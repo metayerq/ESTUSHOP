@@ -631,9 +631,10 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
       pas gonfler les charges sur des périodes incluant des jours calendaires
       hors ouverture.
     """
+    from datetime import date
     from config import (
         TVA_MOYENNE_BLENDED, AMORTISSEMENT_MOIS,
-        JOURS_OUVERTS_MOIS, count_open_days_raw,
+        JOURS_OUVERTS_MOIS, count_open_days_raw, today_lisbon,
     )
 
     # Jours d'ouverture effectifs dans la période.
@@ -654,46 +655,59 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
     no_open_days = open_days == 0
 
     # ── Charges live depuis Supabase ─────────────────────────────────────────
-    # Appel léger (~15ms) — résultat utilisé pour les 4 KPIs économie
+    # Appel léger (~15ms) — résultat utilisé pour les 4 KPIs économie.
+    #
+    # ⚠️ ON NE FILTRE PLUS SUR `active`, ON LIT TOUT. Une ligne clôturée le 1er octobre doit
+    # continuer de compter pour septembre : la filtrer à la lecture la ferait disparaître de
+    # TOUT l'historique, ce qui est précisément le défaut que les dates de validité corrigent.
+    # C'est `charges.applicable()` qui décide, jour par jour.
+    import charges as _ch
     try:
-        charges_rows  = _supa_get_economics("charges_fixes", {"active": "eq.true"})
-        employee_rows = _supa_get_economics("employees",     {"active": "eq.true"})
+        charges_rows  = _supa_get_economics("charges_fixes", {})
+        employee_rows = _supa_get_economics("employees",     {})
     except Exception:
         charges_rows  = []
         employee_rows = []
 
-    # Total charges fixes mensuelles
-    def _to_monthly(amount, freq):
-        if freq == "quarterly": return amount / 3
-        if freq == "annual":    return amount / 12
-        return amount
+    # ── Le coût de la période, jour par jour ─────────────────────────────────
+    #
+    # ⚠️ UN SEUL TOTAL MENSUEL NE SUFFIT PLUS. Si le loyer change au milieu de la période, il
+    # n'y a pas de coût journalier unique : multiplier un total par un nombre de jours donnerait
+    # le bon ordre de grandeur et le mauvais chiffre — et l'erreur serait maximale le mois où
+    # l'on vient justement voir l'effet du changement.
+    if from_date is not None and to_date is not None:
+        _ouverts = _ch.jours_ouverts_entre(
+            from_date, to_date, lambda j: count_open_days_raw(j, j) == 1)
+    else:
+        _ouverts = []
+    if open_days_override is not None and _ouverts:
+        # L'appelant impose un nombre de jours réellement observés : on garde les plus récents,
+        # qui sont ceux dont les charges s'appliquent encore.
+        _ouverts = _ouverts[-open_days_override:] if open_days_override else []
 
-    total_fixes_mois = sum(_to_monthly(float(c["amount"]), c.get("frequency","monthly"))
-                           for c in charges_rows)
+    if _ouverts:
+        total_fixes_periode, total_perso_periode = _ch.cout_periode(
+            charges_rows, employee_rows, _ouverts, JOURS_OUVERTS_MOIS)
+        # Le coût JOURNALIER affiché est la moyenne sur la période — il varie si un montant a
+        # changé au milieu, et l'écran doit montrer ce qui a réellement été imputé.
+        cout_fixe_jour = total_fixes_periode / len(_ouverts)
+        cout_perso_jour = total_perso_periode / len(_ouverts)
+    else:
+        # Sans bornes de dates (appels historiques), on résout à aujourd'hui.
+        #
+        # ⚠️ À L'HEURE DE LISBONNE. Vercel tourne en UTC : entre minuit et 1 h, `date.today()`
+        # renvoie la veille, et la veille est peut-être de l'autre côté d'une hausse de loyer.
+        _ref = to_date or today_lisbon()
+        cout_fixe_jour = _ch.charges_mensuelles(charges_rows, _ref) / JOURS_OUVERTS_MOIS
+        cout_perso_jour = _ch.personnel_mensuel(employee_rows, _ref) / JOURS_OUVERTS_MOIS
 
-    # Total personnel lissé mensuel (TSU + 13e/14e + repas)
-    TSU_RATE    = 0.2375
-    REPAS_JOURS = 242   # ~11 mois × 22 jours
-    total_perso_mois = 0.0
-    for e in employee_rows:
-        gross = float(e.get("gross_monthly", 0))
-        if e.get("type") == "extra":
-            total_perso_mois += gross
-        else:
-            meal    = float(e.get("meal_card_daily", 10.20))
-            tsu     = 0.0 if e.get("tsu_exempt") else TSU_RATE
-            monthly = (gross * 14 * (1 + tsu) + meal * REPAS_JOURS) / 12
-            total_perso_mois += monthly
-
-    total_charges_mois = total_fixes_mois + total_perso_mois
+    total_charges_mois = (cout_fixe_jour + cout_perso_jour) * JOURS_OUVERTS_MOIS
 
     # Source unique : Supabase. Pas de fallback BP — si vide/injoignable,
     # charges = 0 et le front affiche un warning (charges_source).
     charges_source = "supabase" if total_charges_mois > 0 else "indisponible"
 
-    cout_jour        = total_charges_mois / JOURS_OUVERTS_MOIS
-    cout_fixe_jour   = total_fixes_mois   / JOURS_OUVERTS_MOIS
-    cout_perso_jour  = total_perso_mois   / JOURS_OUVERTS_MOIS
+    cout_jour        = cout_fixe_jour + cout_perso_jour
     amort_jour       = AMORTISSEMENT_MOIS / JOURS_OUVERTS_MOIS
 
     ca_ttc     = 0.0   # TTC  — affiché pour info

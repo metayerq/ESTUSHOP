@@ -28,6 +28,7 @@ from phone import PHONE_MESSAGE, normalise_phone
 from programme import build_accounts, conversion_series, programme_summary
 from sms import campagne_apercu
 from campagnes import recap_depense
+import charges as _ch
 
 from flask import Flask, jsonify, render_template, request, redirect, make_response, g
 from vendus import (
@@ -1325,6 +1326,17 @@ def api_cron_refresh():
             hm_warm = _warm_heatmap_cache()
         except Exception:
             pass
+        # ⚠️ LES DATES DE VALIDITÉ BASCULENT SANS QUE PERSONNE N'ÉCRIVE. Une clôture au
+        # 1er novembre est décidée en septembre ; ce jour-là, `active` doit changer tout seul.
+        # La caisse Mesa lit encore cette colonne : sans ce rattrapage, elle imputerait un
+        # loyer remplacé jusqu'au prochain clic sur la page des charges.
+        bascules = 0
+        for _t in ("charges_fixes", "employees"):
+            try:
+                bascules += _resynchroniser_active(_t)
+            except Exception:
+                pass
+
         # Visites carte : hier + aujourd'hui, idempotent (upsert sur pid).
         visits = None
         terminal = None
@@ -1345,7 +1357,7 @@ def api_cron_refresh():
         return jsonify({"ok": True, "day": today_lisbon().isoformat(),
                         "docs_cached": len(docs), "heatmap_warm": hm_warm,
                         "card_visits": visits, "terminal_days": terminal,
-                        "at": _utc_iso()})
+                        "bascules_validite": bascules, "at": _utc_iso()})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -2775,6 +2787,11 @@ def api_supplies_seed():
 
 @app.route("/api/charges", methods=["GET"])
 def api_charges_get():
+    for t in ("charges_fixes", "employees"):
+        try:
+            _resynchroniser_active(t)
+        except Exception:
+            pass    # un rattrapage raté ne doit pas empêcher d'afficher la page
     charges   = _supa_get("charges_fixes",  {"order": "category.asc,name.asc"})
     employees = _supa_get("employees",       {"order": "name.asc"})
     return jsonify({"charges": charges, "employees": employees})
@@ -2792,27 +2809,251 @@ def api_charges_post():
         "category":  (data.get("category") or "").strip(),
         "notes":     (data.get("notes") or "").strip(),
         "active":    data.get("active", True),
+        # ⚠️ UNE CHARGE SANS `valid_from` S'APPLIQUE DEPUIS TOUJOURS. Créer le Wi-Fi aujourd'hui
+        # l'imputerait à mai, juin et juillet — le bogue qu'on vient de corriger, entré par la
+        # porte de la création. Par défaut le 1er du mois courant : c'est le mois qu'on est en
+        # train de vivre, et aucun mois clos n'est touché.
+        #
+        # ⚠️ ET UNE DATE PASSÉE RESTE PERMISE ICI, contrairement à la modification. Enregistrer
+        # un loyer oublié qui court depuis mai est légitime : la différence est qu'on l'a écrit,
+        # au lieu de le subir.
+        "valid_from": (data.get("effective_from")
+                       or today_lisbon().replace(day=1).isoformat()),
     }
+    row["active"] = _ch.applicable(row, today_lisbon())
     if data.get("id"):
-        row["id"] = data["id"]
+        # ⚠️ LE FORMULAIRE ENREGISTRE PAR `POST`, MÊME POUR UNE MODIFICATION. Laisser cet
+        # upsert écraser la ligne contournerait entièrement le versionnement : le garde vivait
+        # sur `PATCH`, que l'écran n'appelle jamais pour un montant. Une protection qu'aucun
+        # chemin réel ne traverse ne protège rien.
+        return _modifier_charge(data["id"], data)
     ok, err = _supa_upsert("charges_fixes", row)
     return jsonify({"ok": ok, "error": err})
 
+# ══════════════════════════════════════════════════════════════════════════════
+# MODIFIER UNE CHARGE — sans réécrire le passé
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ CHANGER UN MONTANT RÉÉCRIVAIT L'HISTOIRE. `daily_economics` relit les charges en direct :
+# augmenter le loyer en septembre changeait l'EBITDA de juin, partout, sans que rien ne le
+# signale. Et supprimer un poste le retirait de TOUS les mois passés — trois mois qui
+# devenaient soudain rentables.
+#
+# ⚠️ UN CHANGEMENT DE MONTANT EST DONC DEVENU DEUX ÉCRITURES : la ligne en cours se clôt la
+# veille de la date d'effet, une nouvelle s'ouvre ce jour-là. Juin garde le loyer de juin.
+
+
+def _resynchroniser_active(table):
+    """
+    Remet `active` d'accord avec les dates de validité. Renvoie le nombre de lignes corrigées.
+
+    ⚠️ AUCUNE ÉCRITURE NE FAIT BASCULER UNE DATE. Une clôture au 1er novembre est décidée en
+    septembre : entre les deux, rien n'est écrit, et pourtant le 1er novembre la ligne doit
+    cesser d'être active. Sans ce rattrapage, le loyer remplacé resterait en vigueur jusqu'au
+    prochain clic de quelqu'un sur la page des charges.
+
+    ⚠️ ET C'EST POUR MESA, PAS POUR ICI. ESTUSHOP résout tout par les dates et n'a que faire de
+    cette colonne ; la caisse, elle, lit encore `active=eq.true`. Cette fonction disparaîtra
+    avec elle.
+    """
+    jour = today_lisbon()
+    corrigees = 0
+    for l in _supa_get(table, {}) or []:
+        voulu = _ch.applicable(l, jour)
+        if bool(l.get("active")) != voulu:
+            _supa_patch(table, {"id": f"eq.{l['id']}"}, {"active": voulu})
+            corrigees += 1
+    return corrigees
+
+
+def _cloturer_et_remplacer(table, ligne, maj, effet, motif, role):
+    """
+    Clôt une ligne à la date d'effet et en ouvre une nouvelle. Renvoie `(ok, erreur)`.
+
+    ⚠️ LA BORNE HAUTE EST LA DATE D'EFFET ELLE-MÊME, exclue. « Valide jusqu'au 1er octobre »
+    veut dire que le 30 septembre est le dernier jour couvert : sans cette convention, le jour
+    de bascule porterait les DEUX montants.
+
+    ⚠️ ET `active` RESTE SYNCHRONISÉ. La caisse Mesa lit encore `active=eq.true` : tant qu'elle
+    n'est pas redéployée, une ligne clôturée doit aussi devenir inactive, sinon le comptoir
+    continuerait d'imputer un loyer qui n'existe plus.
+    """
+    # ⚠️ `active` SUIT LA DATE, IL NE LA DEVANCE PAS. Le mettre à `False` tout de suite pour une
+    # clôture au 1er novembre ferait chuter le coût du jour dès aujourd'hui — et la NOUVELLE
+    # ligne, active immédiatement, ferait payer le nouveau loyer un mois en avance. Les deux
+    # erreurs se voyaient au comptoir, sur le point mort.
+    ok, err = _supa_patch(table, {"id": f"eq.{ligne['id']}"},
+                          {"valid_to": effet.isoformat(), "active": effet > today_lisbon()})
+    if not ok:
+        return False, err or "clôture refusée"
+
+    neuve = {k: v for k, v in ligne.items()
+             if k not in ("id", "valid_from", "valid_to", "created_at")}
+    neuve.update(maj)
+    neuve["valid_from"] = effet.isoformat()
+    neuve["valid_to"] = None
+    neuve["active"] = effet <= today_lisbon()
+    ok, err = _supa_upsert(table, neuve)
+    if not ok:
+        # ⚠️ ON REMET LA LIGNE D'ORIGINE EN SERVICE. Sans ce retour en arrière, un échec à
+        # mi-chemin laisserait la charge clôturée et aucune ligne pour la remplacer : le poste
+        # disparaîtrait des mois à venir, en silence.
+        _supa_patch(table, {"id": f"eq.{ligne['id']}"}, {"valid_to": None, "active": True})
+        return False, err or "nouvelle ligne refusée"
+
+    _journal_action(role, f"{table}-modifie", str(ligne.get("name") or ligne.get("id"))[:24],
+                    {k: ligne.get(k) for k in maj}, maj, motif)
+    return True, None
+
+
+def _date_effet(brut):
+    """
+    La date à partir de laquelle le nouveau montant s'applique.
+
+    ⚠️ JAMAIS RÉTROACTIVE, ET C'EST TOUT L'INTÉRÊT. Autoriser une date passée rendrait le
+    versionnement inutile : on pourrait réécrire juin depuis septembre, ce qu'on vient
+    précisément d'empêcher.
+
+    ⚠️ ET LA COMPARAISON SE FAIT À L'HEURE DE LISBONNE. Vercel tourne en UTC : entre minuit et
+    1 h, « à partir de demain » serait refusé comme rétroactif.
+    """
+    demain = today_lisbon() + timedelta(1)
+    if not brut:
+        # Par défaut, le 1er du mois prochain — les charges se pensent en mois.
+        t = today_lisbon()
+        return date(t.year + 1, 1, 1) if t.month == 12 else date(t.year, t.month + 1, 1)
+    try:
+        d = date.fromisoformat(str(brut)[:10])
+    except ValueError:
+        return None
+    return d if d >= demain else None
+
+
+# Les champs qui CHANGENT LE COÛT — et qui imposent donc une date d'effet et un motif — et ceux
+# qui ne font que décrire le poste.
+#
+# ⚠️ `hours_week` ET `days_per_month` NE FONT PAS PARTIE DU COÛT. `cout_employe_mensuel` ne lit
+# que le brut, le type, l'exemption TSU et la carte repas : imposer une cérémonie pour corriger
+# un horaire indicatif ferait contourner le formulaire.
+VERSIONNE = {
+    "charges_fixes": ("amount", "frequency"),
+    "employees":     ("gross_monthly", "type", "tsu_exempt", "meal_card_daily"),
+}
+DESCRIPTIF = {
+    "charges_fixes": ("name", "category", "notes"),
+    "employees":     ("name", "notes", "hours_week", "days_per_month"),
+}
+
+
+def _modifier_poste(table, poste_id, data):
+    """
+    Modifie une charge ou un salarié. Un changement qui TOUCHE LE COÛT clôt et remplace ; le
+    reste (nom, catégorie, note) se corrige sur place.
+
+    ⚠️ LES SALAIRES ONT LE MÊME PROBLÈME QUE LES LOYERS. Augmenter quelqu'un en septembre
+    changeait sa paie de juin, et un départ l'effaçait de tout l'historique — ces mois-là,
+    quelqu'un a pourtant bien été payé. Une seule fonction pour les deux tables : un garde qui
+    n'existe que d'un côté finit par manquer de l'autre.
+
+    ⚠️ CORRIGER UNE FAUTE DE FRAPPE DANS UN NOM N'EST PAS CHANGER UN LOYER. Traiter les deux
+    pareil obligerait à saisir un motif et une date d'effet pour remettre un accent — et un
+    formulaire qui demande trop finit par être contourné.
+
+    ⚠️ UNE SEULE FONCTION POUR LES DEUX CHEMINS. L'écran enregistre par `POST` et l'API expose
+    un `PATCH` : deux implémentations du même garde, c'est la garantie qu'un jour l'une des deux
+    laissera passer un changement de montant sans date d'effet.
+    """
+    if _current_role() != "admin":
+        return jsonify({"ok": False, "error": "admin only"}), 403
+
+    lignes = _supa_get(table, {"id": f"eq.{poste_id}", "limit": 1})
+    if not lignes:
+        return jsonify({"ok": False, "error": "poste inconnu"}), 404
+    ligne = lignes[0]
+
+    # ⚠️ ON COMPARE AVANT D'AGIR. Réenregistrer le formulaire sans rien toucher ne doit ni créer
+    # une ligne, ni réclamer un motif : sinon chaque ouverture de la fenêtre laisserait une
+    # coupure dans l'historique, et l'historique cesserait de vouloir dire quelque chose.
+    maj = {}
+    for champ in VERSIONNE[table]:
+        if champ not in data:
+            continue
+        neuf, ancien = data[champ], ligne.get(champ)
+        if champ in ("amount", "gross_monthly", "meal_card_daily"):
+            try:
+                neuf = round(float(neuf), 2)
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": f"{champ} invalide"}), 400
+            ancien = round(float(ancien or 0), 2)
+        elif champ == "tsu_exempt":
+            neuf, ancien = bool(neuf), bool(ancien)
+        if neuf != ancien:
+            maj[champ] = neuf
+
+    if maj:
+        motif = (data.get("reason") or "").strip()
+        if len(motif) < 3:
+            return jsonify({"ok": False,
+                            "error": "un motif est obligatoire : ce changement touche "
+                                     "les chiffres de tous les mois à venir"}), 400
+        effet = _date_effet(data.get("effective_from"))
+        if effet is None:
+            return jsonify({"ok": False,
+                            "error": "la date d'effet doit être au plus tôt demain — "
+                                     "on ne réécrit pas un mois déjà lu"}), 400
+        ok, err = _cloturer_et_remplacer(table, ligne, maj, effet, motif, _current_role())
+        if not ok:
+            return jsonify({"ok": False, "error": err}), 502
+        return jsonify({"ok": True, "effet": effet.isoformat()})
+
+    # Les champs descriptifs se corrigent sur place, sans cérémonie.
+    descriptif = {k: data[k] for k in DESCRIPTIF[table] if k in data}
+    if not descriptif:
+        return jsonify({"ok": True, "effet": None, "inchange": True})
+    ok, err = _supa_patch(table, {"id": f"eq.{poste_id}"}, descriptif)
+    return jsonify({"ok": ok, "error": err})
+
+
+def _modifier_charge(charge_id, data):
+    return _modifier_poste("charges_fixes", charge_id, data)
+
+
 @app.route("/api/charges/<string:charge_id>", methods=["PATCH"])
 def api_charges_patch(charge_id):
-    data = request.get_json()
-    r = _req.patch(
-        f"{SUPA_URL}/rest/v1/charges_fixes",
-        json=data,
-        headers=_supa_headers(),
-        params={"id": f"eq.{charge_id}"},
-    )
-    return jsonify({"ok": r.ok})
+    return _modifier_charge(charge_id, request.get_json(silent=True) or {})
+
+
+def _cloturer_poste(table, poste_id, data):
+    """
+    Retire une charge ou un salarié — en le CLÔTURANT, jamais en l'effaçant.
+
+    ⚠️ UN `DELETE` RETIRAIT LE LOYER DE MAI, JUIN ET JUILLET. Trois mois devenaient soudain
+    rentables, et rien dans l'écran ne disait pourquoi. Pour un salarié c'est pire encore : ces
+    mois-là, quelqu'un a bien été payé. Un poste qui s'arrête a une date ; il reste, borné au
+    jour où il cesse.
+    """
+    if _current_role() != "admin":
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    lignes = _supa_get(table, {"id": f"eq.{poste_id}", "limit": 1})
+    if not lignes:
+        return jsonify({"ok": False, "error": "poste inconnu"}), 404
+
+    effet = _date_effet(data.get("effective_from"))
+    if effet is None:
+        return jsonify({"ok": False, "error": "la date de fin doit être au plus tôt demain"}), 400
+    ok, err = _supa_patch(table, {"id": f"eq.{poste_id}"},
+                          {"valid_to": effet.isoformat(), "active": effet > today_lisbon()})
+    if ok:
+        _journal_action(_current_role(), f"{table}-cloture",
+                        str(lignes[0].get("name") or poste_id)[:24],
+                        {"valid_to": None}, {"valid_to": effet.isoformat()},
+                        (data.get("reason") or "").strip() or "arrêt du poste")
+    return jsonify({"ok": ok, "error": err, "effet": effet.isoformat()})
+
 
 @app.route("/api/charges/<string:charge_id>", methods=["DELETE"])
 def api_charges_delete(charge_id):
-    ok = _supa_delete("charges_fixes", "id", charge_id)
-    return jsonify({"ok": ok})
+    return _cloturer_poste("charges_fixes", charge_id, request.get_json(silent=True) or {})
 
 
 # ── Employees CRUD ────────────────────────────────────────────────────────────
@@ -2838,27 +3079,32 @@ def api_employees_post():
         "days_per_month":   float(data.get("days_per_month", 21.25)),
         "notes":            (data.get("notes") or "").strip(),
         "active":           data.get("active", True),
+        # ⚠️ SANS BORNE, UN SALARIÉ EMBAUCHÉ AUJOURD'HUI EST PAYÉ DEPUIS MAI. `valid_from` nul
+        # veut dire « depuis toujours » : la fiche créée en septembre ajoutait son coût à tous
+        # les mois clos. Par défaut le 1er du mois courant ; une date d'entrée passée reste
+        # permise, puisqu'ici on l'écrit au lieu de la subir.
+        "valid_from": (data.get("effective_from")
+                       or today_lisbon().replace(day=1).isoformat()),
     }
+    row["active"] = _ch.applicable(row, today_lisbon())
     if data.get("id"):
-        row["id"] = data["id"]
+        # ⚠️ L'ÉCRAN ENREGISTRE PAR `POST`, MÊME POUR UNE AUGMENTATION. Cet upsert écrasait la
+        # fiche : la nouvelle paie remontait jusqu'à l'embauche.
+        return _modifier_poste("employees", data["id"], data)
     ok, err = _supa_upsert("employees", row)
     return jsonify({"ok": ok, "error": err})
 
 @app.route("/api/employees/<string:emp_id>", methods=["PATCH"])
 def api_employees_patch(emp_id):
-    data = request.get_json()
-    r = _req.patch(
-        f"{SUPA_URL}/rest/v1/employees",
-        json=data,
-        headers=_supa_headers(),
-        params={"id": f"eq.{emp_id}"},
-    )
-    return jsonify({"ok": r.ok})
+    # ⚠️ CETTE ROUTE RECOPIAIT LE JSON REÇU DANS LA BASE, TEL QUEL. N'importe quel champ, sans
+    # contrôle de rôle propre et sans date d'effet : une augmentation saisie en septembre
+    # remontait jusqu'à l'embauche.
+    return _modifier_poste("employees", emp_id, request.get_json(silent=True) or {})
+
 
 @app.route("/api/employees/<string:emp_id>", methods=["DELETE"])
 def api_employees_delete(emp_id):
-    ok = _supa_delete("employees", "id", emp_id)
-    return jsonify({"ok": ok})
+    return _cloturer_poste("employees", emp_id, request.get_json(silent=True) or {})
 
 
 # ── Jours fériés + congés du personnel ────────────────────────────────────────

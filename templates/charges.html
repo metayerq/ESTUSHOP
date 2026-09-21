@@ -221,6 +221,24 @@ select.field-input { cursor:pointer; }
   .modal-grid { grid-template-columns:1fr; }
 }
 
+
+/* ── Le versionnement ────────────────────────────────────────────────────────────────────── */
+.versionnement{border:1px solid var(--border);border-left:2px solid var(--spec);
+  border-radius:4px;padding:11px 13px;background:var(--bg)}
+.ver-titre{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--spec);margin-bottom:9px}
+.ver-grid{display:grid;grid-template-columns:1fr 1.4fr;gap:10px}
+.ver-avant-apres{margin-top:9px;font-size:11.5px;color:var(--muted);
+  font-family:var(--mono);font-variant-numeric:tabular-nums;line-height:1.55}
+.ver-avant-apres b{color:var(--text);font-weight:700}
+.ver-avant-apres .hausse{color:var(--red,#b3261e)}
+.ver-avant-apres .baisse{color:var(--green)}
+.ver-avant-apres:empty{display:none}
+/* L'historique d'un poste, sous la ligne. */
+.histo{font-family:var(--mono);font-size:10.5px;color:var(--faint);
+  font-variant-numeric:tabular-nums;margin-top:3px}
+.histo b{color:var(--muted);font-weight:600}
+@media(max-width:560px){.ver-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -333,11 +351,12 @@ select.field-input { cursor:pointer; }
       </div>
       <div>
         <div class="field-label">Amount (€) *</div>
-        <input class="field-input" id="charge-amount" type="number" step="0.01" placeholder="0.00">
+        <input class="field-input" id="charge-amount" type="number" step="0.01" placeholder="0.00"
+               oninput="majApercu('charge')">
       </div>
       <div>
         <div class="field-label">Frequency</div>
-        <select class="field-input" id="charge-frequency">
+        <select class="field-input" id="charge-frequency" onchange="majApercu('charge')">
           <option value="monthly">Monthly</option>
           <option value="quarterly">Quarterly</option>
           <option value="annual">Annual</option>
@@ -362,6 +381,26 @@ select.field-input { cursor:pointer; }
       <div class="full">
         <div class="field-label">Notes</div>
         <input class="field-input" id="charge-notes" placeholder="Optional">
+  
+      <!--
+        ⚠️ CE BLOC N'APPARAÎT QUE SI LE COÛT CHANGE. Le serveur refuse un changement de montant
+        sans date d'effet ni motif : sans ces champs, le refus arriverait sans dire quoi saisir.
+        Et il reste caché pour une correction de libellé — un formulaire qui demande une
+        justification pour remettre un accent finit par être contourné.
+      -->
+      <div class="full versionnement" id="charge-ver" hidden>
+        <div class="ver-titre">This changes the cost from a date — past months stay as they were</div>
+        <div class="ver-grid">
+          <div>
+            <div class="field-label">In effect from</div>
+            <input class="field-input" id="charge-effet" type="date" onchange="majApercu('charge')">
+          </div>
+          <div>
+            <div class="field-label">Reason *</div>
+            <input class="field-input" id="charge-motif" placeholder="e.g. annual increase">
+          </div>
+        </div>
+        <div class="ver-avant-apres" id="charge-apercu"></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -410,6 +449,26 @@ select.field-input { cursor:pointer; }
       <div class="full">
         <div class="field-label">Notes</div>
         <input class="field-input" id="emp-notes" placeholder="Optional">
+  
+      <!--
+        ⚠️ CE BLOC N'APPARAÎT QUE SI LE COÛT CHANGE. Le serveur refuse un changement de montant
+        sans date d'effet ni motif : sans ces champs, le refus arriverait sans dire quoi saisir.
+        Et il reste caché pour une correction de libellé — un formulaire qui demande une
+        justification pour remettre un accent finit par être contourné.
+      -->
+      <div class="full versionnement" id="emp-ver" hidden>
+        <div class="ver-titre">This changes the cost from a date — past months stay as they were</div>
+        <div class="ver-grid">
+          <div>
+            <div class="field-label">In effect from</div>
+            <input class="field-input" id="emp-effet" type="date" onchange="majApercu('emp')">
+          </div>
+          <div>
+            <div class="field-label">Reason *</div>
+            <input class="field-input" id="emp-motif" placeholder="e.g. annual increase">
+          </div>
+        </div>
+        <div class="ver-avant-apres" id="emp-apercu"></div>
       </div>
     </div>
 
@@ -509,15 +568,17 @@ function renderCharges() {
       const monthly = toMonthly(c.amount, c.frequency);
       const inactive = !c.active ? 'inactive' : '';
       html += `<tr class="${inactive}" data-id="${c.id}">
-        <td>${c.name}${c.notes ? `<span style="color:var(--faint);font-size:11px;margin-left:8px;">${c.notes}</span>` : ''}</td>
+        <td>${c.name}${c.notes ? `<span style="color:var(--faint);font-size:11px;margin-left:8px;">${c.notes}</span>` : ''}
+          ${histoLigne(c) ? `<div class="histo">${histoLigne(c)}</div>` : ''}</td>
         <td><span style="color:var(--faint);font-size:12px;">${c.category||''}</span></td>
         <td>${freqBadge(c.frequency)}</td>
         <td class="right">${fmt(c.amount)}</td>
         <td class="right" style="font-weight:600;">${c.frequency !== 'monthly' ? fmt(monthly) : '—'}</td>
         <td class="right" style="white-space:nowrap;">
           <button class="btn-ghost" onclick="editCharge('${c.id}')" style="margin-right:4px;">Edit</button>
-          <button class="btn-danger" onclick="toggleChargeActive('${c.id}', ${c.active})">${c.active ? 'Disable' : 'Enable'}</button>
-          <button class="btn-danger" onclick="deleteCharge('${c.id}')">✕</button>
+          ${c.valid_to || c.active === false
+            ? `<button class="btn-ghost" onclick="rouvrir('charges', '${c.id}')">Reopen…</button>`
+            : `<button class="btn-danger" onclick="deleteCharge('${c.id}')">Stop…</button>`}
         </td>
       </tr>`;
     }
@@ -613,11 +674,13 @@ function renderEmployees() {
           <span class="badge ${TYPE_BADGES[e.type]||''} emp-type">${TYPE_LABELS[e.type]||e.type}</span>
           ${e.type === 'part_time' ? `<span style="font-size:12px;color:var(--muted);margin-left:8px;">${e.hours_week}h/wk</span>` : ''}
           ${e.notes ? `<span style="font-size:11px;color:var(--faint);margin-left:10px;">${e.notes}</span>` : ''}
+          ${histoLigne(e) ? `<span class="histo" style="margin-left:10px;">${histoLigne(e)}</span>` : ''}
         </div>
         <div class="emp-actions">
           <button class="btn-ghost" onclick="editEmployee('${e.id}')">Edit</button>
-          <button class="btn-danger" onclick="toggleEmpActive('${e.id}', ${e.active})">${e.active ? 'Disable' : 'Enable'}</button>
-          <button class="btn-danger" onclick="deleteEmployee('${e.id}')">✕</button>
+          ${e.valid_to || e.active === false
+            ? `<button class="btn-ghost" onclick="rouvrir('employees', '${e.id}')">Reopen…</button>`
+            : `<button class="btn-danger" onclick="deleteEmployee('${e.id}')">Stop…</button>`}
         </div>
       </div>
       <div class="emp-grid">${detailCells}</div>
@@ -629,6 +692,21 @@ function renderEmployees() {
 
 // ── Summary ───────────────────────────────────────────────────────────────
 const JOURS_MOIS = 21.25;
+
+/**
+ * La période de validité d'un poste, en une ligne — ou rien du tout si elle n'a pas de bornes.
+ *
+ * ⚠️ UN POSTE PEUT MAINTENANT APPARAÎTRE PLUSIEURS FOIS : le loyer à 700 € jusqu'au 1er octobre,
+ * puis à 750 €. Sans cette ligne, l'écran montrerait deux « Loyer » superposés sans dire lequel
+ * s'applique — et on croirait à un doublon.
+ */
+function histoLigne(x) {
+  const j = v => new Date(v).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  if (x.valid_to && x.valid_from) return `${j(x.valid_from)} → ${j(x.valid_to)} (ended)`;
+  if (x.valid_to)   return `until ${j(x.valid_to)} (ended)`;
+  if (x.valid_from) return `since ${j(x.valid_from)}`;
+  return '';
+}
 function updateSummary() {
   const totalFixes = chargesData.filter(c=>c.active).reduce((s,c) => s + toMonthly(c.amount, c.frequency), 0);
   const totalPerso = employeesData.filter(e=>e.active).reduce((s,e) => s + calcEmpCost(e).monthly, 0);
@@ -644,6 +722,177 @@ function updateSummary() {
   document.getElementById('sum-jour').textContent = fmt(parJour);
 }
 
+// ── Le versionnement ──────────────────────────────────────────────────────
+//
+// ⚠️ CHANGER UN MONTANT RÉÉCRIVAIT LE PASSÉ. Les charges sont relues en direct à chaque calcul :
+// augmenter le loyer en septembre changeait l'EBITDA de juin, partout, sans que rien ne le
+// signale. Un changement de coût porte désormais une date d'effet ; les mois clos ne bougent
+// plus. Ce qui suit ne fait que MONTRER la règle que le serveur applique de toute façon.
+
+// L'état du poste tel qu'il était à l'ouverture de la fenêtre — la référence de comparaison.
+let VER_ORIG = { charge: null, emp: null };
+
+// Les champs qui touchent au coût, et eux seuls.
+//
+// ⚠️ `hours_week` N'EN FAIT PAS PARTIE : le coût mensuel ne lit que le brut, le type,
+// l'exemption TSU et la carte repas. Cette liste doit rester d'accord avec `VERSIONNE` dans
+// `app.py` — une divergence ferait apparaître le bloc sans que le serveur l'exige, ou l'inverse.
+const VER_CHAMPS = {
+  charge: ['amount', 'frequency'],
+  emp:    ['gross_monthly', 'type', 'tsu_exempt', 'meal_card_daily'],
+};
+
+function premierDuMoisProchain() {
+  const t = new Date();
+  return new Date(t.getFullYear(), t.getMonth() + 1, 1).toISOString().slice(0, 10);
+}
+
+/** Ce que le formulaire décrit en ce moment, dans la forme de l'API. */
+function lireFormulaire(pfx) {
+  if (pfx === 'charge') return {
+    amount:    parseFloat(document.getElementById('charge-amount').value),
+    frequency: document.getElementById('charge-frequency').value,
+  };
+  return {
+    gross_monthly:   parseFloat(document.getElementById('emp-gross').value),
+    type:            document.getElementById('emp-type').value,
+    tsu_exempt:      document.getElementById('emp-tsu-exempt').checked,
+    meal_card_daily: parseFloat(document.getElementById('emp-meal').value) || 0,
+  };
+}
+
+/** Le coût mensuel lissé décrit par ces valeurs. */
+function coutMensuel(pfx, v) {
+  if (pfx === 'charge') return toMonthly(v.amount || 0, v.frequency);
+  return calcEmpCost({ gross_monthly: v.gross_monthly || 0, type: v.type,
+                       tsu_exempt: v.tsu_exempt, meal_card_daily: v.meal_card_daily }).monthly;
+}
+
+/** Le coût change-t-il par rapport à l'ouverture de la fenêtre ? */
+function coutChange(pfx) {
+  const o = VER_ORIG[pfx];
+  if (!o) return false;                 // création : rien à clôturer
+  const v = lireFormulaire(pfx);
+  return VER_CHAMPS[pfx].some(k => {
+    const a = v[k], b = o[k];
+    if (typeof a === 'number' || typeof b === 'number')
+      return Math.round((a || 0) * 100) !== Math.round((b || 0) * 100);
+    if (typeof a === 'boolean' || typeof b === 'boolean') return !!a !== !!b;
+    return (a || '') !== (b || '');
+  });
+}
+
+/** Montre ou cache le bloc, et écrit l'avant/après. */
+function majApercu(pfx) {
+  const bloc = document.getElementById(pfx + '-ver');
+  if (!bloc) return;
+  const change = coutChange(pfx);
+  bloc.hidden = !change;
+  if (!change) return;
+  const champEffet = document.getElementById(pfx + '-effet');
+  if (!champEffet.value) champEffet.value = premierDuMoisProchain();
+
+  const avant = coutMensuel(pfx, VER_ORIG[pfx]);
+  const apres = coutMensuel(pfx, lireFormulaire(pfx));
+  const d = apres - avant;
+  // ⚠️ L'ÉCART JOURNALIER EST CE QUI COMPTE VRAIMENT : c'est lui qui déplace le point mort
+  // affiché au comptoir, et c'est en euros par jour que Quentin lit sa journée.
+  const signe = d >= 0 ? '+' : '−';
+  const classe = d >= 0 ? 'hausse' : 'baisse';
+  const dep = new Date(champEffet.value || premierDuMoisProchain())
+    .toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  document.getElementById(pfx + '-apercu').innerHTML =
+    `Monthly &nbsp;<b>${fmt(avant)}</b> → <b>${fmt(apres)}</b> ` +
+    `<span class="${classe}">(${signe}${fmt(Math.abs(d))})</span><br>` +
+    `Per open day &nbsp;<b>${fmt(avant / JOURS_MOIS)}</b> → <b>${fmt(apres / JOURS_MOIS)}</b> ` +
+    `<span class="${classe}">(${signe}${fmt(Math.abs(d) / JOURS_MOIS)} on the daily break-even)</span><br>` +
+    `Applies from <b>${dep}</b>. Everything before that date keeps the old figure.`;
+}
+
+/**
+ * Ajoute la date d'effet et le motif au corps de la requête, si le coût change.
+ * Renvoie `false` s'il manque quelque chose — l'envoi est alors abandonné.
+ *
+ * ⚠️ LE SERVEUR REFUSE DÉJÀ UN CHANGEMENT SANS MOTIF. Ce contrôle-ci n'est pas la garantie, il
+ * évite seulement un aller-retour pour afficher un message que la fenêtre peut donner tout de
+ * suite, le curseur dans le bon champ.
+ */
+function appliquerVersionnement(pfx, body) {
+  if (!coutChange(pfx)) return true;
+  const motif = document.getElementById(pfx + '-motif').value.trim();
+  if (motif.length < 3) {
+    showToast('Say why — this changes every month from the date you pick');
+    document.getElementById(pfx + '-motif').focus();
+    return false;
+  }
+  body.reason = motif;
+  body.effective_from = document.getElementById(pfx + '-effet').value || premierDuMoisProchain();
+  return true;
+}
+
+/** Dit À PARTIR DE QUAND, parce que c'est la seule chose de neuf dans cet enregistrement. */
+function messageEffet(d, defaut) {
+  if (!d.effet) return defaut;
+  const j = new Date(d.effet).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return `Saved — in effect from ${j}`;
+}
+
+/**
+ * Clôt un poste à une date, au lieu de l'effacer.
+ *
+ * ⚠️ « DELETE » MENTAIT. Le poste n'est pas supprimé : il est borné au jour où il cesse, sinon
+ * il disparaîtrait des mois où il a réellement été payé. Le bouton doit dire ce qui se passe.
+ */
+async function cloturer(url, nom, quoi) {
+  const def = premierDuMoisProchain();
+  const saisi = prompt(
+    `Stop "${nom}" from which date?\n\n` +
+    `Months before that date keep this ${quoi} — it was really paid.\n` +
+    `Format YYYY-MM-DD.`, def);
+  if (saisi === null) return;
+  const r = await fetch(url, {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ effective_from: (saisi || '').trim() || def }),
+  });
+  const d = await r.json();
+  if (d.ok) { showToast(messageEffet(d, 'Stopped')); loadAll(); }
+  else showToast('Error: ' + (d.error || 'refused'));
+}
+
+/**
+ * Remet un poste clôturé en service, à partir d'une date.
+ *
+ * ⚠️ ON OUVRE UNE LIGNE NEUVE, ON NE RETIRE PAS LA BORNE. Effacer `valid_to` rendrait le poste
+ * actif sur toute la période où il était arrêté — des mois déjà lus qui changeraient d'EBITDA.
+ * Une reprise est un nouveau départ, avec sa propre date.
+ */
+async function rouvrir(table, id) {
+  const src = (table === 'charges' ? chargesData : employeesData).find(x => x.id === id);
+  if (!src) return;
+  const def = premierDuMoisProchain();
+  const saisi = prompt(
+    `Restart "${src.name}" from which date?\n\n` +
+    `A new line starts on that date. The months in between stay without it.\n` +
+    `Format YYYY-MM-DD.`, def);
+  if (saisi === null) return;
+  const body = { ...src, effective_from: (saisi || '').trim() || def, active: true };
+  delete body.id; delete body.valid_to; delete body.valid_from; delete body.created_at;
+  const r = await fetch('/api/' + table, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const d = await r.json();
+  if (d.ok) { showToast('Restarted'); loadAll(); } else showToast('Error: ' + (d.error || ''));
+}
+
+/** Remet le bloc à zéro à l'ouverture d'une fenêtre. */
+function resetVer(pfx, orig) {
+  VER_ORIG[pfx] = orig;
+  const bloc = document.getElementById(pfx + '-ver');
+  if (bloc) bloc.hidden = true;
+  document.getElementById(pfx + '-effet').value = '';
+  document.getElementById(pfx + '-motif').value = '';
+  document.getElementById(pfx + '-apercu').innerHTML = '';
+}
+
 // ── Modal Charges ─────────────────────────────────────────────────────────
 function openChargeModal(id) {
   document.getElementById('charge-id').value = '';
@@ -652,6 +901,7 @@ function openChargeModal(id) {
   document.getElementById('charge-frequency').value = 'monthly';
   document.getElementById('charge-category').value = '';
   document.getElementById('charge-notes').value = '';
+  resetVer('charge', null);
   document.getElementById('charge-modal-title').textContent = 'New fixed cost';
   document.getElementById('charge-modal').classList.add('open');
   document.getElementById('charge-name').focus();
@@ -665,6 +915,7 @@ function editCharge(id) {
   document.getElementById('charge-frequency').value = c.frequency;
   document.getElementById('charge-category').value = c.category || '';
   document.getElementById('charge-notes').value = c.notes || '';
+  resetVer('charge', { amount: c.amount, frequency: c.frequency });
   document.getElementById('charge-modal-title').textContent = 'Edit fixed cost';
   document.getElementById('charge-modal').classList.add('open');
 }
@@ -684,24 +935,15 @@ async function saveCharge() {
     notes:     document.getElementById('charge-notes').value.trim(),
   };
   if (id) body.id = id;
+  if (!appliquerVersionnement('charge', body)) return;
   const r = await fetch('/api/charges', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
   const d = await r.json();
-  if (d.ok) { document.getElementById('charge-modal').classList.remove('open'); showToast('Cost saved'); loadAll(); }
+  if (d.ok) { document.getElementById('charge-modal').classList.remove('open'); showToast(messageEffet(d, 'Cost saved')); loadAll(); }
   else showToast('Error: ' + d.error);
 }
 async function deleteCharge(id) {
-  if (!confirm('Delete this cost?')) return;
-  const r = await fetch(`/api/charges/${id}`, { method:'DELETE' });
-  const d = await r.json();
-  if (d.ok) { showToast('Cost deleted'); loadAll(); }
-}
-async function toggleChargeActive(id, current) {
-  const r = await fetch(`/api/charges/${id}`, {
-    method:'PATCH', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ active: !current })
-  });
-  const d = await r.json();
-  if (d.ok) { loadAll(); }
+  const c = chargesData.find(x => x.id === id);
+  await cloturer('/api/charges/' + id, (c && c.name) || 'this cost', 'cost');
 }
 
 // ── Modal Employees ───────────────────────────────────────────────────────
@@ -714,6 +956,7 @@ function openEmpModal() {
   document.getElementById('emp-meal').value = 10.20;
   document.getElementById('emp-tsu-exempt').checked = false;
   document.getElementById('emp-notes').value = '';
+  resetVer('emp', null);
   document.getElementById('emp-modal-title').textContent = 'New employee';
   document.getElementById('emp-tsu-wrap').style.display = '';
   document.getElementById('emp-preview').style.display = 'none';
@@ -731,6 +974,8 @@ function editEmployee(id) {
   document.getElementById('emp-meal').value = e.meal_card_daily || 10.20;
   document.getElementById('emp-tsu-exempt').checked = !!e.tsu_exempt;
   document.getElementById('emp-notes').value = e.notes || '';
+  resetVer('emp', { gross_monthly: e.gross_monthly, type: e.type,
+                    tsu_exempt: e.tsu_exempt, meal_card_daily: e.meal_card_daily });
   document.getElementById('emp-modal-title').textContent = 'Edit employee';
   document.getElementById('emp-tsu-wrap').style.display = e.type === 'extra' ? 'none' : '';
   document.getElementById('emp-modal').classList.add('open');
@@ -742,6 +987,7 @@ function closeEmpModal(e) {
 }
 
 function updateEmpPreview() {
+  majApercu('emp');
   const type  = document.getElementById('emp-type').value;
   const gross = parseFloat(document.getElementById('emp-gross').value) || 0;
   const meal  = parseFloat(document.getElementById('emp-meal').value) || 0;
@@ -797,23 +1043,15 @@ async function saveEmployee() {
     notes:         document.getElementById('emp-notes').value.trim(),
   };
   if (id) body.id = id;
+  if (!appliquerVersionnement('emp', body)) return;
   const r = await fetch('/api/employees', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
   const d = await r.json();
-  if (d.ok) { document.getElementById('emp-modal').classList.remove('open'); showToast('Employee saved'); loadAll(); }
+  if (d.ok) { document.getElementById('emp-modal').classList.remove('open'); showToast(messageEffet(d, 'Employee saved')); loadAll(); }
   else showToast('Error: ' + d.error);
 }
 async function deleteEmployee(id) {
-  if (!confirm('Delete this employee?')) return;
-  const r = await fetch(`/api/employees/${id}`, { method:'DELETE' });
-  const d = await r.json();
-  if (d.ok) { showToast('Employee deleted'); loadAll(); }
-}
-async function toggleEmpActive(id, current) {
-  const r = await fetch(`/api/employees/${id}`, {
-    method:'PATCH', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ active: !current })
-  });
-  if ((await r.json()).ok) loadAll();
+  const e = employeesData.find(x => x.id === id);
+  await cloturer('/api/employees/' + id, (e && e.name) || 'this employee', 'employee');
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────
