@@ -325,8 +325,10 @@
     que renvoyer vers la première. Un chiffre qui existe pour être cliqué n'a pas besoin d'un
     quart de l'écran d'accueil ; le rail y mène en un geste.
   #}
-  <details class="repli">
-    <summary>Quand l'argent entre<span class="repli-quoi">par heure, et ce qui le compose</span></summary>
+  <div class="section-head">
+    <div class="section-label">Quand l'argent entre</div>
+    <span class="section-quoi">par heure, et ce qui le compose</span>
+  </div>
     {#
       ⚠️ CES DEUX GRAPHIQUES SE CONSULTENT, ILS NE SE SURVEILLENT PAS. On les ouvre pour
       répondre à « à quelle heure faut-il du monde au comptoir ? » ou « qu'est-ce qui porte le
@@ -360,8 +362,6 @@
     </div>
   </div>
 
-  </details>
-
   {#
     ⚠️ « PAYMENT METHODS » DONNAIT LA RÉPARTITION DÉCLARÉE PAR VENDUS. `/reconciliation` donne
     la même chose MESURÉE sur le terminal Revolut, ligne à ligne, avec l'écart entre les deux —
@@ -375,8 +375,10 @@
     <div class="ins-card" id="ins-seat"></div>
   </div>
 
-  <details class="repli">
-    <summary>L'allure de la journée<span class="repli-quoi">le cumul heure par heure — jour unique</span></summary>
+  <div class="section-head">
+    <div class="section-label">L'allure de la journée</div>
+    <span class="section-quoi">le cumul heure par heure — jour unique</span>
+  </div>
     {#
       ⚠️ ELLE N'EXISTE QUE SUR UN JOUR UNIQUE, et le bloc reste donc vide le reste du temps.
       Replié, un bloc vide ne coûte qu'une ligne ; déroulé, il laissait un cadre blanc qu'on
@@ -390,14 +392,53 @@
     </div>
   </div>
 
-  <details class="repli">
-    <summary>Ce qui s'est vendu<span class="repli-quoi">le détail par produit, avec la marge</span></summary>
-    {#
-      ⚠️ UN TABLEAU DE QUARANTE LIGNES NE SE LIT PAS D'UN COUP D'ŒIL. On l'ouvre pour chercher
-      un produit, comparer deux marges, décider d'une carte — jamais pour prendre le pouls.
-    #}
-  </details>
+  {#
+    ⚠️ LA LISTE DES COMMANDES EST REVENUE, À LA DEMANDE. Je l'avais retirée comme doublon de
+    `/reconciliation`, qui détaille chaque ticket avec son rapprochement bancaire. Ce
+    raisonnement valait pour la RÉCONCILIATION — vérifier que la caisse tombe juste — pas pour
+    le geste courant : regarder ce qui vient d'être vendu, sans quitter l'écran où l'on est.
 
+    ⚠️ DEUX ÉCRANS PEUVENT MONTRER LA MÊME DONNÉE SANS ÊTRE UN DOUBLON, à condition qu'ils
+    répondent à deux questions. Ici : « qu'est-ce qui se passe maintenant ». Là-bas : « est-ce
+    que tout est encaissé ». Ce qui serait un doublon, ce serait deux CALCULS de la même chose ;
+    les deux listes lisent la même source.
+  #}
+  <!-- Transactions récentes -->
+  <div style="display:flex;align-items:baseline;justify-content:space-between;">
+    <div class="section-label" id="recent-label">Commandes</div>
+    <div class="section-label" id="recent-count" style="color:var(--faint);"></div>
+  </div>
+  <div class="table-wrap">
+    <div id="recent-list">
+      <table>
+        <thead>
+          <tr>
+            <th>Heure</th>
+            <th>Document</th>
+            <th>Type</th>
+            <th class="right">Montant</th>
+          </tr>
+        </thead>
+        <tbody id="recent-body">
+          <tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">Chargement&hellip;</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-head">
+    <div class="section-label">Le mois en cours</div>
+    <span class="section-quoi">quand on regarde une autre période</span>
+  </div>
+    {#
+      ⚠️ CE BLOC EXISTE POUR LE CONTEXTE, PAS POUR LA DÉCISION. Il rappelle où en est le mois
+      pendant qu'on lit une semaine — utile, et jamais urgent. Il se masque déjà tout seul quand
+      la période EST le mois en cours, et sa place en bas de page dit le reste.
+    #}
+  <div class="section-head">
+    <div class="section-label">Ce qui s'est vendu</div>
+    <span class="section-quoi">le d&eacute;tail par produit, avec la marge</span>
+  </div>
   <!-- Produits — suit la période sélectionnée -->
   <div id="top-products-section">
     <div class="section-label" id="products-section-label">Products sold <span id="products-count" style="color:var(--faint);font-weight:400;"></span></div>
@@ -420,22 +461,6 @@
     </div>
   </div><!-- /top-products-section -->
 
-  </details>
-
-  {#
-    ⚠️ « RECENT TRANSACTIONS » LISTAIT LES VINGT DERNIERS TICKETS. `/reconciliation` les détaille
-    tous, jour par jour, avec leur moyen de paiement mesuré, leurs pourboires et leur
-    rapprochement bancaire. Une liste tronquée à côté d'une liste complète n'ajoute rien — elle
-    fait seulement douter de laquelle est à jour.
-  #}
-
-  <details class="repli">
-    <summary>Le mois en cours<span class="repli-quoi">quand on regarde une autre période</span></summary>
-    {#
-      ⚠️ CE BLOC EXISTE POUR LE CONTEXTE, PAS POUR LA DÉCISION. Il rappelle où en est le mois
-      pendant qu'on lit une semaine — utile, et jamais urgent. Il se masque déjà tout seul quand
-      la période EST le mois en cours : le replier finit le travail.
-    #}
   <!-- ═══ ZONE 2 · Le mois en cours (toujours mois calendaire, masquée si période = This month) ═══ -->
   <div id="month-zone" style="display:none;margin-top:44px;">
     <div class="zone-head">
@@ -448,10 +473,10 @@
     </div>
   </div>
 
-  </details>
-
-  <details class="repli">
-    <summary>Tendances<span class="repli-quoi">fenêtres fixes — insensibles au sélecteur de période</span></summary>
+  <div class="section-head">
+    <div class="section-label">Tendances</div>
+    <span class="section-quoi">fenêtres fixes — insensibles au sélecteur de période</span>
+  </div>
     {#
       ⚠️ CES FENÊTRES NE SUIVENT PAS LE SÉLECTEUR, et c'est écrit dans le résumé. Un bloc qui
       ignore le filtre alors que tout le reste le suit est la façon la plus sûre de faire lire
@@ -497,8 +522,6 @@
       </div>
     </div>
   </div>
-  </details>
-
 
 
 </div><!-- /page -->
@@ -541,12 +564,21 @@
   </div>
 </div>
 
-{#
-  ⚠️ LE TIROIR DE TRANSACTION EST PARTI AVEC LA LISTE QUI L'OUVRAIT. Plus rien ne l'appelait :
-  du balisage et deux cents lignes de script qui passaient tous les tests, puisque les tests
-  vérifiaient leur cohérence entre eux — pas qu'un chemin y mène. `/reconciliation` détaille
-  chaque transaction, avec son rapprochement bancaire en plus.
-#}
+<div id="drawer-overlay" onclick="closeDrawer()"></div>
+<div id="drawer">
+  <div class="drawer-header">
+    <div>
+      <div class="drawer-title" id="drawer-number"></div>
+      <div class="drawer-sub" id="drawer-meta"></div>
+    </div>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="drawer-section-label">Items</div>
+  <table class="drawer-table" id="drawer-items"></table>
+  <div class="drawer-section-label" style="margin-top:20px;">Payment</div>
+  <div id="drawer-payments"></div>
+  <div class="drawer-total" id="drawer-total"></div>
+</div>
 
 <script src="/static/ui.js?v={{ v }}"></script>
 <script src="/static/dashboard.js?v={{ v }}"></script>

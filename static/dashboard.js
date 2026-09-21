@@ -282,32 +282,16 @@ function renderReponse(d) {
     + 'répartis sur les jours <b>réellement ouverts</b>.';
 }
 
-/**
- * REDIMENSIONNE LES GRAPHIQUES D'UN BLOC QU'ON VIENT D'OUVRIR.
+/* ⚠️ LA GARDE DE REDIMENSIONNEMENT EST PARTIE AVEC LES BLOCS REPLIÉS. Chart.js mesure son
+ * conteneur au moment du tracé : dans un `<details>` fermé il vaut zéro, et le graphique sort
+ * écrasé à l'ouverture. Le problème était réel ; il n'a plus d'objet ici, puisque plus aucun
+ * graphique de cette page n'est replié.
  *
- * ⚠️ CHART.JS MESURE SON CONTENEUR AU MOMENT DU TRACÉ. Dans un `<details>` fermé, ce conteneur
- * vaut zéro : le graphique est dessiné écrasé, et il le reste à l'ouverture. Rien ne lève, rien
- * n'est rouge — on voit juste un trait au lieu d'une courbe, et on cherche le bogue dans les
- * données.
- *
- * ⚠️ ON INTERROGE CHART.JS PLUTÔT QUE DE TENIR NOTRE PROPRE LISTE. `Chart.getChart(canvas)`
- * rend l'instance attachée : une liste maison se périmerait au premier graphique ajouté, et le
- * suivant serait écrasé sans que personne ne fasse le lien avec ce code-ci.
+ * ⚠️ ET UNE PROTECTION SANS CIBLE EST PIRE QU'ABSENTE : on la maintient, on la relit, on la
+ * croit active — et le jour où un graphique replié réapparaît ailleurs, personne ne pense à
+ * vérifier qu'elle le couvre. Si le pli revient, ce code est dans l'historique, au commit
+ * « Cinq blocs du tableau de bord se replient ».
  */
-function reveillerGraphiques(bloc) {
-  if (typeof Chart === 'undefined' || !bloc) return;
-  bloc.querySelectorAll('canvas').forEach(function (c) {
-    var g = Chart.getChart(c);
-    if (g) g.resize();
-  });
-}
-
-if (typeof document !== 'undefined') {
-  document.addEventListener('toggle', function (e) {
-    var d = e.target;
-    if (d && d.tagName === 'DETAILS' && d.open) reveillerGraphiques(d);
-  }, true);   // `toggle` ne remonte pas : on l'écoute à la capture
-}
 
 function render(d) {
   window._lastData = d;
@@ -790,11 +774,27 @@ function render(d) {
     }
   }
 
-  /* ⚠️ LES VINGT DERNIERS TICKETS SONT PARTIS VERS `/reconciliation`, qui les détaille TOUS,
-   * jour par jour, avec leur moyen de paiement mesuré, leurs pourboires et leur rapprochement
-   * bancaire. Une liste tronquée à côté d'une liste complète n'ajoute rien — elle fait
-   * seulement douter de laquelle est à jour.
-   */
+  // ── Transactions récentes ────────────────────────────────────────────────
+  if (!d.recent || !d.recent.length) {
+    document.getElementById('recent-body').innerHTML =
+      '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">No transactions.</td></tr>';
+    return;
+  }
+  window._txData = d.recent;
+  const recCount = document.getElementById('recent-count');
+  if (recCount) recCount.textContent = d.is_single_day
+    ? `${d.recent.length} transaction${d.recent.length > 1 ? 's' : ''}`
+    : `${d.recent.length} latest`;
+  const recLabel = document.getElementById('recent-label');
+  if (recLabel) recLabel.textContent = d.is_single_day ? "Today's transactions" : 'Recent transactions';
+  document.getElementById('recent-body').innerHTML = d.recent.map((t, i) => `
+    <tr style="cursor:pointer;" onclick="openDrawer(${i})"
+        onmouseenter="showTxTooltip(event, ${i})" onmousemove="moveTxTooltip(event)" onmouseleave="hideTxTooltip()">
+      <td class="time">${t.time}</td>
+      <td class="num">${t.number}</td>
+      <td><span class="badge">${t.type}</span></td>
+      <td class="amount">${fmt(t.amount)}</td>
+    </tr>`).join('');
 }
 
 // ── Tooltip survol transaction ───────────────────────────────────────────────
@@ -1277,3 +1277,76 @@ async function saveProductPopup() {
     btn.disabled = false; btn.textContent = 'Save';
   }
 }
+
+/* ── La commande qu'on vient de cliquer ───────────────────────────────────────
+ * ⚠️ REVENU AVEC LA LISTE. Ces fonctions avaient été retirées parce que plus rien ne les
+ * appelait — c'était juste à ce moment-là, et faux dès que la liste est revenue. Le contrôle
+ * « aucune fonction orpheline » les aurait signalées dans les deux sens.
+ */
+function showTxTooltip(e, idx) {
+  const t = window._txData[idx];
+  if (!t) return;
+  const tip = document.getElementById('tx-tooltip');
+  const itemsHtml = (t.items && t.items.length)
+    ? t.items.map(it => `
+        <div style="display:flex;justify-content:space-between;gap:14px;padding:2px 0;">
+          <span>${it.qty > 1 ? `<span style="color:var(--muted)">${it.qty}×</span> ` : ''}${it.name}</span>
+          <span style="color:var(--muted);white-space:nowrap;">${fmt(it.total)}</span>
+        </div>`).join('')
+    : '<div style="color:var(--muted);">Detail unavailable</div>';
+  const payHtml = (t.payments && t.payments.length)
+    ? `<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;color:var(--muted);">${t.payments.map(p => p.label).join(' · ')}</div>`
+    : '';
+  tip.innerHTML = `
+    <div style="font-weight:600;margin-bottom:6px;">${t.number} · ${t.time}</div>
+    ${itemsHtml}
+    <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:6px;padding-top:6px;font-weight:600;">
+      <span>Total</span><span>${fmt(t.amount)}</span>
+    </div>${payHtml}`;
+  tip.style.display = 'block';
+  moveTxTooltip(e);
+}
+
+function moveTxTooltip(e) {
+  const tip = document.getElementById('tx-tooltip');
+  if (tip.style.display === 'none') return;
+  const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.clientX + pad, y = e.clientY + pad;
+  if (x + w > window.innerWidth)  x = e.clientX - w - pad;
+  if (y + h > window.innerHeight) y = e.clientY - h - pad;
+  tip.style.left = x + 'px';
+  tip.style.top  = y + 'px';
+}
+
+function hideTxTooltip() {
+  document.getElementById('tx-tooltip').style.display = 'none';
+}
+
+function openDrawer(idx) {
+  const t = window._txData[idx];
+  document.getElementById('drawer-number').textContent = t.number;
+  document.getElementById('drawer-meta').textContent   = t.time + ' · ' + t.client;
+  document.getElementById('drawer-items').innerHTML = t.items.length
+    ? t.items.map(item => `
+        <tr>
+          <td class="dt-name">${item.name}</td>
+          <td class="dt-qty">${item.qty > 1 ? item.qty + ' ×' : ''} ${fmt(item.unit)}</td>
+          <td class="dt-amt">${fmt(item.total)}</td>
+        </tr>`).join('')
+    : '<tr><td colspan="3" style="color:var(--muted);font-size:12px;padding:8px 0;">Detail unavailable</td></tr>';
+  document.getElementById('drawer-payments').innerHTML = t.payments.map(p => `
+    <div class="drawer-pay-row">
+      <span>${p.label}</span>
+      <span>${fmt(p.amount)}</span>
+    </div>`).join('');
+  document.getElementById('drawer-total').innerHTML = `<span>Total</span><span>${fmt(t.amount)}</span>`;
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawer-overlay').classList.add('open');
+}
+
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('drawer-overlay').classList.remove('open');
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });

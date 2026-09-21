@@ -229,117 +229,92 @@ def test_aucune_fonction_du_script_nest_orpheline():
     assert not orphelines, f"définies mais jamais appelées : {orphelines}"
 
 
-# ── Ce qui est replié, et ce qui ne l'est pas ────────────────────────────────────────────────
+# ── L'ordre de lecture ───────────────────────────────────────────────────────────────────────
 #
-# ⚠️ TOUT CE QUI SE CONSULTE N'A PAS À ÊTRE DÉROULÉ. Le détail par produit, la répartition
-# horaire, les tendances : on les ouvre pour répondre à une question précise, une fois par
-# semaine — pas chaque matin. Déroulés, ils poussaient la réponse du haut hors de l'écran.
+# ⚠️ LES CINQ BLOCS REPLIÉS ONT ÉTÉ DÉPLIÉS, À LA DEMANDE. Ce que le repli protégeait — la
+# réponse du haut visible sans défiler — tient désormais à l'ORDRE seul : ce qu'on vient lire
+# chaque matin d'abord, ce qu'on va chercher ensuite. Un test sur des `<details>` disparus
+# aurait continué de passer au vert en ne vérifiant rien.
 
-def test_la_reponse_et_la_chaine_ne_sont_jamais_repliees():
+def test_la_reponse_vient_avant_tout_le_reste():
     """
-    ⚠️ C'EST LA LIGNE DE PARTAGE. Ce qu'on vient lire chaque matin reste sous les yeux ; ce
-    qu'on va chercher se replie. Replier la réponse reviendrait à demander un clic pour savoir
-    si la journée paie ses coûts.
-    """
-    html = _gabarit()
-    avant = html[:html.index('<details class="repli">')]
-    for ancre in ('id="db-value"', 'class="chaine"', 'id="eco-seuil"', 'id="periode-dit"'):
-        assert ancre in avant, f"{ancre} est passé derrière un repli"
-
-
-def test_les_blocs_de_consultation_sont_replies():
-    html = _gabarit()
-    for titre in ("Quand l'argent entre", "Ce qui s'est vendu", "Le mois en cours", "Tendances"):
-        i = html.index(titre)
-        # Le titre doit vivre dans un <summary>, donc après le <details> le plus proche.
-        assert html.rindex("<details", 0, i) > html.rindex("</details>", 0, i) \
-            if "</details>" in html[:i] else True, titre
-        assert "<summary>" in html[html.rindex("<details", 0, i):i], titre
-
-
-def test_aucun_bloc_nest_ouvert_par_defaut():
-    """⚠️ UN `open` OUBLIÉ ANNULE LE REPLI SANS QUE RIEN NE LE SIGNALE."""
-    html = _gabarit()
-    assert not re.search(r'<details class="repli"[^>]*\sopen', html)
-
-
-def test_chaque_repli_dit_ce_quon_y_trouve():
-    """
-    ⚠️ SANS RÉSUMÉ, ON OUVRE LES CINQ BLOCS POUR RETROUVER CELUI QU'ON CHERCHE — ce qui est pire
-    que tout laisser déroulé.
+    ⚠️ C'EST LA LIGNE DE PARTAGE, ET ELLE SURVIT AU DÉPLIAGE. La question, le résultat, la
+    chaîne et le point mort se lisent sans défiler ; le détail par produit, les tendances et le
+    mois en cours viennent après. Les intervertir remettrait un tableau de quarante lignes
+    devant le chiffre qu'on ouvre la page pour voir.
     """
     html = _gabarit()
-    for m in re.finditer(r"<summary>(.*?)</summary>", html, re.S):
-        assert 'class="repli-quoi"' in m.group(1), m.group(1)[:60]
+    ordre = ['id="db-value"', 'class="chaine"', 'id="eco-seuil"',
+             'id="recent-body"', 'id="products-body"', 'id="month-zone"', 'id="patterns-zone"']
+    positions = [html.index(a) for a in ordre]
+    assert positions == sorted(positions), \
+        "l'ordre de lecture est rompu : " + str(list(zip(ordre, positions)))
 
 
-def test_les_graphiques_sont_redimensionnes_a_louverture():
+def test_la_periode_est_annoncee_avant_le_premier_chiffre():
+    """Un total sans sa période est un nombre qui flotte."""
+    html = _gabarit()
+    assert html.index('id="periode-dit"') < html.index('id="db-value"')
+
+
+# ⚠️ LES TESTS DE LA GARDE DE REDIMENSIONNEMENT SONT PARTIS AVEC ELLE. Ils éprouvaient un
+# comportement réel — Chart.js dessine dans un canvas de taille nulle quand le bloc est replié,
+# et le graphique sort écrasé — mais plus aucun graphique de cette page n'est replié. Les
+# garder aurait entretenu la croyance qu'une protection veille, alors qu'elle n'a plus de cible.
+# Le code et ses tests sont au commit « Cinq blocs du tableau de bord se replient ».
+
+
+# ── Cliquer une commande ouvre son détail ────────────────────────────────────────────────────
+
+def test_la_liste_memorise_ses_lignes_pour_le_tiroir():
     """
-    ⚠️ CHART.JS MESURE SON CONTENEUR AU MOMENT DU TRACÉ. Dans un `<details>` fermé il vaut zéro :
-    le graphique est dessiné écrasé et le reste à l'ouverture. Rien ne lève, rien n'est rouge —
-    on voit un trait au lieu d'une courbe, et on cherche le bogue dans les données.
+    ⚠️ SANS `window._txData`, CLIQUER UNE COMMANDE N'OUVRE RIEN. La ligne se surligne au
+    survol, le curseur devient une main, et rien ne se passe — le pire des états, puisqu'on
+    réessaie. Un mutant qui supprimait cette ligne a survécu à une batterie : tout était testé
+    de la liste sauf ce qui la rend cliquable.
     """
     js = _js()
-    assert "Chart.getChart" in js, "on tient une liste maison au lieu d'interroger Chart.js"
-    i = js.index("document.addEventListener('toggle'")
-    bloc = js[i:i + 300]
-    assert "reveillerGraphiques" in bloc
-    # ⚠️ `toggle` NE REMONTE PAS : sans la phase de capture, l'écouteur posé sur le document
-    # ne recevrait jamais rien, et la garde serait silencieusement inopérante.
-    assert "true" in bloc, "l'écouteur n'est pas à la capture"
+    i = js.index("// ── Transactions récentes")
+    bloc = js[i:i + 1200]
+    assert "window._txData = d.recent" in bloc, "la liste ne mémorise plus ses lignes"
+    assert "openDrawer(" in bloc, "les lignes ne sont plus cliquables"
 
 
-def test_un_repli_contient_bien_un_canvas_a_reveiller():
-    """Si plus aucun graphique ne vit dans un repli, la garde ci-dessus n'a plus d'objet — et
-    c'est le moment de la retirer plutôt que de la laisser rassurer pour rien."""
-    html = _gabarit()
-    i = html.index('<details class="repli">')
-    assert "<canvas" in html[i:], "plus aucun graphique replié : la garde de redimensionnement est morte"
-
-
-def test_ouvrir_un_bloc_redimensionne_vraiment_ses_graphiques():
-    """
-    ⚠️ VÉRIFIER LA FORME DU CODE NE VÉRIFIE PAS SON EFFET. Deux mutants ont survécu à la
-    première batterie — l'un vidait `reveillerGraphiques`, l'autre coupait son appel — parce que
-    mes contrôles cherchaient `Chart.getChart` dans le source au lieu d'exécuter la fonction.
-    Un test qui lit du code atteste qu'il est écrit, jamais qu'il marche.
-    """
+def test_ouvrir_une_commande_remplit_le_tiroir():
+    """⚠️ ET ON L'EXÉCUTE. Vérifier qu'une affectation est écrite n'atteste pas que le tiroir
+    sache s'en servir."""
     if not shutil.which("node"):
         pytest.skip("node absent — vérifié en local et à la revue")
     js = _js()
-    i = js.index("function reveillerGraphiques(")
+    i = js.index("function openDrawer(")
     fonction = js[i:js.index("\n}", i) + 2]
-    # ⚠️ L'ÉCOUTEUR VIT DANS UN `if (typeof document !== 'undefined') { … }` : le découper à la
-    # première accolade en colonne 0 rendait un fragment déséquilibré, et node refusait de le
-    # lire. On prend le bloc entier, depuis son `if`.
-    i = js.index("if (typeof document !== 'undefined') {\n  document.addEventListener('toggle'")
-    ecouteur = js[i:js.index("\n}", js.index("}, true);", i)) + 2]
     prog = """
-      const redimensionnes = [];
-      function faireCanvas(nom){ return { nom: nom }; }
-      const dedans = [faireCanvas('haut'), faireCanvas('bas')];
-      const Chart = { getChart: function (c) {
-        return { resize: function(){ redimensionnes.push(c.nom); } };
+      const champs = {};
+      const document = { getElementById: function (id) {
+        return champs[id] || (champs[id] = {
+          textContent: '', innerHTML: '',
+          classList: { classes: [], add: function (c) { this.classes.push(c); } },
+        });
       } };
-      let ecouteurPose = null;
-      const document = { addEventListener: function (type, fn, capture) {
-        if (type === 'toggle') ecouteurPose = { fn: fn, capture: capture };
-      } };
-    """ + fonction + "\n" + ecouteur + """
-      const bloc = { tagName: 'DETAILS', open: true,
-                     querySelectorAll: function(){ return dedans; } };
-      ecouteurPose.fn({ target: bloc });
-      const ferme = { tagName: 'DETAILS', open: false,
-                      querySelectorAll: function(){ return [faireCanvas('jamais')]; } };
-      ecouteurPose.fn({ target: ferme });
-      console.log(JSON.stringify({ redimensionnes: redimensionnes,
-                                   capture: ecouteurPose.capture === true }));
+      const window = { _txData: [{
+        number: 'FT 2026/418', time: '14:03', client: 'Consommateur final', amount: 12.5,
+        items: [{ name: 'Café', qty: 2, total: 3.0 }],
+        payments: [{ method: 'Cartão de Crédito', amount: 12.5 }],
+      }] };
+      const fmt = function (v) { return Number(v).toFixed(2) + ' EUR'; };
+    """ + fonction + """
+      openDrawer(0);
+      console.log(JSON.stringify({
+        numero: champs['drawer-number'].textContent,
+        items: champs['drawer-items'].innerHTML,
+        total: champs['drawer-total'].innerHTML,
+        ouvert: champs['drawer'].classList.classes,
+      }));
     """
     r = subprocess.run(["node", "-e", prog], capture_output=True, text=True, timeout=20)
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout)
-    assert out["redimensionnes"] == ["haut", "bas"], out["redimensionnes"]
-    # ⚠️ ET RIEN N'EST TOUCHÉ SUR UN BLOC QUI SE FERME : redimensionner un canvas qu'on vient de
-    # masquer le remettrait à zéro, et c'est le défaut qu'on corrige, appliqué à l'envers.
-    assert "jamais" not in out["redimensionnes"]
-    assert out["capture"] is True, "`toggle` ne remonte pas — sans capture, rien n'arrive"
+    assert out["numero"] == "FT 2026/418"
+    assert "Café" in out["items"]
+    assert "12.50" in out["total"]
+    assert "open" in out["ouvert"], "le tiroir ne s'ouvre pas"
