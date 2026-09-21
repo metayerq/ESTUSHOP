@@ -167,6 +167,55 @@ def fetch_day_totals(day, s=None):
     return total
 
 
+def fetch_day_rows(day, s=None):
+    """
+    LES PAIEMENTS D'UN JOUR, UN PAR UN — pour les apparier aux factures Vendus.
+
+    ⚠️ ON NE PEUT PAS SE SERVIR DE `card_visits` ICI, ET C'EST TOUT LE PIÈGE. Elle écarte les
+    paiements sans derniers chiffres : un paiement manquant côté terminal ferait apparaître la
+    facture Vendus correspondante comme « facture sans paiement en face ». On chercherait un
+    encaissement perdu là où il n'y a qu'une ligne que la fidélité n'a pas su lire — et c'est
+    exactement le genre de fausse piste qu'un outil de rapprochement doit éviter de fabriquer.
+
+    ⚠️ CET APPEL COÛTE UNE VINGTAINE DE REQUÊTES À REVOLUT. Il est fait À LA DEMANDE, sur un
+    seul jour, quand quelqu'un ouvre le détail d'un écart. Jamais en chargement de page.
+    """
+    s = s or _session()
+    start = datetime.combine(day, datetime.min.time(), LISBON).astimezone(timezone.utc)
+    end   = start + timedelta(days=1)
+    j = _get(s, f"{BASE}/orders", {
+        "from_created_date": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "to_created_date":   end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "limit": 500}) or {}
+    orders = [o for o in j.get("orders", []) if o.get("state") == "completed"]
+
+    def pays(o):
+        return o, (_get(s, f"{BASE}/orders/{o['id']}/payments") or [])
+
+    rows = []
+    with ThreadPoolExecutor(4) as ex:
+        for o, ps in ex.map(pays, orders):
+            rembourse = bool(o.get("related_order_id"))
+            for p in ps:
+                if p.get("state") not in ("completed", "captured"):
+                    continue
+                ts = p.get("created_at") or o.get("created_at")
+                if _lisbon_day(ts) != day.isoformat():
+                    continue
+                rows.append({
+                    "ts": ts,
+                    # L'heure MURALE de Lisbonne : c'est celle que porte la facture Vendus, et
+                    # comparer un UTC à une heure locale décalerait tout d'une ou deux heures.
+                    "heure": datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                             .astimezone(LISBON).strftime("%H:%M"),
+                    "amount": int(p.get("amount") or 0),
+                    "tip": int(p.get("tip_amount") or 0),
+                    "refund": rembourse,
+                })
+    rows.sort(key=lambda r: r["ts"])
+    return rows
+
+
 def fetch_range(from_day, to_day):
     s = _session()
     out = []

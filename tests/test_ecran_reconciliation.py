@@ -188,3 +188,56 @@ def test_la_page_ne_recharge_plus_vendus_mois_par_mois():
     html = _gabarit()
     assert "/api/reconciliation/daily" in html
     assert "'/api/reconciliation?month=" not in html
+
+
+# ── Le détail d'une journée ──────────────────────────────────────────────────────────────────
+
+def test_le_detail_ne_souvre_que_sur_un_clic():
+    """
+    ⚠️ C'EST LA SEULE PARTIE DE CET ÉCRAN QUI TOUCHE UNE API EXTERNE : un appel Vendus et une
+    vingtaine d'appels Revolut, pour UN jour. Le charger au rendu ramènerait exactement la
+    rafale que la phase 1 a servi à supprimer.
+    """
+    js = _js()
+    i = js.index("async function ouvrirDetail")
+    assert "/api/reconciliation/day/" in js[i:i + 900]
+    # Et l'appel n'est pas dans le chargement de la période.
+    j = js.index("async function loadRange")
+    assert "/detail" not in js[j:js.index("function bornes") if "function bornes" in js[j:] else j + 1800]
+
+
+def test_lattente_est_annoncee_avec_sa_raison():
+    """
+    ⚠️ CET APPEL PREND PLUSIEURS SECONDES. Un écran figé sans explication se relit comme une
+    panne — et on clique une deuxième fois, ce qui relance vingt requêtes.
+    """
+    js = _js()
+    i = js.index("async function ouvrirDetail")
+    assert "quelques secondes" in js[i:i + 900]
+
+
+def test_un_second_clic_referme():
+    js = _js()
+    i = js.index("async function ouvrirDetail")
+    assert "detailEnCours === jour" in js[i:i + 400]
+
+
+def test_chaque_cote_dit_quoi_faire():
+    """
+    ⚠️ UNE LISTE SANS CONSIGNE N'EST PAS ACTIONNABLE. « Encaissé sans facture » et « facturé
+    sans encaissement » appellent deux gestes opposés, et le second a un effet sur le tiroir.
+    """
+    html = _gabarit()
+    i = html.index("function rendreDetail")
+    bloc = html[i:i + 2600]
+    assert "Émets-la dans Vendus" in bloc
+    assert "dans le tiroir" in bloc
+    assert "avoir n'a pas de " in bloc
+
+
+def test_le_detail_dit_sa_tolerance():
+    """Un appariement « au centime près, à 20 minutes près » se conteste ; un appariement muet
+    se croit."""
+    html = _gabarit()
+    assert "Appariement au centime près" in html
+    assert "d.fenetre_minutes" in html

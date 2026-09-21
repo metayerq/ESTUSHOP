@@ -124,6 +124,15 @@ td.date { color:var(--muted); white-space:nowrap; }
   border:1px solid var(--border); color:var(--muted); }
 .pastille.ok { background:#f3f9f3; border-color:#bcd9bd; color:#2f5d33; }
 .pastille.doute { background:#fdf2e6; border-color:#e8c9a0; color:#6b4a1e; }
+.detail-col { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:20px; margin-top:12px; }
+.detail-col h4 { font-size:12px; font-weight:700; margin:0 0 8px; }
+.detail-l { display:flex; justify-content:space-between; gap:10px; padding:6px 0;
+  border-bottom:1px solid var(--border); font-size:13px; }
+.detail-l:last-child { border-bottom:none; }
+.detail-l .h { font-family:var(--mono); color:var(--muted); font-size:11.5px; }
+.detail-vide { font-size:12.5px; color:var(--muted); }
+tr.cliquable { cursor:pointer; }
+tr.cliquable:hover { background:var(--bg-hover); }
 .pastille.alerte { background:#fdecea; border-color:#f5c2bd; color:#7d2019; }
 </style>
 </head>
@@ -258,6 +267,13 @@ td.date { color:var(--muted); white-space:nowrap; }
       <tbody id="tbody"><tr><td colspan="7" class="empty">Chargement&hellip;</td></tr></tbody>
     </table>
   </div>
+
+  <!--
+    ⚠️ LE DÉTAIL NE S'OUVRE QUE SUR DEMANDE. C'est la seule partie de cet écran qui touche une
+    API externe : un appel Vendus et une vingtaine d'appels Revolut, pour UN jour. Le charger
+    au rendu de la page ramènerait exactement la rafale que la phase 1 a servi à supprimer.
+  -->
+  <div id="detail" class="card" style="display:none; margin-top:18px"></div>
 
   <!-- ── Cash en caisse (calculateur) ── -->
   <div class="header" style="margin-top:48px; margin-bottom:8px;">
@@ -590,7 +606,7 @@ function render(){
       `<td class="num" colspan="5" style="text-align:left; color:var(--faint)">fermé</td><td></td></tr>`;
     const pastille = j.aujourdhui ? '<span class="pastille">en cours</span>'
       : `<span class="pastille ${c}">${c === 'ok' ? '✓' : c === 'doute' ? 'à vérifier' : 'écart'}</span>`;
-    return `<tr>
+    return `<tr class="cliquable" data-jour="${j.day}">
       <td class="date">${dow} ${j.day.slice(8)}/${j.day.slice(5,7)}</td>
       <td class="num">${j.terminal_cents ? fmt(eu(j.terminal_cents)) : '<span style="color:var(--faint)">—</span>'}</td>
       <td class="num" style="color:var(--green)">${j.pourboires_cents ? fmt(eu(j.pourboires_cents)) : ''}</td>
@@ -627,6 +643,81 @@ function render(){
   dEl.style.color = Math.abs(dTot) < 100 ? 'var(--green)' : 'var(--red)';
 
   updateCashCalc();
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * LE DÉTAIL D'UNE JOURNÉE — ce qui s'apparie, et ce qui reste seul
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ⚠️ UN NOMBRE NE SE CORRIGE PAS ; UNE LIGNE, SI. « 23,40 € d'écart » envoie chercher ; « FT
+ * 2026/117 à 14:32, 9,60 €, sans paiement en face » s'ouvre dans Vendus et se répare.
+ */
+let detailEnCours = null;
+
+document.addEventListener('click', e => {
+  const tr = e.target.closest('tr.cliquable');
+  if (!tr) return;
+  ouvrirDetail(tr.dataset.jour);
+});
+
+async function ouvrirDetail(jour){
+  const el = document.getElementById('detail');
+  if (detailEnCours === jour){ el.style.display = 'none'; detailEnCours = null; return; }
+  detailEnCours = jour;
+  el.style.display = 'block';
+  /* ⚠️ ON ANNONCE L'ATTENTE, ET SA RAISON. Cet appel prend plusieurs secondes — une vingtaine
+     de requêtes à Revolut. Un écran figé sans explication se relit comme une panne, et on
+     clique une deuxième fois. */
+  el.innerHTML = `<b>${jourCourt(jour)}</b><p class="detail-vide">Rapprochement en cours — ` +
+    `chaque paiement du jour est relu chez Revolut, ça prend quelques secondes…</p>`;
+  try {
+    const r = await fetch(`/api/reconciliation/day/${jour}/detail`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    el.innerHTML = rendreDetail(d);
+  } catch(err){
+    el.innerHTML = `<b>${jourCourt(jour)}</b><p class="detail-vide">Détail indisponible — ` +
+      `${err.message}</p>`;
+  }
+}
+
+function ligne(x, suffixe){
+  return `<div class="detail-l"><span class="h">${x.heure || '—'}${suffixe || ''}</span>` +
+    `<span>${fmt(eu(x.cents))}</span></div>`;
+}
+
+function rendreDetail(d){
+  const ps = d.paiements_seuls || [], fs = d.factures_seules || [], rb = d.remboursements || [];
+  let h = `<b>${jourCourt(d.jour)}</b> · <span class="pastille ok">${d.apparies} apparié(s)</span>`;
+  if (!ps.length && !fs.length){
+    h += `<p class="detail-vide">Chaque paiement du terminal a sa facture, et réciproquement. ` +
+      `Rien à corriger.</p>`;
+  }
+  h += '<div class="detail-col">';
+  if (ps.length){
+    /* ⚠️ LE CAS BÉNIN, ET ON LE DIT. L'argent est à la banque ; il manque un document. */
+    h += `<div><h4>Encaissé au terminal, sans facture Vendus</h4>` +
+      ps.map(x => ligne(x)).join('') +
+      `<p class="detail-vide" style="margin-top:8px">L'argent est encaissé ; c'est la facture ` +
+      `qui manque. Émets-la dans Vendus à l'heure indiquée.</p></div>`;
+  }
+  if (fs.length){
+    /* ⚠️ LE CAS QUI COÛTE. Une facture carte sans encaissement veut souvent dire du cash tapé
+       « carte » — l'argent est alors dans le tiroir, et le total espèces est faux. */
+    h += `<div><h4>Facturé en carte, sans paiement au terminal</h4>` +
+      fs.map(x => ligne(x, x.numero ? ' · ' + x.numero : '')).join('') +
+      `<p class="detail-vide" style="margin-top:8px">Souvent du cash tapé « carte ». Si c'est ` +
+      `le cas, cet argent est dans le tiroir — le total espèces de Vendus est faux d'autant.</p></div>`;
+  }
+  if (rb.length){
+    h += `<div><h4>Remboursements du jour</h4>` + rb.map(x => ligne(x)).join('') +
+      `<p class="detail-vide" style="margin-top:8px">Comptés à part : un avoir n'a pas de ` +
+      `facture de vente en face. Vérifie qu'il est aussi passé dans Vendus.</p></div>`;
+  }
+  h += '</div>';
+  h += `<p class="detail-vide" style="margin-top:12px">Appariement au centime près, ` +
+    `à ${d.fenetre_minutes} minutes près.</p>`;
+  return h;
 }
 
 // ── Calculateur cash en caisse — méthode fiable (Vendus total − carte terminal) ─

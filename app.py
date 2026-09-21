@@ -3188,6 +3188,120 @@ def api_reconciliation_daily():
     })
 
 
+# ── LE RAPPROCHEMENT TRANSACTION PAR TRANSACTION ─────────────────────────────────────────────
+#
+# ⚠️ UN ÉCART CHIFFRÉ NE SE RÉPARE PAS. « 23,40 € » dit qu'il y a un problème ; « paiement de
+# 9,60 € à 14:32 sans facture Vendus en face » dit lequel, et ce qu'il faut ouvrir pour le
+# corriger. C'est la différence entre un tableau de bord et un outil.
+
+# La fenêtre de temps tolérée entre un paiement et sa facture, en minutes.
+# ⚠️ LARGE, ET C'EST VOULU. La facture est émise après l'encaissement, parfois plusieurs minutes
+# plus tard quand le client commande encore. Trop serré, l'appariement échoue et fabrique deux
+# anomalies — un paiement orphelin ET une facture orpheline — pour une seule transaction saine.
+FENETRE_APPARIEMENT_MIN = 20
+
+
+def _apparier(paiements, factures):
+    """
+    Associe chaque paiement terminal à une facture carte, par MONTANT puis par heure.
+
+    ⚠️ LE MONTANT D'ABORD, L'HEURE ENSUITE. Deux cafés à 2,50 € à trois minutes d'intervalle se
+    ressemblent ; un montant identique au centime est un signal fort, l'heure ne sert qu'à
+    départager les doublons. L'inverse apparierait au hasard dès qu'il y a du monde.
+
+    ⚠️ ET CHAQUE LIGNE NE SERT QU'UNE FOIS. Sans cela, un paiement de 2,50 € s'apparierait à
+    toutes les factures de 2,50 € de la journée, et le rapprochement dirait « tout est bon »
+    précisément les jours chargés.
+    """
+    restantes = list(factures)
+    apparies, orphelins = [], []
+    for p in sorted(paiements, key=lambda x: x["ts"]):
+        candidates = [f for f in restantes if f["amount"] == p["amount"]]
+        if candidates:
+            # La plus proche dans le temps, si l'heure est connue des deux côtés.
+            candidates.sort(key=lambda f: abs(_minutes(f["heure"]) - _minutes(p["heure"])))
+            f = candidates[0]
+            ecart_min = abs(_minutes(f["heure"]) - _minutes(p["heure"]))
+            if ecart_min <= FENETRE_APPARIEMENT_MIN:
+                restantes.remove(f)
+                apparies.append({"heure": p["heure"], "amount": p["amount"],
+                                 "ecart_minutes": ecart_min})
+                continue
+        orphelins.append(p)
+    return apparies, orphelins, restantes
+
+
+def _minutes(hhmm):
+    try:
+        h, m = str(hhmm or "00:00").split(":")[:2]
+        return int(h) * 60 + int(m)
+    except Exception:
+        return 0
+
+
+@app.route("/api/reconciliation/day/<jour>/detail")
+def api_reconciliation_detail(jour):
+    """
+    Le détail d'une journée : ce qui s'apparie, et ce qui reste seul de chaque côté.
+
+    ⚠️ UN SEUL APPEL VENDUS ET UN SEUL JOUR REVOLUT, À LA DEMANDE. C'est la seule route de cet
+    écran qui touche une API externe ; elle ne s'ouvre que quand quelqu'un clique sur un écart.
+    La charger au rendu de la page ramènerait exactement la rafale qu'on a passé la phase 1 à
+    supprimer.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    try:
+        d = date.fromisoformat(jour)
+    except ValueError:
+        return jsonify({"error": "date attendue au format YYYY-MM-DD"}), 400
+    if d > today_lisbon():
+        return jsonify({"error": "jour à venir"}), 400
+    if not _rm.enabled():
+        return jsonify({"error": "REVOLUT_MERCHANT_KEY absente"}), 503
+
+    try:
+        paiements = _rm.fetch_day_rows(d)
+    except Exception as e:
+        return jsonify({"error": f"Revolut : {type(e).__name__}: {str(e)[:150]}"}), 502
+
+    # ⚠️ LES REMBOURSEMENTS NE S'APPARIENT PAS À UNE FACTURE DE VENTE. Ils sont rendus à part :
+    # les mêler ferait apparaître autant de fausses factures orphelines.
+    remboursements = [p for p in paiements if p["refund"]]
+    ventes = [p for p in paiements if not p["refund"]]
+
+    try:
+        docs = get_documents(jour, jour, detailed=True)
+    except Exception as e:
+        return jsonify({"error": f"Vendus : {type(e).__name__}: {str(e)[:150]}"}), 502
+
+    factures = []
+    for doc in docs or []:
+        heure = (doc.get("local_time") or "")[11:16]
+        signe = -1 if doc.get("_refund") else 1
+        for p in doc.get("payments") or []:
+            if _sans_accent(p.get("title")) not in TITRES_CARTE:
+                continue
+            cents = round(float(p.get("amount") or 0) * 100) * signe
+            if cents <= 0:
+                continue
+            factures.append({"heure": heure, "amount": cents,
+                             "numero": doc.get("number") or doc.get("id")})
+
+    apparies, paiements_seuls, factures_seules = _apparier(ventes, factures)
+    return jsonify({
+        "jour": jour,
+        "apparies": len(apparies),
+        # ⚠️ LES ORPHELINS SONT RENDUS EN ENTIER, pas comptés. C'est la liste qu'on ouvre dans
+        # Vendus pour corriger ; un nombre ne se corrige pas.
+        "paiements_seuls": [{"heure": p["heure"], "cents": p["amount"]} for p in paiements_seuls],
+        "factures_seules": [{"heure": f["heure"], "cents": f["amount"],
+                             "numero": f["numero"]} for f in factures_seules],
+        "remboursements": [{"heure": p["heure"], "cents": p["amount"]} for p in remboursements],
+        "fenetre_minutes": FENETRE_APPARIEMENT_MIN,
+    })
+
+
 # ── Página da contabilista : reconciliação TPA ────────────────────────────────
 # Accès par token secret (env ACCOUNTANT_TOKEN) — lecture seule, en portugais.
 # Données Revolut : table Supabase revolut_days (fallback revolut_data.json).
