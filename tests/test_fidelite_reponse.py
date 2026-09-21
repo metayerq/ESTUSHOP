@@ -111,3 +111,57 @@ def test_la_reponse_voyage_avec_la_serie():
     out = __import__("programme").conversion_series([], [], [], datetime(2026, 8, 12,
                                                     tzinfo=timezone.utc))
     assert "headline" in out
+
+
+# ── La limite de la mesure, portée par la réponse ────────────────────────────────────────────
+
+def test_une_carte_rattachee_jamais_revue_ne_compte_nulle_part():
+    """
+    ⚠️ NI AU NUMÉRATEUR, NI AU DÉNOMINATEUR. Le taux porte sur les cartes vues au moins deux
+    fois : celles que la caisse n'a pas revues sortent du calcul des deux côtés. Dix personnes
+    inscrites dans la journée peuvent donc ne déplacer le chiffre d'aucun point — ce n'est pas
+    une erreur de calcul, c'est une limite de la mesure, et la taire ferait lire « le programme
+    ne prend pas » là où il faut lire « la caisse ne les a pas encore revues ».
+    """
+    h = conversion_headline(SERIE, hors_mesure=40)
+    assert h["hors_mesure"] == 40
+    assert h["rate_pct"] == 42.3, "le taux mesuré disparaît alors qu'il est connu"
+
+
+def test_la_reserve_se_tait_quand_elle_ne_pese_pas():
+    """
+    ⚠️ UN AVERTISSEMENT PERMANENT EST UN AVERTISSEMENT QU'ON CESSE DE LIRE. Deux cartes hors
+    mesure à côté de onze comptées ne changent aucune décision ; quarante, si.
+    """
+    assert conversion_headline(SERIE, hors_mesure=2)["hors_mesure"] is None
+    assert conversion_headline(SERIE, hors_mesure=0)["hors_mesure"] is None
+
+
+def test_le_seuil_est_le_nombre_de_cartes_reellement_comptees():
+    """Autant de cartes hors mesure que de cartes comptées : le taux dit au moins autant sur
+    l'instrumentation que sur le programme."""
+    h = SERIE[-2]           # 11 rattachées comptées
+    assert conversion_headline(SERIE, hors_mesure=11)["hors_mesure"] == 11
+    assert conversion_headline(SERIE, hors_mesure=10)["hors_mesure"] is None
+
+
+def test_la_reserve_survit_a_labsence_de_semaine_complete():
+    """Si rien n'est lisible ET que des cartes manquent, les deux doivent être dits."""
+    h = conversion_headline([sem("2026-08-10", 28, 12)], hors_mesure=40)
+    assert h["ok"] is False and h["hors_mesure"] == 40
+
+
+def test_la_serie_annonce_ce_quelle_compte_et_ce_quelle_laisse():
+    from datetime import datetime, timezone
+    from programme import conversion_series
+    out = conversion_series(
+        [{"fp": "a", "ts": "2026-08-01T10:00:00Z"}, {"fp": "a", "ts": "2026-08-03T10:00:00Z"},
+         {"fp": "b", "ts": "2026-08-02T10:00:00Z"}],
+        [{"fp": "a", "phone": "+351900", "linked_at": "2026-08-04T10:00:00Z"},
+         {"fp": "b", "phone": "+351901", "linked_at": "2026-08-04T10:00:00Z"}],
+        [{"phone": "+351900", "consent_at": "2026-08-04T10:00:00Z"},
+         {"phone": "+351901", "consent_at": "2026-08-04T10:00:00Z"}],
+        datetime(2026, 8, 12, tzinfo=timezone.utc))
+    # `b` n'a qu'un passage : rattachée, mais hors du calcul du taux.
+    assert out["linked_total"] == 2
+    assert out["linked_counted"] == 1

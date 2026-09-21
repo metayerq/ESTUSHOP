@@ -232,6 +232,13 @@
         <span id="fd-delta"></span>
       </div>
       <div class="tx-sub" id="fd-n"></div>
+      <!-- ⚠️ LA RÉSERVE VOYAGE AVEC LE CHIFFRE, PAS EN NOTE SOUS LE GRAPHIQUE. Le taux ne
+           compte que les cartes vues AU MOINS DEUX FOIS : une carte rattachée dont le second
+           passage n'est pas enregistré disparaît du numérateur comme du dénominateur. Dix
+           personnes inscrites dans la journée peuvent alors ne déplacer le chiffre d'aucun
+           point — et « le programme ne prend pas » se lirait là où il faut lire « la caisse ne
+           les a pas encore revues ». Les deux mènent à des décisions opposées. -->
+      <div class="tx-reason" id="fd-reserve" style="display:none"></div>
       <div class="tx-rule" id="fd-rule"></div>
       <div class="tx-reason" id="fd-note" style="display:none"></div>
     </div>
@@ -650,6 +657,18 @@ tbody tr:hover { background:var(--bg-hover); }
       var d = new Date(iso);
       return d.toLocaleDateString('fr-FR', {day:'numeric', month:'short'});
     };
+
+    /* La réserve d'abord : elle vaut même quand le reste est mesuré. */
+    var res = E('fd-reserve');
+    if (h.hors_mesure) {
+      res.innerHTML = '<b>' + h.hors_mesure + ' carte(s) rattachée(s) ne sont pas compt&eacute;es ici</b> — ' +
+        'la caisse ne les a pas encore revues une seconde fois. Ce taux mesure alors ce que ' +
+        '<code>card_visits</code> a enregistr&eacute;, pas l\'effort fait au comptoir. ' +
+        'Le total des inscrits, lui, est juste.';
+      res.style.display = '';
+    } else {
+      res.style.display = 'none';
+    }
 
     if (!h.ok) {
       E('fd-lead').textContent  = 'Pas encore de semaine complète à lire.';

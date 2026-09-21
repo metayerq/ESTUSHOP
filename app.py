@@ -1702,6 +1702,63 @@ def _fidelidade_donnees(now, reglages):
     return comptes, conversion, tronque
 
 
+@app.route("/api/loyalty/diag")
+def api_loyalty_diag():
+    """
+    POURQUOI LE TAUX DE RATTACHEMENT VAUT CE QU'IL VAUT.
+
+    ⚠️ MESURER AVANT DE THÉORISER. Le taux ne compte que les cartes vues AU MOINS DEUX FOIS :
+    dix personnes inscrites dans la journée peuvent ne déplacer le chiffre d'aucun point, et il
+    y a trois raisons possibles à ça — leur carte n'a qu'un passage enregistré, leur
+    rattachement n'a pas de date, ou la semaine en cours est exclue de la réponse. Sans ce
+    relevé, on choisit la plus plausible des trois, et on a une chance sur trois.
+
+    Lecture seule, sous le login, réservé à l'admin : il énumère des empreintes de cartes.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+
+    visites, _ = _supa_all("card_visits", {"select": "fp,ts", "order": "ts.asc"})
+    liens, _ = _supa_all("card_links", {"select": "fp,phone,linked_at"})
+    fiches, _ = _supa_all("customers", {"select": "phone,consent_at"})
+
+    passages = {}
+    for v in visites or []:
+        fp = v.get("fp")
+        if fp:
+            passages[fp] = passages.get(fp, 0) + 1
+
+    consent = {c.get("phone"): c.get("consent_at") for c in (fiches or []) if c.get("phone")}
+    sans_date = sans_2e = avec_2e = 0
+    for l in liens or []:
+        fp = l.get("fp")
+        if not fp:
+            continue
+        if not l.get("linked_at") and not consent.get(l.get("phone")):
+            sans_date += 1
+        if passages.get(fp, 0) >= 2:
+            avec_2e += 1
+        else:
+            sans_2e += 1
+
+    jour = today_lisbon()
+    return jsonify({
+        "jour": jour.isoformat(),
+        "cartes_vues": len(passages),
+        "cartes_vues_2_fois_ou_plus": sum(1 for n in passages.values() if n >= 2),
+        "rattachements": len(liens or []),
+        "rattachements_sans_date": sans_date,
+        # ⚠️ C'EST LA LIGNE QUI EXPLIQUE TOUT. Un rattachement dont la carte n'a qu'un passage
+        # enregistré n'entre NI au numérateur NI au dénominateur du taux.
+        "rattachements_carte_vue_2_fois": avec_2e,
+        "rattachements_carte_vue_1_fois": sans_2e,
+        "numeros_avec_consentement": sum(1 for v in consent.values() if v),
+        "derniere_visite_enregistree": (visites or [{}])[-1].get("ts"),
+        "visites_aujourd_hui": sum(1 for v in (visites or [])
+                                   if str(v.get("ts") or "")[:10] == jour.isoformat()),
+    })
+
+
 @app.route("/loyalty")
 def page_loyalty():
     """Le backoffice du programme de points. Sous le login, comme le reste des pages."""

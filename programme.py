@@ -357,19 +357,34 @@ def conversion_series(visits, links, customers, now, weeks=12):
             "new_customers": sum(1 for ms in inscrits if debut <= ms < fin),
         })
 
+    # ⚠️ LES CARTES RATTACHÉES QUE LE DÉNOMINATEUR NE VOIT PAS. Le taux ne compte que les cartes
+    # vues AU MOINS DEUX FOIS : une carte rattachée dont le second passage n'est pas enregistré
+    # dans `card_visits` disparaît du numérateur comme du dénominateur. Si cette part est
+    # grosse, le taux affiché SOUS-ESTIME l'effort fait au comptoir — dix personnes inscrites
+    # dans la journée peuvent ne déplacer le chiffre d'aucun point.
+    #
+    # ⚠️ ET CE N'EST PAS UNE ERREUR DE CALCUL, C'EST UNE LIMITE DE LA MESURE. La taire ferait
+    # lire « le programme ne prend pas » là où il faut lire « la caisse n'a pas encore revu ces
+    # gens ». Les deux mènent à des décisions opposées.
+    rattachees_connues = len(rattache_a)
+    rattachees_revenues = sum(1 for fp in rattache_a if fp in revenue_a)
+
     derniere = lignes[-1] if lignes else None
     return {
         "weeks": lignes,
         "undated_links": undated,
+        "linked_total": rattachees_connues + undated,
+        "linked_counted": rattachees_revenues,
         "customers_total": len(inscrits),
         "opted_out": sum(1 for c in (customers or []) if c.get("opted_out_at")),
         "this_week_customers": derniere["new_customers"] if derniere else 0,
         "this_week_links": derniere["new_links"] if derniere else 0,
-        "headline": conversion_headline(lignes),
+        "headline": conversion_headline(lignes, hors_mesure=(
+            rattachees_connues + undated - rattachees_revenues)),
     }
 
 
-def conversion_headline(lignes, recul=4):
+def conversion_headline(lignes, recul=4, hors_mesure=0):
     """
     La réponse de la page : le programme prend-il, et de combien a-t-il bougé ?
 
@@ -388,12 +403,23 @@ def conversion_headline(lignes, recul=4):
     mesurees = [l for l in (lignes or [])[:-1] if l.get("rate_pct") is not None]
     if not mesurees:
         return {"ok": False, "rate_pct": None, "reason": "no-complete-week",
+                "hors_mesure": hors_mesure or None,
                 "n": None, "week": None, "delta_pts": None, "prev": None,
                 "prev_week": None, "prev_n": None, "weeks_between": 0}
 
     fin = mesurees[-1]
     base = mesurees[-(recul + 1)] if len(mesurees) > recul else None
+
+    # ⚠️ LA RÉSERVE VOYAGE AVEC LE CHIFFRE, PAS EN NOTE SOUS LE GRAPHIQUE. Une carte rattachée
+    # que la caisse n'a pas revue n'entre ni au numérateur ni au dénominateur : quand ces
+    # cartes-là sont aussi nombreuses que celles comptées, le taux affiché n'est plus une
+    # mesure de l'effort au comptoir, c'est une mesure de ce que `card_visits` a enregistré.
+    reserve = None
+    if hors_mesure > 0 and hors_mesure >= max(1, fin["linked"]):
+        reserve = hors_mesure
+
     return {
+        "hors_mesure": reserve,
         "ok": True,
         "rate_pct": fin["rate_pct"],
         "n": fin["returning"],

@@ -134,7 +134,7 @@ const champs = {};
 function E(id){
   return champs[id] || (champs[id] = {
     textContent: '', innerHTML: '',
-    style: { display: id === 'fd-note' ? 'none' : '' },
+    style: { display: (id === 'fd-note' || id === 'fd-reserve') ? 'none' : '' },
   });
 }
 """
@@ -157,6 +157,8 @@ def _reponse(headline):
           rule: champs['fd-rule'].innerHTML,
           note: champs['fd-note'].textContent,
           noteVisible: champs['fd-note'].style.display !== 'none',
+          reserve: champs['fd-reserve'].innerHTML,
+          reserveVisible: champs['fd-reserve'].style.display !== 'none',
         }}));
     """)
 
@@ -255,3 +257,39 @@ def test_les_deux_pages_portent_la_meme_forme():
         assert 'class="tx-q"' in g, page
         assert 'class="tx-value"' in g, page
         assert 'class="tx-limites"' in g, page
+
+
+# ── La réserve qui voyage avec le chiffre ────────────────────────────────────────────────────
+#
+# ⚠️ LE TAUX NE COMPTE QUE LES CARTES VUES AU MOINS DEUX FOIS. Une carte rattachée dont le
+# second passage n'est pas enregistré disparaît du numérateur COMME du dénominateur : dix
+# personnes inscrites dans la journée peuvent ne déplacer le chiffre d'aucun point. Sans la
+# réserve, on lit « le programme ne prend pas » là où il faut lire « la caisse ne les a pas
+# encore revues » — et les deux mènent à des décisions opposées.
+
+def test_la_reserve_saffiche_a_cote_du_chiffre_pas_sous_le_graphique():
+    r = _reponse({**H, "hors_mesure": 40})
+    assert r["reserveVisible"] is True
+    assert "40 carte(s)" in r["reserve"]
+    assert "card_visits" in r["reserve"], "la réserve ne dit pas ce qui est réellement mesuré"
+
+
+def test_la_reserve_vaut_meme_quand_le_reste_est_mesure():
+    """⚠️ ELLE N'EST PAS UNE EXCUSE D'ABSENCE : le taux existe, il est simplement partiel."""
+    r = _reponse({**H, "hors_mesure": 40})
+    assert r["value"] == "42.3 %" and "6,0 pts" in r["delta"]
+
+
+def test_sans_reserve_rien_ne_saffiche():
+    """Un avertissement permanent est un avertissement qu'on cesse de lire."""
+    assert _reponse(H)["reserveVisible"] is False
+
+
+def test_le_total_des_inscrits_reste_annonce_juste():
+    """
+    ⚠️ CE QUI EST FAUSSÉ, C'EST LE TAUX, PAS LE COMPTE. Quelqu'un qui vient d'inscrire dix
+    personnes doit pouvoir vérifier que ses dix sont bien enregistrées, même si le taux ne
+    bouge pas.
+    """
+    r = _reponse({**H, "hors_mesure": 40})
+    assert "juste" in r["reserve"]
