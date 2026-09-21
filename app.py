@@ -3005,11 +3005,45 @@ def api_reconciliation():
 # entiers (comme l'API Revolut), `daily_summary` en euros décimaux (comme Vendus). Le bug
 # d'unité est le plus banal et le plus silencieux : un facteur cent ne lève jamais.
 
-# Ce qu'un titre de paiement Vendus désigne. ⚠️ EN MINUSCULES ET SANS ACCENT à la comparaison :
-# « Cartão » et « cartao » sont le même moyen de paiement, et un jour quelqu'un tapera l'un ou
-# l'autre.
-TITRES_CARTE = {"cartao", "multibanco", "mbway", "mb way", "card", "carte", "tpa"}
-TITRES_ESPECES = {"dinheiro", "numerario", "cash", "especes"}
+# Ce qu'un titre de paiement Vendus désigne.
+#
+# ⚠️ ON RECONNAÎT DES MOTS, PAS DES LIBELLÉS ENTIERS. La première version comparait la chaîne
+# complète : le vrai libellé du café est « Cartão de Crédito », qui n'était donc dans aucune
+# liste. Il tombait dans « autre », la colonne « Facturé carte » affichait 0 € sur des journées
+# à 380 €, et l'écran annonçait un écart égal au chiffre d'affaires.
+#
+# ⚠️ ET LA FAMILLE EST OUVERTE : « Cartão de Débito », « Cartão Refeição », « MB Way », un
+# « Visa » tapé à la main le jour où quelqu'un configure un nouveau terminal. Énumérer les
+# libellés exacts, c'est s'engager à les deviner tous ; reconnaître le mot « cartao » couvre la
+# famille entière.
+#
+# ⚠️ EN MINUSCULES ET SANS ACCENT : « Cartão » et « CARTAO » sont le même moyen de paiement.
+MOTS_CARTE = {"cartao", "card", "cards", "multibanco", "mb", "mbway", "tpa",
+              "visa", "mastercard", "maestro", "carte"}
+MOTS_ESPECES = {"dinheiro", "numerario", "cash", "especes", "espece", "numeraire"}
+
+# Les libellés entiers restent reconnus tels quels — un libellé d'un seul mot est déjà couvert
+# par les ensembles ci-dessus, mais ceux à plusieurs mots (« mb way ») ont besoin des deux.
+TITRES_CARTE = MOTS_CARTE | {"mb way"}
+TITRES_ESPECES = MOTS_ESPECES
+
+
+def _classe_titre(titre):
+    """
+    Carte, espèces, ou autre — pour UN libellé.
+
+    ⚠️ UN SEUL ENDROIT DÉCIDE, ET C'EST TOUT L'INTÉRÊT. Le classement sert à trois écrans : la
+    répartition quotidienne, le rapprochement transaction par transaction, et la sonde de
+    diagnostic. Trois copies de la règle, c'est la garantie qu'un jour l'une reconnaîtra
+    « Cartão de Crédito » et pas les autres — et l'écart changera selon l'écran qu'on regarde.
+    """
+    n = _sans_accent(titre)
+    mots = set(n.replace("/", " ").replace("-", " ").replace(".", " ").split())
+    if n in TITRES_CARTE or (mots & MOTS_CARTE):
+        return "carte"
+    if n in TITRES_ESPECES or (mots & MOTS_ESPECES):
+        return "especes"
+    return "autre"
 
 # Le taux de frais par défaut, mesuré sur juillet 2026 (87,93 € pour 6 091,55 € de ventes).
 # ⚠️ UN REPLI, PAS UNE VÉRITÉ. Le taux réel est recalculé sur le dernier mois réglé dès qu'il
@@ -3036,10 +3070,10 @@ def _classer_paiements(repartition):
     carte = especes = autre = 0.0
     inconnus = []
     for titre, montant in (repartition or {}).items():
-        n = _sans_accent(titre)
-        if n in TITRES_CARTE:
+        quoi = _classe_titre(titre)
+        if quoi == "carte":
             carte += float(montant or 0)
-        elif n in TITRES_ESPECES:
+        elif quoi == "especes":
             especes += float(montant or 0)
         else:
             autre += float(montant or 0)
@@ -3260,9 +3294,7 @@ def api_vendus_paiements():
     def ranger(titres):
         out = {"carte": [], "especes": [], "autre": []}
         for t in titres or []:
-            n = _sans_accent(t)
-            out["carte" if n in TITRES_CARTE
-                else "especes" if n in TITRES_ESPECES else "autre"].append(t)
+            out[_classe_titre(t)].append(t)
         return out
 
     return jsonify({
@@ -3273,7 +3305,10 @@ def api_vendus_paiements():
                                 "present": cache is not None},
         "classement": {"live": ranger(live.keys()),
                        "cache": ranger((cache or {}).keys())},
-        "connus": {"carte": sorted(TITRES_CARTE), "especes": sorted(TITRES_ESPECES)},
+        # ⚠️ DES MOTS, PAS DES LIBELLÉS. « Cartão de Crédito » est reconnu parce qu'il CONTIENT
+        # « cartao » — afficher la liste des libellés entiers ferait croire qu'il faut les
+        # énumérer un par un.
+        "mots_reconnus": {"carte": sorted(MOTS_CARTE), "especes": sorted(MOTS_ESPECES)},
     })
 
 
@@ -3369,7 +3404,7 @@ def api_reconciliation_detail(jour):
         heure = (doc.get("local_time") or "")[11:16]
         signe = -1 if doc.get("_refund") else 1
         for p in doc.get("payments") or []:
-            if _sans_accent(p.get("title")) not in TITRES_CARTE:
+            if _classe_titre(p.get("title")) != "carte":
                 continue
             cents = round(float(p.get("amount") or 0) * 100) * signe
             if cents <= 0:

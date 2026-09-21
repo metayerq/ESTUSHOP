@@ -55,11 +55,13 @@ def test_un_libelle_inconnu_est_range_dans_autre(client, monkeypatch):
     ⚠️ LA TROISIÈME CAUSE, ET LA PLUS SOURNOISE. Vendus rend le champ, le cache l'a — mais le
     libellé n'est pas dans ma liste. « Facturé carte » reste à zéro sans que rien ne manque.
     """
+    # ⚠️ « Visa/Mastercard » ÉTAIT L'EXEMPLE DE LA PREMIÈRE VERSION — il est désormais reconnu.
+    # Un test qui garde un exemple périmé cesse de tester ce qu'il dit tester.
     poser(monkeypatch,
-          docs=[{"payments": [{"title": "Visa/Mastercard", "amount": 9.6}]}],
-          cache={"Visa/Mastercard": 9.6})
+          docs=[{"payments": [{"title": "Vale de refeição", "amount": 9.6}]}],
+          cache={"Vale de refeição": 9.6})
     d = client.get("/api/vendus/paiements?day=2026-09-18").get_json()
-    assert d["classement"]["live"]["autre"] == ["Visa/Mastercard"]
+    assert d["classement"]["live"]["autre"] == ["Vale de refeição"]
     assert d["classement"]["live"]["carte"] == []
 
 
@@ -73,8 +75,10 @@ def test_elle_annonce_ce_quelle_connait(client, monkeypatch):
     """Pour qu'on voie immédiatement ce qu'il manque à la liste, sans lire le code."""
     poser(monkeypatch)
     d = client.get("/api/vendus/paiements?day=2026-09-18").get_json()
-    assert "cartao" in d["connus"]["carte"]
-    assert "dinheiro" in d["connus"]["especes"]
+    # ⚠️ DES MOTS, PAS DES LIBELLÉS : afficher les libellés entiers ferait croire qu'il faut
+    # les énumérer un par un.
+    assert "cartao" in d["mots_reconnus"]["carte"]
+    assert "dinheiro" in d["mots_reconnus"]["especes"]
 
 
 def test_une_panne_vendus_est_nommee_et_ne_cache_pas_le_reste(client, monkeypatch):
