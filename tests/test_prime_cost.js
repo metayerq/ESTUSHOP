@@ -74,9 +74,9 @@ const PARTIEL = {
     Math.abs(r.valeur - ((PARTIEL.cogs_ht + 300) / PARTIEL.ca_ht * 100)) > 11,
     'le chiffre n’a pas bougé par rapport au calcul fautif');
   check('le sous-texte annonce la même matière que le titre',
-    /COGS 30%/.test(r.sous), r.sous);
+    /Marchandise 30%/.test(r.sous), r.sous);
   check('le titre et son sous-texte se recomposent',
-    Math.abs(r.valeur - 60.0) < 0.05 && /COGS 30% · Labour 30%/.test(r.sous), r.sous);
+    Math.abs(r.valeur - 60.0) < 0.05 && /Marchandise 30% · Personnel 30%/.test(r.sous), r.sous);
   check('l’extrapolation est annoncée avec son taux de couverture',
     /extrapolée sur 60% des ventes/.test(r.sous), r.sous);
 }

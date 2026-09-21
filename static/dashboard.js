@@ -114,7 +114,7 @@ function deltaBadge(cur, prev) {
 
 // "Sat 18 Jul"
 function dayShort(iso) {
-  return new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  return new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 // Strip "Today" : snapshot du jour + delta vs jour ouvré précédent.
@@ -148,7 +148,7 @@ function renderTodayStrip(d) {
 }
 
 function fmtDate(iso) {
-  return new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', {
+  return new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
 }
@@ -314,15 +314,15 @@ function render(d) {
     subtitle += ' — ' + fmtDate(d.date);
   } else {
     subtitle += ' — ' + d.period_label
-      + ' (' + new Date(d.from_date+'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short'})
-      + ' → ' + new Date(d.to_date  +'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})
+      + ' (' + new Date(d.from_date+'T12:00:00').toLocaleDateString('fr-FR', {day:'numeric',month:'short'})
+      + ' → ' + new Date(d.to_date  +'T12:00:00').toLocaleDateString('fr-FR', {day:'numeric',month:'short',year:'numeric'})
       + ')';
   }
   document.getElementById('subtitle').textContent = subtitle;
 
   // Label KPI dynamique
   const kpiLabel = d.is_single_day
-    ? (d.is_today ? 'Today' : fmtDate(d.date).replace(/^\w/, c => c.toUpperCase()))
+    ? (d.is_today ? 'Aujourd’hui' : fmtDate(d.date).replace(/^\w/, c => c.toUpperCase()))
     : d.period_label;
   document.getElementById('kpi-section-label').textContent = kpiLabel;
 
@@ -337,7 +337,7 @@ function render(d) {
 
   // Label comparaison — en vue "aujourd'hui live", comparaison à la même heure
   // du dernier jour ouvré (sinon la métrique est faussée avant la fermeture).
-  const compLabel = d.comp_label || (d.is_single_day ? 'vs yesterday' : 'vs prev. period');
+  const compLabel = d.comp_label || (d.is_single_day ? 'vs le service précédent' : 'vs période précédente');
 
   // Bouton « journée en cours » : visible seulement là où il change quelque chose
   const inclBar = document.getElementById('incl-today-bar');
@@ -362,7 +362,7 @@ function render(d) {
     // total affiché juste au-dessus. Les stats couvrent la période entière.
     const chef = d.today.popup_chef;
     document.getElementById('kpi-ca-ht').innerHTML =
-      `${fmt(d.today.ca_ht)} excl. VAT · VAT ${fmt(d.today.ca - d.today.ca_ht)}`
+      `${fmt(d.today.ca_ht)} HT · TVA ${fmt(d.today.ca - d.today.ca_ht)}`
       + (chef ? `<br><span style="color:#7c4dbe;">${fmt(d.today.ca_gross)} facturé · ${fmt(chef)} reversé au chef</span>` : '');
   } else {
     document.getElementById('kpi-ca-ht').textContent = '';
@@ -412,10 +412,10 @@ function render(d) {
       const gap   = Math.round(Math.abs(caDay - seuilDay));
       verdict = ` <span style="color:${above ? 'var(--green)' : 'var(--red)'};font-weight:500">`
               + `${above ? '▲' : '▼'} ${fmt(gap)}</span>`
-              + `<span style="color:var(--faint);font-size:11px;"> vs break-even</span>`;
+              + `<span style="color:var(--faint);font-size:11px;"> vs le point mort</span>`;
     }
     perDayEl.innerHTML = `<strong style="color:var(--text)">${fmt(caDay)}</strong>`
-      + `<span style="color:var(--faint);font-size:11px;"> / open day</span>${verdict}`;
+      + `<span style="color:var(--faint);font-size:11px;"> / jour ouvert</span>${verdict}`;
     // ⚠️ Calculé par le serveur (_tx_per_open_day), plus ici. La division faite à cet endroit
     // comptait la journée EN COURS des deux côtés : un vendredi matin, trois tickets face à un
     // jour ouvré entier faisaient chuter la moyenne d'un tiers, qui remontait ensuite toute
@@ -424,10 +424,10 @@ function render(d) {
     const tx = d.basket && d.basket.tx_per_open_day;
     nbPerDayEl.innerHTML = tx != null
       ? `<strong style="color:var(--text)">${tx}</strong>`
-        + `<span style="color:var(--faint);font-size:11px;"> tickets / open day`
+        + `<span style="color:var(--faint);font-size:11px;"> tickets / jour ouvert`
         + ` · ${d.basket.tx_basis_days} j pleins</span>`
       : `<span style="color:var(--muted)">—</span>`
-        + `<span style="color:var(--faint);font-size:11px;"> tickets / open day`
+        + `<span style="color:var(--faint);font-size:11px;"> tickets / jour ouvert`
         + ` · ${(d.basket && d.basket.tx_basis_reason) || 'indisponible'}</span>`;
   } else {
     perDayEl.innerHTML = '';
@@ -451,7 +451,7 @@ function render(d) {
   const ebitdaOpenN = ecoTop && ecoTop.open_days;
   document.getElementById('kpi-ebitda-label').textContent =
     'Est. EBITDA' + (d.is_single_day ? '' : (ebitdaOpenN ? ` · ${ebitdaOpenN} open days` : ` · ${d.n_days} days`))
-    + (ecoTop && ecoTop.excludes_today ? ' · excl. today' : '');
+    + (ecoTop && ecoTop.excludes_today ? ' · hors journée en cours' : '');
   if (ecoTop && ecoTop.ebitda_ht != null) {
     ebitdaEl.textContent = fmt(ecoTop.ebitda_ht);
     ebitdaEl.style.color = ecoTop.ebitda_ht > 0 ? 'var(--green)' : ecoTop.ebitda_ht < 0 ? 'var(--red)' : 'var(--text)';
@@ -462,7 +462,7 @@ function render(d) {
     ebitdaSub.innerHTML = (ecoTop.ebitda_ht >= 0
       ? `<span style="color:var(--green)">Profitable${ebitdaEst ? '' : ' ✓'}</span>`
       : `<span style="color:var(--red)">Loss</span>`)
-      + (ebitdaEst ? ` <span style="color:#b07d00">on an extrapolated margin</span>` : '');
+      + (ebitdaEst ? ` <span style="color:#b07d00">sur une marge extrapolée</span>` : '');
   } else {
     /* ⚠️ UNE CASE VIDE NOMME LE GESTE. L'EBITDA se calcule à partir de la marge, qui se
        calcule à partir des prix d'achat : dire « pas mesurable » sans dire pourquoi laisse
@@ -488,14 +488,14 @@ function render(d) {
   // Suffixe = jours réellement OUVERTS (les coûts sont calculés dessus), pas les
   // jours calendaires — sinon "Since opening · 55 days" alors qu'on a ouvert 42j.
   const openN = (d.economics && d.economics.open_days) || null;
-  const periodSuffix = d.is_single_day ? '(day)'
+  const periodSuffix = d.is_single_day ? '(jour)'
     : (openN ? `· ${openN} open days` : `· ${d.n_days} days`)
-      + (d.economics && d.economics.excludes_today ? ' · excl. today' : '');
+      + (d.economics && d.economics.excludes_today ? ' · hors journée en cours' : '');
   document.getElementById('eco-label').textContent      = `Economics ${periodSuffix}`;
-  document.getElementById('eco-charges-label').textContent = `Costs ${periodSuffix}`;
+  document.getElementById('eco-charges-label').textContent = `Charges ${periodSuffix}`;
   document.getElementById('eco-prime-label').textContent   = `Prime cost ${periodSuffix}`;
-  document.getElementById('eco-seuil-label').textContent   = `Break-even revenue ${periodSuffix}`;
-  document.getElementById('eco-marge-label').textContent   = 'Gross margin';
+  document.getElementById('eco-seuil-label').textContent   = `Point mort ${periodSuffix}`;
+  document.getElementById('eco-marge-label').textContent   = 'Marge brute';
 
   const eco = d.economics;
   // Bloc économie isolé dans une fonction immédiate : le cas « aucun jour ouvré »
@@ -519,10 +519,10 @@ function render(d) {
       // le lecteur doit interpréter lui-même.
       const covStr = cov == null ? ''
         : est ? `<span style="color:${covColor}">measured on ${cov}% of sales, applied to the rest</span>`
-              : `<span style="color:${covColor}">COGS coverage ${cov}%</span>`;
+              : `<span style="color:${covColor}">couverture des coûts ${cov} %</span>`;
       document.getElementById('eco-marge-pct').innerHTML =
         `${eco.marge_brute_ht_pct}%${est ? ' <span style="color:#b07d00">est.</span>' : ''}` +
-        ` <span style="color:var(--faint)">· COGS ${fmt(eco.cogs_ht)} · </span>${covStr}`;
+        ` <span style="color:var(--faint)">· marchandise ${fmt(eco.cogs_ht)} · </span>${covStr}`;
       /* ⚠️ L'ÉTAT DE LA MARGE, C'EST SA COUVERTURE — pas sa valeur. Une marge de 75 % mesurée
          sur 96 % des ventes et la même mesurée sur 55 % ne sont pas la même information, et
          c'est la seconde qui appelle un geste. La bande le dit sans une ligne de texte de
@@ -592,9 +592,9 @@ function render(d) {
          ressort. */
       primeEl.style.color = '';
       etat(primeEl, prime <= 65 ? 'ok' : prime <= 75 ? 'attention' : 'alerte');
-      primeSub.innerHTML = `COGS ${cogsPct.toFixed(0)}% · Labour ${labPct.toFixed(0)}%`
+      primeSub.innerHTML = `Marchandise ${cogsPct.toFixed(0)}% · Personnel ${labPct.toFixed(0)}%`
         + (est ? ` <span style="color:var(--amber)">· matière extrapolée sur ${eco.cogs_coverage_pct}% des ventes</span>` : '')
-        + ` <span style="color:var(--faint)">· target &lt;65%</span>`;
+        + ` <span style="color:var(--faint)">· cible &lt;65 %</span>`;
       primeBar.innerHTML =
         `<div style="width:${Math.min(100,cogsPct)}%;background:var(--flux-leave);"></div>` +
         `<div style="width:${Math.min(100,labPct)}%;background:var(--flux-tax);"></div>`;
@@ -622,12 +622,12 @@ function render(d) {
       const seuilEst = eco.marge_is_estimated === true;
       const margeNote = eco.seuil_margin_pct == null ? ''
         : seuilEst
-          ? ` <span style="color:#b07d00">· on an extrapolated ${eco.seuil_margin_pct}% margin</span>`
-          : ` <span style="color:var(--faint)">· real margin ${eco.seuil_margin_pct}%</span>`;
+          ? ` <span style="color:#b07d00">· sur une marge extrapolée de ${eco.seuil_margin_pct} %</span>`
+          : ` <span style="color:var(--faint)">· marge réelle ${eco.seuil_margin_pct} %</span>`;
       if (eco.manque_seuil > 0) {
-        seuilSub.innerHTML = `<span style="color:var(--red)">${fmt(eco.manque_seuil)} short (incl. VAT)</span>` + margeNote;
+        seuilSub.innerHTML = `<span style="color:var(--red)">${fmt(eco.manque_seuil)} manquants (TTC)</span>` + margeNote;
       } else {
-        seuilSub.innerHTML = `<span style="color:var(--green)">Break-even reached${seuilEst ? '' : ' ✓'}</span>` + margeNote;
+        seuilSub.innerHTML = `<span style="color:var(--green)">Point mort atteint${seuilEst ? '' : ' ✓'}</span>` + margeNote;
       }
       document.getElementById('eco-seuil-bar').style.width = Math.min(100, eco.pct_seuil) + '%';
     } else {
@@ -655,7 +655,7 @@ function render(d) {
           evo = ` <span style="color:var(--muted)">= stable</span>`;
         }
       }
-      avgEl.innerHTML = `<span style="color:var(--muted)">avg ${fmt(perDay)}/open day</span>${evo}`;
+      avgEl.innerHTML = `<span style="color:var(--muted)">moy. ${fmt(perDay)}/jour ouvert</span>${evo}`;
     } else {
       avgEl.innerHTML = '';
     }
@@ -682,7 +682,7 @@ function render(d) {
     options: {
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: ctx => fmt(ctx.raw) + ' · ' + d.week[ctx.dataIndex].nb + ' tx' } }
+        tooltip: { callbacks: { label: ctx => fmt(ctx.raw) + ' · ' + d.week[ctx.dataIndex].nb + ' tickets' } }
       },
       scales: {
         y: { display: false, beginAtZero: true },
@@ -703,7 +703,7 @@ function render(d) {
   if (d.is_single_day && d.hourly) {
     hourlyBars.style.display = '';
     dailyCanvas.style.display = 'none';
-    timeLabel.textContent = 'Revenue by hour';
+    timeLabel.textContent = 'Par heure';
     // Libellé court de la référence : "vs last Sat same time" → "last Sat"
     const prevLbl = (d.comp_label || '').replace(/^vs\s+/, '').replace(/\s+same time$/, '');
     renderHourlyBars(d.hourly, d.hourly_prev, prevLbl);
@@ -711,7 +711,7 @@ function render(d) {
     hourlyBars.style.display = 'none';
     hourlySub.textContent = '';
     dailyCanvas.style.display = '';
-    timeLabel.textContent = 'Revenue by day';
+    timeLabel.textContent = 'Par jour';
     hideHourlySwitch();
     renderDailyChart(d.daily);
   } else {
@@ -736,8 +736,8 @@ function render(d) {
   const topSection = document.getElementById('top-products-section');
   if (topSection) {
     topSection.style.display = '';
-    const periodLbl = d.is_single_day ? (d.is_today ? 'today' : 'this day') : (d.period_label?.toLowerCase() || 'the period');
-    document.getElementById('products-section-label').textContent = `Products sold — ${periodLbl}`;
+    const periodLbl = d.is_single_day ? (d.is_today ? 'today' : 'ce jour') : (d.period_label?.toLowerCase() || 'the period');
+    document.getElementById('products-section-label').textContent = `Ce qui s'est vendu — ${periodLbl}`;
   }
   if (!d.has_items) {
     document.getElementById('products-body').innerHTML =
@@ -748,7 +748,7 @@ function render(d) {
     if (cntEl) cntEl.textContent = d.products.length ? `· ${d.products.length}` : '';
     if (!d.products.length) {
       document.getElementById('products-body').innerHTML =
-        '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">No products sold.</td></tr>';
+        '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Aucun produit vendu.</td></tr>';
     } else {
       window._prodData = d.products;
       document.getElementById('products-body').innerHTML = d.products.map((p, i) => {
@@ -777,16 +777,16 @@ function render(d) {
   // ── Transactions récentes ────────────────────────────────────────────────
   if (!d.recent || !d.recent.length) {
     document.getElementById('recent-body').innerHTML =
-      '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">No transactions.</td></tr>';
+      '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">Aucune commande.</td></tr>';
     return;
   }
   window._txData = d.recent;
   const recCount = document.getElementById('recent-count');
   if (recCount) recCount.textContent = d.is_single_day
-    ? `${d.recent.length} transaction${d.recent.length > 1 ? 's' : ''}`
-    : `${d.recent.length} latest`;
+    ? `${d.recent.length} commande${d.recent.length > 1 ? 's' : ''}`
+    : `${d.recent.length} dernières`;
   const recLabel = document.getElementById('recent-label');
-  if (recLabel) recLabel.textContent = d.is_single_day ? "Today's transactions" : 'Recent transactions';
+  if (recLabel) recLabel.textContent = d.is_single_day ? 'Commandes du jour' : 'Commandes';
   document.getElementById('recent-body').innerHTML = d.recent.map((t, i) => `
     <tr style="cursor:pointer;" onclick="openDrawer(${i})"
         onmouseenter="showTxTooltip(event, ${i})" onmousemove="moveTxTooltip(event)" onmouseleave="hideTxTooltip()">
@@ -854,7 +854,7 @@ function renderInsights(d) {
   monthZone.style.display = showMonthZone ? '' : 'none';
   if (showMonthZone) {
     document.getElementById('month-zone-label').textContent =
-      new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
   }
 
   // Zone 3 "Patterns" : toujours affichée (fenêtres fixes), sous-blocs gérés plus bas.
@@ -882,14 +882,14 @@ function renderInsights(d) {
     html += `</div>`;
     const rush = ins.rush;
     const rushLine = rush
-      ? `<strong>${rush.top_share}%</strong> of revenue in the 3 busiest hours (${rush.hours.map(h => h + 'h').join(', ')})`
-      : 'darker = more revenue · hours 8–16';
+      ? `<strong>${rush.top_share}%</strong> de l'encaissé sur les 3 heures les plus chargées (${rush.hours.map(h => h + 'h').join(', ')})`
+      : 'plus foncé = plus encaissé · heures 8–16';
     document.getElementById('ins-heatmap').innerHTML = `
       <div class="ins-label">Rush heatmap — revenue by hour (28 days)</div>
       ${html}
       <div class="ins-sub">${rushLine}</div>`;
   } else {
-    document.getElementById('ins-heatmap').innerHTML = `<div class="ins-label">Rush heatmap</div><div class="ins-sub">Not enough data yet.</div>`;
+    document.getElementById('ins-heatmap').innerHTML = `<div class="ins-label">Rush heatmap</div><div class="ins-sub">Pas encore assez de données.</div>`;
   }
 
   // 3+4. Mois : cumul EBITDA + projection / calendrier break-even
@@ -898,7 +898,7 @@ function renderInsights(d) {
     const opens = m.days.filter(x => x.open);
     const pts   = opens.map(x => x.cum);
     // ⚠️ `proj_end` peut valoir null : aucun jour PLEIN dans le mois, donc rien pour asseoir
-    // une moyenne. fmt(null) rendrait « €0.00 projected by month end » — une prévision
+    // une moyenne. fmt(null) rendrait « €0.00 projected d'ici la fin du mois » — une prévision
     // fabriquée, exactement ce que le serveur refuse désormais d'affirmer.
     const hasProj = m.proj_end != null;
     const allVals = pts.concat(hasProj ? [m.proj_end, 0] : [0]);
@@ -921,14 +921,14 @@ function renderInsights(d) {
       <div class="ins-sub">
         MTD <strong style="color:${m.cum_now >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.cum_now)}</strong>
         · ${hasProj
-            ? `projected <strong style="color:${m.proj_end >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.proj_end)}</strong> by month end`
+            ? `projected <strong style="color:${m.proj_end >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.proj_end)}</strong> d'ici la fin du mois`
             : `<span style="color:var(--muted)">pas encore de jour plein ce mois-ci — aucune projection</span>`}
-        ${m.cross_date ? ` · crossed €0 on ${new Date(m.cross_date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short'})}` : ''}
+        ${m.cross_date ? ` · crossed €0 on ${new Date(m.cross_date + 'T12:00:00').toLocaleDateString('fr-FR', {day:'numeric', month:'short'})}` : ''}
       </div>
       ${m.proj_ca_end != null ? `
       <div class="ins-sub" style="margin-top:4px;">
         Revenue: MTD <strong>${fmt(m.ca_mtd)}</strong>
-        · projected <strong>${fmt(m.proj_ca_end)}</strong> by month end
+        · projected <strong>${fmt(m.proj_ca_end)}</strong> d'ici la fin du mois
         ${m.seuil_ca_month != null ? ` vs <strong>${fmt(m.seuil_ca_month)}</strong> needed to break even
           → <strong style="color:${m.proj_ca_end >= m.seuil_ca_month ? 'var(--green)' : 'var(--red)'}">${(m.proj_ca_end >= m.seuil_ca_month ? '+' : '') + fmt(m.proj_ca_end - m.seuil_ca_month)}</strong>` : ''}
       </div>` : ''}`;
@@ -944,38 +944,38 @@ function renderInsights(d) {
         bg = day.ebitda >= 0 ? 'rgba(80,161,116,.28)' : 'rgba(196,85,77,.24)';
         color = 'var(--text)';
       }
-      cal += `<div class="cal-cell" style="background:${bg};color:${color};" data-tip="${new Date(day.date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}${day.ebitda != null ? ' · EBITDA ' + fmt(day.ebitda) : ' · closed'}">${dt.getDate()}</div>`;
+      cal += `<div class="cal-cell" style="background:${bg};color:${color};" data-tip="${new Date(day.date+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})}${day.ebitda != null ? ' · EBITDA ' + fmt(day.ebitda) : ' · fermé'}">${dt.getDate()}</div>`;
     }
     const greens = opens.filter(x => x.ebitda >= 0).length;
     document.getElementById('ins-calendar').innerHTML = `
-      <div class="ins-label">Break-even calendar</div>
+      <div class="ins-label">Calendrier du point mort</div>
       <div class="cal-grid">${cal}</div>
       <div class="ins-sub">green = above break-even · ${greens}/${opens.length} open days</div>`;
   } else {
-    document.getElementById('ins-month').innerHTML = `<div class="ins-label">Month EBITDA</div><div class="ins-sub">Not enough data yet.</div>`;
-    document.getElementById('ins-calendar').innerHTML = `<div class="ins-label">Break-even calendar</div><div class="ins-sub">Not enough data yet.</div>`;
+    document.getElementById('ins-month').innerHTML = `<div class="ins-label">Month EBITDA</div><div class="ins-sub">Pas encore assez de données.</div>`;
+    document.getElementById('ins-calendar').innerHTML = `<div class="ins-label">Calendrier du point mort</div><div class="ins-sub">Pas encore assez de données.</div>`;
   }
 
   // Articles par ticket (attach)
   const bk = ins.basket;
   if (bk && bk.items_per_ticket != null) {
     document.getElementById('ins-basket').innerHTML = `
-      <div class="ins-label">Items per ticket (${d.period_label.toLowerCase()})</div>
+      <div class="ins-label">Articles par ticket (${d.period_label.toLowerCase()})</div>
       <div class="ins-big">${bk.items_per_ticket.toFixed(2)}</div>
       <div class="ins-sub">${bk.attach_pct}% of tickets have 2+ items — the cheapest growth lever</div>`;
   } else {
-    document.getElementById('ins-basket').innerHTML = `<div class="ins-label">Items per ticket</div><div class="ins-sub">Not enough data yet.</div>`;
+    document.getElementById('ins-basket').innerHTML = `<div class="ins-label">Articles par ticket</div><div class="ins-sub">Pas encore assez de données.</div>`;
   }
 
   // 7. CA par place assise
   const st = ins.seat;
   if (st && st.per_seat_day != null) {
     document.getElementById('ins-seat').innerHTML = `
-      <div class="ins-label">Revenue per seat / open day</div>
+      <div class="ins-label">Encaissé par place / open day</div>
       <div class="ins-big">${fmt(st.per_seat_day)}</div>
       <div class="ins-sub">${st.seats} seats (${st.terrace} terrace + ${st.inside} inside) · ${fmt(st.per_seat_period)}/seat over the period</div>`;
   } else {
-    document.getElementById('ins-seat').innerHTML = `<div class="ins-label">Revenue per seat</div><div class="ins-sub">Not enough data yet.</div>`;
+    document.getElementById('ins-seat').innerHTML = `<div class="ins-label">Encaissé par place</div><div class="ins-sub">Pas encore assez de données.</div>`;
   }
 }
 
@@ -1004,7 +1004,7 @@ function setHourlyMode(mode) {
 function renderHourlyDelta(hours, vals, prevByHour, prevLabel, h) {
   const diffs = hours.map((hr, i) => (vals[i] || 0) - (prevByHour[hr] || 0));
   const maxAbs = Math.max(...diffs.map(Math.abs), 0) || 1;
-  const ref = prevLabel || 'last week';
+  const ref = prevLabel || 'semaine passée';
 
   document.getElementById('hourly-bars').innerHTML =
     `<div class="dbar-row"><div class="dbar-zero"></div>` + hours.map((hr, i) => {
@@ -1089,7 +1089,7 @@ function renderHourlyBars(h, prev, prevLabel) {
       if (hasPrev && (pv > 0 || vals[i] > 0)) {
         const diff = vals[i] - pv;
         const pct  = pv > 0 ? Math.round(diff / pv * 100) : null;
-        tip += ` — ${prevLabel || 'last week'}: ${fmt(pv)}`
+        tip += ` — ${prevLabel || 'semaine passée'}: ${fmt(pv)}`
              + (pct !== null ? ` (${diff >= 0 ? '+' : ''}${pct}%)` : '');
       }
       return `<div class="hbar" data-tip="${tip}">
@@ -1106,7 +1106,7 @@ function renderHourlyBars(h, prev, prevLabel) {
     const pct = Math.round((totalNow - totalPrev) / totalPrev * 100);
     const up  = pct >= 0;
     cmp = ` · <span style="color:${up ? 'var(--green)' : 'var(--red)'};font-weight:500">${up ? '▲ +' : '▼ '}${pct}%</span>`
-        + ` <span style="color:var(--faint)">vs ${prevLabel || 'last week'}</span>`;
+        + ` <span style="color:var(--faint)">vs ${prevLabel || 'semaine passée'}</span>`;
   }
   document.getElementById('hourly-sub').innerHTML =
     `Peak at <b style="color:var(--text)">${peakHour}h</b> · ${fmt(maxV === 1 && vals[peakIdx] === 0 ? 0 : vals[peakIdx])}`
@@ -1124,7 +1124,7 @@ function renderDailyChart(daily) {
     data: {
       labels: daily.map(d => {
         const dt = new Date(d.date + 'T12:00:00');
-        return dt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+        return dt.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
       }),
       datasets: [{
         data: daily.map(d => d.ca_ttc),
@@ -1216,7 +1216,7 @@ function openProductPopup(i) {
   _popupProd = p;
   document.getElementById('popup-prod-name').textContent = p.name;
   document.getElementById('popup-prod-meta').textContent =
-    `${p.qty} sold · ${fmt(p.revenue)}` + (p.margin_pct != null ? ` · margin ${p.margin_pct}%` : '');
+    `${p.qty} vendus · ${fmt(p.revenue)}` + (p.margin_pct != null ? ` · marge ${p.margin_pct} %` : '');
   const check = document.getElementById('popup-check');
   check.checked = !!p.popup;
   const sel = document.getElementById('popup-pct-select');

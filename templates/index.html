@@ -119,7 +119,7 @@
   <div class="header">
     <div>
       <div class="header-title">Estudantina</div>
-      <div class="header-sub" id="subtitle">Alcântara — loading…</div>
+      <div class="header-sub" id="subtitle">Alcântara — chargement…</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
       <div class="updated" id="updated-at" style="display:none;"></div>
@@ -178,31 +178,31 @@
 
   <div id="custom-range-bar" style="display:none; align-items:center; gap:8px; margin:-8px 0 20px;">
     <input type="date" id="custom-start" style="padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px;">
-    <span style="color:var(--muted); font-size:13px;">to</span>
+    <span style="color:var(--muted); font-size:13px;">au</span>
     <input type="date" id="custom-end" style="padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px;">
-    <button class="pill" onclick="applyCustomRange()" style="background:var(--accent,#37352f); color:#fff;">Apply</button>
+    <button class="pill" onclick="applyCustomRange()" style="background:var(--accent,#37352f); color:#fff;">Appliquer</button>
   </div>
 
   <!-- Strip "Today" — visible seulement sur période multi-jours incluant aujourd'hui -->
   <div id="today-strip" style="display:none; margin-bottom:32px;">
-    <div class="section-label">Today</div>
+    <div class="section-label">Aujourd'hui</div>
     <div class="kpi-grid">
-      <div class="kpi-cell" data-tip="Live snapshot of today so far, shown above the selected period. The badge compares it to the same weekday last week at the same time — a fair 'are we ahead or behind?' read mid-service.">
-        <div class="kpi-label">Revenue today</div>
+      <div class="kpi-cell" data-tip="Ce que la journée a fait jusqu'ici, au-dessus de la période choisie. La pastille compare au même jour de semaine, la semaine passée, À LA MÊME HEURE — sans quoi on opposerait une matinée à une journée entière.">
+        <div class="kpi-label">Encaiss&eacute; aujourd'hui</div>
         <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
           <span class="kpi-value" id="ts-ca">—</span><span id="ts-ca-badge"></span>
         </div>
         <div class="kpi-delta" id="ts-ca-sub"></div>
       </div>
-      <div class="kpi-cell" data-tip="Tickets rung up today so far, compared to the same weekday last week at the same time.">
-        <div class="kpi-label">Transactions</div>
+      <div class="kpi-cell" data-tip="Tickets passés en caisse aujourd'hui, comparés au même jour de semaine la semaine passée, à la même heure.">
+        <div class="kpi-label">Tickets</div>
         <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
           <span class="kpi-value" id="ts-nb">—</span><span id="ts-nb-badge"></span>
         </div>
         <div class="kpi-delta" id="ts-nb-sub"></div>
       </div>
-      <div class="kpi-cell" data-tip="Today's average ticket so far vs the same weekday last week at the same time.">
-        <div class="kpi-label">Average ticket</div>
+      <div class="kpi-cell" data-tip="Le ticket moyen du jour, comparé au même jour de semaine la semaine passée, à la même heure.">
+        <div class="kpi-label">Ticket moyen</div>
         <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
           <span class="kpi-value" id="ts-ticket">—</span><span id="ts-ticket-badge"></span>
         </div>
@@ -341,10 +341,10 @@
     #}
   <div class="charts-row">
     <div class="chart-block">
-      <div class="section-label" id="time-chart-label" style="margin-bottom:4px;">Revenue by hour</div>
+      <div class="section-label" id="time-chart-label" style="margin-bottom:4px;">Par heure</div>
       <div class="hswitch" id="hourly-switch" style="display:none;">
-        <button class="hswitch-btn active" id="hsw-abs" onclick="setHourlyMode('abs')">Revenue</button>
-        <button class="hswitch-btn" id="hsw-delta" onclick="setHourlyMode('delta')">vs last week</button>
+        <button class="hswitch-btn active" id="hsw-abs" onclick="setHourlyMode('abs')">Encaiss&eacute;</button>
+        <button class="hswitch-btn" id="hsw-delta" onclick="setHourlyMode('delta')">vs semaine pass&eacute;e</button>
       </div>
     </div>
     <div id="hourly-sub" style="font-size:12px;color:var(--muted);margin-bottom:16px;min-height:16px;"></div>
@@ -355,9 +355,9 @@
   <!-- Payment methods + Product mix, groupés (répartitions) -->
   <div class="charts-grid" style="margin-bottom:14px;">
     <div class="chart-block">
-      <div class="section-label" style="margin-bottom:14px;">Product mix</div>
+      <div class="section-label" style="margin-bottom:14px;">R&eacute;partition des ventes</div>
       <div id="mix-bars">
-        <span style="font-size:12px;color:var(--muted);">Loading…</span>
+        <span style="font-size:12px;color:var(--muted);">Chargement&hellip;</span>
       </div>
     </div>
   </div>
@@ -386,7 +386,7 @@
     #}
   <!-- Courbe cumulative (conditionnel — jour unique) -->
   <div id="curve-section" style="display:none;margin-bottom:32px;">
-    <div class="section-label">Sales evolution</div>
+    <div class="section-label">Cumul de la journ&eacute;e</div>
     <div class="card" style="padding:20px 22px;">
       <canvas id="chart-curve" height="90"></canvas>
     </div>
@@ -426,36 +426,28 @@
     </div>
   </div>
 
-  <div class="section-head">
-    <div class="section-label">Le mois en cours</div>
-    <span class="section-quoi">quand on regarde une autre période</span>
-  </div>
     {#
       ⚠️ CE BLOC EXISTE POUR LE CONTEXTE, PAS POUR LA DÉCISION. Il rappelle où en est le mois
       pendant qu'on lit une semaine — utile, et jamais urgent. Il se masque déjà tout seul quand
       la période EST le mois en cours, et sa place en bas de page dit le reste.
     #}
-  <div class="section-head">
-    <div class="section-label">Ce qui s'est vendu</div>
-    <span class="section-quoi">le d&eacute;tail par produit, avec la marge</span>
-  </div>
   <!-- Produits — suit la période sélectionnée -->
   <div id="top-products-section">
-    <div class="section-label" id="products-section-label">Products sold <span id="products-count" style="color:var(--faint);font-weight:400;"></span></div>
+    <div class="section-label" id="products-section-label">Ce qui s'est vendu <span id="products-count" style="color:var(--faint);font-weight:400;"></span></div>
     <div class="table-wrap products-scroll" style="margin-bottom:32px;max-height:440px;overflow-y:auto;">
       <table>
         <thead>
           <tr>
-            <th>Product</th>
-            <th class="right">Qty</th>
-            <th class="right">Unit price</th>
-            <th class="right">Revenue</th>
-            <th class="right">Margin</th>
+            <th>Produit</th>
+            <th class="right">Qt&eacute;</th>
+            <th class="right">Prix unitaire</th>
+            <th class="right">Encaiss&eacute;</th>
+            <th class="right">Marge</th>
             <th style="width:100px;"></th>
           </tr>
         </thead>
         <tbody id="products-body">
-          <tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Loading…</td></tr>
+          <tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Chargement&hellip;</td></tr>
         </tbody>
       </table>
     </div>
@@ -464,8 +456,8 @@
   <!-- ═══ ZONE 2 · Le mois en cours (toujours mois calendaire, masquée si période = This month) ═══ -->
   <div id="month-zone" style="display:none;margin-top:44px;">
     <div class="zone-head">
-      <div class="section-label" id="month-zone-label" style="margin:0;">This month</div>
-      <span class="zone-badge" id="month-zone-badge">month to date</span>
+      <div class="section-label" id="month-zone-label" style="margin:0;">Le mois en cours</div>
+      <span class="zone-badge" id="month-zone-badge">du 1er &agrave; aujourd'hui</span>
     </div>
     <div class="ins-grid on">
       <div class="ins-card" id="ins-month"></div>
@@ -473,11 +465,11 @@
     </div>
   </div>
 
-  <div class="section-head">
-    <div class="section-label">Tendances</div>
-    <span class="section-quoi">fenêtres fixes — insensibles au sélecteur de période</span>
-  </div>
     {#
+      ⚠️ UN EN-TÊTE POSÉ HORS DU BLOC RESTE AFFICHÉ QUAND LE BLOC EST MASQUÉ. `month-zone` et
+      `patterns-zone` se cachent conditionnellement ; un titre au-dessus d'eux serait resté seul,
+      à annoncer un contenu absent. Leur en-tête vit donc À L'INTÉRIEUR, et disparaît avec eux.
+
       ⚠️ CES FENÊTRES NE SUIVENT PAS LE SÉLECTEUR, et c'est écrit dans le résumé. Un bloc qui
       ignore le filtre alors que tout le reste le suit est la façon la plus sûre de faire lire
       un chiffre pour un autre — d'autant plus quand il est déroulé au milieu de blocs qui,
@@ -486,8 +478,8 @@
   <!-- ═══ ZONE 3 · Patterns structurels (fenêtres fixes, insensibles au sélecteur) ═══ -->
   <div id="patterns-zone" style="display:none;margin-top:44px;">
     <div class="zone-head">
-      <div class="section-label" style="margin:0;">Patterns</div>
-      <span class="zone-badge">fixed windows — not affected by the period filter</span>
+      <div class="section-label" style="margin:0;">Tendances</div>
+      <span class="zone-badge">fen&ecirc;tres fixes &mdash; insensibles au s&eacute;lecteur</span>
     </div>
 
     <!-- Rush heatmap (28 jours) -->
@@ -497,13 +489,13 @@
     <div id="last7-block">
       <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:32px;">
         <div style="padding:20px 24px 12px;">
-          <div class="ins-label" style="margin-bottom:8px;">Last 7 days</div>
+          <div class="ins-label" style="margin-bottom:8px;">7 derniers jours</div>
           <canvas id="chart-week" height="55"></canvas>
           <div id="week-labels" style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--muted);"></div>
         </div>
         <div class="wow-strip" id="wow-strip" style="display:none;">
           <div class="wow-item">
-            <span>Last 7 full days</span>
+            <span>7 derniers jours complets</span>
             <strong id="kpi-wow-ca">—</strong>
             <span id="kpi-wow-ca-delta"></span>
           </div>
@@ -514,7 +506,7 @@
           </div>
           <span class="wow-sep">·</span>
           <div class="wow-item" id="weekday-cell">
-            <span>Best day:</span>
+            <span>Meilleur jour :</span>
             <strong id="kpi-best-day">—</strong>
             <span id="kpi-best-day-sub" style="color:var(--faint)"></span>
           </div>
@@ -528,7 +520,7 @@
 
 <div id="error-banner">⚠ <span id="error-msg"></span></div>
 <div id="warn-banner" style="display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#fff8e1;border:1px solid #ffe082;color:#795548;padding:10px 18px;border-radius:8px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:50;max-width:90vw;">
-  ⚠ Incomplete data: <span id="warn-msg"></span>
+  &#9888; Donn&eacute;es incompl&egrave;tes : <span id="warn-msg"></span>
 </div>
 
 <!-- Tooltip survol transaction -->
@@ -542,7 +534,7 @@
   <div style="font-size:12px;color:var(--muted);margin:2px 0 14px;" id="popup-prod-meta"></div>
   <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
     <input type="checkbox" id="popup-check" onchange="popupCheckChanged()">
-    Produit popup — chef partenaire (commission = marge brute)
+    Produit &mdash; chef partenaire (commission = marge brute)
   </label>
   <div id="popup-pct-row" style="display:none;margin-top:12px;">
     <label style="font-size:12px;color:var(--muted);">Commission sur le prix TTC</label>
@@ -551,7 +543,7 @@
         <option value="10">10 %</option>
         <option value="15">15 %</option>
         <option value="20" selected>20 %</option>
-        <option value="custom">Custom…</option>
+        <option value="custom">Autre&hellip;</option>
       </select>
       <input type="number" id="popup-pct-custom" min="0" max="99" step="0.1" placeholder="%"
              style="display:none;width:80px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text);font-size:13px;">
@@ -559,8 +551,8 @@
   </div>
   <div id="popup-error" style="display:none;color:#c0392b;font-size:12px;margin-top:10px;"></div>
   <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;">
-    <button onclick="closeProductPopup()" style="padding:7px 14px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);font-size:13px;cursor:pointer;">Cancel</button>
-    <button id="popup-save" onclick="saveProductPopup()" style="padding:7px 14px;border:none;border-radius:8px;background:var(--text);color:var(--bg-card);font-size:13px;font-weight:600;cursor:pointer;">Save</button>
+    <button onclick="closeProductPopup()" style="padding:7px 14px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);font-size:13px;cursor:pointer;">Annuler</button>
+    <button id="popup-save" onclick="saveProductPopup()" style="padding:7px 14px;border:none;border-radius:8px;background:var(--text);color:var(--bg-card);font-size:13px;font-weight:600;cursor:pointer;">Enregistrer</button>
   </div>
 </div>
 
@@ -573,9 +565,9 @@
     </div>
     <button class="drawer-close" onclick="closeDrawer()">✕</button>
   </div>
-  <div class="drawer-section-label">Items</div>
+  <div class="drawer-section-label">Articles</div>
   <table class="drawer-table" id="drawer-items"></table>
-  <div class="drawer-section-label" style="margin-top:20px;">Payment</div>
+  <div class="drawer-section-label" style="margin-top:20px;">Paiement</div>
   <div id="drawer-payments"></div>
   <div class="drawer-total" id="drawer-total"></div>
 </div>
