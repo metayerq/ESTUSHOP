@@ -206,8 +206,16 @@ def get_document_detail(doc_id: int):
 
 
 def get_documents_with_items(since: str, until: str):
-    """Récupère les documents de vente avec leurs lignes produits (appels parallèles)."""
-    docs = get_documents(since, until)
+    """
+    Récupère les documents de vente avec leurs lignes produits (appels parallèles).
+
+    ⚠️ LA LISTE EST DEMANDÉE EN `detailed`, ET LE DÉTAIL NE SUFFIT PAS. `view=detailed` est la
+    SEULE source connue du champ `payments` (la répartition carte / espèces) ; l'endpoint d'un
+    document isolé, lui, porte les lignes produits mais pas toujours les paiements. Sans cette
+    fusion, le cache `daily_summary` se remplissait avec une répartition VIDE — donc « 0 € en
+    carte » sur des journées entières, et un écart de réconciliation égal au chiffre d'affaires.
+    """
+    docs = get_documents(since, until, detailed=True)
     if not docs:
         return []
     # Appels parallèles pour récupérer les items de chaque document
@@ -226,6 +234,12 @@ def get_documents_with_items(since: str, until: str):
         detail = results.get(d["id"], d)
         if d.get("_refund") and not detail.get("_refund"):
             detail = _negate_refund(detail)
+        # ⚠️ ON REPREND `payments` DE LA LISTE quand le détail ne le porte pas. Les deux réponses
+        # décrivent le même document ; celle qui sait quelque chose l'emporte sur celle qui se
+        # tait. L'inverse — écraser une information par une absence — est la façon la plus
+        # discrète de perdre une donnée.
+        if not detail.get("payments") and d.get("payments"):
+            detail = {**detail, "payments": d["payments"]}
         enriched.append(detail)
     return enriched
 

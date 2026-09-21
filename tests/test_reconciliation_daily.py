@@ -248,3 +248,43 @@ def test_un_jour_sans_repartition_ne_casse_pas_les_totaux(client, monkeypatch):
           terminal=[{"day": JOUR, "gross_cents": 10000}])
     t = client.get(f"/api/reconciliation/daily?from={JOUR}&to={JOUR}").get_json()["totaux"]
     assert t["vendus_especes_cents"] == 0
+
+
+def test_une_repartition_a_zero_sur_un_jour_qui_a_vendu_est_traitee_comme_absente(
+        client, monkeypatch):
+    """
+    ⚠️ LE DÉFAUT QUI A PRODUIT UN ÉCART ÉGAL AU CHIFFRE D'AFFAIRES, le 21/09/2026. Le cache
+    `daily_summary` s'était rempli avec `payments: {}` — la reconstruction passait par une
+    fonction Vendus qui ne rapportait pas ce champ. Une journée à 520 € affichait alors
+    « 0 € facturé carte » et « 520 € d'écart ».
+
+    ⚠️ ET « ZÉRO » N'EST PAS UN ÉTAT RÉEL ICI. Une journée qui a encaissé 520 € n'a pas zéro
+    euro en carte ET zéro en espèces : c'est que l'information manque. La traiter comme une
+    mesure fait chercher un vol là où il n'y a qu'un cache mal rempli.
+    """
+    poser(monkeypatch,
+          resume=[{"day": JOUR, "ca_ttc": 520.0, "payments": {}}],
+          terminal=[{"day": JOUR, "gross_cents": 41230}])
+    j = un_jour(client)
+    assert j["ecart_cents"] is None, "un écart a été calculé sur une répartition vide"
+    assert j["repartition_absente"] is True
+    assert j["vendus"] is None
+
+
+def test_un_jour_sans_vente_peut_legitimement_etre_a_zero(client, monkeypatch):
+    """Le garde ne doit pas effacer une vraie journée vide — mardi, mercredi."""
+    poser(monkeypatch,
+          resume=[{"day": JOUR, "ca_ttc": 0.0, "payments": {}}],
+          terminal=[{"day": JOUR, "gross_cents": 0}])
+    j = un_jour(client)
+    assert j["repartition_absente"] is False
+
+
+def test_une_repartition_en_especes_seules_reste_valable(client, monkeypatch):
+    """Une journée 100 % espèces a bien zéro en carte — et ce zéro-là est mesuré."""
+    poser(monkeypatch,
+          resume=[{"day": JOUR, "ca_ttc": 60.0, "payments": {"Dinheiro": 60.0}}],
+          terminal=[{"day": JOUR, "gross_cents": 0}])
+    j = un_jour(client)
+    assert j["vendus"]["especes_cents"] == 6000
+    assert j["ecart_cents"] is None or j["ecart_cents"] == 0

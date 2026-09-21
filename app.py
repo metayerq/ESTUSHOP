@@ -3131,6 +3131,16 @@ def api_reconciliation_daily():
         reparti = _classer_paiements(
             (vendus_aujourdhui or {}).get("payments") if est_aujourdhui else r.get("payments"))
 
+        # ⚠️ UNE RÉPARTITION QUI NE TOTALISE RIEN SUR UNE JOURNÉE QUI A VENDU EST FAUSSE, PAS
+        # NULLE. Une journée à 520 € encaissés n'a pas « zéro euro en carte et zéro en
+        # espèces » : c'est que le champ `payments` n'est pas remonté de Vendus. La traiter
+        # comme une mesure donnait un écart égal au chiffre d'affaires du jour — et faisait
+        # chercher un vol là où il n'y avait qu'un cache mal rempli. C'est exactement ce qui
+        # s'est produit le 21/09/2026.
+        if reparti is not None and v_total > 0 and not (
+                reparti["carte_cents"] or reparti["especes_cents"] or reparti["autre_cents"]):
+            reparti = None
+
         brut = int(t.get("gross_cents") or 0)
         pourboires = int(t.get("tips_cents") or 0)
         remboursements = int(t.get("refunds_cents") or 0)
