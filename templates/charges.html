@@ -239,6 +239,14 @@ select.field-input { cursor:pointer; }
   font-variant-numeric:tabular-nums;margin-top:3px}
 .histo b{color:var(--muted);font-weight:600}
 @media(max-width:560px){.ver-grid{grid-template-columns:1fr}}
+
+/* Ce qui est décidé mais pas encore en vigueur. */
+.sum-attente{font-size:12px;color:var(--muted);line-height:1.6;margin:10px 0 0;
+  font-variant-numeric:tabular-nums}
+.sum-attente:empty{display:none}
+.sum-attente b{color:var(--text);font-weight:600}
+.sum-attente .hausse{color:var(--red,#b3261e)}
+.sum-attente .baisse{color:var(--green)}
 </style>
 </head>
 <body>
@@ -277,6 +285,13 @@ select.field-input { cursor:pointer; }
       <div class="sum-sub">over 21.25 days/month</div>
     </div>
   </div>
+
+  <!--
+    ⚠️ UNE MODIFICATION VALIDÉE NE SE VOYAIT NULLE PART. Le chiffre du haut ne bouge qu'à la date
+    d'effet : entre la validation et cette date, l'écran est identique à avant. On refait le
+    changement, ou on conclut que le bouton n'a pas marché.
+  -->
+  <div class="sum-attente" id="sum-attente"></div>
 
   <!-- Tabs -->
   <div class="view-tabs">
@@ -702,10 +717,60 @@ const JOURS_MOIS = 21.25;
  */
 function histoLigne(x) {
   const j = v => new Date(v).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  if (x.valid_to && x.valid_from) return `${j(x.valid_from)} → ${j(x.valid_to)} (ended)`;
-  if (x.valid_to)   return `until ${j(x.valid_to)} (ended)`;
+  // ⚠️ « ENDED » MENTAIT SUR UNE CLÔTURE À VENIR. Arrêter Julie au 1er octobre affichait
+  // « ended » dès la validation, alors qu'elle est payée jusque-là et compte encore dans le
+  // coût du jour. On lisait « c'est fait » devant un chiffre qui n'avait pas bougé — et la
+  // seule conclusion possible était que le bouton n'avait pas marché.
+  const passe = x.valid_to && new Date(x.valid_to) <= aujourdhui();
+  const fin = passe ? `ended ${j(x.valid_to)}` : x.valid_to ? `ends ${j(x.valid_to)}` : '';
+  if (x.valid_to && x.valid_from) return `${j(x.valid_from)} → ${fin}`;
+  if (x.valid_to)   return fin;
   if (x.valid_from) return `since ${j(x.valid_from)}`;
   return '';
+}
+
+/** Minuit aujourd'hui — pour comparer des dates sans que l'heure s'en mêle. */
+function aujourdhui() {
+  const t = new Date();
+  return new Date(t.getFullYear(), t.getMonth(), t.getDate());
+}
+
+/** Ce poste compte-t-il ce jour-là ? La même règle que `charges.py`, à l'écran. */
+function applicableLe(x, jour) {
+  // ⚠️ SANS BORNES, `active` EST LA BORNE — comme côté serveur. Une ligne éteinte à la main
+  // avant que les dates existent ne doit pas se remettre à compter.
+  if (!x.valid_from && !x.valid_to) return x.active !== false;
+  if (x.valid_from && jour < new Date(x.valid_from)) return false;
+  if (x.valid_to && jour >= new Date(x.valid_to)) return false;
+  return true;
+}
+
+/** Le coût mensuel total à une date donnée. */
+function totalLe(jour) {
+  return chargesData.filter(c => applicableLe(c, jour))
+           .reduce((s, c) => s + toMonthly(c.amount, c.frequency), 0)
+       + employeesData.filter(e => applicableLe(e, jour))
+           .reduce((s, e) => s + calcEmpCost(e).monthly, 0);
+}
+
+/**
+ * La prochaine date où un coût change, et ce qu'il devient — ou `null`.
+ *
+ * ⚠️ SANS ÇA, UNE MODIFICATION VALIDÉE NE SE VOIT NULLE PART. Le chiffre du haut ne bougera
+ * qu'au 1er octobre : entre la validation et cette date, l'écran est identique à avant, et rien
+ * ne dit que quelque chose est en attente. On refait le changement, ou on croit qu'il a raté.
+ */
+function prochainChangement() {
+  const auj = aujourdhui();
+  const dates = [];
+  for (const x of [...chargesData, ...employeesData])
+    for (const v of [x.valid_from, x.valid_to])
+      if (v && new Date(v) > auj) dates.push(new Date(v).getTime());
+  if (!dates.length) return null;
+  const quand = new Date(Math.min(...dates));
+  const avant = totalLe(auj), apres = totalLe(quand);
+  if (Math.round((apres - avant) * 100) === 0) return null;
+  return { quand, avant, apres };
 }
 function updateSummary() {
   const totalFixes = chargesData.filter(c=>c.active).reduce((s,c) => s + toMonthly(c.amount, c.frequency), 0);
@@ -720,6 +785,18 @@ function updateSummary() {
   document.getElementById('sum-total').textContent = fmt(total);
   document.getElementById('sum-total-sub').textContent = `excl. depreciation`;
   document.getElementById('sum-jour').textContent = fmt(parJour);
+
+  const p = prochainChangement();
+  const zone = document.getElementById('sum-attente');
+  if (!p) { zone.innerHTML = ''; return; }
+  const d = p.apres - p.avant;
+  const j = p.quand.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  zone.innerHTML =
+    `<b>Scheduled</b> — from <b>${j}</b>, monthly cost becomes <b>${fmt(p.apres)}</b> ` +
+    `<span class="${d >= 0 ? 'hausse' : 'baisse'}">(${d >= 0 ? '+' : '−'}${fmt(Math.abs(d))})</span>, ` +
+    `i.e. <b>${fmt(p.apres / JOURS_MOIS)}</b> per open day ` +
+    `<span class="${d >= 0 ? 'hausse' : 'baisse'}">(${d >= 0 ? '+' : '−'}${fmt(Math.abs(d) / JOURS_MOIS)} on the break-even)</span>. ` +
+    `Nothing changes before that date.`;
 }
 
 // ── Le versionnement ──────────────────────────────────────────────────────

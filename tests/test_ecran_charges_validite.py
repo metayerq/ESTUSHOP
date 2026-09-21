@@ -218,24 +218,6 @@ def test_une_charge_annuelle_est_ramenee_au_mois_avant_comparaison():
 
 # ── L'historique d'un poste ──────────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("ligne,attendu", [
-    ({}, ""),
-    ({"valid_from": "2026-10-01"}, "since 1 Oct 2026"),
-    ({"valid_to": "2026-10-01"}, "until 1 Oct 2026 (ended)"),
-    ({"valid_from": "2026-05-01", "valid_to": "2026-10-01"}, "1 May 2026 → 1 Oct 2026 (ended)"),
-])
-def test_la_periode_se_lit_sur_la_ligne(ligne, attendu):
-    """
-    ⚠️ UN POSTE APPARAÎT MAINTENANT PLUSIEURS FOIS : le loyer à 700 € jusqu'au 1er octobre, puis
-    à 750 €. Sans cette ligne, deux « Loyer » se superposent sans dire lequel s'applique — et on
-    croit à un doublon dans la base.
-    """
-    r = _node(_prog(f"""
-        console.log(JSON.stringify({{ t: histoLigne({json.dumps(ligne)}) }}));
-    """, "histoLigne"))
-    assert r["t"] == attendu
-
-
 # ── Ce que les boutons promettent ────────────────────────────────────────────────────────────
 
 def test_aucun_bouton_ne_promet_plus_une_suppression():
@@ -417,3 +399,143 @@ def test_un_extra_est_paye_tel_quel():
                                      tsu_exempt: false, meal_card_daily: 10.20 }) }));
     """))
     assert r["c"] == 600
+
+
+# ── Ce qui est décidé mais pas encore en vigueur ─────────────────────────────────────────────
+#
+# ⚠️ UNE MODIFICATION VALIDÉE NE SE VOYAIT NULLE PART. Quentin a arrêté Julie au 1er octobre ; le
+# coût du jour n'a pas bougé — c'est juste, elle est payée jusque-là. Mais rien à l'écran ne le
+# disait, et la ligne affichait « ended » dès la validation. On lit « c'est fait » devant un
+# chiffre inchangé : la seule conclusion possible est que le bouton n'a pas marché.
+
+HORLOGE = """
+const AUJ = new Date(2026, 8, 21);   // 21 septembre 2026
+function aujourdhui() { return AUJ; }
+let chargesData = [], employeesData = [];
+"""
+
+
+def _monde(corps, *fns):
+    return SOCLE + HORLOGE + _extraire("TSU_EMPLOYER", "JOURS_REPAS_AN", "toMonthly",
+                                       "calcEmpCost", "applicableLe", "totalLe",
+                                       "prochainChangement", "histoLigne", *fns) + "\n" + corps
+
+
+@pytest.mark.parametrize("ligne,attendu", [
+    ({"valid_to": "2026-10-01"}, "ends 1 Oct 2026"),
+    ({"valid_to": "2026-09-21"}, "ended 21 Sept 2026"),    # aujourd'hui : la borne est atteinte
+    ({"valid_to": "2026-09-01"}, "ended 1 Sept 2026"),
+    ({"valid_from": "2026-05-01", "valid_to": "2026-10-01"}, "1 May 2026 → ends 1 Oct 2026"),
+    ({"valid_from": "2026-10-01"}, "since 1 Oct 2026"),
+    ({}, ""),    # une ligne sans bornes n'a rien à raconter
+])
+def test_la_periode_se_lit_sur_la_ligne(ligne, attendu):
+    r = _node(_monde(f"console.log(JSON.stringify({{ t: histoLigne({json.dumps(ligne)}) }}));"))
+    assert r["t"] == attendu
+
+
+def test_un_arret_programme_est_annonce_avec_sa_date():
+    """C'est la seule chose qui distingue « validé » de « sans effet »."""
+    r = _node(_monde("""
+        employeesData = [
+          { name: 'Ana',   gross_monthly: 900, type: 'full_time', tsu_exempt: false,
+            meal_card_daily: 10.20, active: true },
+          { name: 'Julie', gross_monthly: 600, type: 'extra', tsu_exempt: false,
+            meal_card_daily: 0, active: true, valid_to: '2026-10-01' },
+        ];
+        const p = prochainChangement();
+        console.log(JSON.stringify({ quand: p.quand.toISOString().slice(0,10),
+                                     avant: p.avant, apres: p.apres }));
+    """))
+    assert r["quand"] == "2026-10-01"
+    assert round(r["avant"] - r["apres"], 2) == 600.0   # l'extra est payé tel quel
+
+
+def test_le_cout_du_jour_ignore_ce_qui_nest_pas_encore_en_vigueur():
+    """
+    ⚠️ ET C'EST TOUT L'INTÉRÊT. Julie est payée jusqu'au 1er octobre : la retirer du coût dès la
+    validation ferait mentir le point mort de ce soir.
+    """
+    r = _node(_monde("""
+        employeesData = [{ name: 'Julie', gross_monthly: 600, type: 'extra', tsu_exempt: false,
+                           meal_card_daily: 0, active: true, valid_to: '2026-10-01' }];
+        console.log(JSON.stringify({ auj: totalLe(aujourdhui()),
+                                     apres: totalLe(new Date(2026, 9, 1)) }));
+    """))
+    assert r["auj"] == 600
+    assert r["apres"] == 0
+
+
+def test_rien_a_annoncer_quand_rien_nest_programme():
+    r = _node(_monde("""
+        chargesData = [{ amount: 700, frequency: 'monthly', active: true }];
+        console.log(JSON.stringify({ p: prochainChangement() }));
+    """))
+    assert r["p"] is None
+
+
+def test_une_bascule_sans_effet_sur_le_total_ne_sannonce_pas():
+    """
+    ⚠️ UNE CLÔTURE SUIVIE D'UN REMPLACEMENT AU MÊME MONTANT NE CHANGE RIEN. Annoncer « à partir
+    du 1er octobre : 700 € » alors qu'on est déjà à 700 € ferait chercher un changement qui
+    n'existe pas — et userait l'attention qu'on veut garder pour les vrais.
+    """
+    r = _node(_monde("""
+        chargesData = [
+          { amount: 700, frequency: 'monthly', active: true, valid_to: '2026-10-01' },
+          { amount: 700, frequency: 'monthly', active: false, valid_from: '2026-10-01' },
+        ];
+        console.log(JSON.stringify({ p: prochainChangement() }));
+    """))
+    assert r["p"] is None
+
+
+def test_cest_la_plus_proche_des_dates_qui_est_annoncee():
+    r = _node(_monde("""
+        chargesData = [
+          { amount: 700, frequency: 'monthly', active: true, valid_to: '2026-12-01' },
+          { amount: 200, frequency: 'monthly', active: true, valid_to: '2026-10-01' },
+        ];
+        console.log(JSON.stringify({ q: prochainChangement().quand.toISOString().slice(0,10) }));
+    """))
+    assert r["q"] == "2026-10-01"
+
+
+def test_une_ligne_eteinte_a_la_main_ne_compte_pas_a_lecran_non_plus():
+    """
+    ⚠️ LA MÊME RÈGLE QUE `charges.py` : sans bornes, `active` est la borne. Si l'écran en
+    décidait autrement, il afficherait un coût du jour que le serveur ne calcule pas — et c'est
+    l'écran que Quentin regarde pour décider.
+    """
+    r = _node(_monde("""
+        chargesData = [{ amount: 120, frequency: 'monthly', active: false }];
+        console.log(JSON.stringify({ t: totalLe(aujourdhui()) }));
+    """))
+    assert r["t"] == 0
+
+
+def test_un_changement_deja_passe_nest_pas_annonce_comme_a_venir():
+    """
+    ⚠️ « À PARTIR DU 1er MAI » LU EN SEPTEMBRE EST UN BANDEAU QU'ON APPREND À IGNORER. Le loyer
+    a changé au 1er mai : c'est dans le chiffre du haut depuis quatre mois, il n'y a rien à
+    attendre. Un avis permanent sur un événement révolu use l'attention qu'on veut garder pour
+    le jour où quelque chose est vraiment programmé.
+    """
+    r = _node(_monde("""
+        chargesData = [
+          { amount: 700, frequency: 'monthly', active: false, valid_to: '2026-05-01' },
+          { amount: 750, frequency: 'monthly', active: true,  valid_from: '2026-05-01' },
+        ];
+        console.log(JSON.stringify({ p: prochainChangement() }));
+    """))
+    assert r["p"] is None
+
+
+def test_seules_les_dates_a_venir_sont_retenues():
+    """Une ligne peut porter une borne passée ET une borne à venir — c'est la seconde qui compte."""
+    r = _node(_monde("""
+        chargesData = [{ amount: 700, frequency: 'monthly', active: true,
+                         valid_from: '2026-05-01', valid_to: '2026-11-01' }];
+        console.log(JSON.stringify({ q: prochainChangement().quand.toISOString().slice(0,10) }));
+    """))
+    assert r["q"] == "2026-11-01"
