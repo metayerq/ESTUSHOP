@@ -127,63 +127,47 @@ def count_open_days(from_date: date, to_date: date) -> int:
     """Comme count_open_days_raw mais ≥ 1 (évite les divisions par zéro)."""
     return max(count_open_days_raw(from_date, to_date), 1)
 
-# ── Charges fixes opérationnelles / mois (€) ────────────────────────────────
-# Source : feuille 4_Charges_fixes, mois stabilisés (Juil 26+)
-CHARGES_FIXES = {
-    "Loyer (Rua da Indústria 32)":      700.00,
-    "EPAL (eau)":                         50.00,
-    "EDP (électricité)":                 150.00,
-    "Comptabilité Filomencor":           200.00,
-    "Assurance multirisques":             80.00,
-    "Licence musique (SPA)":               7.46,
-    "Internet & téléphone":               15.00,
-    "Logiciel POS & SaaS":                32.00,
-    "Banque":                             18.00,
-    "Maintenance équipements":            50.00,
-    "Divers":                             50.00,
-    "Assurance accident travail (AT)":    11.50,
-    "Pest control":                       20.00,
-    "Maintenance machine café":           40.00,
-    "Licença esplanada CML":              17.00,
-}
-TOTAL_CHARGES_FIXES_MOIS = sum(CHARGES_FIXES.values())  # ≈ 1 440.96 €
-
-# ── Personnel / mois (€) ────────────────────────────────────────────────────
-# Source : feuille 5_Personnel — salaires lissés 14 mois + TSU + carte repas
-PERSONNEL = {
-    "Julie (salaire brut lissé)":      1_000.00,   # TSU exonérée (1er emploi)
-    "André (brut lissé + TSU + repas)": 1_746.875,
-}
-TOTAL_PERSONNEL_MOIS = sum(PERSONNEL.values())  # = 2 746.875 €
-
-# ── Total charges opérationnelles / mois ────────────────────────────────────
-TOTAL_CHARGES_MOIS = TOTAL_CHARGES_FIXES_MOIS + TOTAL_PERSONNEL_MOIS  # ≈ 4 187.84 €
+# ══════════════════════════════════════════════════════════════════════════════
+# CE QUI N'EST PLUS ICI — ET OÙ LE CHERCHER
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ LES CHARGES ET LES SALAIRES VIVENT EN BASE, PAS DANS CE FICHIER. Tables Supabase
+# `charges_fixes` et `employees`, éditées sur la page `/charges`, lues en direct par
+# `daily_economics` (vendus.py) et par la caisse Mesa (`lib/server/estushopCharges.ts`).
+#
+# ⚠️ CE FICHIER EN PORTAIT ENCORE UNE COPIE, ET ELLE MENTAIT. Quinze postes de charges et deux
+# salaires y étaient écrits en dur — loyer à 700 €, Julie à 1 000 € — et plus personne ne les
+# importait. Les modifier ne changeait RIEN au tableau de bord : ni la marge, ni le point mort,
+# ni l'EBITDA. Un fichier de configuration qu'on peut éditer sans effet est pire qu'un fichier
+# absent : il donne la sensation d'avoir agi.
+#
+# Retirés le 21/09/2026 avec toute leur descendance, morte de la même façon :
+#   CHARGES_FIXES · PERSONNEL · TOTAL_CHARGES_FIXES_MOIS · TOTAL_PERSONNEL_MOIS ·
+#   TOTAL_CHARGES_MOIS · COUT_FIXE_JOUR · COUT_PERSONNEL_JOUR · COUT_TOTAL_JOUR ·
+#   AMORT_JOUR · SEUIL_CA_JOUR · SEUIL_CA_JOUR_TTC · MARGE_BP_BOISSONS ·
+#   MARGE_BP_PATISSERIES · MARGE_BP_LIVRES
+#
+# ⚠️ CHACUNE NE SERVAIT QU'À LA SUIVANTE. La chaîne partait de `CHARGES_FIXES` et finissait sur
+# `SEUIL_CA_JOUR_TTC`, que personne ne lisait : quatorze constantes dont aucune n'atteignait un
+# écran. C'est ce qui rend ce genre de code si durable — il ne casse jamais.
 
 # ── Amortissements / mois ────────────────────────────────────────────────────
-# CAPEX 60 000 € sur 8 ans
+# CAPEX 60 000 € sur 8 ans. ⚠️ ENCORE EN DUR, ET ENCORE LU : `daily_economics` s'en sert pour
+# l'amortissement journalier. À faire passer en base avec les autres réglages.
 AMORTISSEMENT_MOIS = 625.00
 
 # ── Jours d'ouverture moyens / mois ─────────────────────────────────────────
-# Source : feuille 1_Hypothèses — 255 jours / 12 mois
+# Source : feuille 1_Hypothèses — 255 jours / 12 mois.
+# ⚠️ CE NOMBRE DEVRAIT SE DÉDUIRE DU CALENDRIER `OPEN_WEEKDAYS` ci-dessus, pas être saisi. Deux
+# réglages qui décrivent la même chose finissent toujours par diverger — et c'est le diviseur
+# de tout le compte de résultat journalier.
 JOURS_OUVERTS_MOIS = 21.25
 
-# ── Coût journalier (base de calcul dashboard) ───────────────────────────────
-COUT_FIXE_JOUR     = round(TOTAL_CHARGES_FIXES_MOIS / JOURS_OUVERTS_MOIS, 2)   # ≈ 67.81 €
-COUT_PERSONNEL_JOUR = round(TOTAL_PERSONNEL_MOIS   / JOURS_OUVERTS_MOIS, 2)   # ≈ 129.27 €
-COUT_TOTAL_JOUR    = round(TOTAL_CHARGES_MOIS       / JOURS_OUVERTS_MOIS, 2)   # ≈ 197.08 €
-AMORT_JOUR         = round(AMORTISSEMENT_MOIS       / JOURS_OUVERTS_MOIS, 2)   # ≈ 29.41 €
-
-# ── Marges brutes théoriques BP ──────────────────────────────────────────────
-MARGE_BP_BOISSONS    = 0.80    # 80 %
-MARGE_BP_PATISSERIES = 0.638   # 63.8 %
-MARGE_BP_LIVRES      = 0.40    # 40 %
-MARGE_BP_GLOBALE     = 0.703   # 70.3 % (pondérée)
+# ── Marge brute théorique du business plan ───────────────────────────────────
+# ⚠️ UN REPLI, PAS UNE VÉRITÉ. La marge MESURÉE l'emporte dès qu'elle existe (vendus.py) ;
+# celle-ci ne sert qu'aux périodes sans données de coût.
+MARGE_BP_GLOBALE = 0.703   # 70,3 % (pondérée)
 
 # ── TVA moyenne pondérée (blended) ──────────────────────────────────────────
-# Taux dominant sur boissons/food (INT = 13%).
+# Taux dominant sur boissons/food (INT = 13 %).
 TVA_MOYENNE_BLENDED = 0.13
-
-# ── Seuil de rentabilité CA ──────────────────────────────────────────────────
-# CA minimum pour couvrir toutes les charges opérationnelles (hors amort.)
-SEUIL_CA_JOUR     = round(COUT_TOTAL_JOUR / MARGE_BP_GLOBALE, 2)          # ≈ 280 €/jour HT
-SEUIL_CA_JOUR_TTC = round(SEUIL_CA_JOUR * (1 + TVA_MOYENNE_BLENDED), 2)  # ≈ 312 €/jour TTC

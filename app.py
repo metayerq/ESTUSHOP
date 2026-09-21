@@ -1460,11 +1460,14 @@ def api_summary_rebuild():
 # backoffice montre les deux : ignorer les cartes non liées ferait croire que le programme
 # touche trente personnes alors qu'il en voit des centaines.
 
-# Le seuil, en points. ⚠️ IL N'EST PAS RÉGLABLE DEPUIS UN ÉCRAN, ET C'EST DÉLIBÉRÉ : le baisser
-# est un cadeau qu'on peut chiffrer, le relever est une promesse rompue pour tous ceux qui ont
-# déjà payé leurs points. Tant qu'aucune simulation n'existe pour le montrer avant de valider,
-# ce nombre reste ici, où le changer demande un déploiement — donc une intention.
-POINTS_THRESHOLD = 50
+# ⚠️ `POINTS_THRESHOLD = 50` A ÉTÉ RETIRÉ LE 21/09/2026. Le seuil vit dans
+# `card_settings.threshold_points`, réglable depuis `/loyalty` — avec la simulation qui chiffre
+# ce que le changement coûte AVANT de valider, un motif obligatoire et un journal.
+#
+# ⚠️ ET SA PROPRE NOTE DÉCRIVAIT UN MONDE RÉVOLU : « tant qu'aucune simulation n'existe pour le
+# montrer avant de valider, ce nombre reste ici ». Elle existe. Un commentaire qui justifie une
+# décision par une condition devenue fausse est plus trompeur qu'une ligne sans commentaire :
+# il donne une raison de ne pas regarder.
 
 # Ce que coûte RÉELLEMENT une boisson offerte : sa matière, pas son prix de carte. Mesuré sur le
 # compte d'août — le café le plus vendu part à 4,00 € et coûte 0,70 € à l'achat.
@@ -3784,6 +3787,90 @@ def api_comptes_modifier():
                     {k: v for k, v in maj.items() if k != "empreinte"},
                     "modification depuis les réglages")
     return jsonify(rendu)
+
+
+@app.route("/api/parametres/systeme")
+def api_parametres_systeme():
+    """
+    L'INVENTAIRE DE CE QUI SE RÈGLE AILLEURS.
+
+    ⚠️ C'EST LA RÉPONSE À « NE RIEN LAISSER AU HASARD », ET ELLE EST EN LECTURE SEULE. Rendre
+    tout éditable créerait des mensonges silencieux : les mots qui reconnaissent un paiement
+    carte, les bornes de validation, la TVA du business plan sont des règles techniques dont
+    l'édition à l'écran ferait diverger deux endroits. Ce qu'il faut, ce n'est pas pouvoir les
+    changer ici — c'est SAVOIR qu'ils existent, et où ils se changent.
+
+    ⚠️ AUCUNE VALEUR DE SECRET NE TRAVERSE. Seulement « configuré » ou « absent ». Cette réponse
+    est faite pour être regardée à l'écran, et un écran se photographie.
+
+    ⚠️ ET AUCUN APPEL VENDUS : tout vient de la base ou du code. Une route de réglages qui
+    dépendrait d'une API externe serait indisponible précisément quand on vient chercher
+    pourquoi quelque chose ne marche pas.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+
+    def presence(nom):
+        return bool((os.environ.get(nom) or "").strip())
+
+    secrets = [
+        ("DASHBOARD_PASSWORD", "Mot de passe partagé — administrateur", "Vercel"),
+        ("ACCOUNTANT_PASSWORD", "Mot de passe partagé — comptable", "Vercel"),
+        ("STAFF_PASSWORD", "Mot de passe partagé — équipe", "Vercel"),
+        ("INVESTOR_PASSWORD", "Mot de passe partagé — investisseur", "Vercel"),
+        ("AUTH_SECRET", "Signature des cookies de session", "Vercel"),
+        ("SUPABASE_KEY", "Accès à la base de données", "Vercel"),
+        ("VENDUS_API_KEY", "Accès à la facturation Vendus", "Vercel"),
+        ("REVOLUT_MERCHANT_KEY", "Lecture des encaissements terminal", "Vercel"),
+        ("CRON_SECRET", "Rafraîchissement automatique toutes les 5 min", "Vercel"),
+        ("MESA_URL", "Adresse de la caisse, pour les campagnes SMS", "Vercel"),
+        ("MESA_CAMPAIGN_SECRET", "Secret partagé avec la caisse", "Vercel"),
+        ("ACCOUNTANT_TOKEN", "Lien public de la page comptable /tpa", "Vercel"),
+    ]
+
+    # ── Le taux de frais, MESURÉ et non figé ────────────────────────────────────────────────
+    try:
+        taux, mois = _taux_frais(_load_revolut_days() or {})
+    except Exception:
+        taux, mois = TAUX_FRAIS_DEFAUT, None
+
+    # ── Le calendrier, fait historique ──────────────────────────────────────────────────────
+    from config import OPEN_WEEKDAYS, SCHEDULE_CUTOVER, LAUNCH_OPEN_DAYS, \
+        JOURS_OUVERTS_MOIS, MARGE_BP_GLOBALE, AMORTISSEMENT_MOIS
+    JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+
+    return jsonify({
+        "secrets": [{"nom": n, "quoi": q, "ou": o, "configure": presence(n)}
+                    for n, q, o in secrets],
+        "mesure": {
+            "taux_frais_pct": round(taux * 100, 4),
+            "taux_calibre_sur": mois,
+            "taux_defaut_pct": round(TAUX_FRAIS_DEFAUT * 100, 4),
+        },
+        "calendrier": {
+            "ouverture": OPENING_DAY,
+            "jours_ouverts": [JOURS[j] for j in sorted(OPEN_WEEKDAYS)],
+            "bascule_horaires": SCHEDULE_CUTOVER.isoformat(),
+            "jours_lancement": len(LAUNCH_OPEN_DAYS),
+            "jours_ouverts_mois": JOURS_OUVERTS_MOIS,
+        },
+        "hypotheses": {
+            "marge_bp_pct": round(MARGE_BP_GLOBALE * 100, 1),
+            "tva_blended_pct": round(TVA_MOYENNE_BLENDED * 100, 1),
+            "amortissement_mois": AMORTISSEMENT_MOIS,
+        },
+        "fidelite": {
+            "phrases": FIDELIDADE_CONSENTEMENTS,
+            "cout_boisson_cents": REWARD_COST_CENTS,
+            "prix_segment_cents": PRIX_SEGMENT_CENTIMES,
+        },
+        "paiements": {
+            "mots_carte": sorted(MOTS_CARTE),
+            "mots_especes": sorted(MOTS_ESPECES),
+            "fenetre_rapprochement_min": FENETRE_APPARIEMENT_MIN,
+        },
+        "places": {"terrasse": SEATS_TERRACE, "interieur": SEATS_INSIDE},
+    })
 
 
 # ── LE RAPPROCHEMENT TRANSACTION PAR TRANSACTION ─────────────────────────────────────────────

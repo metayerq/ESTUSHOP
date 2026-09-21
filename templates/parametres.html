@@ -43,6 +43,30 @@
   font-size:12.5px; line-height:1.55; margin-bottom:16px; color:var(--text); }
 .pa-etat { font-size:12px; color:var(--muted); margin-top:8px; }
 .vide { color:var(--muted); font-size:12.5px; }
+/* ── Les onglets ── */
+.pa-onglets { display:flex; gap:4px; margin:4px 0 20px; border-bottom:1px solid var(--border); }
+.pa-onglets button { font-family:inherit; font-size:13.5px; font-weight:500; padding:10px 18px;
+  background:none; border:1px solid transparent; border-bottom:none; border-radius:4px 4px 0 0;
+  color:var(--muted); cursor:pointer; margin-bottom:-1px; }
+.pa-onglets button:hover { color:var(--text); background:var(--bg-hover); }
+.pa-onglets button[aria-selected="true"] { color:var(--text); font-weight:600;
+  background:var(--bg-card); border-color:var(--border); }
+.pa-onglets button:focus-visible { outline:2px solid var(--spec); outline-offset:-2px; }
+/* ⚠️ `hidden` DOIT GAGNER — le bogue de la barre blanche du 19/09. */
+.pa-panneau[hidden] { display:none !important; }
+/* ── L'inventaire ── */
+.pa-ligne { display:grid; grid-template-columns:minmax(150px,1.1fr) 2fr auto; gap:14px;
+  padding:9px 0; border-top:1px solid var(--border); align-items:baseline; font-size:12.5px; }
+.pa-ligne:first-of-type { border-top:none; }
+.pa-ligne .n { font-family:var(--mono); font-size:11.5px; color:var(--text); }
+.pa-ligne .q { color:var(--muted); line-height:1.45; }
+.pa-ligne .o { font-family:var(--mono); font-size:10px; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--faint); white-space:nowrap; }
+.pa-ok { color:var(--green); font-weight:600; }
+.pa-ko { color:var(--red); font-weight:600; }
+.pa-renvoi { display:inline-block; font-size:12.5px; color:var(--spec); text-decoration:none;
+  margin-top:4px; }
+@media (max-width:700px){ .pa-ligne { grid-template-columns:1fr; gap:3px; } }
 </style>
 </head>
 <body>
@@ -55,6 +79,13 @@
     ne touche &agrave; personne d'autre &mdash; et les actions journalis&eacute;es portent son nom.
   </p>
 
+  <nav class="pa-onglets" id="pa-onglets" role="tablist" aria-label="Sections des r&eacute;glages">
+    <button role="tab" data-o="acces" aria-selected="true">Acc&egrave;s</button>
+    <button role="tab" data-o="economie" aria-selected="false">&Eacute;conomie</button>
+    <button role="tab" data-o="systeme" aria-selected="false">Syst&egrave;me</button>
+  </nav>
+
+  <div class="pa-panneau" id="pa-acces" role="tabpanel">
   <div id="pa-partages"></div>
 
   <div class="pa-bloc">
@@ -81,6 +112,43 @@
       <tbody><tr><td colspan="6" class="vide">Chargement&hellip;</td></tr></tbody>
     </table></div>
   </div>
+  </div><!-- /acces -->
+
+  <!--
+    ⚠️ CET ONGLET NE DUPLIQUE AUCUN ÉDITEUR, IL RENVOIE. La simulation des réglages fidélité a
+    besoin des 2 500 visites déjà chargées par /loyalty ; la refaire ici donnerait deux écrans
+    qui écrivent la même ligne, et un jour deux réponses différentes à la même question.
+  -->
+  <div class="pa-panneau" id="pa-economie" role="tabpanel" hidden>
+    <div class="pa-bloc">
+      <h2 class="pa-titre">Charges fixes et salaires</h2>
+      <p class="pa-aide">Quinze postes de charges et les salaires vivent en base, pas dans le
+        code. Ils sont lus en direct par le tableau de bord <b>et par la caisse</b>.</p>
+      <p class="pa-aide" style="color:var(--amber)">&#9888; Modifier un montant aujourd'hui
+        r&eacute;&eacute;crit la marge des mois pass&eacute;s&nbsp;: la lecture est en direct,
+        sans date d'effet. Et supprimer un poste le retire de tout l'historique. Les deux sont
+        &agrave; corriger &mdash; d'ici l&agrave;, pr&eacute;f&egrave;re ajouter un poste
+        plut&ocirc;t que d'en modifier un.</p>
+      <a class="pa-renvoi" href="/charges">Ouvrir Charges fixes &rarr;</a>
+    </div>
+    <div class="pa-bloc">
+      <h2 class="pa-titre">Programme de fid&eacute;lit&eacute;</h2>
+      <p class="pa-aide">Seuil, validit&eacute; des points, cr&eacute;dit d'anciennet&eacute;,
+        bonus de bienvenue, phrase du comptoir, num&eacute;ro d'essai. Cet &eacute;cran-l&agrave;
+        <b>simule ce que le changement co&ucirc;te</b> avant d'enregistrer, exige un motif et
+        tient un journal.</p>
+      <a class="pa-renvoi" href="/loyalty#reglages">Ouvrir les r&eacute;glages fid&eacute;lit&eacute; &rarr;</a>
+    </div>
+  </div><!-- /economie -->
+
+  <div class="pa-panneau" id="pa-systeme" role="tabpanel" hidden>
+    <p class="pa-aide" style="max-width:74ch;margin:0 0 16px">
+      Tout ce qui se r&egrave;gle <b>ailleurs</b>. Rien n'est modifiable ici&nbsp;: rendre ces
+      valeurs &eacute;ditables cr&eacute;erait deux endroits o&ugrave; les changer, dont un
+      seul aurait un effet. Chaque ligne dit o&ugrave; aller.
+    </p>
+    <div id="sys"><p class="vide">Chargement&hellip;</p></div>
+  </div><!-- /systeme -->
 
 </div>
 {% include "_pied.html" %}
@@ -235,6 +303,150 @@
     }
   });
 
+  /* ══ Les onglets ═══════════════════════════════════════════════════════════════════════
+   * ⚠️ L'ONGLET EST DANS L'ADRESSE. Un signet sur #systeme doit rouvrir l'inventaire, et un
+   * rechargement doit rester où l'on était — comme sur /loyalty, pour que les deux pages se
+   * comportent pareil.
+   */
+  var ONGLETS = ['acces', 'economie', 'systeme'];
+
+  function activer(nom, pousser){
+    if (ONGLETS.indexOf(nom) < 0) nom = 'acces';
+    ONGLETS.forEach(function(o){ E('pa-' + o).hidden = (o !== nom); });
+    [].forEach.call(E('pa-onglets').children, function(b){
+      b.setAttribute('aria-selected', String(b.dataset.o === nom));
+    });
+    if (pousser && location.hash.slice(1) !== nom) history.replaceState(null, '', '#' + nom);
+    if (nom === 'systeme' && !E('sys').dataset.charge) systeme();
+  }
+
+  E('pa-onglets').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-o]');
+    if (b) activer(b.dataset.o, true);
+  });
+  window.addEventListener('hashchange', function(){ activer(location.hash.slice(1), false); });
+
+  /* ══ L'inventaire système ══════════════════════════════════════════════════════════════ */
+  function ligne(nom, quoi, droite){
+    var d = document.createElement('div');
+    d.className = 'pa-ligne';
+    var a = document.createElement('div'); a.className = 'n'; a.textContent = nom;
+    var b = document.createElement('div'); b.className = 'q'; b.innerHTML = quoi;
+    var c = document.createElement('div'); c.className = 'o'; c.innerHTML = droite || '';
+    d.appendChild(a); d.appendChild(b); d.appendChild(c);
+    return d;
+  }
+
+  function bloc(titre, note){
+    var d = document.createElement('div');
+    d.className = 'pa-bloc';
+    d.innerHTML = '<h2 class="pa-titre">' + titre + '</h2>' +
+      (note ? '<p class="pa-aide" style="margin-top:0;margin-bottom:10px">' + note + '</p>' : '');
+    return d;
+  }
+
+  function systeme(){
+    fetch('/api/parametres/systeme').then(function(r){ return r.json(); }).then(function(d){
+      if (d.error){ E('sys').innerHTML = '<p class="vide">' + d.error + '</p>'; return; }
+      E('sys').dataset.charge = '1';
+      E('sys').innerHTML = '';
+
+      /* ⚠️ « CONFIGURÉ » OU « ABSENT », JAMAIS LA VALEUR. Cet écran se photographie. */
+      var b = bloc('Secrets et acc&egrave;s externes',
+        'Se modifient dans Vercel &rarr; Settings &rarr; Environment Variables, ' +
+        'puis demandent un <b>red&eacute;ploiement</b> pour prendre effet.');
+      (d.secrets || []).forEach(function(x){
+        b.appendChild(ligne(x.nom, x.quoi,
+          x.configure ? '<span class="pa-ok">configur&eacute;</span>'
+                      : '<span class="pa-ko">absent</span>'));
+      });
+      E('sys').appendChild(b);
+
+      var m = d.mesure || {};
+      var b2 = bloc('Ce qui est mesur&eacute;, pas r&eacute;gl&eacute;',
+        'Ces valeurs se recalculent seules. Les figer &agrave; l\'&eacute;cran les ferait ' +
+        'vieillir sans que rien ne le signale.');
+      b2.appendChild(ligne('Taux de frais Revolut',
+        'Estimation des frais quotidiens, tant que le relev&eacute; du mois n\'est pas ' +
+        'import&eacute;.',
+        m.taux_frais_pct + '&nbsp;% ' + (m.taux_calibre_sur
+          ? '<span style="color:var(--muted)">(relev&eacute; ' + m.taux_calibre_sur + ')</span>'
+          : '<span style="color:var(--amber)">(valeur de repli)</span>')));
+      E('sys').appendChild(b2);
+
+      var c = d.calendrier || {};
+      var b3 = bloc('Calendrier',
+        'Des faits, pas des r&eacute;glages. Se modifient dans <code>config.py</code>, ' +
+        'avec un d&eacute;ploiement.');
+      b3.appendChild(ligne('Ouverture du caf&eacute;', 'Borne basse de tous les historiques.',
+        c.ouverture));
+      b3.appendChild(ligne('Jours d\'ouverture', 'Sert &agrave; r&eacute;partir les charges ' +
+        'sur les jours <b>r&eacute;ellement</b> ouverts, pas sur le calendrier.',
+        (c.jours_ouverts || []).join(', ')));
+      b3.appendChild(ligne('Jours ouverts / mois',
+        '&#9888; Saisi &agrave; la main alors qu\'il devrait se d&eacute;duire des jours ' +
+        'ci-dessus. Diviseur de tout le compte de r&eacute;sultat journalier.',
+        c.jours_ouverts_mois));
+      b3.appendChild(ligne('P&eacute;riode de lancement',
+        'Horaires irr&eacute;guliers avant la bascule&nbsp;: ces jours-l&agrave; sont ' +
+        'list&eacute;s un par un.', c.jours_lancement + ' jours, jusqu\'au ' +
+        c.bascule_horaires));
+      E('sys').appendChild(b3);
+
+      var h = d.hypotheses || {};
+      var b4 = bloc('Hypoth&egrave;ses du business plan',
+        '&#9888; Des <b>replis</b>, pas des v&eacute;rit&eacute;s&nbsp;: la mesure l\'emporte ' +
+        'd&egrave;s qu\'elle existe. Les rendre &eacute;ditables inviterait &agrave; ' +
+        '&laquo;&nbsp;corriger&nbsp;&raquo; un chiffre qui ne sert d&eacute;j&agrave; plus.');
+      b4.appendChild(ligne('Marge brute th&eacute;orique',
+        'Utilis&eacute;e seulement sur les p&eacute;riodes sans prix d\'achat connu.',
+        h.marge_bp_pct + '&nbsp;%'));
+      b4.appendChild(ligne('TVA moyenne pond&eacute;r&eacute;e',
+        'Taux dominant boissons/food au Portugal.', h.tva_blended_pct + '&nbsp;%'));
+      b4.appendChild(ligne('Amortissement mensuel', 'CAPEX 60&nbsp;000&nbsp;&euro; sur 8 ans.',
+        h.amortissement_mois + '&nbsp;&euro;'));
+      E('sys').appendChild(b4);
+
+      var f = d.fidelite || {};
+      var b5 = bloc('Fid&eacute;lit&eacute; &mdash; ce qui reste dans le code',
+        'Les r&eacute;glages <b>r&eacute;glables</b> sont dans l\'onglet &Eacute;conomie.');
+      Object.keys(f.phrases || {}).forEach(function(k){
+        b5.appendChild(ligne('Phrase &laquo;&nbsp;' + k + '&nbsp;&raquo;',
+          '&laquo;&nbsp;' + f.phrases[k] + '&nbsp;&raquo;',
+          'code + test partag&eacute;'));
+      });
+      b5.appendChild(ligne('Co&ucirc;t mati&egrave;re d\'une boisson',
+        'Valorise la dette fid&eacute;lit&eacute; affich&eacute;e.',
+        (f.cout_boisson_cents / 100).toFixed(2) + '&nbsp;&euro;'));
+      b5.appendChild(ligne('Prix d\'un segment SMS',
+        'Estimation&nbsp;: le tarif Twilio d&eacute;pend de l\'op&eacute;rateur.',
+        (f.prix_segment_cents / 100).toFixed(2) + '&nbsp;&euro;'));
+      E('sys').appendChild(b5);
+
+      var pm = d.paiements || {};
+      var b6 = bloc('Reconnaissance des moyens de paiement',
+        '&#9888; Mal r&eacute;gl&eacute;s, ces mots produisent un &eacute;cart de caisse ' +
+        'permanent dont on ne trouve jamais la cause. Ils restent dans le code, ' +
+        'prot&eacute;g&eacute;s par des tests.');
+      b6.appendChild(ligne('Mots &laquo;&nbsp;carte&nbsp;&raquo;',
+        'Un libell&eacute; Vendus qui contient l\'un d\'eux compte comme carte.',
+        (pm.mots_carte || []).join(' · ')));
+      b6.appendChild(ligne('Mots &laquo;&nbsp;esp&egrave;ces&nbsp;&raquo;', '&nbsp;',
+        (pm.mots_especes || []).join(' · ')));
+      b6.appendChild(ligne('Fen&ecirc;tre de rapprochement',
+        'Tol&eacute;rance entre un paiement et sa facture.',
+        pm.fenetre_rapprochement_min + '&nbsp;min'));
+      E('sys').appendChild(b6);
+
+      var pl = d.places || {};
+      var b7 = bloc('Salle');
+      b7.appendChild(ligne('Places', 'Terrasse et int&eacute;rieur, pour le taux d\'occupation.',
+        pl.terrasse + ' + ' + pl.interieur));
+      E('sys').appendChild(b7);
+    }).catch(function(){ E('sys').innerHTML = '<p class="vide">Inventaire illisible.</p>'; });
+  }
+
+  activer(location.hash.slice(1) || 'acces', false);
   charger();
 })();
 </script>
