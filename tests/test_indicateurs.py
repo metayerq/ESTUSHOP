@@ -243,3 +243,76 @@ def test_lancienne_navigation_ne_laisse_aucun_style_mort():
             if ".app-nav" in f.read():
                 restes.append(os.path.basename(chemin))
     assert not restes, f"styles de l'ancienne navigation encore présents : {restes}"
+
+
+# ── Densité et chasse fixe ───────────────────────────────────────────────────────────────────
+
+def test_le_rail_descend_jusquen_bas():
+    """
+    ⚠️ LE DÉFAUT SIGNALÉ PAR QUENTIN. Avec `align-self: start` et une hauteur MAXIMALE, le rail
+    ne fait que la taille de ses liens : son fond sombre s'arrête au milieu de l'écran et
+    laisse une colonne vide en dessous. Une hauteur FIXE de 100vh le fait occuper toute la
+    fenêtre — et `overflow-y` reprend la main si les entrées venaient à dépasser.
+    """
+    i = CSS.index(".rail {")
+    bloc = CSS[i:CSS.index("}", i)]
+    assert "height: 100vh" in bloc
+    assert "max-height: 100vh" not in bloc, "la hauteur est redevenue un plafond"
+    assert "overflow-y: auto" in bloc
+
+
+def test_le_rail_replie_ne_garde_pas_la_hauteur():
+    """Sur mobile il devient une barre horizontale : 100vh l'étirerait sur tout l'écran."""
+    i = CSS.index("@media (max-width: 860px)")
+    assert "height: auto" in CSS[i:i + 700]
+
+
+def test_les_tableaux_sont_en_chasse_fixe():
+    """
+    ⚠️ SUR TOUT LE TABLEAU, PAS SEULEMENT SUR LES NOMBRES. C'est ce qui fait basculer le
+    registre : les colonnes s'alignent d'une ligne à l'autre, même les libellés, et l'œil
+    descend une colonne au lieu de la relire.
+    """
+    m = re.search(r"(?m)^table \{([^}]*)\}", CSS)
+    assert m, "la règle `table` a disparu"
+    assert "var(--mono)" in m.group(1)
+    assert "tabular-nums" in m.group(1)
+
+
+def test_aucun_tableau_nechappe_a_la_chasse_fixe():
+    """
+    ⚠️ UNE SEULE PAGE QUI GARDE SA POLICE PROPORTIONNELLE suffit à faire douter du reste : on
+    ne sait plus si l'alignement est une règle ou un hasard.
+    """
+    import glob
+    fautifs = []
+    for chemin in sorted(glob.glob(os.path.join(RACINE, "templates", "*.html"))):
+        with open(chemin, encoding="utf-8") as f:
+            html = f.read()
+        for style in re.findall(r"<style>(.*?)</style>", html, re.S):
+            for sel, corps in re.findall(r"([^{}]+)\{([^{}]*)\}", style):
+                s2 = " ".join(sel.split())
+                vise = re.search(r"(^|[\s,>])(table|thead|tbody|th|td)\b", s2) or \
+                    re.search(r"\.[\w-]*table\b", s2)
+                if vise and "font-family" in corps and "var(--mono)" not in corps \
+                        and "inherit" not in corps:
+                    fautifs.append(f"{os.path.basename(chemin)} · {s2[:30]}")
+    assert not fautifs, f"tableaux en police proportionnelle : {fautifs}"
+
+
+def test_le_corps_des_tableaux_descend_avec_la_chasse_fixe():
+    """
+    ⚠️ UNE CHASSE FIXE OCCUPE PLUS DE LARGEUR À TAILLE ÉGALE. Garder 13px ferait déborder les
+    tableaux les plus larges — réconciliation, COGS — précisément ceux qu'on consulte le plus.
+    """
+    m = re.search(r"(?m)^table \{([^}]*)\}", CSS)
+    taille = re.search(r"font-size:\s*(\d+(?:\.\d)?)px", m.group(1))
+    assert taille and float(taille.group(1)) <= 12
+
+
+def test_la_densite_a_monte():
+    """Les rembourrages des cellules et des indicateurs se sont resserrés."""
+    assert "tbody td { padding: 6px 11px; }" in CSS
+    i = CSS.index(".kpi-cell {")
+    assert "padding: 12px 14px 12px 17px" in CSS[i:CSS.index("}", i)]
+    assert ".app .page { max-width: none; margin: 0; padding: 20px 20px 64px; }" in CSS
