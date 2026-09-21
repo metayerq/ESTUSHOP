@@ -29,6 +29,7 @@ from programme import build_accounts, conversion_series, programme_summary
 from sms import campagne_apercu
 from campagnes import recap_depense
 import charges as _ch
+import periodes as _per
 import segments as _seg
 import menu as _menu
 
@@ -320,21 +321,88 @@ def _week_start(d):
     """Lundi de la semaine en cours."""
     return d - timedelta(days=d.weekday())
 
+def _comparaison(preset, from_date, to_date, today_real, is_single, n_days):
+    """
+    À quoi cette période se compare-t-elle ? Renvoie `(debut, fin, a_la_meme_heure, libelle)`.
+
+    ⚠️ EXTRAITE DE LA ROUTE POUR ÊTRE TESTABLE. Elle y vivait en ligne, au milieu du chargement
+    des documents : quatre mutants ont survécu à une batterie parce que rien ne pouvait
+    l'exercer sans monter toute la requête. Une règle qu'on ne peut pas éprouver seule finit par
+    n'être éprouvée par personne.
+
+    ⚠️ UN JOUR SE COMPARE AU MÊME JOUR DE SEMAINE. Un samedi et un lundi n'ont ni la même
+    clientèle ni le même volume ; les opposer ferait lire une chute de moitié chaque lundi.
+
+    ⚠️ UNE FENÊTRE SE COMPARE À MÊME NOMBRE DE SERVICES. Reculer de sept jours n'équilibre rien
+    quand le calendrier bouge : un férié, une fermeture, le début de l'historique, et l'on
+    oppose quatre services à cinq avant de conclure sur l'écart.
+    """
+    comp_from = comp_to = None
+    comp_is_sofar = False
+    comp_label = None
+
+    if is_single and from_date == today_real:
+        prev = today_real - timedelta(7)
+        comp_from = comp_to = prev
+        comp_is_sofar = True
+        comp_label = "vs le " + prev.strftime("%a") + " précédent, à la même heure"
+    elif is_single:
+        prev = from_date - timedelta(7)
+        comp_from = comp_to = prev
+        comp_label = "vs " + prev.strftime("%a %d %b")
+    elif preset in ("week", "lastweek", "services5"):
+        cf, ct, n_serv = _per.fenetre_precedente(from_date, to_date)
+        if cf is not None:
+            comp_from, comp_to = cf, ct
+            comp_label = f"vs les {n_serv} services précédents"
+    elif preset == "month":
+        # ⚠️ ALIGNÉ SUR LES JOURS DE SEMAINE, PAS SUR LE QUANTIÈME. Comparer le 1er-5 août au
+        # 1er-5 juillet opposait sam/dim/lun à mer/jeu/ven/sam/dim : ni les mêmes jours, ni le
+        # même nombre. Reculer de 4 semaines pleines préserve le jour de semaine de chaque date.
+        comp_from, comp_to = from_date - timedelta(28), to_date - timedelta(28)
+        comp_label = "vs les mêmes jours de semaine, 4 semaines plus tôt"
+    else:
+        comp_label = f"vs les {n_days} jours précédents"
+
+    return comp_from, comp_to, comp_is_sofar, comp_label
+
+
+def _dernier_service(d):
+    """
+    ⚠️ « HIER » N'EST PAS UN JOUR D'OUVERTURE. Le café ouvre lundi, jeudi, vendredi, samedi,
+    dimanche : chaque jeudi, la veille tombait sur un mercredi fermé, et la page s'affichait
+    vide avec des zéros. Un écran vide se lit « on n'a rien vendu », jamais « on n'était pas
+    là ». On remonte au dernier service réel, quel qu'en soit le quantième.
+    """
+    j = _per.dernier_jour_ouvert(d)
+    return (j, j) if j else (d - timedelta(1), d - timedelta(1))
+
+
+def _cinq_services(d):
+    """Une semaine de SERVICE : cinq ouvertures, quel que soit le calendrier."""
+    jours = _per.derniers_jours_ouverts(d, 5)
+    return (jours[0], jours[-1]) if jours else (d, d)
+
+
 PRESET_RANGES = {
     "today":      lambda d: (d, d),
-    "yesterday":  lambda d: (d - timedelta(1), d - timedelta(1)),
+    # ⚠️ RENOMMÉ ET REDÉFINI. `yesterday` pointait sur la veille calendaire ; il pointe
+    # désormais sur le dernier jour où le café a réellement ouvert.
+    "yesterday":  _dernier_service,
+    "services5":  _cinq_services,
     "week":       lambda d: (_week_start(d), d),
     "lastweek":   lambda d: (_week_start(d) - timedelta(7), _week_start(d) - timedelta(1)),
     "month":      lambda d: (d.replace(day=1), d),
     "all":        lambda d: (date(2026, 5, 27), d),  # date d'ouverture Estudantina
 }
 PRESET_LABELS = {
-    "today":     "Today",
-    "yesterday": "Yesterday",
-    "week":      "This week",
-    "lastweek":  "Last week",
-    "month":     "This month",
-    "all":       "Since opening",
+    "today":     "Aujourd'hui",
+    "yesterday": "Dernier service",
+    "services5": "5 derniers services",
+    "week":      "Semaine en cours",
+    "lastweek":  "Semaine dernière",
+    "month":     "Ce mois-ci",
+    "all":       "Depuis l'ouverture",
 }
 # Le détail articles des jours passés vient du cache daily_summary (Supabase) ;
 # seul le jour courant est détaillé en live via l'API Vendus.
@@ -801,36 +869,8 @@ def api_data():
     #  · this/last week       → mêmes jours décalés de 7 jours
     #  · this month           → mêmes jours écoulés du mois précédent
     #  · custom / since open  → période précédente de même longueur (défaut)
-    comp_is_sofar = False
-    comp_label    = None
-    if is_single and from_date == today_real:
-        prev = today_real - timedelta(7)
-        comp_from = comp_to = prev
-        comp_is_sofar = True
-        comp_label = "vs last " + prev.strftime("%a") + " same time"
-    elif is_single:
-        prev = from_date - timedelta(7)
-        comp_from = comp_to = prev
-        comp_label = "vs " + prev.strftime("%a %d %b")
-    elif preset in ("week", "lastweek"):
-        comp_from, comp_to = from_date - timedelta(7), to_date - timedelta(7)
-        comp_label = "vs same days last week"
-    elif preset == "month":
-        # ⚠️ ALIGNÉ SUR LES JOURS DE SEMAINE, PAS SUR LE QUANTIÈME.
-        #
-        # L'ancienne version comparait le 1er-5 août au 1er-5 juillet. Or le café ouvre lundi,
-        # jeudi, vendredi, samedi, dimanche : au 5 août 2026 cela opposait sam/dim/lun (3 jours
-        # ouvrés) à mer/jeu/ven/sam/dim (4 jours ouvrés). Ni les mêmes jours, ni le même nombre.
-        # Le commentaire juste au-dessus affirme pourtant que ces fenêtres sont « alignées sur
-        # la saisonnalité hebdo » — c'était vrai des autres branches, pas de celle-ci.
-        #
-        # Reculer de 4 semaines pleines préserve exactement le jour de semaine de chaque date,
-        # et retombe dans le mois précédent dans tous les cas utiles. On ne recule PAS d'un mois
-        # calendaire : c'est ce décalage-là qui produisait la comparaison bancale.
-        comp_from, comp_to = from_date - timedelta(28), to_date - timedelta(28)
-        comp_label = "vs same weekdays, 4 weeks earlier"
-    else:
-        comp_label = f"vs previous {n_days} days"
+    comp_from, comp_to, comp_is_sofar, comp_label = _comparaison(
+        preset, from_date, to_date, today_real, is_single, n_days)
 
     comp_from, comp_to, comp_exists = _usable_comparison(comp_from, comp_to)
     if not comp_exists:
@@ -1048,6 +1088,15 @@ def api_data():
         "from_date":     from_date.isoformat(),
         "to_date":       to_date.isoformat(),
         "n_days":        n_days,
+        # ⚠️ LE NOMBRE DE SERVICES, ANNONCÉ AVEC LA PÉRIODE. « La semaine dernière » est
+        # ambiguë : sept jours calendaires, ou cinq de service ? Les deux réponses existent et
+        # donnent des chiffres différents — tant que l'écran ne dit pas laquelle il applique,
+        # on lit un total sans savoir sur quoi il porte.
+        #
+        # ⚠️ ET C'EST CE QUI REND LA COMPARAISON LISIBLE. « Cette semaine » un jeudi contient
+        # DEUX services ; « la semaine dernière » en contient cinq. Les opposer sans le dire
+        # fait conclure à un effondrement de 60 % qui n'est qu'un décalage de calendrier.
+        "periode":       _per.decrire(from_date, to_date, today_real),
         "is_single_day": is_single,
         "has_items":     True,
         "date":          to_date.isoformat(),
@@ -2765,6 +2814,19 @@ def api_transactions_daily():
     return jsonify({"ok": True, "analysis_start": debut.isoformat(),
                     "opening_day": OPENING_DAY,
                     **_transactions_payload(rows, debut, today_real, segment)})
+
+
+@app.route("/cashflow")
+def cashflow_page():
+    """
+    La trésorerie : ce qui est vraiment entré et sorti depuis l'ouverture.
+
+    ⚠️ ELLE VIVAIT DERRIÈRE UN ONGLET DU TABLEAU DE BORD. Une vue cachée dans une autre page est
+    introuvable pour qui ne sait pas déjà qu'elle existe — et celle-ci ne partage rien avec le
+    tableau de bord : ni période (elle va toujours depuis l'ouverture), ni source, ni question.
+    Le tableau de bord parle de RÉSULTAT, celle-ci d'ENCAISSEMENT.
+    """
+    return render_template("cashflow.html")
 
 
 @app.route("/cogs")

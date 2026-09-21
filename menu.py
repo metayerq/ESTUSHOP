@@ -31,6 +31,7 @@ CATALOGUE = [
     {"chemin": "/transactions",   "libelle": "Affluence",        "groupe": "Pilotage"},
     {"chemin": "/reconciliation", "libelle": "Réconciliation",   "groupe": "Pilotage"},
     {"chemin": "/contabilidade",  "libelle": "Comptabilité",     "groupe": "Pilotage"},
+    {"chemin": "/cashflow",       "libelle": "Trésorerie",       "groupe": "Pilotage"},
 
     # Ce que l'affaire dépense. ⚠️ « ACHATS » N'EST PAS DE LA CAISSE : ce sont des dépenses
     # datées — fournitures, petit matériel, travaux — qui pèsent sur le mois, pas sur le tiroir.

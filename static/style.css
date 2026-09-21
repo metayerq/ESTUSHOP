@@ -970,3 +970,16 @@ td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 
 .volume b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 .volume-sep { color: var(--faint); }
 .volume-go { margin-left: auto; color: var(--spec); font-size: 12px; white-space: nowrap; }
+
+
+/* ── Ce que la période contient ───────────────────────────────────────────────
+      ⚠️ SEPT JOURS CALENDAIRES OU CINQ DE SERVICE ? Les deux réponses existent et
+      donnent des chiffres différents. La ligne le dit sous les pastilles, là où le
+      choix vient d'être fait — pas en note de bas de page. ── */
+.periode-dit {
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  margin: -10px 0 18px; line-height: 1.6;
+}
+.periode-dit:empty { display: none; }
+.periode-dit b { color: var(--text); font-weight: 600; }
+.periode-dit .att { color: var(--amber); }

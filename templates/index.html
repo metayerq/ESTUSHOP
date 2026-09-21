@@ -134,23 +134,25 @@
 
   <!-- Overview / Cashflow -->
   {% if role != 'investor' %}
-  <div class="view-tabs">
-    <button class="view-tab active" id="tab-view-overview" onclick="switchDashView('overview')">Overview</button>
-    <button class="view-tab" id="tab-view-cashflow" onclick="switchDashView('cashflow')">Cashflow</button>
-  </div>
+  {#
+    ⚠️ LES DEUX ONGLETS « OVERVIEW / CASHFLOW » ONT DISPARU AVEC LA SECONDE VUE. La trésorerie
+    a sa page et son entrée de menu : la garder cachée derrière un onglet d'une autre page la
+    rendait introuvable pour qui ne savait pas déjà qu'elle existait — et elle ne partage rien
+    avec le tableau de bord, ni période, ni source, ni question.
+  #}
   {% endif %}
 
-  <div id="view-overview">
 
   <!-- Filtres de période -->
   <div class="period-pills" id="period-pills">
-    <button class="pill active" data-preset="today"    onclick="setPreset('today')">Today</button>
-    <button class="pill"        data-preset="yesterday" onclick="setPreset('yesterday')">Yesterday</button>
-    <button class="pill"        data-preset="week"      onclick="setPreset('week')">This week</button>
-    <button class="pill"        data-preset="lastweek"  onclick="setPreset('lastweek')">Last week</button>
-    <button class="pill"        data-preset="month"     onclick="setPreset('month')">This month</button>
-    <button class="pill"        data-preset="all"       onclick="setPreset('all')">Since opening</button>
-    <button class="pill"        data-preset="custom"    onclick="openCustomRange()">Custom…</button>
+    <button class="pill active" data-preset="today"     onclick="setPreset('today')">Aujourd'hui</button>
+    <button class="pill"        data-preset="yesterday" onclick="setPreset('yesterday')">Dernier service</button>
+    <button class="pill"        data-preset="services5" onclick="setPreset('services5')">5 derniers services</button>
+    <button class="pill"        data-preset="week"      onclick="setPreset('week')">Semaine en cours</button>
+    <button class="pill"        data-preset="lastweek"  onclick="setPreset('lastweek')">Semaine derni&egrave;re</button>
+    <button class="pill"        data-preset="month"     onclick="setPreset('month')">Ce mois-ci</button>
+    <button class="pill"        data-preset="all"       onclick="setPreset('all')">Depuis l'ouverture</button>
+    <button class="pill"        data-preset="custom"    onclick="openCustomRange()">Dates&hellip;</button>
   </div>
 
   <!-- Le jour en cours dans l'économie de la période : masqué quand la période
@@ -162,6 +164,17 @@
     <span>Inclure la journée en cours dans l'économie de la période</span>
     <span id="incl-today-hint" style="color:var(--faint);"></span>
   </label>
+
+  <!--
+    ⚠️ « LA SEMAINE DERNIÈRE » EST AMBIGUË : sept jours calendaires, ou cinq de service ? Les
+    deux réponses existent et donnent des chiffres différents. Tant que l'écran ne dit pas
+    laquelle il applique, on lit un total sans savoir sur quoi il porte.
+
+    ⚠️ ET C'EST CE QUI REND LA COMPARAISON LISIBLE. « Semaine en cours » un jeudi contient DEUX
+    services ; « semaine dernière » en contient cinq. Les opposer sans le dire fait conclure à
+    un effondrement de 60 % qui n'est qu'un décalage de calendrier.
+  -->
+  <div class="periode-dit" id="periode-dit"></div>
 
   <div id="custom-range-bar" style="display:none; align-items:center; gap:8px; margin:-8px 0 20px;">
     <input type="date" id="custom-start" style="padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px;">
@@ -477,80 +490,6 @@
     </div>
   </div>
 
-  </div><!-- /view-overview -->
-
-  <!-- Cashflow -->
-  <div id="view-cashflow" style="display:none;">
-    <div class="header-sub" style="margin-bottom:20px;">
-      Real cash in (Vendus sales) vs real cash out (Expenses bank data) — since opening, May 27 2026.
-      May is a partial month (5 trading days).
-    </div>
-
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
-      <label class="check-row" style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-        <input type="checkbox" id="cf-excl-capex" onchange="renderCashflow()" style="width:16px;height:16px;">
-        Exclude one-off capex (renovation &amp; fit-out)
-      </label>
-      <div id="cf-updated" style="font-size:11px;color:var(--faint);"></div>
-    </div>
-
-    <div class="kpi-grid" style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px;background:var(--bg-card);">
-      <div class="kpi-cell">
-        <div class="kpi-label">Total cash in</div>
-        <div class="kpi-value" id="cf-total-in">—</div>
-      </div>
-      <div class="kpi-cell">
-        <div class="kpi-label">Total cash out</div>
-        <div class="kpi-value" id="cf-total-out">—</div>
-      </div>
-      <div class="kpi-cell">
-        <div class="kpi-label">Net cash</div>
-        <div class="kpi-value" id="cf-net">—</div>
-      </div>
-      <div class="kpi-cell">
-        <div class="kpi-label">Best / worst month</div>
-        <div class="kpi-value" id="cf-best" style="font-size:15px;">—</div>
-      </div>
-    </div>
-
-    <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px;background:var(--bg-card);padding:20px 24px;">
-      <canvas id="chart-cashflow" height="90"></canvas>
-    </div>
-
-    <div class="section-label" style="margin-bottom:8px;">Monthly detail</div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Month</th>
-            <th class="right">Cash in</th>
-            <th class="right">Cash out</th>
-            <th class="right">Net</th>
-            <th class="right">Cumulative</th>
-          </tr>
-        </thead>
-        <tbody id="cashflow-body">
-          <tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px;">Loading…</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="section-label" style="margin:24px 0 8px;">Commissions reçues <span style="color:var(--faint);font-weight:400;font-size:11px;">— popups où le chef encaisse et te reverse</span></div>
-    <div style="border:1px solid var(--border);border-radius:12px;background:var(--bg-card);padding:16px 20px;margin-bottom:24px;">
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
-        <input type="date" id="com-date" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text);font-size:13px;">
-        <input type="text" id="com-label" placeholder="Libellé (ex. Popup ramen)" style="flex:1;min-width:160px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text);font-size:13px;">
-        <input type="number" id="com-amount" placeholder="€" min="0" step="0.01" style="width:100px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text);font-size:13px;">
-        <button onclick="addCommission()" style="padding:7px 16px;border:none;border-radius:8px;background:var(--text);color:var(--bg-card);font-size:13px;font-weight:600;cursor:pointer;">Add</button>
-      </div>
-      <div id="com-error" style="display:none;color:#c0392b;font-size:12px;margin-bottom:10px;"></div>
-      <div class="table-wrap" style="border:none;">
-        <table>
-          <thead><tr><th>Date</th><th>Libellé</th><th class="right">Montant</th><th style="width:40px;"></th></tr></thead>
-          <tbody id="com-body"><tr><td colspan="4" style="color:var(--muted);text-align:center;padding:16px;">Loading…</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-  </div><!-- /view-cashflow -->
 
 </div><!-- /page -->
 
