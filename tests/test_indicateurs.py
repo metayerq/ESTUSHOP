@@ -69,14 +69,9 @@ def test_les_quatre_cartes_portent_chacune_une_seule_mesure():
         assert f"E('{ancre}')" in bloc, ancre
 
 
-def test_la_bande_detat_suit_les_conteneurs_que_la_fonction_connait():
-    """
-    ⚠️ `etat()` NE CONNAISSAIT QUE `.kpi-cell`. Appelée depuis le bandeau-réponse, elle ne
-    trouvait aucun conteneur et ne faisait RIEN : l'état était calculé puis jeté en silence. La
-    fonction a été élargie — la mise en forme doit suivre, sans quoi l'attribut serait posé sans
-    que rien ne l'affiche, ce qui est le même défaut à l'envers.
-    """
-    i = DASH.index("var cel = el && el.closest ? el.closest(")
-    selecteurs = re.findall(r"closest\('([^']+)'\)", DASH[i:i + 200])[0]
-    for sel in [s.strip() for s in selecteurs.split(",")]:
-        assert f'{sel}[data-etat="alerte"]::before' in CSS, f"{sel} n'a pas de bande d'état"
+# ⚠️ `etat()` EST PARTIE, ET SON TEST AVEC ELLE. La fonction visait `.kpi-cell`, `.tx-answer`
+# et `.maillon` — trois classes qu'aucune page ne porte plus. Cinq appels calculaient un état
+# puis ne faisaient rien : exactement le défaut que son propre commentaire décrivait.
+#
+# ⚠️ CE QU'ELLE PORTAIT SURVIT DANS `.db-badge`. La charte le dit : la pastille porte l'état, le
+# chiffre reste en encre — et la pastille est posée à côté de chaque valeur.

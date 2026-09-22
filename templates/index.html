@@ -9,7 +9,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Estudantina">
-<meta name="theme-color" content="#EDEAE3">
+{# ⚠️ CETTE COULEUR NE PEUT PAS ÊTRE UN JETON. La barre système du téléphone la lit avant
+     tout CSS : elle doit être écrite en clair. C'est la seule de la page, et elle reprend
+     exactement `--db-bg` en mode clair — si l'un bouge, l'autre doit suivre à la main. #}
+<meta name="theme-color" content="#F7FAFC">
 <title>Estudantina · Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -17,99 +20,35 @@
 <link rel="stylesheet" href="/static/style.css?v={{ v }}">
 <link rel="stylesheet" href="/static/dashboard.css?v={{ v }}">
 <style>
-/* ── Overview / Cashflow tabs ── */
-.view-tabs {
-  display:flex; gap:0; margin-bottom:20px;
-  border:1px solid var(--border); border-radius:8px;
-  overflow:hidden; background:var(--bg-page);
-  width:fit-content;
-}
-.view-tab {
-  font-family:inherit; font-size:13px; font-weight:500;
-  padding:8px 20px; border:none; background:transparent;
-  color:var(--muted); cursor:pointer;
-  transition:background .12s, color .12s;
-  border-right:1px solid var(--border);
-}
-.view-tab:last-child { border-right:none; }
-.view-tab:hover { background:var(--bg-hover); color:var(--text); }
-.view-tab.active {
-  background:var(--bg-card); color:var(--text);
-  font-weight:600; box-shadow:inset 0 -2px 0 var(--spec);
-}
+/* ⚠️ CE BLOC EST CHARGÉ APRÈS `dashboard.css` : à spécificité égale, il GAGNE. Un contre-thème
+   embarqué dans le gabarit bat donc la charte sans que rien ne le signale — c'est ainsi que les
+   titres de la zone « Tendances » sont restés en chasse fixe majuscules sur une page qui n'en
+   veut pas. Ce qui reste ici est ce qui n'a pas d'équivalent ailleurs, et rien d'autre.
 
-/* ── Compact payments ── */
-.pay-compact { display:flex; flex-direction:column; gap:8px; margin-top:4px; }
-.pay-compact-row {
-  display:flex; align-items:center; justify-content:space-between;
-  font-size:13px;
-}
-.pay-compact-row .pay-label { display:flex; align-items:center; gap:8px; color:var(--text); }
-.pay-compact-row .pay-dot   { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-.pay-compact-row .pay-nums  { color:var(--muted); font-variant-numeric:tabular-nums; }
-.pay-bar-track { height:3px; background:var(--bar-bg); border-radius:2px; margin-top:3px; }
-.pay-bar-fill  { height:3px; border-radius:2px; }
+   ⚠️ QUATRE JEUX DE RÈGLES SONT PARTIS AVEC CE MÉNAGE, tous morts : les onglets
+   « Overview / Cashflow » (la trésorerie a sa page), les paiements compacts (partis vers
+   `/reconciliation`), `.ins-big` et `.mv-row` (plus aucun usage). Du style mort se lit comme du
+   style disponible : le prochain qui cherche une classe en trouve une qui ne s'applique à rien.
+*/
 
-/* ── WoW strip ── */
-.wow-strip {
-  display:flex; gap:0; flex-wrap:nowrap;
-  font-size:12px; color:var(--muted);
-  margin-top:8px; padding:10px 16px;
-  background:var(--bg-page); border-radius:0 0 8px 8px;
-  border-top:1px solid var(--border);
-  align-items:center; gap:4px;
-}
-.wow-strip .wow-item { display:flex; align-items:center; gap:6px; }
-.wow-strip .wow-sep  { color:var(--faint); margin:0 10px; }
+/* La bande « 7 derniers jours » et son pied — le reste vient de dashboard.css. */
+.wow-item { display:flex; align-items:baseline; gap:6px; }
 
-/* ── Insights cards ── */
-.ins-grid {
-  display:none; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:32px;
-}
-.ins-grid.on { display:grid; }
-@media (max-width:760px) { .ins-grid { grid-template-columns:1fr; } }
-.ins-card {
-  border:1px solid var(--border); border-radius: 4px;
-  background:var(--bg-card); padding:18px; min-width:0;
-}
-.ins-label {
-  font-family:var(--mono); font-size:11px; font-weight:400; letter-spacing:.08em;
-  text-transform:uppercase; color:var(--muted); margin-bottom:10px;
-}
-.ins-big { font-size:19px; font-weight:600; letter-spacing:-.3px; }
-.ins-sub { font-size:11px; color:var(--muted); margin-top:6px; }
-.ins-svg { width:100%; height:78px; display:block; }
+/* La carte des pics : une grille d'heures × jours. */
 .hm-grid { display:grid; gap:2px; }
-.hm-cell { height:14px; border-radius:3px; background:var(--bar-bg); }
-.hm-cell:hover, .cal-cell:hover { outline:2px solid var(--spec); outline-offset:-1px; }
-.hm-lbl  { font-size:9px; color:var(--faint); display:flex; align-items:center; justify-content:center; }
-.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; margin-top:2px; }
-.cal-cell { height:17px; border-radius:4px; font-size:9px; display:flex; align-items:center;
-  justify-content:center; color:var(--faint); background:var(--bg-page); }
-.mv-row { display:flex; justify-content:space-between; gap:8px; font-size:12px; padding:3px 0; }
-.mv-row .mv-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hm-cell { aspect-ratio:1; border-radius:2px; background:var(--db-alt); }
+.hm-cell:hover, .cal-cell:hover { outline:2px solid var(--db-iris); outline-offset:1px; }
 
-/* ── En-têtes de zone (mois en cours / patterns) ── */
-.zone-head { display:flex; align-items:center; gap:10px; margin-bottom:14px;
-  padding-top:18px; border-top:1px solid var(--border); }
-.zone-badge {
-  font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;
-  color:var(--faint); background:var(--bg-hover); padding:3px 9px; border-radius:20px; white-space:nowrap;
-}
-
-
-
-
-
-
-/* Liste "Products sold" scrollable avec en-tête collant */
+/* ⚠️ L'EN-TÊTE COLLANT DU TABLEAU PRODUITS. Sa spécificité (0,2,2) bat `.db th` (0,1,1) : sans
+   ces deux jetons, il restait sur le fond et le filet de l'ancienne charte pendant que le reste
+   du tableau suivait la nouvelle. */
 .products-scroll thead th {
   position:sticky; top:0; z-index:2;
-  background:var(--bg-card); box-shadow:inset 0 -1px 0 var(--border);
+  background:var(--db-alt);
+  box-shadow:inset 0 -1px 0 var(--db-line);
 }
 .products-scroll::-webkit-scrollbar { width:8px; }
-.products-scroll::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
-
+.products-scroll::-webkit-scrollbar-thumb { background:var(--db-line); border-radius:999px; }
 </style>
 </head>
 <body>
@@ -161,9 +100,9 @@
   <div class="periode-dit" id="periode-dit"></div>
 
   <div id="custom-range-bar" style="display:none; align-items:center; gap:8px; margin:-4px 0 18px;">
-    <input type="date" id="custom-start" style="padding:6px 10px; border:1px solid var(--db-line); border-radius:6px; font-family:inherit; font-size:13px;">
+    <input type="date" id="custom-start" class="db-champ">
     <span style="color:var(--db-muted); font-size:13px;">au</span>
-    <input type="date" id="custom-end" style="padding:6px 10px; border:1px solid var(--db-line); border-radius:6px; font-family:inherit; font-size:13px;">
+    <input type="date" id="custom-end" class="db-champ">
     <button class="db-link" style="border:1px solid var(--db-iris);background:transparent;border-radius:6px;padding:5px 12px;cursor:pointer" onclick="applyCustomRange()">Appliquer</button>
   </div>
 
@@ -301,7 +240,7 @@
   <!-- Transactions récentes -->
   <div style="display:flex;align-items:baseline;justify-content:space-between;">
     <div class="section-label" id="recent-label">Commandes</div>
-    <div class="section-label" id="recent-count" style="color:var(--faint);"></div>
+    <div class="section-label" id="recent-count" style="color:var(--db-faint);"></div>
   </div>
   <div class="table-wrap">
     <div id="recent-list">
@@ -315,7 +254,7 @@
           </tr>
         </thead>
         <tbody id="recent-body">
-          <tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">Chargement&hellip;</td></tr>
+          <tr><td colspan="4" style="color:var(--db-muted);text-align:center;padding:24px;">Chargement&hellip;</td></tr>
         </tbody>
       </table>
     </div>
@@ -328,7 +267,7 @@
     #}
   <!-- Produits — suit la période sélectionnée -->
   <div id="top-products-section">
-    <div class="section-label" id="products-section-label">Ce qui s'est vendu <span id="products-count" style="color:var(--faint);font-weight:400;"></span></div>
+    <div class="section-label" id="products-section-label">Ce qui s'est vendu <span id="products-count" style="color:var(--db-faint);font-weight:400;"></span></div>
     <div class="table-wrap products-scroll" style="margin-bottom:32px;max-height:440px;overflow-y:auto;">
       <table>
         <thead>
@@ -342,7 +281,7 @@
           </tr>
         </thead>
         <tbody id="products-body">
-          <tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Chargement&hellip;</td></tr>
+          <tr><td colspan="6" style="color:var(--db-muted);text-align:center;padding:24px;">Chargement&hellip;</td></tr>
         </tbody>
       </table>
     </div>
@@ -382,11 +321,14 @@
 
     <!-- Sparkline 7j + WoW (masquée si période = week/last week : doublon) -->
     <div id="last7-block">
-      <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:32px;">
+      {# ⚠️ CE STYLE EN LIGNE ÉTAIT NEUTRALISÉ PAR `dashboard.css` à coups de `!important`. Deux
+         règles qui se battent pour la même bordure, dont une gagne par la force : la carte
+         porte maintenant la classe, et les `!important` disparaissent avec elle. #}
+      <div class="db-card" style="overflow:hidden;margin-bottom:32px;">
         <div style="padding:20px 24px 12px;">
           <div class="ins-label" style="margin-bottom:8px;">7 derniers jours</div>
           <canvas id="chart-week" height="55"></canvas>
-          <div id="week-labels" style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--muted);"></div>
+          <div id="week-labels" style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--db-muted);"></div>
         </div>
         <div class="wow-strip" id="wow-strip" style="display:none;">
           <div class="wow-item">
@@ -403,7 +345,7 @@
           <div class="wow-item" id="weekday-cell">
             <span>Meilleur jour :</span>
             <strong id="kpi-best-day">—</strong>
-            <span id="kpi-best-day-sub" style="color:var(--faint)"></span>
+            <span id="kpi-best-day-sub" style="color:var(--db-faint)"></span>
           </div>
         </div>
       </div>
@@ -413,46 +355,46 @@
 
 </div><!-- /page -->
 
-<div id="error-banner">⚠ <span id="error-msg"></span></div>
-<div id="warn-banner" style="display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#fff8e1;border:1px solid #ffe082;color:#795548;padding:10px 18px;border-radius:8px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:50;max-width:90vw;">
+<div id="error-banner" class="db">⚠ <span id="error-msg"></span></div>
+<div id="warn-banner" class="db" style="display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--db-amber-soft);border:1px solid var(--db-amber);color:var(--db-amber);padding:10px 18px;border-radius:var(--db-r);font-size:12.5px;box-shadow:var(--db-sh-pop);z-index:50;max-width:90vw;">
   &#9888; Donn&eacute;es incompl&egrave;tes : <span id="warn-msg"></span>
 </div>
 
 <!-- Tooltip survol transaction -->
-<div id="tx-tooltip" style="display:none;position:fixed;z-index:300;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.14);padding:10px 12px;font-size:12px;max-width:280px;pointer-events:none;"></div>
+<div id="tx-tooltip" class="db" style="display:none;position:fixed;z-index:300;background:var(--db-card);border:1px solid var(--db-line);border-radius:var(--db-r);box-shadow:var(--db-sh-pop);padding:10px 12px;font-size:12.5px;max-width:280px;pointer-events:none;"></div>
 
 <!-- Drawer ticket -->
 <!-- Modal produit popup (chef partenaire) -->
-<div id="popup-overlay" onclick="closeProductPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:400;"></div>
-<div id="popup-modal" style="display:none;position:fixed;z-index:401;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.2);padding:22px 24px;width:min(400px,calc(100vw - 32px));">
+<div id="popup-overlay" class="db" onclick="closeProductPopup()" style="display:none;position:fixed;inset:0;background:var(--db-scrim);z-index:400;"></div>
+<div id="popup-modal" class="db" style="display:none;position:fixed;z-index:401;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--db-card);border:1px solid var(--db-line);border-radius:var(--db-r);box-shadow:var(--db-sh-pop);padding:22px 24px;width:min(400px,calc(100vw - 32px));">
   <div style="font-size:15px;font-weight:600;" id="popup-prod-name"></div>
-  <div style="font-size:12px;color:var(--muted);margin:2px 0 14px;" id="popup-prod-meta"></div>
+  <div style="font-size:12px;color:var(--db-muted);margin:2px 0 14px;" id="popup-prod-meta"></div>
   <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
     <input type="checkbox" id="popup-check" onchange="popupCheckChanged()">
     Produit &mdash; chef partenaire (commission = marge brute)
   </label>
   <div id="popup-pct-row" style="display:none;margin-top:12px;">
-    <label style="font-size:12px;color:var(--muted);">Commission sur le prix TTC</label>
+    <label style="font-size:12px;color:var(--db-muted);">Commission sur le prix TTC</label>
     <div style="display:flex;gap:8px;margin-top:6px;align-items:center;">
-      <select id="popup-pct-select" onchange="popupPctChanged()" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text);font-size:13px;">
+      <select id="popup-pct-select" onchange="popupPctChanged()" style="flex:1;padding:7px 10px;border:1px solid var(--db-line);border-radius:8px;background:var(--db-card);color:var(--db-ink);font-size:13px;">
         <option value="10">10 %</option>
         <option value="15">15 %</option>
         <option value="20" selected>20 %</option>
         <option value="custom">Autre&hellip;</option>
       </select>
       <input type="number" id="popup-pct-custom" min="0" max="99" step="0.1" placeholder="%"
-             style="display:none;width:80px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text);font-size:13px;">
+             style="display:none;width:80px;padding:7px 10px;border:1px solid var(--db-line);border-radius:8px;background:var(--db-card);color:var(--db-ink);font-size:13px;">
     </div>
   </div>
-  <div id="popup-error" style="display:none;color:#c0392b;font-size:12px;margin-top:10px;"></div>
+  <div id="popup-error" style="display:none;color:var(--db-red);font-size:12.5px;margin-top:10px;"></div>
   <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;">
-    <button onclick="closeProductPopup()" style="padding:7px 14px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);font-size:13px;cursor:pointer;">Annuler</button>
-    <button id="popup-save" onclick="saveProductPopup()" style="padding:7px 14px;border:none;border-radius:8px;background:var(--text);color:var(--bg-card);font-size:13px;font-weight:600;cursor:pointer;">Enregistrer</button>
+    <button onclick="closeProductPopup()" class="db-btn">Annuler</button>
+    <button id="popup-save" onclick="saveProductPopup()" class="db-btn fort">Enregistrer</button>
   </div>
 </div>
 
-<div id="drawer-overlay" onclick="closeDrawer()"></div>
-<div id="drawer">
+<div id="drawer-overlay" class="db" onclick="closeDrawer()"></div>
+<div id="drawer" class="db">
   <div class="drawer-header">
     <div>
       <div class="drawer-title" id="drawer-number"></div>

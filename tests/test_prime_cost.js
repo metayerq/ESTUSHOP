@@ -37,25 +37,31 @@ function rendre(eco, primePerso) {
   const els = {
     'eco-prime':     { textContent: '', style: {} },
     'eco-prime-sub': { innerHTML: '' },
-    'eco-prime-bar': { innerHTML: '' },
+    // ⚠️ LA BARRE PORTE UN `style` ET UN VOISIN. Le faux élément n'avait ni l'un ni l'autre :
+    // la réparation du composant — qui dimensionne le span au lieu d'y injecter des divs — le
+    // faisait tomber sur un `style` indéfini. Un bancal plus pauvre que la page ne peut pas
+    // éprouver la page.
+    'eco-prime-bar': { innerHTML: '', style: {}, largeurs: [],
+                       insertAdjacentHTML(pos, h) { this.largeurs.push(h); } },
   };
   const document = { getElementById: id => els[id] };
   const fmt = n => '€' + Number(n).toFixed(2);
-  // ⚠️ LES DEUX AUXILIAIRES DE PRÉSENTATION SONT SIMULÉS, PAS EXTRAITS. `etat` et
-  // `marquerSeuil` touchent au DOM — une bande d'accent, un repère sur une barre — et ce
-  // fichier teste l'ARITHMÉTIQUE du prime cost. Les extraire ferait dépendre ce test de la
-  // mise en forme ; les omettre le fait tomber sur une ReferenceError qui ne dit rien du
-  // calcul. On garde la trace de ce qu'ils auraient reçu : c'est l'état, et il se vérifie.
-  let vuEtat = null;
-  const etat = (el, v) => { vuEtat = v; };
-  const marquerSeuil = () => {};
-  new Function('document', 'eco', 'primePerso', 'fmt', 'etat', 'marquerSeuil', bloc)(
-    document, eco, primePerso, fmt, etat, marquerSeuil);
+  // ⚠️ `etat` ET `marquerSeuil` ONT ÉTÉ SUPPRIMÉS DU CODE LIVRÉ : ils visaient des classes
+  // qu'aucune page ne porte plus, et calculaient un état que personne n'affichait. Le bancal
+  // les simulait — il simulait donc quelque chose qui ne faisait rien.
+  new Function('document', 'eco', 'primePerso', 'fmt', bloc)(
+    document, eco, primePerso, fmt);
   return {
     valeur: parseFloat(els['eco-prime'].textContent),
     sous:   els['eco-prime-sub'].innerHTML,
     couleur: els['eco-prime'].style.color,
-    etat:    vuEtat,
+    // ⚠️ L'ÉTAT SE LIT DANS LA PASTILLE, LA SEULE CHOSE QUI S'AFFICHE. Il passait par `etat()`,
+    // qui visait une classe disparue : calculé, comparé à la cible, puis jeté. Le test le
+    // vérifiait quand même — vert sur un signal que personne ne voyait.
+    etat: (els['eco-prime-sub'].innerHTML.match(/db-badge (\w+)/) || [])[1] || null,
+    // La barre est désormais dimensionnée, pas remplie de `<div>` : on relit sa largeur.
+    largeurMatiere: els['eco-prime-bar'].style.width,
+    largeurPerso:   (els['eco-prime-bar'].largeurs[0] || ''),
   };
 }
 
@@ -102,7 +108,7 @@ const PARTIEL = {
   // `couleur` vaut désormais toujours la chaîne vide. Il vérifie l'état, qui est la chose
   // qu'on voulait dire depuis le début.
   check('un prime cost réellement au-dessus du seuil n’est pas annoncé comme sain',
-    Math.abs(r.valeur - 70.0) < 0.05 && r.etat !== 'ok',
+    Math.abs(r.valeur - 70.0) < 0.05 && r.etat !== 'up',
     `${r.valeur}% / état=${r.etat}`);
 }
 
@@ -112,7 +118,7 @@ const PARTIEL = {
                  marge_brute_ht_pct: 75, marge_is_estimated: false, cogs_coverage_pct: 100 };
   const r = rendre(sain, 300);
   check('55 % reste sous la cible et est annoncé sain',
-    Math.abs(r.valeur - 55.0) < 0.05 && r.etat === 'ok',
+    Math.abs(r.valeur - 55.0) < 0.05 && r.etat === 'up',
     `${r.valeur}% / état=${r.etat}`);
 }
 

@@ -4,8 +4,15 @@
  * ⚠️ `null` RETIRE L'ATTRIBUT PLUTÔT QUE DE POSER UNE VALEUR NEUTRE. Un indicateur sans donnée
  * n'est pas « bon » : la bande reprend la couleur de la bordure, et l'œil ne s'y arrête pas.
  */
+/* ⚠️ `etat()` ET `marquerSeuil()` SONT PARTIS : ils visaient `.kpi-cell`, `.tx-answer`,
+ * `.maillon` et `.seuil-wrap` — quatre classes qu'aucune page ne porte plus. Cinq appels
+ * calculaient un état, puis ne faisaient rien : exactement le défaut que le commentaire
+ * d'`etat()` décrivait, appliqué à lui-même. La charte porte l'état dans la pastille
+ * `.db-badge`, déjà posée à côté de chaque chiffre.
+ */
+
 /**
- * Pose l'état d'un indicateur sur le CONTENEUR qui le porte.
+ * (retiré)
  *
  * ⚠️ LE CHIFFRE RESTE EN ENCRE, C'EST LA BANDE QUI PORTE L'ÉTAT. Un nombre coloré est plus
  * difficile à lire qu'un nombre noir, et sur douze indicateurs colorés plus rien ne ressort.
@@ -15,12 +22,6 @@
  * rien et ne faisait RIEN — l'état était calculé puis jeté en silence. Le pire cas : la
  * fonction a l'air appelée, la couleur n'apparaît jamais, et on cherche le bogue dans le CSS.
  */
-function etat(el, valeur){
-  var cel = el && el.closest ? el.closest('.kpi-cell, .tx-answer, .maillon') : null;
-  if (!cel) return;
-  if (valeur) cel.setAttribute('data-etat', valeur);
-  else cel.removeAttribute('data-etat');
-}
 
 /**
  * Pose un repère de cible sur une barre de progression.
@@ -29,22 +30,10 @@ function etat(el, valeur){
  * oblige à convertir mentalement une largeur en pourcentage — c'est exactement le calcul qu'un
  * repère évite.
  */
-function marquerSeuil(barre, pct, libelle){
-  if (!barre || !barre.parentElement) return;
-  var enveloppe = barre.parentElement;
-  enveloppe.classList.add('seuil-wrap');
-  var vieux = enveloppe.querySelector('.seuil-marque');
-  if (vieux) vieux.remove();
-  var m = document.createElement('div');
-  m.className = 'seuil-marque';
-  m.style.left = Math.max(0, Math.min(100, pct)) + '%';
-  if (libelle) m.title = libelle;
-  enveloppe.appendChild(m);
-}
 
-const COLORS = ['#2554C7','rgba(37,84,199,.7)','rgba(37,84,199,.5)','rgba(37,84,199,.35)','rgba(37,84,199,.2)','rgba(37,84,199,.12)'];
-const BAR_ACTIVE = '#2554C7';
-const BAR_IDLE   = 'rgba(37,84,199,.12)';
+/* ⚠️ CE BLEU VENAIT DE L'AVANT-AVANT-CHARTE et survivait sur le graphique « 7 derniers
+ * jours » — la seule tache de #2554C7 d'une page entièrement iris. Les couleurs de barre se
+ * lisent désormais dans les jetons, au moment du tracé, comme les courbes. */
 let chartHourly = null, chartWeek = null;
 let chartCurve  = null, chartDaily = null;
 
@@ -88,9 +77,18 @@ function applyCustomRange() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+/**
+ * ⚠️ QUATRE PASTILLES ÉTAIENT ÉCRITES À LA MAIN, avec quatre couleurs dont deux en dur. Le
+ * composant `.db-badge` existe et couvre les cinq états : une pastille recopiée finit toujours
+ * par diverger — il suffit d'en corriger trois sur quatre.
+ *
+ * ⚠️ ET LE CHIFFRE RESTE EN ENCRE. La charte le dit : la pastille porte l'état, pas le nombre.
+ * Un nombre coloré se lit moins bien qu'un nombre noir, et sur douze indicateurs colorés plus
+ * rien ne ressort.
+ */
 function marginBadge(pct) {
-  const color = pct >= 80 ? 'var(--green)' : pct >= 60 ? '#b07d00' : 'var(--red)';
-  return `<span style="color:${color};font-weight:500">${pct}%</span>`;
+  const etat = pct >= 80 ? 'up' : pct >= 60 ? 'warn' : 'down';
+  return `<span class="db-badge ${etat}">${pct} %</span>`;
 }
 
 const fmt = n => new Intl.NumberFormat('en-IE', {
@@ -102,9 +100,11 @@ function delta(cur, prev, label) {
   if (prev == null || prev === 0) return '';
   const pct = Math.round((cur - prev) / Math.abs(prev) * 100);
   const up = pct >= 0;
-  // Pastille Mesa (flèche + %) suivie du libellé en gris.
-  return `<span class="${up ? 'delta-up' : 'delta-down'}">${up ? '▲ +' : '▼ '}${pct}%</span>`
-       + `<span style="color:var(--muted);margin-left:8px;font-size:11.5px;">${label}</span>`;
+  /* ⚠️ `delta-up` / `delta-down` VENAIENT DE L'ANCIENNE CHARTE : chasse fixe et fonds en dur.
+   * Cette pastille est sur TOUTES les cartes du haut — c'était l'écart le plus visible de la
+   * page, et le plus facile à ne pas voir, puisqu'on la lit sans la regarder. */
+  return `<span class="db-badge ${up ? 'up' : 'down'}">${up ? '▲ +' : '▼ '}${pct} %</span>`
+       + `<span class="db-s" style="margin:0">${label}</span>`;
 }
 
 // Pastille seule (flèche + %), sans libellé — pour le strip Today.
@@ -213,8 +213,16 @@ function jetons() {
     line: v('--db-line-soft') || '#EDF1F6',
     faint: v('--db-faint') || '#8792A2',
     ink: v('--db-ink') || '#1A1F36',
-    card: v('--db-card') || '#FFFFFF',
     green: v('--db-green') || '#067647',
+    /* ⚠️ CINQ JETONS MANQUAIENT ICI, et c'est pourquoi les graphiques peignaient en dur : la
+     * fonction ne savait pas lire le rouge, l'ambre ni les fonds pâles. Étendre la lecture vaut
+     * mieux que semer des `getPropertyValue` dans six endroits différents. */
+    red: v('--db-red') || '#B42318',
+    amber: v('--db-amber') || '#B54708',
+    irisSoft: v('--db-iris-soft') || '#F1F0FE',
+    greenSoft: v('--db-green-soft') || '#ECFDF3',
+    redSoft: v('--db-red-soft') || '#FEF3F2',
+    alt: v('--db-alt') || '#F7FAFC',
   };
 }
 
@@ -573,11 +581,11 @@ function render(d) {
   if (!d.is_single_day && openDays > 1) {
     const tx = d.basket && d.basket.tx_per_open_day;
     nbPerDayEl.innerHTML = tx != null
-      ? `<strong style="color:var(--text)">${tx}</strong>`
-        + `<span style="color:var(--faint);font-size:11px;"> tickets / jour ouvert`
+      ? `<strong style="color:var(--db-ink)">${tx}</strong>`
+        + `<span style="color:var(--db-faint);font-size:11px;"> tickets / jour ouvert`
         + ` · ${d.basket.tx_basis_days} j pleins</span>`
-      : `<span style="color:var(--muted)">—</span>`
-        + `<span style="color:var(--faint);font-size:11px;"> tickets / jour ouvert`
+      : `<span style="color:var(--db-muted)">—</span>`
+        + `<span style="color:var(--db-faint);font-size:11px;"> tickets / jour ouvert`
         + ` · ${(d.basket && d.basket.tx_basis_reason) || 'indisponible'}</span>`;
   } else {
     /* ⚠️ `perDayEl` A ÉTÉ SUPPRIMÉ AVEC LA CARTE QUI LE PORTAIT, et cette ligne est restée.
@@ -589,7 +597,7 @@ function render(d) {
 
   document.getElementById('kpi-nb').textContent         = d.today.nb;
   document.getElementById('kpi-nb-delta').innerHTML     = delta(d.today.nb, d.yesterday.nb, compLabel)
-    || `<span style="color:var(--muted)">tickets (refunds deducted)</span>`;
+    || `<span style="color:var(--db-muted)">tickets (refunds deducted)</span>`;
   document.getElementById('kpi-ticket').textContent     = fmt(d.today.ticket);
   // Delta et médiane sur DEUX lignes distinctes → la médiane reste toujours
   // visible, y compris sur TODAY où le libellé de delta est long.
@@ -627,7 +635,7 @@ function render(d) {
       // `marge_is_estimated` était calculé, renvoyé, et lu par personne.
       const cov = eco.cogs_coverage_pct;
       const est = eco.marge_is_estimated === true;
-      const covColor = est ? (cov != null && cov >= 60 ? '#b07d00' : 'var(--red)') : 'var(--green)';
+      const covColor = est ? (cov != null && cov >= 60 ? 'var(--db-amber)' : 'var(--db-red)') : 'var(--db-green)';
       // Sous le seuil, la marge n'est plus mesurée : elle est mesurée sur une PARTIE des ventes
       // puis appliquée au reste. Le dire, plutôt que d'afficher un pourcentage de couverture que
       // le lecteur doit interpréter lui-même.
@@ -635,21 +643,18 @@ function render(d) {
         : est ? `<span style="color:${covColor}">mesurée sur ${cov} % des ventes, appliquée au reste</span>`
               : `<span style="color:${covColor}">couverture des coûts ${cov} %</span>`;
       document.getElementById('eco-marge-pct').innerHTML =
-        `${eco.marge_brute_ht_pct}%${est ? ' <span style="color:#b07d00">est.</span>' : ''}` +
-        ` <span style="color:var(--faint)">· marchandise ${fmt(eco.cogs_ht)} · </span>${covStr}`;
+        `${eco.marge_brute_ht_pct}%${est ? ' <span style="color:var(--db-amber)">est.</span>' : ''}` +
+        ` <span style="color:var(--db-faint)">· marchandise ${fmt(eco.cogs_ht)} · </span>${covStr}`;
       /* ⚠️ L'ÉTAT DE LA MARGE, C'EST SA COUVERTURE — pas sa valeur. Une marge de 75 % mesurée
          sur 96 % des ventes et la même mesurée sur 55 % ne sont pas la même information, et
          c'est la seconde qui appelle un geste. La bande le dit sans une ligne de texte de
          plus. */
-      etat(document.getElementById('eco-marge'), !est ? 'ok'
-           : (cov != null && cov >= 60) ? 'attention' : 'alerte');
     } else {
       /* ⚠️ UNE CASE VIDE DIT CE QUI LA REMPLIRA, avec le lien pour y aller. « No COGS set »
          laisse devant un écran mort. */
-      etat(document.getElementById('eco-marge'), null);
       document.getElementById('eco-marge-pct').innerHTML =
-        '<span style="color:var(--muted)">Aucun prix d\'achat renseigné. ' +
-        '<a href="/cogs" style="color:var(--accent)">Ouvrir COGS &amp; recettes →</a></span>';
+        '<span style="color:var(--db-muted)">Aucun prix d\'achat renseigné. ' +
+        '<a href="/cogs" style="color:var(--db-iris)">Ouvrir COGS &amp; recettes →</a></span>';
     }
 
     // Charges — utilise les totaux période et open_days (pas n_days calendaires)
@@ -687,24 +692,35 @@ function render(d) {
          plus difficile à lire qu'un nombre noir, et sur douze indicateurs colorés plus rien ne
          ressort. */
       primeEl.style.color = '';
-      etat(primeEl, prime <= 65 ? 'ok' : prime <= 75 ? 'attention' : 'alerte');
-      primeSub.innerHTML = `Marchandise ${cogsPct.toFixed(0)}% · Personnel ${labPct.toFixed(0)}%`
-        + (est ? ` <span style="color:var(--amber)">· matière extrapolée sur ${eco.cogs_coverage_pct}% des ventes</span>` : '')
-        + ` <span style="color:var(--faint)">· cible &lt;65 %</span>`;
-      primeBar.innerHTML =
-        `<div style="width:${Math.min(100,cogsPct)}%;background:var(--flux-leave);"></div>` +
-        `<div style="width:${Math.min(100,labPct)}%;background:var(--flux-tax);"></div>`;
-      /* ⚠️ LE REPÈRE DE CIBLE, À 65 %. Une barre sans repère dit « c'est trop » ; avec le
-         repère, elle dit « de deux points ». La barre est graduée sur 100 % du CA : la cible
-         s'y place donc à 65 % de sa largeur. */
-      marquerSeuil(primeBar, 65, 'cible 65 %');
+      /* ⚠️ L'ÉTAT DU PRIME COST N'ÉTAIT AFFICHÉ NULLE PART. Il passait par `etat()`, qui visait
+       * une classe disparue : la valeur était calculée, comparée à la cible, puis jetée. La
+       * charte a une pastille pour ça — et une pastille se voit, contrairement à une bande
+       * d'accent qui n'existe plus. */
+      const etatPrime = prime <= 65 ? 'up' : prime <= 75 ? 'warn' : 'down';
+      primeSub.innerHTML =
+        `<span class="db-badge ${etatPrime}">${prime <= 65 ? 'sous la cible' : 'au-dessus'}</span>`
+        + ` Marchandise ${cogsPct.toFixed(0)}% · Personnel ${labPct.toFixed(0)}%`
+        + (est ? ` <span style="color:var(--db-amber)">· matière extrapolée sur ${eco.cogs_coverage_pct}% des ventes</span>` : '')
+        + ` <span style="color:var(--db-faint)">· cible &lt;65 %</span>`;
+      /* ⚠️ CETTE BARRE N'AFFICHAIT RIEN, ET PERSONNE NE POUVAIT LE VOIR. Elle injectait deux
+       * `<div>` DANS le `<span>` de remplissage de `.db-prog` — or ce span reste à `width:0%`
+       * puisque rien ne le met à jour, et des `<div>` sans hauteur dans un conteneur de zéro
+       * pixel ne dessinent rien. Le chiffre au-dessus était juste ; la barre était vide, ce qui
+       * se lit « aucune donnée » plutôt que « composant cassé ».
+       *
+       * ⚠️ LE REPÈRE DE CIBLE VIT DÉJÀ DANS LE GABARIT (`<span class="seuil" style="left:65%">`).
+       * `marquerSeuil` en posait un SECOND, dans le style de l'ancienne charte : deux traits de
+       * deux épaisseurs sur la même barre. */
+      primeBar.style.width = Math.min(100, cogsPct) + '%';
+      primeBar.insertAdjacentHTML('afterend',
+        `<span class="db-prog-part" style="left:${Math.min(100, cogsPct)}%;`
+        + `width:${Math.min(100, labPct)}%"></span>`);
     } else {
       /* ⚠️ UN TIRET, PAS UN ZÉRO — et une phrase qui dit ce qui le remplira. « Not
          measurable » laisse devant un écran mort sans indiquer le geste. */
       primeEl.textContent = '—'; primeEl.style.color = '';
-      etat(primeEl, null);
-      primeSub.innerHTML = '<span style="color:var(--muted)">Il manque les prix d\'achat. ' +
-        '<a href="/cogs" style="color:var(--accent)">Ouvrir COGS &amp; recettes →</a></span>';
+      primeSub.innerHTML = '<span style="color:var(--db-muted)">Il manque les prix d\'achat. ' +
+        '<a href="/cogs" style="color:var(--db-iris)">Ouvrir COGS &amp; recettes →</a></span>';
       primeBar.innerHTML = '';
     }
 
@@ -718,19 +734,18 @@ function render(d) {
       const seuilEst = eco.marge_is_estimated === true;
       const margeNote = eco.seuil_margin_pct == null ? ''
         : seuilEst
-          ? ` <span style="color:#b07d00">· sur une marge extrapolée de ${eco.seuil_margin_pct} %</span>`
-          : ` <span style="color:var(--faint)">· marge réelle ${eco.seuil_margin_pct} %</span>`;
+          ? ` <span style="color:var(--db-amber)">· sur une marge extrapolée de ${eco.seuil_margin_pct} %</span>`
+          : ` <span style="color:var(--db-faint)">· marge réelle ${eco.seuil_margin_pct} %</span>`;
       if (eco.manque_seuil > 0) {
-        seuilSub.innerHTML = `<span style="color:var(--red)">${fmt(eco.manque_seuil)} manquants (TTC)</span>` + margeNote;
+        seuilSub.innerHTML = `<span style="color:var(--db-red)">${fmt(eco.manque_seuil)} manquants (TTC)</span>` + margeNote;
       } else {
-        seuilSub.innerHTML = `<span style="color:var(--green)">Point mort atteint${seuilEst ? '' : ' ✓'}</span>` + margeNote;
+        seuilSub.innerHTML = `<span style="color:var(--db-green)">Point mort atteint${seuilEst ? '' : ' ✓'}</span>` + margeNote;
       }
       document.getElementById('eco-seuil-bar').style.width = Math.min(100, eco.pct_seuil) + '%';
     } else {
       document.getElementById('eco-seuil').textContent = '—';
-      etat(document.getElementById('eco-seuil'), null);
-      seuilSub.innerHTML = '<span style="color:var(--muted)">Le point mort se calcule ' +
-        'charges ÷ marge réelle. <a href="/cogs" style="color:var(--accent)">Ouvrir COGS →</a></span>';
+      seuilSub.innerHTML = '<span style="color:var(--db-muted)">Le point mort se calcule ' +
+        'charges ÷ marge réelle. <a href="/cogs" style="color:var(--db-iris)">Ouvrir COGS →</a></span>';
       document.getElementById('eco-seuil-bar').style.width = '0%';
     }
 
@@ -744,14 +759,14 @@ function render(d) {
         const pct = Math.round((perDay - prevDay) / prevDay * 100);
         if (pct !== 0) {
           const down = pct < 0;                       // point mort en baisse = mieux
-          const col = down ? 'var(--green)' : 'var(--red)';
+          const col = down ? 'var(--db-green)' : 'var(--db-red)';
           evo = ` <span style="color:${col};font-weight:500">${down ? '▼ ' : '▲ +'}${pct}%</span>`
-              + `<span style="color:var(--faint);font-size:11px;"> ${compLabel || 'vs prev.'}</span>`;
+              + `<span style="color:var(--db-faint);font-size:11px;"> ${compLabel || 'vs prev.'}</span>`;
         } else {
-          evo = ` <span style="color:var(--muted)">= stable</span>`;
+          evo = ` <span style="color:var(--db-muted)">= stable</span>`;
         }
       }
-      avgEl.innerHTML = `<span style="color:var(--muted)">moy. ${fmt(perDay)}/jour ouvert</span>${evo}`;
+      avgEl.innerHTML = `<span style="color:var(--db-muted)">moy. ${fmt(perDay)}/jour ouvert</span>${evo}`;
     } else {
       avgEl.innerHTML = '';
     }
@@ -763,6 +778,10 @@ function render(d) {
   // ── Sparkline 7 derniers jours (toujours) ────────────────────────────────
   const peakIdx = d.week.reduce((mi, v, i, a) => v.ca > a[mi].ca ? i : mi, 0);
   const wCtx = document.getElementById('chart-week').getContext('2d');
+  /* ⚠️ LES COULEURS SE LISENT AU MOMENT DU TRACÉ, pas au chargement du fichier. Une constante
+   * figée ne suit pas le changement de thème : le graphique restait peint aux couleurs du mode
+   * précédent jusqu'au rechargement de la page. */
+  const jw = jetons();
   if (chartWeek) chartWeek.destroy();
   chartWeek = new Chart(wCtx, {
     type: 'bar',
@@ -770,7 +789,7 @@ function render(d) {
       labels: d.week.map(w => w.label),
       datasets: [{
         data: d.week.map(w => w.ca),
-        backgroundColor: d.week.map((_, i) => i === peakIdx && d.week[peakIdx].ca > 0 ? BAR_ACTIVE : BAR_IDLE),
+        backgroundColor: d.week.map((_, i) => i === peakIdx && d.week[peakIdx].ca > 0 ? jw.iris : jw.irisSoft),
         borderRadius: 3,
         borderSkipped: false,
       }]
@@ -782,12 +801,12 @@ function render(d) {
       },
       scales: {
         y: { display: false, beginAtZero: true },
-        x: { ticks: { font: { size: 11 }, color: 'rgba(120,119,111,1)' }, grid: { display: false }, border: { display: false } }
+        x: { ticks: { font: { size: 11 }, color: jw.faint }, grid: { display: false }, border: { display: false } }
       }
     }
   });
   document.getElementById('week-labels').innerHTML = d.week.map((w, i) =>
-    `<span style="${i === peakIdx && w.ca > 0 ? 'color:var(--text);font-weight:600' : ''}">${fmt(w.ca)}</span>`
+    `<span${i === peakIdx && w.ca > 0 ? ' style="color:var(--db-ink);font-weight:600"' : ''}>${fmt(w.ca)}</span>`
   ).join('');
 
   /* ⚠️ LE GRAPHIQUE PRINCIPAL EST DESSINÉ PAR `renderCourbe`, appelée depuis `renderOverview`.
@@ -816,32 +835,32 @@ function render(d) {
   }
   if (!d.has_items) {
     document.getElementById('products-body').innerHTML =
-      '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Le d&eacute;tail par article n&rsquo;existe pas sur cette p&eacute;riode.</td></tr>';
+      '<tr><td colspan="6" style="color:var(--db-muted);text-align:center;padding:24px;">Le d&eacute;tail par article n&rsquo;existe pas sur cette p&eacute;riode.</td></tr>';
   } else if (d.products) {
     const maxQty = d.products.length ? d.products[0].qty : 1;
     const cntEl = document.getElementById('products-count');
     if (cntEl) cntEl.textContent = d.products.length ? `· ${d.products.length}` : '';
     if (!d.products.length) {
       document.getElementById('products-body').innerHTML =
-        '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Aucun produit vendu.</td></tr>';
+        '<tr><td colspan="6" style="color:var(--db-muted);text-align:center;padding:24px;">Aucun produit vendu.</td></tr>';
     } else {
       window._prodData = d.products;
       document.getElementById('products-body').innerHTML = d.products.map((p, i) => {
         const barW = Math.round(p.qty / maxQty * 100);
         const rank = i === 0 ? ' style="font-weight:600"' : '';
-        const marginHtml = p.margin_pct != null ? marginBadge(p.margin_pct) : '<span style="color:var(--muted)">—</span>';
+        const marginHtml = p.margin_pct != null ? marginBadge(p.margin_pct) : '<span style="color:var(--db-muted)">—</span>';
         const popupBadge = p.popup
-          ? ` <span style="font-size:10px;font-weight:600;color:#7c4dbe;background:rgba(124,77,190,.12);border-radius:9px;padding:1px 7px;vertical-align:1px;">popup ${p.commission_pct}%</span>`
+          ? ` <span class="db-badge iris">popup ${p.commission_pct} %</span>`
           : '';
         return `<tr style="cursor:pointer;" onclick="openProductPopup(${i})">
           <td${rank}>${p.name}${popupBadge}</td>
           <td class="amount">${p.qty}</td>
-          <td class="amount" style="color:var(--muted)">${fmt(p.avg)}</td>
+          <td class="amount" style="color:var(--db-muted)">${fmt(p.avg)}</td>
           <td class="amount">${fmt(p.revenue)}</td>
           <td class="amount">${marginHtml}</td>
           <td style="padding-right:16px;vertical-align:middle;">
-            <div style="height:3px;background:var(--bar-bg);border-radius:2px;">
-              <div style="height:3px;background:var(--bar);border-radius:2px;width:${barW}%"></div>
+            <div style="height:3px;background:var(--db-alt);border-radius:2px;">
+              <div style="height:3px;background:var(--db-iris);border-radius:2px;width:${barW}%"></div>
             </div>
           </td>
         </tr>`;
@@ -852,7 +871,7 @@ function render(d) {
   // ── Transactions récentes ────────────────────────────────────────────────
   if (!d.recent || !d.recent.length) {
     document.getElementById('recent-body').innerHTML =
-      '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px;">Aucune commande.</td></tr>';
+      '<tr><td colspan="4" style="color:var(--db-muted);text-align:center;padding:24px;">Aucune commande.</td></tr>';
     return;
   }
   window._txData = d.recent;
@@ -1002,15 +1021,15 @@ function renderInsights(d) {
     document.getElementById('ins-month').innerHTML = `
       <div class="ins-label">Month EBITDA — cumulative + projection</div>
       <svg class="ins-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-        <line x1="0" y1="${y(0).toFixed(1)}" x2="${W}" y2="${y(0).toFixed(1)}" stroke="var(--border)" stroke-width="1.5"/>
-        <path d="${path}" fill="none" stroke="var(--flux-keep)" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-        ${hasProj ? `<path d="${projPath}" fill="none" stroke="var(--flux-leave)" stroke-width="2.5" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>` : ''}
+        <line x1="0" y1="${y(0).toFixed(1)}" x2="${W}" y2="${y(0).toFixed(1)}" stroke="var(--db-line)" stroke-width="1.5"/>
+        <path d="${path}" fill="none" stroke="var(--db-iris)" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+        ${hasProj ? `<path d="${projPath}" fill="none" stroke="var(--db-iris)" stroke-width="2.5" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>` : ''}
       </svg>
       <div class="ins-sub">
-        MTD <strong style="color:${m.cum_now >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.cum_now)}</strong>
+        MTD <strong style="color:${m.cum_now >= 0 ? 'var(--db-green)' : 'var(--db-red)'}">${fmt(m.cum_now)}</strong>
         · ${hasProj
-            ? `projected <strong style="color:${m.proj_end >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(m.proj_end)}</strong> d'ici la fin du mois`
-            : `<span style="color:var(--muted)">pas encore de jour plein ce mois-ci — aucune projection</span>`}
+            ? `projected <strong style="color:${m.proj_end >= 0 ? 'var(--db-green)' : 'var(--db-red)'}">${fmt(m.proj_end)}</strong> d'ici la fin du mois`
+            : `<span style="color:var(--db-muted)">pas encore de jour plein ce mois-ci — aucune projection</span>`}
         ${m.cross_date ? ` · crossed €0 on ${new Date(m.cross_date + 'T12:00:00').toLocaleDateString('fr-FR', {day:'numeric', month:'short'})}` : ''}
       </div>
       ${m.proj_ca_end != null ? `
@@ -1018,19 +1037,23 @@ function renderInsights(d) {
         Revenue: MTD <strong>${fmt(m.ca_mtd)}</strong>
         · projected <strong>${fmt(m.proj_ca_end)}</strong> d'ici la fin du mois
         ${m.seuil_ca_month != null ? ` vs <strong>${fmt(m.seuil_ca_month)}</strong> needed to break even
-          → <strong style="color:${m.proj_ca_end >= m.seuil_ca_month ? 'var(--green)' : 'var(--red)'}">${(m.proj_ca_end >= m.seuil_ca_month ? '+' : '') + fmt(m.proj_ca_end - m.seuil_ca_month)}</strong>` : ''}
+          → <strong style="color:${m.proj_ca_end >= m.seuil_ca_month ? 'var(--db-green)' : 'var(--db-red)'}">${(m.proj_ca_end >= m.seuil_ca_month ? '+' : '') + fmt(m.proj_ca_end - m.seuil_ca_month)}</strong>` : ''}
       </div>` : ''}`;
 
+    const jc = jetons();
     const first = new Date(m.days[0].date + 'T12:00:00');
     const lead  = (first.getDay() + 6) % 7;
     let cal = WD_SHORT.map(w => `<div class="hm-lbl">${w[0]}</div>`).join('');
     for (let i = 0; i < lead; i++) cal += `<div></div>`;
     for (const day of m.days) {
       const dt = new Date(day.date + 'T12:00:00');
-      let bg = 'var(--bg-page)', color = 'var(--faint)';
+      let bg = 'var(--db-alt)', color = 'var(--db-faint)';
       if (day.open && day.ebitda != null) {
-        bg = day.ebitda >= 0 ? 'rgba(80,161,116,.28)' : 'rgba(196,85,77,.24)';
-        color = 'var(--text)';
+        /* ⚠️ CES DEUX TEINTES SONT EXACTEMENT `--db-green-soft` ET `--db-red-soft` : la charte
+         * les porte déjà pour dire « au-dessus » et « en dessous ». Écrites en dur, elles
+         * restaient claires en mode sombre — un calendrier pastel sur fond noir. */
+        bg = day.ebitda >= 0 ? jc.greenSoft : jc.redSoft;
+        color = 'var(--db-ink)';
       }
       cal += `<div class="cal-cell" style="background:${bg};color:${color};" data-tip="${new Date(day.date+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})}${day.ebitda != null ? ' · EBITDA ' + fmt(day.ebitda) : ' · fermé'}">${dt.getDate()}</div>`;
     }
@@ -1176,17 +1199,17 @@ function showTxTooltip(e, idx) {
   const itemsHtml = (t.items && t.items.length)
     ? t.items.map(it => `
         <div style="display:flex;justify-content:space-between;gap:14px;padding:2px 0;">
-          <span>${it.qty > 1 ? `<span style="color:var(--muted)">${it.qty}×</span> ` : ''}${it.name}</span>
-          <span style="color:var(--muted);white-space:nowrap;">${fmt(it.total)}</span>
+          <span>${it.qty > 1 ? `<span style="color:var(--db-muted)">${it.qty}×</span> ` : ''}${it.name}</span>
+          <span style="color:var(--db-muted);white-space:nowrap;">${fmt(it.total)}</span>
         </div>`).join('')
-    : '<div style="color:var(--muted);">Detail unavailable</div>';
+    : '<div style="color:var(--db-muted);">Detail unavailable</div>';
   const payHtml = (t.payments && t.payments.length)
-    ? `<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;color:var(--muted);">${t.payments.map(p => p.label).join(' · ')}</div>`
+    ? `<div style="border-top:1px solid var(--db-line);margin-top:6px;padding-top:6px;color:var(--db-muted);">${t.payments.map(p => p.label).join(' · ')}</div>`
     : '';
   tip.innerHTML = `
     <div style="font-weight:600;margin-bottom:6px;">${t.number} · ${t.time}</div>
     ${itemsHtml}
-    <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:6px;padding-top:6px;font-weight:600;">
+    <div style="display:flex;justify-content:space-between;border-top:1px solid var(--db-line);margin-top:6px;padding-top:6px;font-weight:600;">
       <span>Total</span><span>${fmt(t.amount)}</span>
     </div>${payHtml}`;
   tip.style.display = 'block';
@@ -1219,7 +1242,7 @@ function openDrawer(idx) {
           <td class="dt-qty">${item.qty > 1 ? item.qty + ' ×' : ''} ${fmt(item.unit)}</td>
           <td class="dt-amt">${fmt(item.total)}</td>
         </tr>`).join('')
-    : '<tr><td colspan="3" style="color:var(--muted);font-size:12px;padding:8px 0;">Detail unavailable</td></tr>';
+    : '<tr><td colspan="3" style="color:var(--db-muted);font-size:12px;padding:8px 0;">Detail unavailable</td></tr>';
   document.getElementById('drawer-payments').innerHTML = t.payments.map(p => `
     <div class="drawer-pay-row">
       <span>${p.label}</span>

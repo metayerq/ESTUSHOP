@@ -16,6 +16,13 @@
    ═══════════════════════════════════════════════════════════════════════════════════════════ */
 
 .db {
+  /* ⚠️ LA CHARTE N'AVAIT QU'UNE OMBRE, PENSÉE POUR UNE CARTE POSÉE. Modales, tiroirs et
+     infobulles FLOTTENT : cinq ombres différentes avaient été inventées à la main pour
+     eux, dont une à 40 px de flou sur une page où rien d'autre ne se détache. */
+  --db-sh-pop: 0 6px 24px rgba(10, 15, 40, .12), 0 0 0 1px rgba(10, 15, 40, .04);
+  /* Le voile derrière une surcouche — il n'existait pas, d'où un noir en dur. */
+  --db-scrim: rgba(10, 15, 40, .35);
+
   --db-bg:        #F7FAFC;
   --db-card:      #FFFFFF;
   --db-alt:       #F7FAFC;
@@ -42,6 +49,8 @@
 }
 @media (prefers-color-scheme: dark) {
   .db {
+    --db-sh-pop: 0 8px 28px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.05);
+    --db-scrim: rgba(0,0,0,.55);
     --db-bg:#0C111D; --db-card:#141B2A; --db-alt:#111726;
     --db-line:#232B3B; --db-line-soft:#1C2331;
     --db-ink:#F2F4F8; --db-ink-2:#CDD3E0; --db-muted:#8B94A8; --db-faint:#6B748A;
@@ -54,6 +63,8 @@
   }
 }
 :root[data-theme="dark"] .db {
+  --db-sh-pop: 0 8px 28px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.05);
+  --db-scrim: rgba(0,0,0,.55);
   --db-bg:#0C111D; --db-card:#141B2A; --db-alt:#111726;
   --db-line:#232B3B; --db-line-soft:#1C2331;
   --db-ink:#F2F4F8; --db-ink-2:#CDD3E0; --db-muted:#8B94A8; --db-faint:#6B748A;
@@ -65,6 +76,8 @@
   --db-sh: 0 1px 1px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,.04);
 }
 :root[data-theme="light"] .db {
+  --db-sh-pop: 0 6px 24px rgba(10,15,40,.12), 0 0 0 1px rgba(10,15,40,.04);
+  --db-scrim: rgba(10,15,40,.35);
   --db-bg:#F7FAFC; --db-card:#FFFFFF; --db-alt:#F7FAFC;
   --db-line:#E3E8EE; --db-line-soft:#EDF1F6;
   --db-ink:#1A1F36; --db-ink-2:#3C4257; --db-muted:#697386; --db-faint:#8792A2;
@@ -278,9 +291,12 @@
 .db .ins-value {
   font-size: 22px; font-weight: 650; letter-spacing: -.5px; font-variant-numeric: tabular-nums;
 }
+/* ⚠️ CES DEUX `!important` COMBATTAIENT UN STYLE EN LIGNE DU GABARIT. Le style est parti : une
+   règle qui gagne par la force cache le fait qu'un adversaire existe, et le jour où il disparaît
+   personne ne pense à désarmer. */
 .db .chart-block, .db #last7-block > div {
-  background: var(--db-card); border: 1px solid var(--db-line) !important;
-  border-radius: var(--db-r) !important; box-shadow: var(--db-sh);
+  background: var(--db-card); border: 1px solid var(--db-line);
+  border-radius: var(--db-r); box-shadow: var(--db-sh);
 }
 .db .wow-strip {
   display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
@@ -300,3 +316,83 @@
 .db .table-wrap, .db .products-scroll {
   border: 0; border-radius: 0; background: transparent;
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   CE QUE LA CHARTE N'AVAIT PAS ENCORE — et que la page recopiait à la main.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Les tables ──────────────────────────────────────────────────────────────
+      ⚠️ `style.css` POSE `table { font-family: var(--mono) }` ET `.db table` NE LE REPRENAIT
+      PAS : les deux grands tableaux — commandes et produits — s'affichaient en chasse fixe sur
+      une page qui n'en veut nulle part. Les chiffres s'alignent déjà par `tabular-nums`, sans
+      changer de police.
+
+      ⚠️ ET CHAQUE LIGNE PORTAIT DEUX FILETS. `style.css` met un `border-bottom`, la charte un
+      `border-top` : deux traits de deux gris différents, collés. Invisible en clair, net en
+      sombre. ── */
+.db table, .db th, .db td { font-family: inherit; }
+.db tbody tr { border-bottom: 0; }
+.db thead th { border-bottom: 0; }
+
+/* ── Les surcouches : modale, tiroir, infobulles ─────────────────────────────
+      ⚠️ ELLES VIVENT HORS DE `.page`, donc hors de portée des jetons — d'où les couleurs en dur
+      qu'on y trouvait. Elles portent désormais la classe `db` et héritent de la charte. ── */
+.db .drawer-title, .db .drawer-pay-row, .db .drawer-item { color: var(--db-ink); }
+.db .drawer-section-label {
+  font-family: inherit; font-size: 12.5px; font-weight: 550; letter-spacing: normal;
+  text-transform: none; color: var(--db-muted);
+}
+#drawer.db { background: var(--db-card); border-left: 1px solid var(--db-line);
+             box-shadow: var(--db-sh-pop); }
+#drawer-overlay.db { background: var(--db-scrim); }
+
+/* ── Boutons et champs ───────────────────────────────────────────────────────
+      ⚠️ TROIS BOUTONS ET QUATRE CHAMPS ÉTAIENT ÉCRITS À LA MAIN, chacun avec son rayon et sa
+      bordure. Un composant recopié diverge toujours : il suffit d'en corriger deux sur trois. ── */
+.db-btn {
+  font: inherit; font-size: 12.5px; font-weight: 600; line-height: 1;
+  padding: 7px 13px; border-radius: var(--db-r-sm); cursor: pointer;
+  border: 1px solid var(--db-line); background: var(--db-card); color: var(--db-ink);
+}
+.db-btn:hover { border-color: var(--db-faint); }
+.db-btn.fort { background: var(--db-iris); border-color: var(--db-iris); color: #fff; }
+.db-btn.fort:hover { filter: brightness(1.06); }
+.db-btn:focus-visible { outline: 2px solid var(--db-iris); outline-offset: 1px; }
+.db-champ {
+  font: inherit; font-size: 12.5px; padding: 6px 10px;
+  border: 1px solid var(--db-line); border-radius: var(--db-r-sm);
+  background: var(--db-card); color: var(--db-ink);
+}
+.db-champ:focus-visible { outline: 2px solid var(--db-iris); outline-offset: -1px; }
+
+/* ── Les fuites de l'ancienne charte ─────────────────────────────────────────
+      ⚠️ TAILLE ET COULEUR ÉTAIENT REPRISES, PAS LA FAMILLE NI LA CASSE. Les titres de la zone
+      « Tendances » s'affichaient donc en chasse fixe majuscules — une typographie de l'ancien
+      thème, au milieu d'une page qui n'en a plus. Reprendre un style à moitié laisse justement
+      ce qu'on ne pense pas à regarder. ── */
+.db .ins-label, .db .zone-badge, .db .periode-dit {
+  font-family: inherit; text-transform: none; letter-spacing: normal;
+}
+.db .periode-dit { font-size: 12.5px; color: var(--db-muted); }
+.db .periode-dit b { color: var(--db-ink); font-weight: 600; }
+.db .periode-dit .att { color: var(--db-amber); }
+.db .cal-cell { color: var(--db-faint); background: var(--db-alt); }
+.db .zone-head { border-top: 1px solid var(--db-line); padding-top: 18px; }
+
+/* ── Une barre fine, pour une quantité dans un tableau ───────────────────────
+      ⚠️ ELLE ÉTAIT RECOPIÉE À LA MAIN dans le rendu des produits, avec les jetons « flux » de
+      l'avant-charte. Trois pixels de haut ne justifient pas un composant de plus : c'est le
+      même, en variante. ── */
+.db-prog.fine { height: 3px; border: 0; }
+
+/* ⚠️ LA BARRE DU PRIME COST A DEUX PARTS : marchandise et personnel. Elle injectait deux `<div>`
+   DANS le span de remplissage — qui reste à zéro, faute d'être mis à jour — et des `<div>` sans
+   hauteur dans un conteneur nul ne dessinent rien. Deux spans frères, dimensionnés, et la barre
+   redevient une barre. */
+.db-prog > .db-prog-part {
+  position: absolute; top: 0; bottom: 0; background: var(--db-slate);
+  border-radius: 0 999px 999px 0;
+}
+.db-prog > span:first-of-type { position: absolute; top: 0; bottom: 0; left: 0; }
+.db-prog > .db-prog-part { left: auto; }

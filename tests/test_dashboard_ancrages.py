@@ -127,7 +127,7 @@ def _rendre(economics):
         pytest.skip("node absent — vérifié en local et à la revue")
     js = _js()
     bloc = ""
-    for nom in ("etat", "renderReponse"):
+    for nom in ("renderReponse",):
         i = js.index(f"function {nom}(")
         bloc += js[i:js.index("\n}", i) + 2] + "\n"
     prog = SOCLE + bloc + f"""
