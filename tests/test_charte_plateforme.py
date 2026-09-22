@@ -216,7 +216,6 @@ def _classes_declarees(nom):
 # signale — c'est exactement le défaut trouvé sur `.muted`, employée douze fois pour rien. Elles
 # ne sont pas encore passées à la charte ; la liste rétrécit, elle ne grandit pas.
 DETTE = {
-    "cashflow.html": {'check-row'},
     "cogs.html": {'btn-add', 'comm-preset'},
 }
 

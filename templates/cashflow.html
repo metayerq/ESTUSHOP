@@ -15,161 +15,94 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<link rel="stylesheet" href="/static/dashboard.css?v={{ v }}">
 <style>
-/* ── Overview / Cashflow tabs ── */
-.view-tabs {
-  display:flex; gap:0; margin-bottom:20px;
-  border:1px solid var(--border); border-radius:8px;
-  overflow:hidden; background:var(--bg-page);
-  width:fit-content;
-}
-.view-tab {
-  font-family:inherit; font-size:13px; font-weight:500;
-  padding:8px 20px; border:none; background:transparent;
-  color:var(--muted); cursor:pointer;
-  transition:background .12s, color .12s;
-  border-right:1px solid var(--border);
-}
-.view-tab:last-child { border-right:none; }
-.view-tab:hover { background:var(--bg-hover); color:var(--text); }
-.view-tab.active {
-  background:var(--bg-card); color:var(--text);
-  font-weight:600; box-shadow:inset 0 -2px 0 var(--spec);
-}
+/* ══ Trésorerie — ce que la charte ne porte pas ══════════════════════════════
+   ⚠️ CE BLOC EN COMPTAIT 29 RÈGLES, TOUTES MORTES. La page a été détachée du tableau
+   de bord et en a emporté la garde-robe entière : onglets de vue, paiements compacts,
+   bande « semaine dernière », cartes d'insight, calendrier, carte de chaleur, en-tête
+   collant de la liste des produits. Aucune de ces formes n'existe ici.
 
-/* ── Compact payments ── */
-.pay-compact { display:flex; flex-direction:column; gap:8px; margin-top:4px; }
-.pay-compact-row {
-  display:flex; align-items:center; justify-content:space-between;
-  font-size:13px;
-}
-.pay-compact-row .pay-label { display:flex; align-items:center; gap:8px; color:var(--text); }
-.pay-compact-row .pay-dot   { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-.pay-compact-row .pay-nums  { color:var(--muted); font-variant-numeric:tabular-nums; }
-.pay-bar-track { height:3px; background:var(--bar-bg); border-radius:2px; margin-top:3px; }
-.pay-bar-fill  { height:3px; border-radius:2px; }
+   ⚠️ ET CE N'EST PAS LA SEULE CHOSE QUI EST VENUE SANS SON MODE D'EMPLOI. `BAR_ACTIVE`
+   aussi — une variable du tableau de bord, restée dans le code du graphique, déclarée
+   nulle part. Voir `static/cashflow.js`.
 
-/* ── WoW strip ── */
-.wow-strip {
-  display:flex; gap:0; flex-wrap:nowrap;
-  font-size:12px; color:var(--muted);
-  margin-top:8px; padding:10px 16px;
-  background:var(--bg-page); border-radius:0 0 8px 8px;
-  border-top:1px solid var(--border);
-  align-items:center; gap:4px;
-}
-.wow-strip .wow-item { display:flex; align-items:center; gap:6px; }
-.wow-strip .wow-sep  { color:var(--faint); margin:0 10px; }
+   ⚠️ IL NE RESTE QUE LA COMPOSITION DU FORMULAIRE DE COMMISSIONS. */
+.com-form { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+.com-form input[type=text] { flex:1; min-width:160px; }
+.com-form input[type=number] { width:100px; }
 
-/* ── Insights cards ── */
-.ins-grid {
-  display:none; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:32px;
-}
-.ins-grid.on { display:grid; }
-@media (max-width:760px) { .ins-grid { grid-template-columns:1fr; } }
-.ins-card {
-  border:1px solid var(--border); border-radius: 4px;
-  background:var(--bg-card); padding:18px; min-width:0;
-}
-.ins-label {
-  font-family:var(--mono); font-size:11px; font-weight:400; letter-spacing:.08em;
-  text-transform:uppercase; color:var(--muted); margin-bottom:10px;
-}
-.ins-big { font-size:19px; font-weight:600; letter-spacing:-.3px; }
-.ins-sub { font-size:11px; color:var(--muted); margin-top:6px; }
-.ins-svg { width:100%; height:78px; display:block; }
-.hm-grid { display:grid; gap:2px; }
-.hm-cell { height:14px; border-radius:3px; background:var(--bar-bg); }
-.hm-cell:hover, .cal-cell:hover { outline:2px solid var(--spec); outline-offset:-1px; }
-.hm-lbl  { font-size:9px; color:var(--faint); display:flex; align-items:center; justify-content:center; }
-.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; margin-top:2px; }
-.cal-cell { height:17px; border-radius:4px; font-size:9px; display:flex; align-items:center;
-  justify-content:center; color:var(--faint); background:var(--bg-page); }
-.mv-row { display:flex; justify-content:space-between; gap:8px; font-size:12px; padding:3px 0; }
-.mv-row .mv-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-
-/* ── En-têtes de zone (mois en cours / patterns) ── */
-.zone-head { display:flex; align-items:center; gap:10px; margin-bottom:14px;
-  padding-top:18px; border-top:1px solid var(--border); }
-.zone-badge {
-  font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;
-  color:var(--faint); background:var(--bg-hover); padding:3px 9px; border-radius:20px; white-space:nowrap;
-}
-
-
-
-
-
-
-/* Liste "Products sold" scrollable avec en-tête collant */
-.products-scroll thead th {
-  position:sticky; top:0; z-index:2;
-  background:var(--bg-card); box-shadow:inset 0 -1px 0 var(--border);
-}
-.products-scroll::-webkit-scrollbar { width:8px; }
-.products-scroll::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
-
+/* ⚠️ UN CUMUL NÉGATIF EST LA SEULE CHOSE QUI ALERTE DANS CE TABLEAU. Le net d'un mois va et
+   vient ; le cumul qui repasse sous zéro dit qu'on a dépensé plus qu'encaissé DEPUIS
+   L'OUVERTURE. Colorer les deux colonnes mettait au même niveau une fluctuation et un état. */
+.cum-neg { color:var(--db-red); font-weight:600; }
+.cum-pos { color:var(--db-muted); }
 </style>
 </head>
 <body>
 {% include "_rail.html" %}
-<div class="page">
+{#
+  ⚠️ `db` ACTIVE LA CHARTE. Sans cette classe, `dashboard.css` est chargé mais aucun jeton
+  `--db-*` n'est défini : chaque `var()` se résout dans le vide, la page s'affiche sans bordures
+  ni couleurs, et rien dans la console ne le dit.
+#}
+<div class="page db">
 
-  <div class="header" style="margin-bottom:20px;">
-    <div>
-      <div class="header-title">Tr&eacute;sorerie</div>
-      <div class="header-sub">Ce qui est vraiment entr&eacute; et sorti, depuis l'ouverture</div>
-    </div>
+  <div class="db-head">
+    <h2 class="db-title">Tr&eacute;sorerie</h2>
+    <span class="db-id">ce qui est vraiment entr&eacute; et sorti, depuis l'ouverture</span>
+    <span class="db-sp"></span>
+    <span class="db-badge flat" id="cf-updated"></span>
+    <button class="db-icone" onclick="location.reload()" title="Recharger">&#8635;</button>
+    <a class="db-icone" href="/logout" title="Se d&eacute;connecter">&#9099;</a>
   </div>
 
-  <!-- Cashflow -->
   <div id="view-cashflow">
-    <div class="header-sub" style="margin-bottom:20px;">
-      Real cash in (Vendus sales) vs real cash out (Expenses bank data) — since opening, May 27 2026.
-      May is a partial month (5 trading days).
+    {# ⚠️ CE QUE LA PAGE MESURE, ET CE QU'ELLE NE MESURE PAS. Mai est un mois partiel — cinq
+       jours d'ouverture — et le taire ferait lire un démarrage catastrophique. #}
+    <div class="db-fine db-mb">
+      Encaissements r&eacute;els (ventes Vendus) contre d&eacute;caissements r&eacute;els
+      (donn&eacute;es bancaires des d&eacute;penses), depuis l'ouverture du <b>27 mai 2026</b>.
+      Mai est un mois partiel&nbsp;: <b>5 jours d'ouverture</b>.
     </div>
 
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
-      <label class="check-row" style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-        <input type="checkbox" id="cf-excl-capex" onchange="renderCashflow()" style="width:16px;height:16px;">
-        Exclude one-off capex (renovation &amp; fit-out)
-      </label>
-      <div id="cf-updated" style="font-size:11px;color:var(--faint);"></div>
+    <label class="db-s db-mb" style="cursor:pointer;user-select:none;">
+      <input type="checkbox" id="cf-excl-capex" onchange="renderCashflow()"
+             style="width:15px;height:15px;cursor:pointer;">
+      <span>Exclure les investissements ponctuels (travaux &amp; am&eacute;nagement)</span>
+    </label>
+
+    <div class="db-grid db-g4 db-mb">
+      <div class="db-card db-compact"><div class="db-l">Encaiss&eacute;</div>
+        <div class="db-v" id="cf-total-in">&mdash;</div>
+        <div class="db-s">ventes, depuis l'ouverture</div></div>
+      <div class="db-card db-compact"><div class="db-l">D&eacute;caiss&eacute;</div>
+        <div class="db-v" id="cf-total-out">&mdash;</div>
+        <div class="db-s">d&eacute;penses r&eacute;elles</div></div>
+      {# ⚠️ LE NET EST LE SEUL À PORTER UN ÉTAT : c'est la seule des quatre cases qui pose une
+         question. Les trois autres sont des constats. #}
+      <div class="db-card db-compact" id="i-net"><div class="db-l">Net</div>
+        <div class="db-v" id="cf-net">&mdash;</div>
+        <div class="db-s">encaiss&eacute; &minus; d&eacute;caiss&eacute;</div></div>
+      <div class="db-card db-compact"><div class="db-l">Meilleur / pire mois</div>
+        <div class="db-v" id="cf-best" style="font-size:15px;">&mdash;</div>
+        <div class="db-s">par net mensuel</div></div>
     </div>
 
-    <div class="kpi-grid" style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px;background:var(--bg-card);">
-      <div class="kpi-cell">
-        <div class="kpi-label">Total cash in</div>
-        <div class="kpi-value" id="cf-total-in">—</div>
-      </div>
-      <div class="kpi-cell">
-        <div class="kpi-label">Total cash out</div>
-        <div class="kpi-value" id="cf-total-out">—</div>
-      </div>
-      <div class="kpi-cell">
-        <div class="kpi-label">Net cash</div>
-        <div class="kpi-value" id="cf-net">—</div>
-      </div>
-      <div class="kpi-cell">
-        <div class="kpi-label">Best / worst month</div>
-        <div class="kpi-value" id="cf-best" style="font-size:15px;">—</div>
-      </div>
+    <div class="db-card db-mb">
+      <div class="db-card-p"><canvas id="chart-cashflow" height="90"></canvas></div>
     </div>
 
-    <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px;background:var(--bg-card);padding:20px 24px;">
-      <canvas id="chart-cashflow" height="90"></canvas>
-    </div>
-
-    <div class="section-label" style="margin-bottom:8px;">Monthly detail</div>
-    <div class="table-wrap">
+    <div class="db-card db-mb">
+      <div class="db-card-h"><span class="db-card-t">D&eacute;tail mensuel</span></div>
       <table>
         <thead>
           <tr>
             <th>Month</th>
-            <th class="right">Cash in</th>
-            <th class="right">Cash out</th>
-            <th class="right">Net</th>
-            <th class="right">Cumulative</th>
+            <th class="r">Cash in</th>
+            <th class="r">Cash out</th>
+            <th class="r">Net</th>
+            <th class="r">Cumulative</th>
           </tr>
         </thead>
         <tbody id="cashflow-body">
@@ -177,21 +110,25 @@
         </tbody>
       </table>
     </div>
-    <div class="section-label" style="margin:24px 0 8px;">Commissions reçues <span style="color:var(--faint);font-weight:400;font-size:11px;">— popups où le chef encaisse et te reverse</span></div>
-    <div style="border:1px solid var(--border);border-radius:12px;background:var(--bg-card);padding:16px 20px;margin-bottom:24px;">
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
-        <input type="date" id="com-date" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text);font-size:13px;">
-        <input type="text" id="com-label" placeholder="Libellé (ex. Popup ramen)" style="flex:1;min-width:160px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text);font-size:13px;">
-        <input type="number" id="com-amount" placeholder="€" min="0" step="0.01" style="width:100px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text);font-size:13px;">
-        <button onclick="addCommission()" style="padding:7px 16px;border:none;border-radius:8px;background:var(--text);color:var(--bg-card);font-size:13px;font-weight:600;cursor:pointer;">Add</button>
+
+    <div class="db-card db-mb">
+      <div class="db-card-h">
+        <span class="db-card-t">Commissions re&ccedil;ues</span>
+        <span class="db-id">popups o&ugrave; le chef encaisse et te reverse</span>
       </div>
-      <div id="com-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:10px;"></div>
-      <div class="table-wrap" style="border:none;">
-        <table>
-          <thead><tr><th>Date</th><th>Libellé</th><th class="right">Montant</th><th style="width:40px;"></th></tr></thead>
-          <tbody id="com-body"><tr><td colspan="4" style="color:var(--muted);text-align:center;padding:16px;">Loading…</td></tr></tbody>
-        </table>
+      <div class="db-card-p">
+        <div class="com-form">
+          <input type="date" id="com-date" class="db-champ">
+          <input type="text" id="com-label" class="db-champ" placeholder="Libell&eacute; (ex. Popup ramen)">
+          <input type="number" id="com-amount" class="db-champ" placeholder="&euro;" min="0" step="0.01">
+          <button class="db-btn fort" onclick="addCommission()">Ajouter</button>
+        </div>
+        <div class="db-reason" id="com-error" style="display:none"></div>
       </div>
+      <table>
+        <thead><tr><th>Date</th><th>Libell&eacute;</th><th class="r">Montant</th><th style="width:40px"></th></tr></thead>
+        <tbody id="com-body"><tr><td colspan="4" class="db-empty">Chargement&hellip;</td></tr></tbody>
+      </table>
     </div>
   </div><!-- /view-cashflow -->
 
