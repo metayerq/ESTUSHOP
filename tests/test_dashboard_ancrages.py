@@ -362,7 +362,7 @@ def test_qui_charge_la_charte_en_porte_la_classe():
             f"{chemin} charge la charte sans porter `db` — son fond et son encre manqueront")
     assert porteuses == ["cashflow.html", "charges.html", "cogs.html", "expenses.html",
                          "fidelidade.html", "index.html", "reconciliation.html",
-                         "transactions.html"], porteuses
+                         "stock.html", "transactions.html"], porteuses
 
 
 def _courbe(payload):

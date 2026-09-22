@@ -14,93 +14,70 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<link rel="stylesheet" href="/static/dashboard.css?v={{ v }}">
 <style>
-.page-nav { display:flex; align-items:center; gap:12px; margin-bottom:32px; }
-.page-nav a { font-size:13px; color:var(--muted); text-decoration:none; }
-.page-nav a:hover { color:var(--text); }
-.page-nav .sep { color:var(--faint); }
 
-.summary-bar { display:flex; gap:0; background:var(--bg-card); border:1px solid var(--border);
-  border-radius: 4px; overflow:hidden; margin-bottom:24px; }
-.sum-item { flex:1; padding:16px 20px; border-right:1px solid var(--border); }
-.sum-item:last-child { border-right:none; }
-.sum-label { font-size:10px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
-.sum-val { font-size:22px; font-weight:600; letter-spacing:-.4px; }
 
-.view-tabs { display:flex; margin-bottom:20px; border:1px solid var(--border);
-  border-radius:8px; overflow:hidden; width:fit-content; }
-.view-tab { font-family:inherit; font-size:13px; font-weight:500; padding:8px 20px;
-  border:none; background:transparent; color:var(--muted); cursor:pointer; border-right:1px solid var(--border); }
-.view-tab:last-child { border-right:none; }
-.view-tab:hover { background:var(--bg-hover); color:var(--text); }
-.view-tab.active { background:var(--bg-card); color:var(--text); font-weight:600; box-shadow:inset 0 -2px 0 var(--spec); }
-.tab-badge { display:inline-block; margin-left:6px; font-size:10px; background:var(--bg-hover); color:var(--faint); padding:1px 6px; border-radius:10px; }
 
-.toolbar { display:flex; gap:10px; align-items:center; margin-bottom:16px; }
-.toolbar input[type=text] { flex:1; padding:8px 12px; border:1px solid var(--border);
-  border-radius:6px; font-family:inherit; font-size:13px; background:var(--bg-card); color:var(--text); }
-.btn-add { font-family:inherit; font-size:12px; font-weight:500; padding:7px 14px;
-  border-radius:6px; cursor:pointer; border:1px solid var(--border); background:var(--bg-card); color:var(--text); }
-.btn-add:hover { background:var(--bg-hover); }
-.btn-primary { font-family:inherit; font-size:12px; font-weight:600; padding:8px 16px;
-  border-radius:6px; cursor:pointer; border:none; background:var(--accent); color:#fff; }
-.btn-ghost { font-family:inherit; font-size:12px; padding:6px 12px; border-radius:6px;
-  cursor:pointer; border:1px solid var(--border); background:transparent; color:var(--muted); }
 
 /* Category group */
 .cat-group { margin-bottom:22px; }
 .cat-title { font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
-  color:var(--muted); margin-bottom:8px; padding-left:2px; }
-.cat-items { border:1px solid var(--border); border-radius: 4px; overflow:hidden; background:var(--bg-card); }
+  color:var(--db-muted); margin-bottom:8px; padding-left:2px; }
+.cat-items { border:1px solid var(--db-line); border-radius:var(--db-r); overflow:hidden; background:var(--db-card); }
 
 /* Item row */
 .item-row { display:flex; align-items:center; gap:12px; padding:11px 16px;
-  border-bottom:1px solid var(--border); border-left:3px solid transparent; }
+  border-bottom:1px solid var(--db-line); border-left:3px solid transparent; }
 .item-row:last-child { border-bottom:none; }
-.item-row.st-low { border-left-color:var(--amber); }
-.item-row.st-out { border-left-color:var(--red); }
+.item-row.st-low { border-left-color:var(--db-amber); }
+.item-row.st-out { border-left-color:var(--db-red); }
 .item-name { flex:1; font-size:14px; min-width:120px; }
 .item-note { width:150px; font-family:inherit; font-size:12px; padding:5px 8px;
-  border:1px solid var(--border); border-radius:6px; background:var(--bg-page); color:var(--text); }
-.item-note:focus { border-color:var(--faint); background:var(--bg-card); outline:none; }
-.btn-restock { font-family:inherit; font-size:11px; font-weight:600; padding:5px 10px;
-  border:1px solid var(--green); border-radius:6px; background:var(--green-soft); color:var(--green); cursor:pointer; white-space:nowrap; }
-.btn-restock:hover { background:var(--green-soft); }
-.btn-restock-all { font-family:inherit; font-size:12px; font-weight:600; padding:8px 16px;
-  border:1px solid var(--green); border-radius:6px; background:var(--green); color:#fff; cursor:pointer; margin-bottom:16px; }
-.flag-star { cursor:pointer; font-size:15px; color:var(--faint); user-select:none; padding:0 4px; }
-.flag-star.on { color:var(--amber); }
+  border:1px solid var(--db-line); border-radius:var(--db-r-sm); background:var(--db-alt); color:var(--db-ink); }
+.item-note:focus { border-color:var(--db-faint); background:var(--db-card); outline:none; }
+.flag-star { cursor:pointer; font-size:15px; color:var(--db-faint); user-select:none; padding:0 4px; }
+.flag-star.on { color:var(--db-amber); }
 
 /* Status segmented control */
-.status-seg { display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
-.status-btn { font-family:inherit; font-size:11px; font-weight:500; padding:5px 11px;
-  border:none; background:transparent; color:var(--muted); cursor:pointer; border-right:1px solid var(--border); }
-.status-btn:last-child { border-right:none; }
-.status-btn.active.ok  { background:var(--green-soft); color:var(--green); }
-.status-btn.active.low { background:var(--amber-soft); color:var(--amber); }
-.status-btn.active.out { background:var(--red-soft); color:var(--red); }
+/* ── Le niveau d'un article ────────────────────────────────────────────────────
+      ⚠️ ICI LE VERT, L'AMBRE ET LE ROUGE SONT DES ÉTATS, et c'est la seule page où
+      les trois se justifient : « épuisé » est un problème, « bas » un avertissement,
+      « OK » une bonne nouvelle. Le segmenté de la charte peint son choix en accent ;
+      ces trois-là le remplacent, chacun par son état.
 
-.item-del { background:none; border:none; cursor:pointer; color:var(--faint); font-size:14px; padding:0 4px; }
-.item-del:hover { color:var(--red); }
+      ⚠️ ET LA SPÉCIFICITÉ EST CALCULÉE, PAS ESPÉRÉE. `.db-seg button[aria-pressed]`
+      pèse (0,2,1) ; ces règles pèsent (0,3,1) et gagnent donc où qu'elles soient
+      dans la feuille. ── */
+.status-seg button.ok[aria-pressed="true"]  { background:var(--db-green-soft); color:var(--db-green); }
+.status-seg button.low[aria-pressed="true"] { background:var(--db-amber-soft); color:var(--db-amber); }
+.status-seg button.out[aria-pressed="true"] { background:var(--db-red-soft);   color:var(--db-red); }
+.status-seg button { font-size:11.5px; padding:5px 11px; }
 
-.empty { text-align:center; color:var(--muted); padding:40px; font-size:13px; }
+/* ── La pastille de légende de la répartition ─────────────────────────────── */
+.pip { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:5px; }
+.pip.ok { background:var(--db-green); } .pip.low { background:var(--db-amber); }
+.pip.out { background:var(--db-red); }
+#part-ok  { background:var(--db-green); }
+#part-low { background:var(--db-amber); }
+#part-out { background:var(--db-red); }
+
+.item-del { background:none; border:none; cursor:pointer; color:var(--db-faint); font-size:14px; padding:0 4px; }
+.item-del:hover { color:var(--db-red); }
+
 
 /* Modal */
-.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none;
+.modal-overlay { position:fixed; inset:0; background:var(--db-scrim); display:none;
   align-items:center; justify-content:center; z-index:100; }
 .modal-overlay.open { display:flex; }
-.modal { background:var(--bg-card); border-radius:12px; padding:28px; width:420px; max-width:95vw; }
+.modal { background:var(--db-card); border-radius:var(--db-r); box-shadow:var(--db-sh-pop); padding:28px; width:420px; max-width:95vw; }
 .modal-title { font-size:16px; font-weight:700; margin-bottom:18px; }
-.field-label { font-size:11px; font-weight:500; color:var(--muted); margin-bottom:5px; display:block; }
-.field-input { font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border);
-  border-radius:6px; background:var(--bg-card); color:var(--text); width:100%; box-sizing:border-box; }
 .modal-foot { display:flex; gap:8px; margin-top:20px; }
 
 .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
-  background:var(--text); color:var(--bg-card); padding:10px 18px; border-radius:8px; font-size:13px;
+  background:var(--db-ink); color:var(--db-card); padding:10px 18px; border-radius:var(--db-r-sm); font-size:13px;
   opacity:0; transition:all .25s; z-index:200; }
 .toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
-.updated-hint { font-size:11px; color:var(--faint); margin-left:auto; }
 
 
 
@@ -113,8 +90,7 @@
   .item-name { flex:1 1 auto; min-width:0; }
   .item-note { flex:1 1 auto; width:auto; order:5; }
   .status-seg { order:6; }
-  .summary-bar { flex-wrap:wrap; }
-  .summary-bar .sum-item { flex:1 1 33%; border-bottom:1px solid var(--border); }
+  /* La grille de résumé se replie toute seule : `.db-g3` passe à une colonne sous 900 px. */
   .modal { padding:20px; }
 }
 
@@ -122,38 +98,65 @@
 </head>
 <body>
 {% include "_rail.html" %}
-<div class="page">
+{#
+  ⚠️ `db` ACTIVE LA CHARTE. Elle pose le fond et l'encre de la page ; les jetons `--db-*`, eux,
+  vivent sur `:root` depuis qu'une modale posée hors de `.page` s'est affichée transparente.
+#}
+<div class="page db">
 
-  <div class="header">
-    <div>
-      <div class="header-title">Stock &amp; Supplies</div>
-      <div class="header-sub">Track what's running low — order ahead, not last minute</div>
-    </div>
-    <div style="display:flex;align-items:center;gap:8px;">
-      <button class="btn-refresh" onclick="loadStock()" title="Refresh">↻</button>
-      <a href="/logout" title="Log out" style="font-size:12px;color:var(--faint);text-decoration:none;padding:5px 8px;">⎋</a>
-    </div>
+  <div class="db-head">
+    <h2 class="db-title">Stock &amp; fournitures</h2>
+    <span class="db-id">voir ce qui baisse avant d'en manquer</span>
+    <span class="db-sp"></span>
+    <button class="db-icone" onclick="loadStock()" title="Recharger">&#8635;</button>
+    <a class="db-icone" href="/logout" title="Se d&eacute;connecter">&#9099;</a>
   </div>
 
-  <div class="summary-bar">
-    <div class="sum-item"><div class="sum-label">Items</div><div class="sum-val" id="s-total">—</div></div>
-    <div class="sum-item"><div class="sum-label">🟢 OK</div><div class="sum-val" id="s-ok" style="color:var(--green);">—</div></div>
-    <div class="sum-item"><div class="sum-label">🟠 Low</div><div class="sum-val" id="s-low" style="color:var(--amber);">—</div></div>
-    <div class="sum-item"><div class="sum-label">🔴 Out</div><div class="sum-val" id="s-out" style="color:var(--red);">—</div></div>
-    <div class="sum-item"><div class="sum-label">To order</div><div class="sum-val" id="s-order">—</div></div>
+  {#
+    ⚠️ CINQ CASES SONT DEVENUES TROIS. « OK », « bas » et « épuisé » ne sont pas trois mesures
+    indépendantes : c'est UNE répartition, dont les parts font le total. Les aligner comme des
+    voisines demandait de les additionner de tête pour s'en apercevoir — la barre le montre.
+
+    ⚠️ ET LEURS TROIS COULEURS ÉTAIENT DOUBLÉES D'UN ÉMOJI. 🟢 vert, 🟠 ambre, 🔴 rouge : deux
+    fois le même signal, sur trois cases voisines, et plus rien ne ressortait. Ce qui demande un
+    geste, c'est « à commander », et c'est la seule case qui porte un état.
+  #}
+  <div class="db-grid db-g3 db-mb">
+    <div class="db-card db-compact"><div class="db-l">Articles suivis</div>
+      <div class="db-v" id="s-total">&mdash;</div>
+      <div class="db-s" id="s-cats"></div></div>
+
+    <div class="db-card db-compact"><div class="db-l">R&eacute;partition</div>
+      <div class="db-stack" style="margin:8px 0 2px">
+        <span id="part-ok"></span><span id="part-low"></span><span id="part-out"></span>
+      </div>
+      <div class="db-s" style="gap:12px">
+        <span><i class="pip ok"></i><b id="s-ok">&mdash;</b> ok</span>
+        <span><i class="pip low"></i><b id="s-low">&mdash;</b> bas</span>
+        <span><i class="pip out"></i><b id="s-out">&mdash;</b> &eacute;puis&eacute;</span>
+      </div></div>
+
+    <div class="db-card db-compact" id="i-order"><div class="db-l">&Agrave; commander</div>
+      <div class="db-v" id="s-order">&mdash;</div>
+      <div class="db-s" id="s-order-sub"></div></div>
   </div>
 
-  <div class="view-tabs">
-    <button class="view-tab active" id="tab-all" onclick="switchTab('all')">All items <span class="tab-badge" id="badge-all">—</span></button>
-    <button class="view-tab" id="tab-order" onclick="switchTab('order')">🛒 To order <span class="tab-badge" id="badge-order">—</span></button>
+  {# ⚠️ CINQUIÈME COPIE DE LA MÊME BARRE D'ONGLETS, ramenée sur le composant partagé. #}
+  <nav class="nav-seg" role="tablist" aria-label="Vues du stock">
+    <button role="tab" id="tab-all" aria-selected="true" onclick="switchTab('all')">
+      Tous les articles <span class="n" id="badge-all">&mdash;</span></button>
+    <button role="tab" id="tab-order" aria-selected="false" onclick="switchTab('order')">
+      &Agrave; commander <span class="n" id="badge-order">&mdash;</span></button>
+  </nav>
+
+  <div class="db-head" style="margin-bottom:14px">
+    <input id="search" class="db-champ" type="search" placeholder="Chercher un article&hellip;"
+           oninput="render()" style="flex:1;max-width:340px">
+    <span class="db-sp"></span>
+    <button class="db-btn fort" onclick="openModal()">+ Nouvel article</button>
   </div>
 
-  <div class="toolbar">
-    <input id="search" type="text" placeholder="🔍 Search an item…" oninput="render()">
-    <button class="btn-add" onclick="openModal()">+ New item</button>
-  </div>
-
-  <div id="list"><div class="empty">Loading…</div></div>
+  <div id="list"><div class="db-empty" style="text-align:center">Chargement&hellip;</div></div>
 
 </div><!-- /page -->
 
@@ -163,21 +166,21 @@
     <div class="modal-title" id="modal-title">New item</div>
     <input type="hidden" id="f-id">
     <div style="margin-bottom:12px;">
-      <label class="field-label">Name *</label>
-      <input class="field-input" id="f-name" placeholder="e.g. Oat milk">
+      <label class="db-l">Name *</label>
+      <input class="db-champ" id="f-name" placeholder="e.g. Oat milk">
     </div>
     <div style="margin-bottom:12px;">
-      <label class="field-label">Category</label>
-      <input class="field-input" id="f-cat" list="cat-list" placeholder="e.g. Milk & dairy">
+      <label class="db-l">Category</label>
+      <input class="db-champ" id="f-cat" list="cat-list" placeholder="e.g. Milk & dairy">
       <datalist id="cat-list"></datalist>
     </div>
     <div style="margin-bottom:12px;">
-      <label class="field-label">Note</label>
-      <input class="field-input" id="f-note" placeholder="Supplier, pack size… (optional)">
+      <label class="db-l">Note</label>
+      <input class="db-champ" id="f-note" placeholder="Supplier, pack size… (optional)">
     </div>
     <div class="modal-foot">
-      <button class="btn-primary" style="flex:1;" onclick="saveItem()">Save</button>
-      <button class="btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="db-btn fort" style="flex:1" onclick="saveItem()">Save</button>
+      <button class="db-btn" onclick="closeModal()">Cancel</button>
     </div>
   </div>
 </div>
@@ -219,8 +222,10 @@ function populateCats(){
 
 function switchTab(t){
   tab = t;
-  document.getElementById('tab-all').classList.toggle('active', t==='all');
-  document.getElementById('tab-order').classList.toggle('active', t==='order');
+  /* ⚠️ `aria-selected`, PAS UNE CLASSE : le segmenté partagé se peint sur l'attribut, et
+   * l'attribut est aussi ce qui dit l'onglet actif à un lecteur d'écran. */
+  document.getElementById('tab-all').setAttribute('aria-selected', String(t === 'all'));
+  document.getElementById('tab-order').setAttribute('aria-selected', String(t === 'order'));
   render();
 }
 
@@ -231,11 +236,37 @@ function render(){
   const active = items.filter(i => i.active !== false);
   // Summary
   document.getElementById('s-total').textContent = active.length;
-  document.getElementById('s-ok').textContent  = active.filter(i=>i.status==='ok' && !i.alert).length;
-  document.getElementById('s-low').textContent = active.filter(i=>i.status==='low').length;
-  document.getElementById('s-out').textContent = active.filter(i=>i.status==='out').length;
+  /* ⚠️ LA RÉPARTITION PORTE SUR LE NIVEAU, ET ELLE DOIT FAIRE LE TOUT. Le compte « ok »
+   * excluait les articles signalés à la main : trois parts qui totalisaient 75 %, et un quart
+   * de la barre vide sans que rien ne dise à quoi il correspondait. Un article signalé reste
+   * au niveau OK — ce qui est signalé se lit dans « à commander », qui est fait pour ça. */
+  const nOk  = active.filter(i=>i.status==='ok').length;
+  const nLow = active.filter(i=>i.status==='low').length;
+  const nOut = active.filter(i=>i.status==='out').length;
+  document.getElementById('s-ok').textContent  = nOk;
+  document.getElementById('s-low').textContent = nLow;
+  document.getElementById('s-out').textContent = nOut;
+  /* ⚠️ LA BARRE MONTRE DES PARTS D'UN TOUT, donc elle se calcule sur le total — pas sur la
+   * somme des trois. Un article signalé à la main est « ok » ET à commander : le prendre pour
+   * dénominateur ferait des parts qui dépassent 100 %. */
+  const part = n => active.length ? (n / active.length * 100).toFixed(1) + '%' : '0%';
+  document.getElementById('part-ok').style.width  = part(nOk);
+  document.getElementById('part-low').style.width = part(nLow);
+  document.getElementById('part-out').style.width = part(nOut);
+  const nbCats = new Set(active.map(i => i.category || 'Autre')).size;
+  document.getElementById('s-cats').textContent =
+    `${nbCats} catégorie${nbCats > 1 ? 's' : ''}`;
+
   const toOrder = active.filter(needsOrder).length;
   document.getElementById('s-order').textContent = toOrder;
+  document.getElementById('s-order-sub').textContent = toOrder
+    ? 'épuisés, bas ou signalés à la main'
+    : 'rien ne manque';
+  /* ⚠️ UNE LISTE VIDE N'EST PAS UNE LISTE SAINE. Sans article suivi, la bande verte dirait que
+   * tout est en stock alors que rien n'est suivi. */
+  const carteOrdre = document.getElementById('i-order');
+  if (!active.length) carteOrdre.removeAttribute('data-etat');
+  else carteOrdre.setAttribute('data-etat', !toOrder ? 'ok' : nOut ? 'alerte' : 'attention');
   document.getElementById('badge-all').textContent = active.length;
   document.getElementById('badge-order').textContent = toOrder;
 
@@ -245,13 +276,13 @@ function render(){
 
   if (!list.length){
     if (tab==='order'){
-      document.getElementById('list').innerHTML = `<div class="empty">🎉 Nothing to order — all stocked up.</div>`;
+      document.getElementById('list').innerHTML = `<div class="db-empty" style="text-align:center">🎉 Nothing to order — all stocked up.</div>`;
     } else if (!active.length && !q){
       document.getElementById('list').innerHTML =
-        `<div class="empty">No items yet.<br><br>
-         <button class="btn-primary" onclick="seedList()">Load starter list (94 items)</button></div>`;
+        `<div class="db-empty" style="text-align:center">No items yet.<br><br>
+         <button class="db-btn fort" onclick="seedList()">Charger la liste de d&eacute;part (94 articles)</button></div>`;
     } else {
-      document.getElementById('list').innerHTML = `<div class="empty">No items.</div>`;
+      document.getElementById('list').innerHTML = `<div class="db-empty" style="text-align:center">No items.</div>`;
     }
     return;
   }
@@ -266,7 +297,7 @@ function render(){
 
   let html='';
   if (tab==='order' && IS_ADMIN){
-    html += `<button class="btn-restock-all" onclick="restockAll()">✓ Mark all restocked</button>`;
+    html += `<button class="db-btn fort" style="margin-bottom:16px" onclick="restockAll()">&#10003; Tout marquer réapprovisionné</button>`;
   }
   for (const c of cats){
     const rows = byCat[c].sort((a,b)=>a.name.localeCompare(b.name));
@@ -275,15 +306,15 @@ function render(){
       const noteVal = (i.notes||'').replace(/"/g,'&quot;');
       const esc = i.name.replace(/'/g,"\\'");
       const restockBtn = (IS_ADMIN && needsOrder(i))
-        ? `<button class="btn-restock" title="Reset to OK after buying" onclick="restockItem('${i.id}')">✓ Bought</button>` : '';
+        ? `<button class="db-btn btn-restock" title="Remettre en OK une fois acheté" onclick="restockItem('${i.id}')">&#10003; Acheté</button>` : '';
       html += `<div class="item-row st-${i.status}">
-        <span class="flag-star ${i.alert?'on':''}" title="Flag to order" onclick="toggleAlert('${i.id}')">${i.alert?'🚩':'⚑'}</span>
+        <span class="flag-star ${i.alert?'on':''}" title="Signaler à commander" onclick="toggleAlert('${i.id}')">${i.alert?'🚩':'⚑'}</span>
         <span class="item-name">${i.name}</span>
-        <input class="item-note" value="${noteVal}" placeholder="note / qty…" onchange="saveNote('${i.id}', this.value)">
-        <div class="status-seg">
-          <button class="status-btn ok ${i.status==='ok'?'active':''}"  onclick="setStatus('${i.id}','ok')">OK</button>
-          <button class="status-btn low ${i.status==='low'?'active':''}" onclick="setStatus('${i.id}','low')">Low</button>
-          <button class="status-btn out ${i.status==='out'?'active':''}" onclick="setStatus('${i.id}','out')">Out</button>
+        <input class="item-note" value="${noteVal}" placeholder="note / quantité…" onchange="saveNote('${i.id}', this.value)">
+        <div class="db-seg status-seg" role="group" aria-label="Niveau">
+          <button type="button" class="ok"  aria-pressed="${i.status==='ok'}"  onclick="setStatus('${i.id}','ok')">OK</button>
+          <button type="button" class="low" aria-pressed="${i.status==='low'}" onclick="setStatus('${i.id}','low')">Bas</button>
+          <button type="button" class="out" aria-pressed="${i.status==='out'}" onclick="setStatus('${i.id}','out')">&Eacute;puisé</button>
         </div>
         ${restockBtn}
         <button class="item-del" onclick="delItem('${i.id}','${esc}')">✕</button>
