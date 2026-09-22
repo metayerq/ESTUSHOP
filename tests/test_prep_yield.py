@@ -6,8 +6,8 @@ Une recette qui consomme « 200 ml » d'un sirop dont la préparation rend « 1 
 par 1 : 200 batches au lieu de 0,2. Facteur 1000, sur le COÛT affiché.
 
 Trois endroits divisaient par un rendement, tous les trois sans conversion : le moteur de coût
-(calc_recipe_cogs), la consommation théorique (/api/inventory/usage) et l'aperçu d'impact prix
-côté client. Ils étaient donc cohérents entre eux — et faux ensemble, ce qui est la raison pour
+(calc_recipe_cogs), la consommation théorique (écran « Usage & variance », retiré depuis) et
+l'aperçu d'impact prix côté client. Ils étaient donc cohérents entre eux — et faux ensemble, ce qui est la raison pour
 laquelle rien ne le signalait.
 
 UNIT_CONVERSIONS ne pouvait pas servir : elle ne ramène une ligne que vers l'unité de RÉFÉRENCE

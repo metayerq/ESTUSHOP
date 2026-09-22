@@ -217,7 +217,7 @@ def _classes_declarees(nom):
 # ne sont pas encore passées à la charte ; la liste rétrécit, elle ne grandit pas.
 DETTE = {
     "cashflow.html": {'check-row'},
-    "cogs.html": {'btn-add', 'comm-preset', 'usage-head'},
+    "cogs.html": {'btn-add', 'comm-preset'},
     "reconciliation.html": {'field'},
 }
 

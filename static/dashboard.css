@@ -510,3 +510,26 @@
       ⚠️ `.db th/td` PAYE 20 px DE CHAQUE CÔTÉ, ce qui va pour un tableau pleine largeur
       et mange une colonne sur trois dans un tiers d'écran. ── */
 .db-card.serre th, .db-card.serre td { padding: 8px 14px; }
+
+
+/* ── Une carte qui demande qu'on la regarde ──────────────────────────────────
+      ⚠️ LA CHARTE DIT « L'ÉTAT EST DANS LA PASTILLE », ET C'EST VRAI D'UN ÉCART — un
+      chiffre qui monte ou qui descend par rapport à un autre. Ce n'est pas vrai d'un
+      indicateur qui n'a PAS d'écart : une couverture à 58 % n'a rien à comparer, elle a
+      un seuil franchi. Lui coller une pastille obligerait à inventer un second chiffre
+      pour la remplir.
+
+      ⚠️ ET LA BANDE NE REMPLACE PAS LE TEXTE. Elle dit « ici », pas « pourquoi » : la
+      carte garde sa ligne d'explication. Une couleur seule n'est lisible que par qui
+      connaît déjà le code. ── */
+.db-card[data-etat] { position: relative; overflow: hidden; }
+.db-card[data-etat]::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+}
+.db-card[data-etat="ok"]::before        { background: var(--db-green); }
+.db-card[data-etat="attention"]::before { background: var(--db-amber); }
+.db-card[data-etat="alerte"]::before    { background: var(--db-red); }
+
+/* Une carte qu'on peut ouvrir se comporte comme telle. */
+.db-card.sum-clic { cursor: pointer; }
+.db-card.sum-clic:hover { border-color: var(--db-faint); }
