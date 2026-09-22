@@ -218,7 +218,6 @@ def _classes_declarees(nom):
 DETTE = {
     "cashflow.html": {'check-row'},
     "cogs.html": {'btn-add', 'comm-preset'},
-    "reconciliation.html": {'field'},
 }
 
 
@@ -240,3 +239,32 @@ def test_la_dette_de_classes_ne_grandit_pas():
     for nom, connues in DETTE.items():
         reelles = _classes_posees(nom) - _classes_declarees(nom)
         assert reelles == connues, f"{nom} : attendu {sorted(connues)}, trouvé {sorted(reelles)}"
+
+
+# ── L'encre s'inverse, le blanc non ──────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("nom", PAGES)
+def test_pas_de_blanc_pose_sur_une_couleur_qui_sinverse(nom):
+    """
+    ⚠️ TROUVÉ DEUX FOIS, SUR DEUX PAGES, AVANT D'ÊTRE GARDÉ ICI. `background: var(--text)` avec
+    `color: #fff` est juste en clair et illisible en sombre : l'encre passe au blanc cassé, le
+    texte reste blanc, et l'élément disparaît. Les deux fois, c'était le message de confirmation
+    — celui qu'on ne regarde qu'une seconde, et dont on ne se dit pas qu'il a disparu.
+
+    ⚠️ CE QUI EST PERMIS : `#fff` sur l'accent. L'iris reste sombre dans les deux thèmes, c'est
+    pour ça que la charte pose du blanc dessus et sur rien d'autre.
+
+    ⚠️ LA PAIRE QUI TIENT DES DEUX CÔTÉS est encre / fond-de-carte : les deux s'inversent
+    ensemble, donc le contraste ne bouge pas.
+    """
+    s = _lire(nom)
+    fautifs = []
+    for bloc in re.findall(r"<style>(.*?)</style>", s, re.S):
+        bloc = _sans_commentaires_css(bloc)
+        # Une déclaration : du `background` jusqu'au `}` de sa règle.
+        for regle in re.findall(r"\{[^{}]*\}", bloc):
+            fond = re.search(r"background(?:-color)?:\s*var\((--[a-z-]+)\)", regle)
+            encre = re.search(r"color:\s*(#fff\b|#ffffff\b|white\b)", regle)
+            if fond and encre and fond.group(1) in ("--text", "--db-ink", "--db-ink-2"):
+                fautifs.append(regle.strip()[:90])
+    assert not fautifs, fautifs

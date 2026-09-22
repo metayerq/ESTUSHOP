@@ -152,7 +152,7 @@ def test_lestimation_est_visuellement_distincte_du_mesure():
     html = _gabarit()
     assert "j.frais_mesures ? '' : 'est'" in html
     assert "'≈−'" in html
-    assert ".est { color:var(--muted); }" in html
+    assert ".est { color:var(--db-muted); }" in html
 
 
 def test_aujourdhui_na_pas_de_verdict():
@@ -298,22 +298,179 @@ def test_les_intitules_den_tete_ne_passent_pas_a_la_ligne():
     assert "thead th { white-space:nowrap; }" in _gabarit()
 
 
-def test_les_cases_du_bandeau_reservent_la_meme_hauteur_de_libelle():
-    """
-    ⚠️ SEPT CASES SE PARTAGENT LA LARGEUR. Certains intitulés tiennent sur une ligne, d'autres
-    passent à deux : sans hauteur réservée, les valeurs ne démarrent pas au même niveau et la
-    barre se lit comme des colonnes désalignées.
-    """
-    html = _gabarit()
-    assert "min-height:24px" in html
-    # Et les valeurs ne se coupent pas en deux.
-    assert ".sum-val" in html and "white-space:nowrap" in html
-
-
 def test_les_intitules_du_bandeau_restent_courts():
-    """Sept cases sur 1 060 px : un intitulé long déborde ou casse la grille."""
+    """
+    ⚠️ UN CONTRÔLE A DISPARU ICI, ET SON REMPLAÇANT EST PLUS DIRECT. La bande soudée réservait
+    24 px de hauteur à CHAQUE intitulé pour que les valeurs restent alignées malgré un libellé
+    sur deux lignes — un contournement, pas une garantie. La grille de cartes l'a emporté ; le
+    problème, lui, existe toujours : dans une grille, un intitulé qui passe à la ligne descend
+    SA valeur et pas celle de sa voisine. Ce qui protège vraiment, c'est que les intitulés
+    tiennent sur une ligne, et c'est ce qui est vérifié.
+
+    ⚠️ ET CE CONTRÔLE VENAIT DE DEVENIR VERT À VIDE. Il cherchait `class="sum-label">`, qui
+    n'existe plus depuis le passage à la charte : zéro intitulé trouvé, zéro assertion jouée,
+    test vert. Il compte donc ce qu'il a trouvé avant de le juger.
+    """
     html = _gabarit()
-    for label in re.findall(r'class="sum-label">([^<]+)<', html):
+    # ⚠️ LA DÉCOUPE S'ARRÊTE À L'ÉLÉMENT SUIVANT, pas au premier `</div>` venu. Elle coupait au
+    # `</div>` qui suit `id="i-delta"` — celui de son propre intitulé — et perdait la septième
+    # carte : six trouvées, et un contrôle qui aurait pu se croire complet.
+    bande = html[html.index('id="summary"'):html.index('id="inconnus"')]
+    labels = re.findall(r'class="db-l">([^<]+)<', bande)
+    assert len(labels) == 7, f"{len(labels)} intitulés trouvés, 7 attendus : {labels}"
+    for label in labels:
         # Les entités HTML comptent pour un caractère à l'affichage.
-        visible = re.sub(r"&[a-z]+;", "x", label)
-        assert len(visible) <= 12, f"intitulé trop long pour la barre : {label}"
+        visible = re.sub(r"&[a-z]+;", "x", label).strip()
+        assert len(visible) <= 12, f"intitulé trop long pour la carte : {label}"
+
+
+# ── Le verdict et les lignes, exécutés ───────────────────────────────────────────────────────
+#
+# ⚠️ LE CLASSEMENT ÉTAIT TESTÉ, SON AFFICHAGE NON. `classe()` rend « ok », « doute » ou
+# « alerte » depuis le début ; ce que la page en FAIT — un fond teinté hier, une bande d'accent
+# et une pastille aujourd'hui — n'était vu par personne. Le passage à la charte a réécrit
+# exactement cette partie-là.
+
+
+def _verdict(*jours_):
+    """Exécute `verdict()` sur un DOM minimal et rend ce qu'il pose."""
+    prog = (_extraire("classe") + _extraire("causes") + _extraire("verdict") + """
+const champs = {};
+function faire(id) {
+  const o = { _t: '', innerHTML: '', className: '', attrs: {},
+    setAttribute(k, v) { this.attrs[k] = v; },
+    removeAttribute(k) { delete this.attrs[k]; } };
+  Object.defineProperty(o, 'textContent', { get() { return this._t; },
+                                            set(v) { this._t = String(v); } });
+  return o;
+}
+const document = { getElementById: id => champs[id] || (champs[id] = faire(id)) };
+const jourCourt = d => d;
+""" + f"const jours = {json.dumps(list(jours_))};\n" + """
+verdict();
+console.log(JSON.stringify({
+  html: champs['verdict'].innerHTML,
+  classe: champs['verdict'].className,
+  etat: champs['verdict'].attrs['data-etat'] || null,
+}));""")
+    return _node(prog)
+
+
+def test_le_verdict_porte_son_etat_en_attribut_pas_en_fond_plein():
+    """
+    ⚠️ IL ÉTAIT PEINT EN PLEIN — vert, ambre ou rouge sur toute la largeur. Le bloc le plus
+    important de l'écran était aussi le plus criard, et en mode sombre les trois teintes pâles
+    passaient mal. La carte de la charte porte son état par une bande d'accent.
+
+    ⚠️ ET LA CLASSE NE DOIT PLUS LE PORTER. `verdict ok` peignait le fond ; si la classe
+    revenait pendant que l'attribut existe, on aurait les deux — une bande d'accent SUR un fond
+    teinté, c'est-à-dire l'ancien défaut avec une décoration de plus.
+    """
+    r = _verdict(jour(ecart_cents=0))
+    assert r["etat"] == "ok", r
+    assert "db-card" in r["classe"], r["classe"]
+    assert r["classe"].split() == ["db-card", "db-card-p", "verdict", "db-mb"], r["classe"]
+
+
+@pytest.mark.parametrize("cents,etat", [(0, "ok"), (2000, "doute"), (-2000, "alerte")])
+def test_chaque_classement_devient_un_etat_de_carte(cents, etat):
+    assert _verdict(jour(ecart_cents=cents))["etat"] == etat
+
+
+def test_sans_aucune_journee_close_la_carte_ne_porte_aucun_etat():
+    """
+    ⚠️ RIEN À JUGER N'EST PAS « TOUT VA BIEN ». Une carte verte sur un écran sans données dirait
+    que la caisse tombe juste ; elle dit seulement qu'on n'a rien reconstruit. L'attribut est
+    donc RETIRÉ, pas posé à une valeur neutre.
+    """
+    r = _verdict(jour(aujourdhui=True))
+    assert r["etat"] is None, r
+    assert "Reconstruire" in r["html"], "la marche à suivre n'est plus proposée"
+
+
+def _ligne(j):
+    """Le fragment de ligne produit pour une journée."""
+    js = _gabarit()
+    i = js.index("const TON = {")
+    bloc = js[i:js.index("`;", js.index("const pastille", i)) + 2]
+    return _node(_extraire("classe") + f"""
+const j = {json.dumps(j)};
+const c = classe(j);
+{bloc}
+console.log(JSON.stringify({{ pastille }}));""")
+
+
+def test_une_journee_en_cours_ne_porte_pas_la_pastille_des_journees_vides():
+    """
+    ⚠️ « EN COURS » EST L'ABSENCE DE JUGEMENT, PAS UN JUGEMENT NEUTRE. Une journée qui n'est pas
+    finie sera jugée ce soir ; une journée sans donnée ne le sera jamais. Leur donner la même
+    pastille grise revient à dire la même chose de deux situations opposées.
+    """
+    r = _ligne(jour(aujourdhui=True))
+    assert "db-badge iris" in r["pastille"], r["pastille"]
+    assert "flat" not in r["pastille"]
+
+
+@pytest.mark.parametrize("cents,ton", [(0, "up"), (2000, "warn"), (-2000, "down")])
+def test_la_pastille_de_ligne_suit_le_classement(cents, ton):
+    r = _ligne(jour(ecart_cents=cents))
+    assert f"db-badge {ton}" in r["pastille"], r["pastille"]
+
+
+def test_un_ecart_positif_et_un_ecart_negatif_ne_se_peignent_pas_pareil():
+    """
+    ⚠️ POSITIF ET NÉGATIF NE DEMANDENT PAS LE MÊME GESTE. Positif = une facture manque dans
+    Vendus, le tiroir est juste ; négatif = de l'argent encaissé sans facture en face. Le second
+    se répare aujourd'hui, le premier se rattrape. Les peindre du même rouge les confondait.
+    """
+    assert _ligne(jour(ecart_cents=2000))["pastille"] != _ligne(jour(ecart_cents=-2000))["pastille"]
+
+
+def test_la_page_porte_la_charte():
+    html = _gabarit()
+    assert 'class="page db"' in html, "la classe qui définit les jetons `--db-*` est absente"
+    assert "/static/dashboard.css?v=" in html, "la feuille de charte n'est pas chargée"
+
+
+def _bande(cents_par_jour):
+    """Exécute le calcul d'état de la carte « Écart » du bandeau."""
+    js = _gabarit()
+    i = js.index("const dTot = jours.reduce")
+    bloc = js[i:js.index("carteEcart.setAttribute('data-etat', etatEcart);", i) + 48]
+    return _node("""
+const champs = {};
+const document = { getElementById: id => champs[id] || (champs[id] = {
+  _t: '', innerHTML: '', attrs: {},
+  set textContent(v) { this._t = String(v); }, get textContent() { return this._t; },
+  setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; } }) };
+""" + f"const jours = {json.dumps([{'ecart_cents': c} for c in cents_par_jour])};\n" + bloc + """
+console.log(JSON.stringify({ valeur: champs['s-delta'].textContent,
+                             etat: champs['i-delta'].attrs['data-etat'] || null }));""")
+
+
+@pytest.mark.parametrize("cents,etat", [
+    ([0, 0], "ok"),
+    ([40, -30], "ok"),          # sous l'euro cumulé : des arrondis, pas un écart
+    ([5000, 0], "attention"),   # positif : une facture manque, le tiroir est juste
+    ([-5000, 0], "alerte"),     # négatif : encaissé sans facture en face
+])
+def test_la_carte_ecart_du_bandeau_porte_son_etat(cents, etat):
+    """
+    ⚠️ LE CHIFFRE ÉTAIT PEINT, PAS LA CARTE. Sur une bande où six voisins portent déjà des
+    montants, une septième couleur ne ressort plus. La bande d'accent le dit sans toucher au
+    nombre, qui reste lisible en encre.
+
+    ⚠️ ET C'EST LA SEULE DES SEPT À PORTER UN ÉTAT. Les six autres sont des constats : colorer
+    les sept ne hiérarchiserait rien.
+    """
+    assert _bande(cents)["etat"] == etat
+
+
+def test_les_sept_cartes_du_bandeau_sont_toutes_rendues():
+    """Une carte retirée ou masquée ferait disparaître un terme de l'addition sans le dire."""
+    html = _gabarit()
+    bande = html[html.index('id="summary"'):html.index('id="inconnus"')]
+    for ancre in ("s-gross", "s-tips", "s-fees", "s-net", "s-vendus", "s-cash", "s-delta"):
+        assert f'id="{ancre}"' in bande, ancre
+    assert "hidden" not in bande and "display:none" not in bande.replace(
+        'id="summary" style="display:none;"', ""), "une carte du bandeau est masquée"

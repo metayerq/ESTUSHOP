@@ -14,134 +14,102 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<link rel="stylesheet" href="/static/dashboard.css?v={{ v }}">
 <style>
 @media (max-width:760px) {
 
   .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
   .table-wrap table { min-width:640px; }
-  .summary-bar { flex-wrap:wrap; }
-  .summary-bar .sum-item { flex:1 1 33%; border-bottom:1px solid var(--border); }
+  /* La grille de résumé se replie toute seule : `.db-g4` passe à deux colonnes sous 900 px. */
 }
 
-.summary-bar { display:flex; gap:0; background:var(--bg-card); border:1px solid var(--border);
-  border-radius: 4px; overflow:hidden; margin-bottom:24px; }
-.sum-item { flex:1 1 0; min-width:0; padding:14px 14px; border-right:1px solid var(--border); }
-.sum-item:last-child { border-right:none; }
-.sum-label { font-family:var(--mono); font-size:9px; font-weight:600; letter-spacing:.1em;
-  text-transform:uppercase; color:var(--muted); margin-bottom:4px;
-  /* ⚠️ DEUX LIGNES RÉSERVÉES, MÊME QUAND UNE SUFFIT. Sans ça, un intitulé qui passe à la ligne
-     décale sa valeur vers le bas et la barre se lit comme des colonnes désalignées. */
-  min-height:24px; }
-.sum-val { font-size:17px; font-weight:600; letter-spacing:-.4px; font-variant-numeric:tabular-nums;
-  white-space:nowrap; }
-.sum-sub { font-size:10.5px; color:var(--faint); margin-top:2px; }
 
 .controls { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:18px; }
-.field-label { font-size:11px; font-weight:500; color:var(--muted); margin-bottom:5px; display:block; }
-.field-input { font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border);
-  border-radius:6px; background:var(--bg-card); color:var(--text); box-sizing:border-box; }
-.btn-add { font-family:inherit; font-size:12px; font-weight:500; padding:8px 14px;
-  border-radius:6px; cursor:pointer; border:1px solid var(--border); background:var(--bg-card); color:var(--text); }
-.btn-add:hover { background:var(--bg-hover); }
-.btn-primary { font-family:inherit; font-size:12px; font-weight:600; padding:9px 18px;
-  border-radius:6px; cursor:pointer; border:none; background:var(--spec); color:#fff; }
-.btn-primary:disabled { opacity:.4; cursor:default; }
 
-.paste-card { background:var(--bg-card); border:1px solid var(--border); border-radius: 4px;
-  padding:16px 18px; margin-bottom:20px; }
-.paste-card textarea { width:100%; font-family:var(--mono); font-size:11.5px; resize:vertical;
-  border:1px solid var(--border); border-radius:6px; padding:10px; background:var(--bg-page); color:var(--text); box-sizing:border-box; }
-.parse-info { font-family:var(--mono); font-size:11px; color:var(--spec); margin-top:8px; }
-.parse-info.err { color:var(--red); }
+.parse-info { font-size:11px; color:var(--db-iris); margin-top:8px; }
+.parse-info.err { color:var(--db-red); }
 
-.paytypes { display:flex; gap:6px 14px; flex-wrap:wrap; margin:10px 0 20px; font-size:12.5px; color:var(--muted); align-items:center; }
-.paytypes label { display:flex; gap:5px; align-items:center; cursor:pointer; }
-.paytypes input { accent-color:var(--spec); }
 
-.table-wrap { border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:16px; background:var(--bg-card); }
+.table-wrap { border:1px solid var(--db-line); border-radius:var(--db-r-sm); overflow:hidden; margin-bottom:16px; background:var(--db-card); }
 td.num { font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
 /* ⚠️ UN EN-TÊTE QUI PASSE À LA LIGNE CHANGE LA HAUTEUR DE LA RANGÉE et donne l'impression que
    les colonnes ne sont pas alignées. Ils tiennent sur une ligne, quitte à être serrés. */
 thead th { white-space:nowrap; }
 th.right { text-align:right; }
-td.date { color:var(--muted); white-space:nowrap; }
-.st { font-size:10px; font-weight:600; padding:2px 8px; border-radius: 4px; white-space:nowrap; }
-.st-ok  { background:var(--green-soft); color:var(--green); }
-.st-mid { background:var(--amber-soft); color:var(--amber); }
-.st-bad { background:var(--red-soft); color:var(--red); }
-.st-inc { background:var(--bg-hover); color:var(--faint); }
-.row-inc td { color:var(--faint); background:var(--bg-page); }
-.inc-note { font-size:12px; color:var(--muted); margin-bottom:16px; padding:9px 14px;
-  background:var(--bg-hover); border-radius:6px; border-left:3px solid var(--faint); }
-.inc-note b { color:var(--text); }
-.delta-pos { color:var(--green); }
-.delta-neg { color:var(--red); }
-.empty { text-align:center; color:var(--muted); padding:36px; font-size:13px; }
+td.date { color:var(--db-muted); white-space:nowrap; }
+.inc-note { font-size:12px; color:var(--db-muted); margin-bottom:16px; padding:9px 14px;
+  background:var(--db-alt); border-radius:var(--db-r-sm); border-left:3px solid var(--db-faint); }
+.inc-note b { color:var(--db-ink); }
+.empty { text-align:center; color:var(--db-muted); padding:36px; font-size:13px; }
 
-.hint { font-size:12px; color:var(--muted); margin-bottom:20px; max-width:70ch; }
-.hint b { color:var(--text); }
+.hint { font-size:12px; color:var(--db-muted); margin-bottom:20px; max-width:70ch; }
+.hint b { color:var(--db-ink); }
 
 .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
-  background:var(--text); color:#fff; padding:10px 18px; border-radius:8px; font-size:13px;
+  /* ⚠️ MÊME DÉFAUT QUE SUR COGS : `#fff` sur `--db-ink`, et l'encre S'INVERSE en mode sombre —
+     fond presque blanc, texte blanc, message invisible. La paire encre / fond-de-carte tient
+     des deux côtés. */
+  background:var(--db-ink); color:var(--db-card); padding:10px 18px; border-radius:var(--db-r-sm); font-size:13px;
   opacity:0; transition:all .25s; z-index:200; }
 .toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
 
 /* ── Calculateur cash en caisse ── */
-.cash-calc { max-width:580px; background:var(--bg-card); border:1px solid var(--border); border-radius: 4px; padding:4px 20px; margin-bottom:16px; }
-.cc-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 0; border-bottom:1px solid var(--border); }
+.cash-calc { max-width:580px; background:var(--db-card); border:1px solid var(--db-line); border-radius:var(--db-r); padding:4px 20px; margin-bottom:16px; }
+.cc-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 0; border-bottom:1px solid var(--db-line); }
 .cc-row:last-child { border-bottom:none; }
 .cc-label { font-size:13px; font-weight:500; }
-.cc-hint { display:block; font-size:11px; color:var(--muted); font-weight:400; margin-top:3px; max-width:38ch; line-height:1.4; }
-.cc-input { white-space:nowrap; color:var(--muted); font-size:14px; }
-.cc-input input { width:100px; font-family:var(--mono); font-size:14px; text-align:right; padding:6px 8px;
-  border:1px solid var(--border); border-radius:6px; background:var(--bg-page); color:var(--text); }
-.cc-auto { background:var(--bg-hover); margin:0 -20px; padding-left:20px; padding-right:20px; }
-.cc-total { border-top:2px solid var(--text); }
+.cc-hint { display:block; font-size:11px; color:var(--db-muted); font-weight:400; margin-top:3px; max-width:38ch; line-height:1.4; }
+.cc-input { white-space:nowrap; color:var(--db-muted); font-size:14px; }
+.cc-input input { width:100px; font-size:14px; text-align:right; padding:6px 8px;
+  border:1px solid var(--db-line); border-radius:var(--db-r-sm); background:var(--db-alt); color:var(--db-ink); }
+.cc-auto { background:var(--db-alt); margin:0 -20px; padding-left:20px; padding-right:20px; }
+.cc-total { border-top:2px solid var(--db-ink); }
 .cc-total .cc-label { font-weight:700; font-size:14px; }
-.cc-result { font-family:var(--mono); font-size:23px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-.5px; }
+.cc-result { font-size:23px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-.5px; }
 /* ── Le verdict du dernier jour clos ── */
-.verdict { border:1px solid var(--border); border-radius: 4px; padding:16px 18px; margin:6px 0 14px;
-  background:var(--bg-card); font-size:15px; line-height:1.5; }
-.verdict .quand { font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase;
-  color:var(--muted); display:block; margin-bottom:5px; }
-.verdict.ok { border-color:var(--green-soft); background:var(--green-soft); }
-.verdict.doute { border-color:var(--amber-soft); background:var(--amber-soft); }
-.verdict.alerte { border-color:var(--red-soft); background:var(--red-soft); }
+.verdict { border:1px solid var(--db-line); border-radius:var(--db-r); padding:16px 18px; margin:6px 0 14px;
+  background:var(--db-card); font-size:15px; line-height:1.5; }
+.verdict .quand { font-size:10.5px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--db-muted); display:block; margin-bottom:5px; }
+.verdict.ok { border-color:var(--db-green-soft); background:var(--db-green-soft); }
+.verdict.doute { border-color:var(--db-amber-soft); background:var(--db-amber-soft); }
+.verdict.alerte { border-color:var(--db-red-soft); background:var(--db-red-soft); }
 .verdict b { font-weight:700; }
-.verdict .causes { margin:10px 0 0; padding-left:18px; font-size:13px; line-height:1.6; color:var(--text); }
+.verdict .causes { margin:10px 0 0; padding-left:18px; font-size:13px; line-height:1.6; color:var(--db-ink); }
 .verdict .causes li { margin-bottom:3px; }
-.encours { border:1px dashed var(--border); border-radius: 4px; padding:12px 16px; margin-bottom:16px;
-  font-size:13.5px; color:var(--text); background:var(--bg-page); }
-.encours .tag { font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase;
-  color:var(--muted); margin-right:8px; }
+.encours { border:1px dashed var(--db-line); border-radius:var(--db-r); padding:12px 16px; margin-bottom:16px;
+  font-size:13.5px; color:var(--db-ink); background:var(--db-alt); }
+.encours .tag { font-size:9.5px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--db-muted); margin-right:8px; }
 /* ⚠️ CE QUI EST ESTIMÉ NE DOIT PAS SE LIRE COMME CE QUI EST MESURÉ. */
-.est { color:var(--muted); }
+.est { color:var(--db-muted); }
 .jour-ferme td { opacity:.45; }
-.pastille { display:inline-block; padding:1px 7px; border-radius:20px; font-size:10.5px; font-weight:600;
-  border:1px solid var(--border); color:var(--muted); }
-.pastille.ok { background:var(--green-soft); border-color:var(--green-soft); color:var(--green); }
-.pastille.doute { background:var(--amber-soft); border-color:var(--amber-soft); color:var(--amber); }
 .detail-col { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:20px; margin-top:12px; }
 .detail-col h4 { font-size:12px; font-weight:700; margin:0 0 8px; }
 .detail-l { display:flex; justify-content:space-between; gap:10px; padding:6px 0;
-  border-bottom:1px solid var(--border); font-size:13px; }
+  border-bottom:1px solid var(--db-line); font-size:13px; }
 .detail-l:last-child { border-bottom:none; }
-.detail-l .h { font-family:var(--mono); color:var(--muted); font-size:11.5px; }
-.detail-vide { font-size:12.5px; color:var(--muted); }
+.detail-l .h { color:var(--db-muted); font-size:11.5px; }
+.detail-vide { font-size:12.5px; color:var(--db-muted); }
 tr.cliquable { cursor:pointer; }
-tr.cliquable:hover { background:var(--bg-hover); }
-.pastille.alerte { background:var(--red-soft); border-color:var(--red-soft); color:var(--red); }
+tr.cliquable:hover { background:var(--db-alt); }
 </style>
 </head>
 <body>
 {% include "_rail.html" %}
-<div class="page">
+{#
+  ⚠️ `db` ACTIVE LA CHARTE. Sans cette classe, `dashboard.css` est chargé mais aucun jeton
+  `--db-*` n'est défini : chaque `var()` se résout dans le vide, la page s'affiche sans bordures
+  ni couleurs, et rien dans la console ne le dit.
+#}
+<div class="page db">
 
-  <div class="header">
-    <div>
-      <div class="header-title">Réconciliation</div>
-      <div class="header-sub">Ce que le terminal a encaissé, contre ce que Vendus a facturé</div>
-    </div>
+  <div class="db-head">
+    <h2 class="db-title">R&eacute;conciliation</h2>
+    <span class="db-id">ce que le terminal a encaiss&eacute;, contre ce que Vendus a factur&eacute;</span>
+    <span class="db-sp"></span>
+    <button class="db-icone" onclick="location.reload()" title="Recharger">&#8635;</button>
+    <a class="db-icone" href="/logout" title="Se d&eacute;connecter">&#9099;</a>
   </div>
 
   <!--
@@ -152,31 +120,53 @@ tr.cliquable:hover { background:var(--bg-hover); }
   -->
 
   <!-- Le verdict du dernier jour clos. C'est la question à trois secondes. -->
-  <div id="verdict" class="verdict">Chargement&hellip;</div>
+  {#
+    ⚠️ IL ÉTAIT PEINT EN PLEIN. Fond vert, ambre ou rouge sur toute la largeur : le bloc le plus
+    important de l'écran devenait aussi le plus criard, et en mode sombre les trois teintes
+    pâles se lisaient mal. La carte de la charte porte son état par une bande d'accent et une
+    pastille — assez pour trouver l'œil, assez peu pour qu'on lise la phrase.
+  #}
+  <div id="verdict" class="db-card db-card-p verdict db-mb">Chargement&hellip;</div>
 
   <!-- Aujourd'hui, jamais jugé : il n'est pas fini. -->
   <div id="encours" class="encours" style="display:none"></div>
 
   <div class="controls">
     <div>
-      <label class="field-label">De</label>
-      <input type="month" class="field-input" id="f-from">
+      <label class="db-l">De</label>
+      <input type="month" class="db-champ" id="f-from">
     </div>
     <div>
-      <label class="field-label">&Agrave;</label>
-      <input type="month" class="field-input" id="f-to">
+      <label class="db-l">&Agrave;</label>
+      <input type="month" class="db-champ" id="f-to">
     </div>
     <span class="parse-info" id="src-info" style="color:var(--muted); align-self:center;"></span>
   </div>
 
-  <div class="summary-bar" id="summary" style="display:none;">
-    <div class="sum-item"><div class="sum-label">Terminal</div><div class="sum-val" id="s-gross">&mdash;</div><div class="sum-sub" id="s-tx"></div></div>
-    <div class="sum-item"><div class="sum-label">Pourboires</div><div class="sum-val" id="s-tips" style="color:var(--green);">&mdash;</div><div class="sum-sub">mesur&eacute;s</div></div>
-    <div class="sum-item"><div class="sum-label">Frais</div><div class="sum-val" id="s-fees" style="color:var(--red);">&mdash;</div><div class="sum-sub" id="s-fees-sub"></div></div>
-    <div class="sum-item"><div class="sum-label">Net re&ccedil;u</div><div class="sum-val" id="s-net">&mdash;</div><div class="sum-sub">ventes + pourboires &minus; frais</div></div>
-    <div class="sum-item"><div class="sum-label">Factur&eacute;</div><div class="sum-val" id="s-vendus">&mdash;</div><div class="sum-sub" id="s-vendus-sub"></div></div>
-    <div class="sum-item"><div class="sum-label">Esp&egrave;ces</div><div class="sum-val" id="s-cash">&mdash;</div><div class="sum-sub">d&eacute;clar&eacute;es dans Vendus</div></div>
-    <div class="sum-item"><div class="sum-label">&Eacute;cart</div><div class="sum-val" id="s-delta">&mdash;</div><div class="sum-sub">devrait &ecirc;tre &asymp; 0</div></div>
+  {#
+    ⚠️ SEPT CHIFFRES SOUDÉS BORD À BORD SONT DEVENUS SEPT CARTES. La bande les collait avec un
+    filet entre chacun, tous au même poids : on la balayait sans rien y lire. Et elle réservait
+    deux lignes de hauteur à CHAQUE intitulé pour que les valeurs restent alignées — un
+    contournement qui disparaît avec la grille, où chaque carte porte sa propre hauteur.
+
+    ⚠️ L'ÉCART EST LE SEUL À PORTER UN ÉTAT. C'est la seule case de cette bande qui pose une
+    question : les six autres sont des constats. Colorer les sept ne hiérarchiserait rien.
+  #}
+  <div class="db-grid db-g4 db-mb" id="summary" style="display:none;">
+    <div class="db-card db-compact"><div class="db-l">Terminal</div>
+      <div class="db-v" id="s-gross">&mdash;</div><div class="db-s" id="s-tx"></div></div>
+    <div class="db-card db-compact"><div class="db-l">Pourboires</div>
+      <div class="db-v" id="s-tips">&mdash;</div><div class="db-s">mesur&eacute;s</div></div>
+    <div class="db-card db-compact"><div class="db-l">Frais</div>
+      <div class="db-v" id="s-fees">&mdash;</div><div class="db-s" id="s-fees-sub"></div></div>
+    <div class="db-card db-compact"><div class="db-l">Net re&ccedil;u</div>
+      <div class="db-v" id="s-net">&mdash;</div><div class="db-s">ventes + pourboires &minus; frais</div></div>
+    <div class="db-card db-compact"><div class="db-l">Factur&eacute;</div>
+      <div class="db-v" id="s-vendus">&mdash;</div><div class="db-s" id="s-vendus-sub"></div></div>
+    <div class="db-card db-compact"><div class="db-l">Esp&egrave;ces</div>
+      <div class="db-v" id="s-cash">&mdash;</div><div class="db-s">d&eacute;clar&eacute;es dans Vendus</div></div>
+    <div class="db-card db-compact" id="i-delta"><div class="db-l">&Eacute;cart</div>
+      <div class="db-v" id="s-delta">&mdash;</div><div class="db-s">devrait &ecirc;tre &asymp; 0</div></div>
   </div>
 
   <div id="inconnus" class="inc-note" style="display:none;"></div>
@@ -212,7 +202,7 @@ tr.cliquable:hover { background:var(--bg-hover); }
     API externe : un appel Vendus et une vingtaine d'appels Revolut, pour UN jour. Le charger
     au rendu de la page ramènerait exactement la rafale que la phase 1 a servi à supprimer.
   -->
-  <div id="detail" class="card" style="display:none; margin-top:18px"></div>
+  <div id="detail" class="db-card db-card-p" style="display:none; margin-top:18px"></div>
 
   <!-- ── Cash en caisse (calculateur) ── -->
   <div class="header" style="margin-top:48px; margin-bottom:8px;">
@@ -276,7 +266,7 @@ tr.cliquable:hover { background:var(--bg-hover); }
     par le timeout serverless AU MILIEU, et on ne sait pas où elle s'est arrêtée ; des tranches
     en parallèle épuiseraient la limite de débit de l'API.
   -->
-  <details class="card" id="rebuild-card" style="margin-top:22px">
+  <details class="db-card db-card-p" id="rebuild-card" style="margin-top:22px">
     <summary style="cursor:pointer; font-weight:600; font-size:14px">
       Reconstruire l'historique de l'encaissement terminal
     </summary>
@@ -295,13 +285,13 @@ tr.cliquable:hover { background:var(--bg-hover); }
       savoir avant que de le d&eacute;couvrir.
     </p>
     <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end">
-      <label class="field">Du
-        <input type="date" class="field-input" id="rb-from" value="{{ open_date }}">
+      <label class="db-l">Du
+        <input type="date" class="db-champ" id="rb-from" value="{{ open_date }}">
       </label>
-      <label class="field">au
-        <input type="date" class="field-input" id="rb-to" value="{{ hier }}">
+      <label class="db-l">au
+        <input type="date" class="db-champ" id="rb-to" value="{{ hier }}">
       </label>
-      <button type="button" class="btn" id="rb-go">Reconstruire</button>
+      <button type="button" class="db-btn" id="rb-go">Reconstruire</button>
     </div>
     <p class="hint" id="rb-etat" style="margin-top:10px"></p>
   </details>
@@ -484,14 +474,18 @@ function verdict(){
                                  && (j.terminal_cents || j.vendus_total_cents));
   const j = clos[clos.length - 1];
   if (!j){
-    el.className = 'verdict';
+    el.className = 'db-card db-card-p verdict db-mb';
+    el.removeAttribute('data-etat');
     el.innerHTML = `<span class="quand">Dernier jour clos</span>Aucune journée avec des ` +
       `données sur cette période. Si l'historique n'a jamais été reconstruit, déplie ` +
       `<b>Reconstruire l'historique</b> en bas de page.`;
     return;
   }
   const c = classe(j);
-  el.className = 'verdict ' + c;
+  el.className = 'db-card db-card-p verdict db-mb';
+  /* ⚠️ L'ÉTAT EST UN ATTRIBUT, PAS UNE CLASSE DE FOND. `.db-card[data-etat]` pose la bande ;
+   * la classe, elle, servait à peindre tout le bloc. */
+  el.setAttribute('data-etat', c);
   let phrase;
   if (j.ecart_cents === null){
     phrase = `<b>Écart non calculable</b> — la répartition carte/espèces de Vendus manque pour ` +
@@ -543,8 +537,12 @@ function render(){
     /* Une journée sans rien n'est pas une anomalie : le café ferme mardi et mercredi. */
     if (vide) return `<tr class="jour-ferme"><td class="date">${dow} ${j.day.slice(8)}/${j.day.slice(5,7)}</td>` +
       `<td class="num" colspan="6" style="text-align:left; color:var(--faint)">fermé</td><td></td></tr>`;
-    const pastille = j.aujourdhui ? '<span class="pastille">en cours</span>'
-      : `<span class="pastille ${c}">${c === 'ok' ? '✓' : c === 'doute' ? 'à vérifier' : 'écart'}</span>`;
+    /* ⚠️ « EN COURS » N'EST PAS UN ÉTAT NEUTRE PARMI D'AUTRES : c'est l'absence de jugement.
+     * La journée n'est pas finie — lui donner la pastille grise des jours sans donnée les
+     * confondrait, alors que l'un sera jugé ce soir et l'autre jamais. */
+    const TON = { ok: 'up', doute: 'warn', alerte: 'down' };
+    const pastille = j.aujourdhui ? '<span class="db-badge iris">en cours</span>'
+      : `<span class="db-badge ${TON[c] || 'flat'}">${c === 'ok' ? '\u2713' : c === 'doute' ? '\u00e0 v\u00e9rifier' : '\u00e9cart'}</span>`;
     return `<tr class="cliquable" data-jour="${j.day}">
       <td class="date">${dow} ${j.day.slice(8)}/${j.day.slice(5,7)}</td>
       <td class="num">${j.terminal_cents ? fmt(eu(j.terminal_cents)) : '<span style="color:var(--faint)">—</span>'}</td>
@@ -571,7 +569,7 @@ function render(){
       `Ils comptent dans « autre » et faussent l'écart — dis-le-moi pour que je les range.`;
   } else incEl.style.display = 'none';
 
-  document.getElementById('summary').style.display = 'flex';
+  document.getElementById('summary').style.display = '';
   document.getElementById('s-gross').textContent  = fmt(eu(totaux.terminal_cents));
   document.getElementById('s-tx').textContent     = (totaux.transactions || 0) + ' transactions';
   document.getElementById('s-tips').textContent   = fmt(eu(totaux.pourboires_cents));
@@ -584,10 +582,18 @@ function render(){
   document.getElementById('s-vendus-sub').textContent =
     `dont ${fmt(eu(totaux.vendus_carte_cents))} carte`;
   document.getElementById('s-cash').textContent = fmt(eu(totaux.vendus_especes_cents));
-  const dEl = document.getElementById('s-delta');
+  /* ⚠️ L'ÉTAT PASSE DU CHIFFRE À LA CARTE. Le nombre était peint en vert ou en rouge ; sur une
+   * bande où six voisins sont déjà colorés, une septième couleur ne ressort plus. La bande
+   * d'accent de la carte le dit sans toucher au chiffre, qui reste lisible en encre.
+   *
+   * ⚠️ ET UN ÉCART POSITIF N'EST PAS UN ÉCART NÉGATIF. Positif = une facture manque dans Vendus,
+   * le tiroir est juste ; négatif = de l'argent encaissé sans facture. Le second se répare
+   * aujourd'hui, le premier se rattrape. Les peindre du même rouge les confondait. */
   const dTot = jours.reduce((s, j) => s + (j.ecart_cents || 0), 0);
-  dEl.textContent = fmt(eu(dTot));
-  dEl.style.color = Math.abs(dTot) < 100 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('s-delta').textContent = fmt(eu(dTot));
+  const carteEcart = document.getElementById('i-delta');
+  const etatEcart = Math.abs(dTot) < 100 ? 'ok' : (dTot < 0 ? 'alerte' : 'attention');
+  carteEcart.setAttribute('data-etat', etatEcart);
 
   updateCashCalc();
 }
@@ -635,7 +641,7 @@ function ligne(x, suffixe){
 
 function rendreDetail(d){
   const ps = d.paiements_seuls || [], fs = d.factures_seules || [], rb = d.remboursements || [];
-  let h = `<b>${jourCourt(d.jour)}</b> · <span class="pastille ok">${d.apparies} apparié(s)</span>`;
+  let h = `<b>${jourCourt(d.jour)}</b> · <span class="db-badge up">${d.apparies} apparié(s)</span>`;
   if (!ps.length && !fs.length){
     h += `<p class="detail-vide">Chaque paiement du terminal a sa facture, et réciproquement. ` +
       `Rien à corriger.</p>`;
