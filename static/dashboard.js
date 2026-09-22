@@ -580,7 +580,10 @@ function render(d) {
         + `<span style="color:var(--faint);font-size:11px;"> tickets / jour ouvert`
         + ` · ${(d.basket && d.basket.tx_basis_reason) || 'indisponible'}</span>`;
   } else {
-    perDayEl.innerHTML = '';
+    /* ⚠️ `perDayEl` A ÉTÉ SUPPRIMÉ AVEC LA CARTE QUI LE PORTAIT, et cette ligne est restée.
+     * `node --check` l'accepte — une variable non définie n'est une erreur qu'à L'EXÉCUTION,
+     * et seulement quand la branche est prise : il fallait une période d'un seul jour pour la
+     * traverser. Le rendu s'arrêtait là, et la page restait vide. */
     nbPerDayEl.innerHTML = '';
   }
 
