@@ -16,77 +16,56 @@
    ═══════════════════════════════════════════════════════════════════════════════════════════ */
 
 .db {
-  /* ⚠️ LA CHARTE N'AVAIT QU'UNE OMBRE, PENSÉE POUR UNE CARTE POSÉE. Modales, tiroirs et
-     infobulles FLOTTENT : cinq ombres différentes avaient été inventées à la main pour
-     eux, dont une à 40 px de flou sur une page où rien d'autre ne se détache. */
+  /* ⚠️ CES JETONS NE DÉCLARENT PLUS DE COULEURS : ILS RÉFÉRENCENT LA PALETTE COMMUNE. Elle
+     vient d'être promue au niveau de la plateforme (`static/style.css`), et redéclarer les
+     mêmes valeurs ici aurait donné deux sources pour une seule vérité — celle qu'on corrige et
+     celle qu'on oublie. Les quatre blocs de déclaration qui vivaient là (clair, sombre, et les
+     deux bascules explicites) ont disparu d'un coup : le thème est géré une fois, en amont.
+
+     ⚠️ LES NOMS `--db-*` SURVIVENT, ET C'EST DÉLIBÉRÉ. Le gabarit et le script en emploient une
+     centaine ; les renommer demanderait de tout relire le même jour, pour un gain de
+     vocabulaire. Ce qui comptait — qu'il n'existe qu'UN endroit où la couleur est choisie — est
+     acquis. */
+  --db-bg:        var(--bg-page);
+  --db-card:      var(--bg-card);
+  --db-alt:       var(--bar-bg);
+  --db-line:      var(--border);
+  --db-line-soft: var(--bar-bg);
+  --db-ink:       var(--text);
+  --db-ink-2:     var(--text);
+  --db-muted:     var(--muted);
+  --db-faint:     var(--faint);
+
+  --db-iris:      var(--accent);
+  --db-iris-soft: var(--spec-soft);
+  --db-green:     var(--green);
+  --db-green-soft: var(--green-soft);
+  --db-red:       var(--red);
+  --db-red-soft:  var(--red-soft);
+  --db-amber:     var(--amber);
+  --db-amber-soft: var(--amber-soft);
+  --db-slate:     var(--flux-leave);
+
+  --db-r:    var(--r);
+  --db-r-sm: var(--r-sm);
+  --db-sh:   0 1px 1px rgba(10, 15, 40, .04), 0 0 0 1px rgba(10, 15, 40, .03);
+  /* ⚠️ UNE OMBRE POUR CE QUI FLOTTE — modale, tiroir, infobulle. La charte n'en avait qu'une,
+     pensée pour une carte posée : cinq ombres différentes avaient été inventées à la main. */
   --db-sh-pop: 0 6px 24px rgba(10, 15, 40, .12), 0 0 0 1px rgba(10, 15, 40, .04);
   /* Le voile derrière une surcouche — il n'existait pas, d'où un noir en dur. */
   --db-scrim: rgba(10, 15, 40, .35);
-
-  --db-bg:        #F7FAFC;
-  --db-card:      #FFFFFF;
-  --db-alt:       #F7FAFC;
-  --db-line:      #E3E8EE;
-  --db-line-soft: #EDF1F6;
-  --db-ink:       #1A1F36;
-  --db-ink-2:     #3C4257;
-  --db-muted:     #697386;
-  --db-faint:     #8792A2;
-
-  --db-iris:      #635BFF;
-  --db-iris-soft: #F1F0FE;
-  --db-green:     #067647;
-  --db-green-soft:#ECFDF3;
-  --db-red:       #B42318;
-  --db-red-soft:  #FEF3F2;
-  --db-amber:     #B54708;
-  --db-amber-soft:#FFFAEB;
-  --db-slate:     #A3ACBA;
-
-  --db-r:    8px;
-  --db-r-sm: 6px;
-  --db-sh:   0 1px 1px rgba(10, 15, 40, .04), 0 0 0 1px rgba(10, 15, 40, .03);
 }
 @media (prefers-color-scheme: dark) {
   .db {
+    --db-sh: 0 1px 1px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,.04);
     --db-sh-pop: 0 8px 28px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.05);
     --db-scrim: rgba(0,0,0,.55);
-    --db-bg:#0C111D; --db-card:#141B2A; --db-alt:#111726;
-    --db-line:#232B3B; --db-line-soft:#1C2331;
-    --db-ink:#F2F4F8; --db-ink-2:#CDD3E0; --db-muted:#8B94A8; --db-faint:#6B748A;
-    --db-iris:#9A94FF; --db-iris-soft:#1B1A3A;
-    --db-green:#4ED396; --db-green-soft:#0E2A1E;
-    --db-red:#F08A7B; --db-red-soft:#2C1614;
-    --db-amber:#E0A050; --db-amber-soft:#2A2012;
-    --db-slate:#5B6478;
-    --db-sh: 0 1px 1px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,.04);
   }
 }
 :root[data-theme="dark"] .db {
+  --db-sh: 0 1px 1px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,.04);
   --db-sh-pop: 0 8px 28px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.05);
   --db-scrim: rgba(0,0,0,.55);
-  --db-bg:#0C111D; --db-card:#141B2A; --db-alt:#111726;
-  --db-line:#232B3B; --db-line-soft:#1C2331;
-  --db-ink:#F2F4F8; --db-ink-2:#CDD3E0; --db-muted:#8B94A8; --db-faint:#6B748A;
-  --db-iris:#9A94FF; --db-iris-soft:#1B1A3A;
-  --db-green:#4ED396; --db-green-soft:#0E2A1E;
-  --db-red:#F08A7B; --db-red-soft:#2C1614;
-  --db-amber:#E0A050; --db-amber-soft:#2A2012;
-  --db-slate:#5B6478;
-  --db-sh: 0 1px 1px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,.04);
-}
-:root[data-theme="light"] .db {
-  --db-sh-pop: 0 6px 24px rgba(10,15,40,.12), 0 0 0 1px rgba(10,15,40,.04);
-  --db-scrim: rgba(10,15,40,.35);
-  --db-bg:#F7FAFC; --db-card:#FFFFFF; --db-alt:#F7FAFC;
-  --db-line:#E3E8EE; --db-line-soft:#EDF1F6;
-  --db-ink:#1A1F36; --db-ink-2:#3C4257; --db-muted:#697386; --db-faint:#8792A2;
-  --db-iris:#635BFF; --db-iris-soft:#F1F0FE;
-  --db-green:#067647; --db-green-soft:#ECFDF3;
-  --db-red:#B42318; --db-red-soft:#FEF3F2;
-  --db-amber:#B54708; --db-amber-soft:#FFFAEB;
-  --db-slate:#A3ACBA;
-  --db-sh: 0 1px 1px rgba(10,15,40,.04), 0 0 0 1px rgba(10,15,40,.03);
 }
 
 .db { background: var(--db-bg); color: var(--db-ink); }

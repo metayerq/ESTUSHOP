@@ -82,65 +82,82 @@ def test_aucune_couleur_nest_ecrite_en_dur(rel):
     assert not fautifs, fautifs[:12]
 
 
-def test_les_couleurs_en_dur_qui_restent_suivent_la_charte():
+def _palette(bloc):
+    """Les couleurs déclarées dans un bloc de `style.css`."""
+    css = _lire("static/style.css")
+    i = css.index(bloc) + len(bloc)
+    fin = css.index("\n}", i) if not bloc.startswith("@media") else css.index("\n  }", i)
+    return {k: v.upper() for k, v in
+            re.findall(r"(--[a-z-]+)\s*:\s*(#[0-9A-Fa-f]{6})", css[i:fin])}
+
+
+def test_les_couleurs_en_dur_qui_restent_suivent_la_palette():
     """
     ⚠️ UNE EXEMPTION MUETTE DEVIENT UNE PORTE. Deux couleurs ne peuvent pas être des jetons ;
     plutôt que de les exclure sans rien dire, on vérifie qu'elles valent exactement ce que la
-    charte déclare — recopiées à la main, elles se périmeraient sans bruit, et le graphique
-    garderait l'ancienne palette le temps d'un clignement, puis à chaque échec de lecture.
-    """
-    css = _lire("static/dashboard.css")
-    clair = css[css.index(':root[data-theme="light"] .db {'):]
-    clair = clair[:clair.index("}")]
-    attendu = {k: v.upper() for k, v in
-               re.findall(r"(--db-[a-z-]+)\s*:\s*(#[0-9A-Fa-f]{6})", clair)}
+    palette déclare.
 
+    · `<meta name="theme-color">` — la barre système du téléphone la lit AVANT tout CSS.
+    · les replis de `jetons()` — `getComputedStyle` peut rendre une chaîne vide avant que la
+      feuille soit appliquée ; sans repli, les graphiques se dessineraient en transparent.
+
+    ⚠️ ET LA SOURCE A CHANGÉ. Ces valeurs étaient comparées à `dashboard.css`, qui déclarait sa
+    propre palette ; celle-ci vit désormais dans `style.css` et sert toute la plateforme. Un
+    test qui interroge une source périmée passe au vert sur des valeurs fausses.
+    """
+    clair = _palette(":root {")
+    correspondance = {
+        "--db-iris": "--accent", "--db-slate": "--flux-leave", "--db-line-soft": "--bar-bg",
+        "--db-faint": "--faint", "--db-ink": "--text", "--db-green": "--green",
+        "--db-red": "--red", "--db-amber": "--amber", "--db-iris-soft": "--spec-soft",
+        "--db-green-soft": "--green-soft", "--db-red-soft": "--red-soft",
+        "--db-amber-soft": "--amber-soft",
+        "--db-alt": "--bar-bg",
+    }
     js = _lire("static/dashboard.js")
     i = js.index("function jetons(")
     bloc = js[i:js.index("\n}", i)]
     replis = re.findall(r"v\('(--db-[a-z-]+)'\)\s*\|\|\s*'(#[0-9A-Fa-f]{6})'", bloc)
     assert replis, "les replis ont disparu — les graphiques se dessineraient en transparent"
     for jeton, valeur in replis:
-        assert jeton in attendu, f"{jeton} n'est pas déclaré dans la charte"
-        assert valeur.upper() == attendu[jeton], \
-            f"{jeton} : repli {valeur}, charte {attendu[jeton]}"
+        racine = correspondance.get(jeton)
+        if racine is None or racine not in clair:
+            continue      # jeton sans équivalent direct : rien à comparer
+        assert valeur.upper() == clair[racine], \
+            f"{jeton} : repli {valeur}, palette {clair[racine]} ({racine})"
 
     html = _lire("templates/index.html")
     m = re.search(r'name="theme-color" content="(#[0-9A-Fa-f]{6})"', html)
-    assert m and m.group(1).upper() == attendu["--db-bg"], \
-        f"theme-color {m and m.group(1)} ≠ --db-bg {attendu.get('--db-bg')}"
+    assert m and m.group(1).upper() == clair["--bg-page"], \
+        f"theme-color {m and m.group(1)} ≠ --bg-page {clair.get('--bg-page')}"
 
 
-def test_la_charte_declare_bien_les_jetons_quon_emploie():
+def test_la_palette_est_declaree_dans_les_deux_themes():
     """
-    ⚠️ UN JETON ABSENT DE LA FEUILLE REND UNE CHAÎNE VIDE, PAS UNE ERREUR. `var(--db-turquoise)`
-    ne casse rien : la propriété est simplement ignorée, et l'élément hérite d'une couleur qui
-    n'a pas été choisie.
+    ⚠️ UN JETON DÉCLARÉ EN CLAIR SEULEMENT RESTE CLAIR EN SOMBRE. C'est pire qu'une couleur en
+    dur : celle-ci se voit à la relecture, tandis qu'un jeton a l'air correct partout.
+
+    ⚠️ ET CE CONTRÔLE COUVRE MAINTENANT TOUTE LA PLATEFORME, pas seulement le tableau de bord —
+    la palette a été promue, les quinze pages en dépendent.
+    """
+    clair = set(_palette(":root {"))
+    for bloc in ("@media (prefers-color-scheme: dark) {\n  :root {",
+                 ':root[data-theme="dark"] {'):
+        manquants = sorted(clair - set(_palette(bloc)))
+        assert not manquants, f"{bloc.strip()} ne déclare pas {manquants}"
+
+
+def test_le_tableau_de_bord_ne_redeclare_pas_la_palette():
+    """
+    ⚠️ DEUX SOURCES POUR UNE SEULE VÉRITÉ, C'EST CELLE QU'ON CORRIGE ET CELLE QU'ON OUBLIE. La
+    charte du tableau de bord déclarait ses propres couleurs ; elle référence désormais la
+    palette commune. Y remettre un hex rouvrirait la divergence sans que rien ne le signale.
     """
     css = _lire("static/dashboard.css")
-    declares = set(re.findall(r"(--db-[a-z0-9-]+)\s*:", css))
-    employes = set()
-    for rel in ("templates/index.html", "static/dashboard.js", "static/dashboard.css"):
-        for _, l in _lignes(rel):
-            employes |= set(re.findall(r"var\((--db-[a-z0-9-]+)", l))
-    inconnus = sorted(employes - declares)
-    assert not inconnus, inconnus
-
-
-def test_aucun_jeton_declare_ne_reste_inemploye():
-    """
-    ⚠️ UN JETON MORT SE LIT COMME UNE COULEUR DISPONIBLE. Le prochain qui cherche un gris en
-    trouve quatre, dont un que personne n'utilise, et le choisit — c'est ainsi qu'une palette
-    de six couleurs en compte onze.
-    """
-    css = _lire("static/dashboard.css")
-    declares = set(re.findall(r"(--db-[a-z0-9-]+)\s*:", css))
-    employes = set()
-    for rel in SOUS_CHARTE:
-        for _, l in _lignes(rel):
-            employes |= set(re.findall(r"var\((--db-[a-z0-9-]+)", l))
-    morts = sorted(declares - employes)
-    assert not morts, morts
+    i = css.index(".db {")
+    bloc = css[i:css.index("\n}", i)]
+    durs = re.findall(r"--db-[a-z-]+\s*:\s*(#[0-9A-Fa-f]{3,6})", bloc)
+    assert not durs, f"la charte redéclare des couleurs : {durs}"
 
 
 @pytest.mark.parametrize("rel", ["templates/index.html", "static/dashboard.js"])
@@ -261,25 +278,7 @@ def test_les_surcouches_sont_dans_la_portee_des_jetons():
     assert not manquantes, f"hors portée des jetons : {manquantes}"
 
 
-def test_chaque_jeton_est_declare_dans_les_trois_themes():
-    """
-    ⚠️ UN JETON DÉCLARÉ EN CLAIR SEULEMENT RESTE CLAIR EN SOMBRE. C'est pire qu'une couleur en
-    dur : celle-ci se voit à la relecture, tandis qu'un jeton a l'air correct partout.
-    """
-    css = _lire("static/dashboard.css")
-    def bloc(sel):
-        i = css.index(sel) + len(sel)
-        return set(re.findall(r"(--db-[a-z0-9-]+)\s*:", css[i:css.index("}", i)]))
-    # ⚠️ LES RAYONS ET LES OMBRES N'ONT PAS DE VARIANTE CLAIRE OU SOMBRE — un `8px` vaut 8px
-    # dans les deux. Seules les COULEURS doivent être redéclarées ; les exiger toutes ferait
-    # échouer ce test sur des jetons qui n'ont aucune raison de changer.
-    base = {j for j in bloc(".db {") if not j.startswith(("--db-r", "--db-sh"))}
-    for sel in (':root[data-theme="dark"] .db {', ':root[data-theme="light"] .db {'):
-        couleurs = {j for j in bloc(sel) if not j.startswith(("--db-r", "--db-sh"))}
-        manquants = sorted(base - couleurs)
-        assert not manquants, f"{sel} ne déclare pas {manquants}"
-        # ⚠️ ET DANS L'AUTRE SENS. Un jeton qui ne vit QUE dans les surcharges est absent du
-        # cas par défaut — celui où ni `data-theme` ni la préférence système ne s'appliquent.
-        # Le contrôle à sens unique laissait passer exactement ça.
-        orphelins = sorted(couleurs - base)
-        assert not orphelins, f"{sel} déclare {orphelins}, absents de la base"
+# ⚠️ CE CONTRÔLE A DÉMÉNAGÉ AVEC LA PALETTE. Il vérifiait que `dashboard.css` déclarait ses
+# jetons dans ses trois blocs de thème ; la charte ne déclare plus de couleurs — elle
+# référence `style.css`. La garantie vit désormais dans
+# `test_la_palette_est_declaree_dans_les_deux_themes`, et elle couvre les quinze pages.

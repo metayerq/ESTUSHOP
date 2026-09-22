@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Estudantina">
-<meta name="theme-color" content="#EDEAE3">
+<meta name="theme-color" content="#F7FAFC">
 <title>Estudantina · Clientes</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -22,9 +22,9 @@
    et « nouveaux » se confondrait avec « récurrents ». Paire validée CVD
    (ΔE 24 clair / 20 sombre). AMBRE réservé à « à risque » : c'est le seul
    chiffre de la page qui appelle une action. */
-:root { --c-new:#2554C7; --c-ret:#2E8B57; --o1:#86BE9C; --o2:#5BA279; --o3:#3D825C; --o4:#27593F; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --c-new:#5F86E8; --c-ret:#4FA36F; --o1:#3A6A50; --o2:#4F8C69; --o3:#6BB388; --o4:#9ADBB4; } }
-:root[data-theme="dark"] { --c-new:#5F86E8; --c-ret:#4FA36F; --o1:#3A6A50; --o2:#4F8C69; --o3:#6BB388; --o4:#9ADBB4; }
+:root { --c-new:var(--accent); --c-ret:var(--ramp-4); --o1:var(--ramp-2); --o2:var(--ramp-3); --o3:var(--green); --o4:var(--green); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --c-new:var(--cat-1); --c-ret:var(--ramp-4); --o1:var(--ramp-4); --o2:var(--ramp-3); --o3:var(--ramp-2); --o4:var(--ramp-1); } }
+:root[data-theme="dark"] { --c-new:var(--cat-1); --c-ret:var(--ramp-4); --o1:var(--ramp-4); --o2:var(--ramp-3); --o3:var(--ramp-2); --o4:var(--ramp-1); }
 .cl-basis { font-family:var(--mono); font-size:11px; color:var(--faint); margin:-12px 0 24px; }
 .cl-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 .cl-panel { background:var(--bg-card); border:1px solid var(--border); border-radius: 4px; padding:18px 20px 16px; display:flex; flex-direction:column; gap:10px; }
@@ -51,7 +51,7 @@
 .cohort .sz { display:block; font-family:var(--mono); font-size:10px; color:var(--faint); }
 .c-cell { padding:0 !important; text-align:center !important; }
 .c-cell span { display:block; margin:3px; padding:9px 0; border-radius:6px; font-family:var(--mono); font-size:12px; font-weight:600; }
-.c-cell.o1 span { background:var(--o1); color:#14281C; } .c-cell.o2 span { background:var(--o2); color:#0F2417; }
+.c-cell.o1 span { background:var(--o1); color:var(--ramp-6); } .c-cell.o2 span { background:var(--o2); color:var(--ramp-6); }
 .c-cell.o3 span { background:var(--o3); color:#fff; }    .c-cell.o4 span { background:var(--o4); color:#fff; }
 .c-cell.partial span { opacity:.55; }
 .c-na { text-align:center !important; color:var(--faint); }

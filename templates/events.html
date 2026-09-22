@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Estudantina">
-<meta name="theme-color" content="#EDEAE3">
+<meta name="theme-color" content="#F7FAFC">
 <title>Estudantina · Events</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -68,9 +68,9 @@
 
 .badge { font-size:10px; font-weight:600; padding:2px 9px; border-radius:20px; white-space:nowrap; }
 .b-planned { background:var(--bg-hover); color:var(--muted); }
-.b-confirmed { background:#e7edfb; color:var(--spec); }
-.b-done { background:#e8f5e9; color:#2e7d32; }
-.b-cancelled { background:#fdeceb; color:var(--red); }
+.b-confirmed { background:var(--spec-soft); color:var(--spec); }
+.b-done { background:var(--green-soft); color:var(--green); }
+.b-cancelled { background:var(--red-soft); color:var(--red); }
 
 /* ── Overlay (modal + drawer) ── */
 .overlay { position:fixed; inset:0; background:rgba(20,18,14,.34); z-index:100; opacity:0; pointer-events:none;
@@ -108,7 +108,7 @@
   border:1px solid var(--border); background:var(--bg-card); color:var(--text); }
 .btn:hover { background:var(--bg-hover); }
 .btn-danger { color:var(--red); border-color:transparent; background:transparent; }
-.btn-danger:hover { background:#fdeceb; }
+.btn-danger:hover { background:var(--red-soft); }
 
 /* ── Drawer sections ── */
 .dr-meta { font-size:12.5px; color:var(--muted); margin-bottom:6px; }
@@ -287,7 +287,7 @@
 
 <script src="/static/ui.js?v={{ v }}"></script>
 <script>
-const COLORS = ['#2554C7','#2e7d32','#b07d00','#c0392b','#7b4fbf','#0d8f8f'];
+const COLORS = ['var(--accent)','var(--green)','var(--amber)','var(--red)','var(--cat-3)','var(--cat-2)'];
 const STATUS = { planned:['Prévu','b-planned'], confirmed:['Confirmé','b-confirmed'], done:['Terminé','b-done'], cancelled:['Annulé','b-cancelled'] };
 const MONTHS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
 const WD = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
@@ -353,7 +353,7 @@ function renderCalendar(){
     const evs=eventsOn(ds);
     const chips=evs.slice(0,3).map(e=>{
       const cls = e.status==='cancelled' ? 'ev-chip cancelled' : 'ev-chip';
-      return `<div class="${cls}" data-ev="${e.id}"><span class="dot" style="background:${e.color||'#2554C7'}"></span><span class="tt">${esc(e.title)}</span></div>`;
+      return `<div class="${cls}" data-ev="${e.id}"><span class="dot" style="background:${e.color||'var(--accent)'}"></span><span class="tt">${esc(e.title)}</span></div>`;
     }).join('');
     const more = evs.length>3 ? `<div style="font-size:10px;color:var(--muted);padding-left:2px;">+${evs.length-3}</div>` : '';
     html += `<div class="cal-cell${other?' other':''}${ds===today?' today':''}" data-day="${ds}">
@@ -376,7 +376,7 @@ function renderList(){
     const loc=e.location?` · ${esc(e.location)}`:'';
     const tp=t.length?` · ✓ ${done}/${t.length}`:'';
     return `<div class="ev-card" data-ev="${e.id}">
-      <div class="cbar" style="background:${e.color||'#2554C7'}"></div>
+      <div class="cbar" style="background:${e.color||'var(--accent)'}"></div>
       <div style="flex:1;">
         <h3>${esc(e.title)} <span class="badge ${cls}">${lbl}</span></h3>
         <div class="meta">${fmtDate(e.date)}${e.end_date&&e.end_date!==e.date?' → '+fmtDate(e.end_date):''}${time}${loc}${tp}</div>

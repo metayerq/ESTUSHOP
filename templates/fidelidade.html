@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Estudantina">
-<meta name="theme-color" content="#EDEAE3">
+<meta name="theme-color" content="#F7FAFC">
 <title>Estudantina · Fidélité</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -68,9 +68,9 @@
 
 .badge { font-size:10px; font-weight:600; padding:2px 9px; border-radius:20px; white-space:nowrap; }
 .b-planned { background:var(--bg-hover); color:var(--muted); }
-.b-confirmed { background:#e7edfb; color:var(--spec); }
-.b-done { background:#e8f5e9; color:#2e7d32; }
-.b-cancelled { background:#fdeceb; color:var(--red); }
+.b-confirmed { background:var(--spec-soft); color:var(--spec); }
+.b-done { background:var(--green-soft); color:var(--green); }
+.b-cancelled { background:var(--red-soft); color:var(--red); }
 
 /* ── Overlay (modal + drawer) ── */
 .overlay { position:fixed; inset:0; background:rgba(20,18,14,.34); z-index:100; opacity:0; pointer-events:none;
@@ -108,7 +108,7 @@
   border:1px solid var(--border); background:var(--bg-card); color:var(--text); }
 .btn:hover { background:var(--bg-hover); }
 .btn-danger { color:var(--red); border-color:transparent; background:transparent; }
-.btn-danger:hover { background:#fdeceb; }
+.btn-danger:hover { background:var(--red-soft); }
 
 /* ── Drawer sections ── */
 .dr-meta { font-size:12.5px; color:var(--muted); margin-bottom:6px; }
@@ -508,7 +508,7 @@
 .btn-appliquer { font-family:inherit; font-size:13px; font-weight:600; padding:9px 18px; margin-top:10px;
   border-radius:8px; border:none; background:var(--spec); color:#fff; cursor:pointer; }
 .btn-appliquer[disabled] { opacity:.45; cursor:not-allowed; }
-.avert-fort { background:#fdeceb; border:1px solid #e9b4ae; border-left:4px solid #b4552f; color:#7d2f18;
+.avert-fort { background:var(--red-soft); border:1px solid var(--red-soft); border-left:4px solid var(--red); color:var(--red);
   border-radius:0 8px 8px 0; padding:13px 16px; font-size:13px; margin:0 0 18px; line-height:1.5; }
 .avert-fort a { color:inherit; font-weight:600; }
 .jrn { font-size:12.5px; padding:8px 0; border-bottom:1px solid var(--border); }
@@ -545,7 +545,7 @@ tbody tr { cursor:pointer; }
 tbody tr:hover { background:var(--bg-hover); }
 .puce { display:inline-block; font-size:11px; padding:2px 7px; border-radius:20px; border:1px solid var(--border); color:var(--muted); }
 .puce.due { border-color:var(--spec); color:var(--spec); font-weight:600; }
-.puce.risque { border-color:#b4552f; color:#b4552f; }
+.puce.risque { border-color:var(--red); color:var(--red); }
 .puce.stop { border-color:var(--muted); }
 .anon { color:var(--muted); font-family:ui-monospace,Menlo,monospace; font-size:12px; }
 
@@ -573,9 +573,9 @@ tbody tr:hover { background:var(--bg-hover); }
 .corr-b { display:flex; gap:8px; align-items:center; }
 .corr-b .btn-appliquer { margin-top:0; }
 .corr-del { font-family:inherit; font-size:12.5px; padding:9px 14px; border-radius: 4px;
-  border:1px solid var(--border); background:none; color:#b4552f; cursor:pointer; }
+  border:1px solid var(--border); background:none; color:var(--red); cursor:pointer; }
 .corr-del:hover { background:var(--bg-hover); }
-.avert { background:var(--bg-hover); border:1px solid var(--border); border-left:3px solid #b4552f; border-radius:0 8px 8px 0;
+.avert { background:var(--bg-hover); border:1px solid var(--border); border-left:3px solid var(--red); border-radius:0 8px 8px 0;
   padding:10px 13px; font-size:12.5px; margin:14px 0; }
 </style>
 

@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Estudantina">
-<meta name="theme-color" content="#EDEAE3">
+<meta name="theme-color" content="#F7FAFC">
 <title>Estudantina · Stock</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -57,28 +57,28 @@
 .item-row { display:flex; align-items:center; gap:12px; padding:11px 16px;
   border-bottom:1px solid var(--border); border-left:3px solid transparent; }
 .item-row:last-child { border-bottom:none; }
-.item-row.st-low { border-left-color:#e0a11a; }
+.item-row.st-low { border-left-color:var(--amber); }
 .item-row.st-out { border-left-color:var(--red); }
 .item-name { flex:1; font-size:14px; min-width:120px; }
 .item-note { width:150px; font-family:inherit; font-size:12px; padding:5px 8px;
   border:1px solid var(--border); border-radius:6px; background:var(--bg-page); color:var(--text); }
 .item-note:focus { border-color:var(--faint); background:var(--bg-card); outline:none; }
 .btn-restock { font-family:inherit; font-size:11px; font-weight:600; padding:5px 10px;
-  border:1px solid #1f7a44; border-radius:6px; background:#e7f5ec; color:#1f7a44; cursor:pointer; white-space:nowrap; }
-.btn-restock:hover { background:#d5edde; }
+  border:1px solid var(--green); border-radius:6px; background:var(--green-soft); color:var(--green); cursor:pointer; white-space:nowrap; }
+.btn-restock:hover { background:var(--green-soft); }
 .btn-restock-all { font-family:inherit; font-size:12px; font-weight:600; padding:8px 16px;
-  border:1px solid #1f7a44; border-radius:6px; background:#1f7a44; color:#fff; cursor:pointer; margin-bottom:16px; }
+  border:1px solid var(--green); border-radius:6px; background:var(--green); color:#fff; cursor:pointer; margin-bottom:16px; }
 .flag-star { cursor:pointer; font-size:15px; color:var(--faint); user-select:none; padding:0 4px; }
-.flag-star.on { color:#e0a11a; }
+.flag-star.on { color:var(--amber); }
 
 /* Status segmented control */
 .status-seg { display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
 .status-btn { font-family:inherit; font-size:11px; font-weight:500; padding:5px 11px;
   border:none; background:transparent; color:var(--muted); cursor:pointer; border-right:1px solid var(--border); }
 .status-btn:last-child { border-right:none; }
-.status-btn.active.ok  { background:#e7f5ec; color:#1f7a44; }
-.status-btn.active.low { background:#fdf3e0; color:#a86a10; }
-.status-btn.active.out { background:#fdeceb; color:var(--red); }
+.status-btn.active.ok  { background:var(--green-soft); color:var(--green); }
+.status-btn.active.low { background:var(--amber-soft); color:var(--amber); }
+.status-btn.active.out { background:var(--red-soft); color:var(--red); }
 
 .item-del { background:none; border:none; cursor:pointer; color:var(--faint); font-size:14px; padding:0 4px; }
 .item-del:hover { color:var(--red); }
@@ -137,8 +137,8 @@
 
   <div class="summary-bar">
     <div class="sum-item"><div class="sum-label">Items</div><div class="sum-val" id="s-total">—</div></div>
-    <div class="sum-item"><div class="sum-label">🟢 OK</div><div class="sum-val" id="s-ok" style="color:#1f7a44;">—</div></div>
-    <div class="sum-item"><div class="sum-label">🟠 Low</div><div class="sum-val" id="s-low" style="color:#a86a10;">—</div></div>
+    <div class="sum-item"><div class="sum-label">🟢 OK</div><div class="sum-val" id="s-ok" style="color:var(--green);">—</div></div>
+    <div class="sum-item"><div class="sum-label">🟠 Low</div><div class="sum-val" id="s-low" style="color:var(--amber);">—</div></div>
     <div class="sum-item"><div class="sum-label">🔴 Out</div><div class="sum-val" id="s-out" style="color:var(--red);">—</div></div>
     <div class="sum-item"><div class="sum-label">To order</div><div class="sum-val" id="s-order">—</div></div>
   </div>

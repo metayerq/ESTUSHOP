@@ -222,7 +222,7 @@ function jetons() {
     irisSoft: v('--db-iris-soft') || '#F1F0FE',
     greenSoft: v('--db-green-soft') || '#ECFDF3',
     redSoft: v('--db-red-soft') || '#FEF3F2',
-    alt: v('--db-alt') || '#F7FAFC',
+    alt: v('--db-alt') || '#EDF1F6',
   };
 }
 

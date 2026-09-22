@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Estudantina">
-<meta name="theme-color" content="#EDEAE3">
+<meta name="theme-color" content="#F7FAFC">
 <title>Estudantina · COGS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -600,7 +600,7 @@
 
   <!-- Onglets de vue -->
   <!-- Recettes cassées (ingrédient/préparation supprimé ou renommé) -->
-  <div id="cogs-issues" style="display:none;margin:0 0 14px;padding:10px 14px;border-radius:8px;background:#fdf0ee;border:1px solid #eccfcb;color:#8a3f38;font-size:12.5px;line-height:1.6;"></div>
+  <div id="cogs-issues" style="display:none;margin:0 0 14px;padding:10px 14px;border-radius:8px;background:var(--red-soft);border:1px solid var(--red-soft);color:var(--red);font-size:12.5px;line-height:1.6;"></div>
 
   <div class="view-tabs">
     <button class="view-tab active" id="tab-products" onclick="switchTab('products')">
@@ -1599,9 +1599,9 @@ function renderNegativeMarginAlert(products) {
   const suspects = bad.filter(b => b.costLooksLikeSalePrice).length;
   const lines = bad.map(b => `
     <div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;
-                border-top:1px solid #f0d6d2;font-variant-numeric:tabular-nums;">
+                border-top:1px solid var(--red-soft);font-variant-numeric:tabular-nums;">
       <span>${b.title}${b.costLooksLikeSalePrice
-        ? ` <span style="color:#8a3f38;opacity:.75;">· cost equals the VAT-inclusive sale price</span>` : ''}</span>
+        ? ` <span style="color:var(--red);opacity:.75;">· cost equals the VAT-inclusive sale price</span>` : ''}</span>
       <span style="white-space:nowrap;">
         sells ${fmt(b.priceHt)} HT · ${b.fromRecipe ? 'recipe' : 'purchase'} ${fmt(b.cost)}
         <strong style="color:var(--red);">−${fmt(b.loss)}</strong>
@@ -1610,7 +1610,7 @@ function renderNegativeMarginAlert(products) {
 
   el.innerHTML = `
     <div style="padding:11px 14px;margin-bottom:12px;border-radius:8px;
-                background:#fdf0ee;border:1px solid #eccfcb;color:#8a3f38;font-size:12px;">
+                background:var(--red-soft);border:1px solid var(--red-soft);color:var(--red);font-size:12px;">
       <strong>${bad.length} product(s) sold below cost</strong> — a loss on every sale.
       ${lines}
       ${suspects ? `<div style="margin-top:8px;opacity:.85;">
@@ -3224,11 +3224,11 @@ function renderUsage() {
   if ((d.uncovered || []).length) {
     const tot = d.uncovered.reduce((s, u) => s + u.qty, 0);
     const names = d.uncovered.slice(0, 6).map(u => `${u.title} (${u.qty})`).join(', ');
-    wHtml += `<div style="padding:9px 14px;margin-bottom:8px;border-radius:8px;background:#fff8e1;border:1px solid #ffe082;color:#795548;font-size:12px;">
+    wHtml += `<div style="padding:9px 14px;margin-bottom:8px;border-radius:8px;background:var(--amber-soft);border:1px solid var(--amber);color:var(--amber);font-size:12px;">
       ${d.uncovered.length} product(s) sold without a recipe — ${Math.round(tot)} units not counted in usage: ${names}${d.uncovered.length > 6 ? '…' : ''}</div>`;
   }
   if ((d.issues || []).length) {
-    wHtml += `<div style="padding:9px 14px;margin-bottom:8px;border-radius: 4px;background:#fdf0ee;border:1px solid #eccfcb;color:#8a3f38;font-size:12px;">
+    wHtml += `<div style="padding:9px 14px;margin-bottom:8px;border-radius: 4px;background:var(--red-soft);border:1px solid var(--red-soft);color:var(--red);font-size:12px;">
       ⚠ ${d.issues.length} conversion issue(s): ${d.issues.slice(0, 3).join(' · ')}${d.issues.length > 3 ? '…' : ''}</div>`;
   }
   warn.innerHTML = wHtml;

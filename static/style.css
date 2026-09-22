@@ -13,63 +13,162 @@
    Le mode sombre arrive avec Flux — il n'y en avait aucun. Il suit la préférence
    système, et `data-theme` sur <html> la force dans un sens ou dans l'autre.      */
 :root {
-  --bg:        #FCFCFB;
-  --bg-page:   #FCFCFB;
-  --bg-hover:  rgba(20, 24, 27, 0.045);
+  /* ═══════════════════════════════════════════════════════════════════════════════════════
+     LA PALETTE DE LA PLATEFORME — reprise du tableau de bord, le 22/09/2026.
+     ═══════════════════════════════════════════════════════════════════════════════════════
+
+     ⚠️ LES ANCIENS NOMS SURVIVENT, ET C'EST TOUT L'INTÉRÊT. Quinze gabarits écrivent
+     `var(--text)`, `var(--border)`, `var(--muted)` : les renommer aurait demandé de tous les
+     réécrire le même jour, donc de tous les relire le même jour. En repointant les noms vers
+     les nouvelles valeurs, la plateforme entière change d'apparence sans qu'une ligne de
+     gabarit bouge — et ce qui reste à faire est de la FORME, pas de la couleur.
+
+     ⚠️ L'ACCENT PASSE DU VERT À L'IRIS. C'est le changement le plus visible : `--accent` et
+     `--spec` portaient un vert qui servait à la fois d'interactif ET de « bon état ». Deux rôles
+     sur une couleur, c'est un lien qu'on finit par cliquer parce qu'il ressemble à un succès.
+     L'iris porte l'interactif, le vert ne porte plus que l'état.
+
+     ⚠️ ET `--bar-bg` N'EST PLUS UN NOIR TRANSPARENT. Posé sur une carte blanche il donnait un
+     gris ; posé sur le nouveau fond bleuté, il tirait au sale. Les pistes de barre prennent la
+     teinte de fond, qui est choisie pour les deux thèmes.
+     ═══════════════════════════════════════════════════════════════════════════════════════ */
+  --bg:        #F7FAFC;
+  --bg-page:   #F7FAFC;
+  --bg-hover:  rgba(10, 15, 40, 0.04);
   --bg-card:   #FFFFFF;
-  --border:    #E5E8E9;
-  --text:      #14181B;
-  --muted:     #5D666E;
-  --faint:     #A2AAB1;
-  --green:     #2F7D51;
-  --red:       #C0402B;
-  --amber:     #B07A22;
-  --bar:       #4FA36F;
-  --bar-bg:    rgba(20, 24, 27, 0.07);
-  --accent:    #2F7D51;
-  --spec:      #2F7D51;
-  --spec-soft: rgba(47, 125, 81, 0.10);
+  --border:    #E3E8EE;
+  --text:      #1A1F36;
+  --muted:     #697386;
+  --faint:     #8792A2;
+  --green:     #067647;
+  --red:       #B42318;
+  --amber:     #B54708;
+  --bar:       #635BFF;
+  --bar-bg:    #EDF1F6;
+  --accent:    #635BFF;
+  --spec:      #635BFF;
+  --spec-soft: #F1F0FE;
+  /* ⚠️ TROIS TEINTES PÂLES POUR LES PASTILLES D'ÉTAT. Elles manquaient : le tableau de bord
+     les avait déclarées dans son coin, et les détourner vers `--spec-soft` aurait peint en
+     iris un fond censé dire « au-dessus du point mort ». Une pastille verte sur fond mauve ne
+     se lit pas comme un succès. */
+  --green-soft: #ECFDF3;
+  --red-soft:   #FEF3F2;
+  --amber-soft: #FFFAEB;
+
+  /* ⚠️ UNE ÉCHELLE CATÉGORIELLE, QUI MANQUAIT. Trois pages distinguent des TYPES — catégories
+     de dépense, natures de congé, genres d'événement — et n'avaient pour cela que des couleurs
+     Material posées à la main, page par page. Ce ne sont pas des états : les ramener au vert et
+     au rouge rendrait deux catégories identiques, et le rouge dirait « problème » là où il ne
+     dit que « fournitures ».
+
+     ⚠️ ELLES SE DISTINGUENT ENTRE ELLES, PAS DE L'ÉTAT. Aucune n'est proche du vert ni du rouge
+     de la palette d'état : une catégorie qui ressemble à une alerte se lit comme une alerte. */
+  --cat-1: #4B63C9;   --cat-1-soft: #ECEFFB;
+  --cat-2: #0E7C86;   --cat-2-soft: #E5F4F5;
+  --cat-3: #7A4BB8;   --cat-3-soft: #F1EBFA;
+  --cat-4: #A8447A;   --cat-4-soft: #FAEAF2;
+  --cat-5: #8A6A20;   --cat-5-soft: #F7F0DF;
+  --cat-6: #566173;   --cat-6-soft: #EEF1F5;
+
+  /* ⚠️ UNE RAMPE SÉQUENTIELLE, POUR LES INTENSITÉS. La page clients peint des cohortes du clair
+     au foncé : une teinte qui varie dit « plus ou moins », là où six couleurs diraient « autre
+     chose ». Elle part de l'iris, la couleur de la donnée. */
+  --ramp-1: #F1F0FE;  --ramp-2: #D8D5FB;  --ramp-3: #B6B0F6;
+  --ramp-4: #8F86F0;  --ramp-5: #635BFF;  --ramp-6: #4239C9;
   --mono:      ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  /* Sémantique propre au trajet. `leave` et `tax` ne sont PAS des gris neutres :
-     ils portent une information (ce qui sort), et doivent se distinguer du fond
-     sans attirer l'œil plus que le solde. Nommées d'après la cascade « Le trajet »
-     qui les a introduites ; elle a été retirée, elles restent utilisées par la
-     barre prime cost, la sparkline et la page transactions. */
-  --flux-keep:  #4FA36F;
-  --flux-leave: #C3CBD2;
-  --flux-tax:   #AEB8C0;
-  --flux-neg:   #C0402B;
+  /* Sémantique du trajet : ce qui reste, ce qui sort. `leave` et `tax` portent une
+     information — ils ne doivent pas être des gris neutres, ni attirer l'œil plus que le
+     solde. L'ardoise tient ce rôle dans la nouvelle palette : c'est déjà elle qui trace la
+     période précédente. */
+  --flux-keep:  #635BFF;
+  --flux-leave: #A3ACBA;
+  --flux-tax:   #C4CBD6;
+  --flux-neg:   #B42318;
+
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0C0F12; --bg-page: #0C0F12; --bg-hover: rgba(233,236,238,0.05);
-    --bg-card: #13171B; --border: #1D2328;
-    --text: #E9ECEE; --muted: #8A939B; --faint: #525C65;
-    --green: #4FA36F; --red: #D9604A; --amber: #D2A03F;
-    --bar: #4FA36F; --bar-bg: rgba(233,236,238,0.09);
-    --accent: #4FA36F; --spec: #4FA36F; --spec-soft: rgba(79,163,111,0.14);
-    --flux-keep: #4FA36F; --flux-leave: #3C4854; --flux-tax: #5B6875; --flux-neg: #D9604A;
+    --bg: #0C111D; --bg-page: #0C111D; --bg-hover: rgba(255,255,255,0.05);
+    --bg-card: #141B2A; --border: #232B3B;
+    --text: #F2F4F8; --muted: #8B94A8; --faint: #6B748A;
+    --green: #4ED396; --red: #F08A7B; --amber: #E0A050;
+    --bar: #7D9BFF; --bar-bg: #1C2331;
+    --accent: #7D9BFF; --spec: #7D9BFF; --spec-soft: #1C2542;
+  --green-soft: #0E2A1E; --red-soft: #2C1614; --amber-soft: #2A2012;
+    --green-soft: #0E2A1E; --red-soft: #2C1614; --amber-soft: #2A2012;
+    --cat-1: #8698EC; --cat-1-soft: #1B2036; --cat-2: #4FB3BC; --cat-2-soft: #12262A;
+    --cat-3: #A98BEA; --cat-3-soft: #1F1A2E; --cat-4: #D881AE; --cat-4-soft: #2B1722;
+    --cat-5: #C7A455; --cat-5-soft: #262013; --cat-6: #8D97A8; --cat-6-soft: #1B2029;
+    --ramp-1: #1C2542; --ramp-2: #2B356B; --ramp-3: #43489B;
+    --ramp-4: #5E5BC8; --ramp-5: #7D9BFF; --ramp-6: #A9BCFF;
+    --flux-keep: #7D9BFF; --flux-leave: #5B6478; --flux-tax: #3C4454; --flux-neg: #F08A7B;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0C0F12; --bg-page: #0C0F12; --bg-hover: rgba(233,236,238,0.05);
-  --bg-card: #13171B; --border: #1D2328;
-  --text: #E9ECEE; --muted: #8A939B; --faint: #525C65;
-  --green: #4FA36F; --red: #D9604A; --amber: #D2A03F;
-  --bar: #4FA36F; --bar-bg: rgba(233,236,238,0.09);
-  --accent: #4FA36F; --spec: #4FA36F; --spec-soft: rgba(79,163,111,0.14);
-  --flux-keep: #4FA36F; --flux-leave: #3C4854; --flux-tax: #5B6875; --flux-neg: #D9604A;
+  --bg: #0C111D; --bg-page: #0C111D; --bg-hover: rgba(255,255,255,0.05);
+  --bg-card: #141B2A; --border: #232B3B;
+  --text: #F2F4F8; --muted: #8B94A8; --faint: #6B748A;
+  --green: #4ED396; --red: #F08A7B; --amber: #E0A050;
+  --bar: #7D9BFF; --bar-bg: #1C2331;
+  --accent: #7D9BFF; --spec: #7D9BFF; --spec-soft: #1C2542;
+  --green-soft: #0E2A1E; --red-soft: #2C1614; --amber-soft: #2A2012;
+  --cat-1: #8698EC; --cat-1-soft: #1B2036; --cat-2: #4FB3BC; --cat-2-soft: #12262A;
+  --cat-3: #A98BEA; --cat-3-soft: #1F1A2E; --cat-4: #D881AE; --cat-4-soft: #2B1722;
+  --cat-5: #C7A455; --cat-5-soft: #262013; --cat-6: #8D97A8; --cat-6-soft: #1B2029;
+  --ramp-1: #1C2542; --ramp-2: #2B356B; --ramp-3: #43489B;
+  --ramp-4: #5E5BC8; --ramp-5: #7D9BFF; --ramp-6: #A9BCFF;
+  --flux-keep: #7D9BFF; --flux-leave: #5B6478; --flux-tax: #3C4454; --flux-neg: #F08A7B;
 }
 :root[data-theme="light"] {
-  --bg: #FCFCFB; --bg-page: #FCFCFB; --bg-hover: rgba(20,24,27,0.045);
-  --bg-card: #FFFFFF; --border: #E5E8E9;
-  --text: #14181B; --muted: #5D666E; --faint: #A2AAB1;
-  --green: #2F7D51; --red: #C0402B; --amber: #B07A22;
-  --bar: #4FA36F; --bar-bg: rgba(20,24,27,0.07);
-  --accent: #2F7D51; --spec: #2F7D51; --spec-soft: rgba(47,125,81,0.10);
-  --flux-keep: #4FA36F; --flux-leave: #C3CBD2; --flux-tax: #AEB8C0; --flux-neg: #C0402B;
+  /* ═══════════════════════════════════════════════════════════════════════════════════════
+     LA PALETTE DE LA PLATEFORME — reprise du tableau de bord, le 22/09/2026.
+     ═══════════════════════════════════════════════════════════════════════════════════════
+
+     ⚠️ LES ANCIENS NOMS SURVIVENT, ET C'EST TOUT L'INTÉRÊT. Quinze gabarits écrivent
+     `var(--text)`, `var(--border)`, `var(--muted)` : les renommer aurait demandé de tous les
+     réécrire le même jour, donc de tous les relire le même jour. En repointant les noms vers
+     les nouvelles valeurs, la plateforme entière change d'apparence sans qu'une ligne de
+     gabarit bouge — et ce qui reste à faire est de la FORME, pas de la couleur.
+
+     ⚠️ L'ACCENT PASSE DU VERT À L'IRIS. C'est le changement le plus visible : `--accent` et
+     `--spec` portaient un vert qui servait à la fois d'interactif ET de « bon état ». Deux rôles
+     sur une couleur, c'est un lien qu'on finit par cliquer parce qu'il ressemble à un succès.
+     L'iris porte l'interactif, le vert ne porte plus que l'état.
+
+     ⚠️ ET `--bar-bg` N'EST PLUS UN NOIR TRANSPARENT. Posé sur une carte blanche il donnait un
+     gris ; posé sur le nouveau fond bleuté, il tirait au sale. Les pistes de barre prennent la
+     teinte de fond, qui est choisie pour les deux thèmes.
+     ═══════════════════════════════════════════════════════════════════════════════════════ */
+  --bg:        #F7FAFC;
+  --bg-page:   #F7FAFC;
+  --bg-hover:  rgba(10, 15, 40, 0.04);
+  --bg-card:   #FFFFFF;
+  --border:    #E3E8EE;
+  --text:      #1A1F36;
+  --muted:     #697386;
+  --faint:     #8792A2;
+  --green:     #067647;
+  --red:       #B42318;
+  --amber:     #B54708;
+  --bar:       #635BFF;
+  --bar-bg:    #EDF1F6;
+  --accent:    #635BFF;
+  --spec:      #635BFF;
+  --spec-soft: #F1F0FE;
+  --mono:      ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Sémantique du trajet : ce qui reste, ce qui sort. `leave` et `tax` portent une
+     information — ils ne doivent pas être des gris neutres, ni attirer l'œil plus que le
+     solde. L'ardoise tient ce rôle dans la nouvelle palette : c'est déjà elle qui trace la
+     période précédente. */
+  --flux-keep:  #635BFF;
+  --flux-leave: #A3ACBA;
+  --flux-tax:   #C4CBD6;
+  --flux-neg:   #B42318;
+
 }
 
 :focus-visible { outline: 2px solid var(--spec); outline-offset: 2px; }
@@ -393,18 +492,20 @@ body {
    libellés, et l'œil descend une colonne au lieu de la relire. Le corps baisse à 12px — une
    chasse fixe occupe plus de largeur à taille égale, et sans cette compensation les tableaux
    déborderaient. */
+/* ⚠️ LES TABLES SORTENT DE LA CHASSE FIXE. Elle venait d'une idée juste — aligner les
+   chiffres — appliquée au mauvais endroit : `tabular-nums` aligne les colonnes SANS changer de
+   police, et le mono rendait les LIBELLÉS plus larges et moins lisibles. Une page qui affiche
+   des noms de produits dans une fonte de terminal se lit comme un journal de serveur. */
 table {
   width: 100%; border-collapse: collapse;
-  font-family: var(--mono);
-  font-size: 12px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 thead th {
-  font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: .1em;
+  letter-spacing: .04em;
   color: var(--faint);
   text-align: left;
   padding: 7px 11px;
@@ -1003,3 +1104,29 @@ td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 
 }
 .section-head .section-label { margin: 0; }
 .section-quoi { font-size: 11.5px; color: var(--faint); }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   L'ÉCHELLE DES RAYONS — trois valeurs, pas huit.
+   ═══════════════════════════════════════════════════════════════════════════════════════════
+
+   ⚠️ LA FEUILLE EN COMPTAIT HUIT : 2, 3, 4, 5, 6, 7, 9 et 20 pixels. Aucun n'est faux seul ;
+   ensemble ils donnent une page dont on ne sait pas dire ce qui cloche — et c'est précisément
+   ce qui la fait paraître mal finie. Trois valeurs, avec un rôle chacune : la carte, ce qui vit
+   dedans, et ce qui est rond.
+
+   ⚠️ CES RÈGLES SONT EN FIN DE FEUILLE, DONC ELLES GAGNENT. C'est voulu : elles rattrapent les
+   huit rayons éparpillés au-dessus sans qu'il faille les retrouver un par un — et le jour où on
+   les retrouve, elles deviennent inutiles plutôt que fausses.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+:root { --r: 8px; --r-sm: 6px; }
+
+.card, .bloc, .kpi-grid, .table-wrap, .tablewrap, .twrap, .chart-block,
+.ins-card, .pa-bloc, .me-liste, .seuil-strip, .chaine, .volume, .tx-card,
+.tx-limites, .repli, .app { border-radius: var(--r); }
+
+.badge, .pill, .chip, .zone-badge, .tx-chip, .db-badge, .nav-seg .n,
+.seg, .status-pill { border-radius: 999px; }
+
+button, input, select, textarea, .btn, .btn-primary, .btn-secondary, .btn-ghost,
+.btn-danger, .pa-i, .pa-btn, .field-input, .db-champ, .db-btn { border-radius: var(--r-sm); }

@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Estudantina">
-<meta name="theme-color" content="#EDEAE3">
+<meta name="theme-color" content="#F7FAFC">
 <title>Estudantina · Costs</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -119,11 +119,11 @@ tr:hover td { background:var(--bg-hover); }
 }
 /* Palette app : neutre / ambre (converti en mensuel) / vert / bleu */
 .badge-monthly  { background:var(--bg-hover); color:var(--muted); }
-.badge-annual   { background:#fdf3dd; color:#b07d00; }
-.badge-quarterly{ background:#fdf3dd; color:#b07d00; }
-.badge-ft  { background:#e8f5e9; color:#2e7d32; }
-.badge-pt  { background:#fdf3dd; color:#b07d00; }
-.badge-ext { background:#e7edfb; color:#2554C7; }
+.badge-annual   { background:var(--amber-soft); color:var(--amber); }
+.badge-quarterly{ background:var(--amber-soft); color:var(--amber); }
+.badge-ft  { background:var(--green-soft); color:var(--green); }
+.badge-pt  { background:var(--amber-soft); color:var(--amber); }
+.badge-ext { background:var(--spec-soft); color:var(--accent); }
 
 /* ── Inline form (add row) ── */
 .add-row { background:var(--bg-page); }
@@ -187,11 +187,11 @@ select.field-input { cursor:pointer; }
 
 /* ── TSU info box ── */
 .tsu-box {
-  background:#e8f5e9; border:1px solid rgba(46,125,50,.25);
+  background:var(--green-soft); border:1px solid rgba(46,125,50,.25);
   border-radius: 4px; padding:13px 16px;
-  font-size:12px; color:#2e7d32; margin-top:12px;
+  font-size:12px; color:var(--green); margin-top:12px;
 }
-.tsu-box.warning { background:#fdf3dd; border-color:#f0d69a; color:#b07d00; }
+.tsu-box.warning { background:var(--amber-soft); border-color:var(--amber-soft); color:var(--amber); }
 .tsu-row { display:flex; justify-content:space-between; padding:2px 0; }
 
 /* ── Loading ── */
@@ -231,7 +231,7 @@ select.field-input { cursor:pointer; }
 .ver-avant-apres{margin-top:9px;font-size:11.5px;color:var(--muted);
   font-family:var(--mono);font-variant-numeric:tabular-nums;line-height:1.55}
 .ver-avant-apres b{color:var(--text);font-weight:700}
-.ver-avant-apres .hausse{color:var(--red,#b3261e)}
+.ver-avant-apres .hausse{color:var(--red,var(--red))}
 .ver-avant-apres .baisse{color:var(--green)}
 .ver-avant-apres:empty{display:none}
 /* L'historique d'un poste, sous la ligne. */
@@ -245,13 +245,13 @@ select.field-input { cursor:pointer; }
   font-variant-numeric:tabular-nums}
 .sum-attente:empty{display:none}
 .sum-attente b{color:var(--text);font-weight:600}
-.sum-attente .hausse{color:var(--red,#b3261e)}
+.sum-attente .hausse{color:var(--red,var(--red))}
 .sum-attente .baisse{color:var(--green)}
 
 /* ⚠️ DISCRET, PAS CACHÉ. Effacer est parfois la bonne réponse — une fiche d'essai n'a aucun
    passé à garder — mais ce n'est jamais le geste courant. */
 .effacer{color:var(--faint);padding-left:7px;padding-right:7px}
-.effacer:hover{color:var(--red,#b3261e);border-color:var(--red,#b3261e)}
+.effacer:hover{color:var(--red,var(--red));border-color:var(--red,var(--red))}
 </style>
 </head>
 <body>
