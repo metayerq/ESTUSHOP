@@ -82,6 +82,10 @@
      information — ils ne doivent pas être des gris neutres, ni attirer l'œil plus que le
      solde. L'ardoise tient ce rôle dans la nouvelle palette : c'est déjà elle qui trace la
      période précédente. */
+  /* ⚠️ LA COQUE D'UN TÉLÉPHONE EN MAQUETTE, IDENTIQUE DANS LES DEUX THÈMES. Ce n'est pas un
+     oubli : c'est l'objet dessiné, pas une surface de l'application. Elle est déclarée des deux
+     côtés avec la même valeur pour que ça se lise comme une décision. */
+  --coque-tel: #1A1F36;
   --flux-keep:  #635BFF;
   --flux-leave: #A3ACBA;
   --flux-tax:   #C4CBD6;
@@ -91,6 +95,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
+    --coque-tel: #1A1F36;
     --bg: #0C111D; --bg-page: #0C111D; --bg-hover: rgba(255,255,255,0.05);
     --bg-card: #141B2A; --border: #232B3B;
     --text: #F2F4F8; --muted: #8B94A8; --faint: #6B748A;
@@ -108,6 +113,7 @@
   }
 }
 :root[data-theme="dark"] {
+    --coque-tel: #1A1F36;
   --bg: #0C111D; --bg-page: #0C111D; --bg-hover: rgba(255,255,255,0.05);
   --bg-card: #141B2A; --border: #232B3B;
   --text: #F2F4F8; --muted: #8B94A8; --faint: #6B748A;

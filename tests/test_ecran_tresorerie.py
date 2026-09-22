@@ -35,16 +35,50 @@ def _code_seul(src):
     """
     ⚠️ LE CODE SANS SES COMMENTAIRES NI SES CHAÎNES. C'est la quatrième fois de cette refonte
     qu'un détecteur reconnaît sa propre explication : le commentaire qui dit pourquoi
-    `yAxisID: 'y2'` a été retiré contient `yAxisID`. Et les chaînes comptent autant — une
-    entité HTML `&#10005;` ressemble à une couleur, un `'2026-07-01T12:00'` à une constante.
+    `yAxisID: \'y2\'` a été retiré contient `yAxisID`. Et les chaînes comptent autant — une
+    entité HTML `&#10005;` ressemble à une couleur, un `\'2026-07-01T12:00\'` à une constante.
+
+    ⚠️ ET C'EST UN PARCOURS, PAS UNE EXPRESSION RÉGULIÈRE. Le premier jet effaçait les gabarits
+    de chaîne avec un motif plat, qui ne sait pas qu'un `${...}` peut en contenir un autre :
+    sur `${x ? `a` : ``}`, il refermait au mauvais backtick et laissait passer du texte anglais
+    en majuscules pour une constante. Un détecteur qui se trompe apprend à ne plus être lu.
     """
-    src = re.sub(r"/\*.*?\*/", " ", src, flags=re.S)
-    # Les commentaires de fin de ligne aussi — mais pas le `//` d'une URL.
-    src = re.sub(r"(?<!:)//.*$", " ", src, flags=re.M)
-    src = re.sub(r"`(?:[^`\\]|\\.)*`", " '' ", src)
-    src = re.sub(r"'(?:[^'\\\n]|\\.)*'", " '' ", src)
-    src = re.sub(r'"(?:[^"\\\n]|\\.)*"', ' "" ', src)
-    return src
+    out, i, n = [], 0, len(src)
+    while i < n:
+        c = src[i]
+        if c == "/" and i + 1 < n and src[i + 1] == "*":
+            j = src.find("*/", i + 2)
+            i = n if j == -1 else j + 2
+            out.append(" ")
+        elif c == "/" and i + 1 < n and src[i + 1] == "/" and (i == 0 or src[i - 1] != ":"):
+            j = src.find("\n", i)
+            i = n if j == -1 else j
+            out.append(" ")
+        elif c in "\"'":
+            j = i + 1
+            while j < n and src[j] != c:
+                j += 2 if src[j] == "\\" else 1
+            i = j + 1
+            out.append(' "" ')
+        elif c == "`":
+            # Un gabarit de chaîne, et ses `${...}` qui peuvent en contenir d'autres.
+            depth, j = 0, i + 1
+            while j < n:
+                if src[j] == "\\":
+                    j += 2; continue
+                if src[j] == "`" and depth == 0:
+                    break
+                if src[j] == "$" and j + 1 < n and src[j + 1] == "{":
+                    depth += 1; j += 2; continue
+                if src[j] == "}" and depth > 0:
+                    depth -= 1
+                j += 1
+            i = j + 1
+            out.append(' "" ')
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
 
 
 def _gabarit():
@@ -142,10 +176,23 @@ def test_aucune_variable_libre_dans_les_scripts_de_page():
     entre les mailles ; celle-là, non — et c'est celle qui vient de coûter une page.
     """
     connus = {"JSON", "URL"}          # globales du navigateur, jamais déclarées
+    sources = {}
     for nom in sorted(os.listdir(os.path.join(RACINE, "static"))):
-        if not nom.endswith(".js"):
+        if nom.endswith(".js"):
+            sources[nom] = open(os.path.join(RACINE, "static", nom), encoding="utf-8").read()
+    # ⚠️ ET LES SCRIPTS EN LIGNE DES GABARITS. La moitié du produit a son JavaScript dans le
+    # `<script>` de sa page ; y restreindre le contrôle aux fichiers de `static/` laisserait la
+    # moitié des pages sans filet, pour exactement la même panne.
+    dossier = os.path.join(RACINE, "templates")
+    for nom in sorted(os.listdir(dossier)):
+        if not nom.endswith(".html"):
             continue
-        src = _code_seul(open(os.path.join(RACINE, "static", nom), encoding="utf-8").read())
+        html = open(os.path.join(dossier, nom), encoding="utf-8").read()
+        blocs = re.findall(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", html, re.S)
+        if blocs:
+            sources[nom] = "\n".join(blocs)
+    for nom, brut in sources.items():
+        src = _code_seul(brut)
         declares = set(re.findall(r"(?:const|let|var|function)\s+([A-Z][A-Z0-9_]{2,})", src))
         # ⚠️ UNE DÉCLARATION PEUT EN PORTER PLUSIEURS : `var KEY = 'x', ORDER = [...]`. Ne lire
         # que le premier nom fait passer les suivants pour des variables libres — et un

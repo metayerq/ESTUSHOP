@@ -676,3 +676,53 @@ def test_leffet_annonce_et_le_calcul_du_cout_disent_la_meme_chose():
     for cas in r:
         if cas["compte"]:
             assert cas["annonce"], "une ligne comptée annonce ne rien changer"
+
+
+# ── La charte ────────────────────────────────────────────────────────────────────────────────
+
+def test_la_page_porte_la_charte():
+    g = _gabarit()
+    assert 'class="page db"' in g, "la classe qui définit les jetons `--db-*` est absente"
+    assert "/static/dashboard.css?v=" in g, "la feuille de charte n'est pas chargée"
+
+
+def test_les_onglets_ne_sont_plus_une_quatrieme_copie():
+    """
+    ⚠️ FIDÉLITÉ, RÉGLAGES ET COGS PARTAGENT `.nav-seg`. Celle-ci avait gardé son propre jeu de
+    règles et son propre marqueur d'actif. Quatre copies d'une forme, c'est une forme dont on
+    corrige trois exemplaires sur quatre — et celle qu'on ouvre le moins reste en arrière.
+
+    ⚠️ LE MARQUEUR EST UN ATTRIBUT, PAS UNE CLASSE. Le segmenté partagé se peint sur
+    `aria-selected` ; garder `.active` laisserait les deux onglets à l'identique à l'écran, et
+    priverait aussi les lecteurs d'écran de l'information.
+    """
+    g = _gabarit()
+    assert 'class="nav-seg"' in g
+    bloc = g[g.index("<style>"):g.index("</style>")]
+    for mort in (".view-tabs", ".view-tab", ".tab-badge"):
+        assert mort not in bloc, f"{mort} : l'ancien composant est revenu"
+    js = g[g.rindex("<script>"):]
+    assert "classList.toggle('active'" not in js, "le marqueur d'actif est resté sur une classe"
+    assert js.count("setAttribute('aria-selected'") == 2, "les deux onglets ne sont pas marqués"
+
+
+def test_le_type_de_contrat_nest_pas_peint_comme_un_etat():
+    """
+    ⚠️ CDI VERT, TEMPS PARTIEL AMBRE, EXTRA BLEU. Un temps partiel n'est pas un avertissement
+    et un CDI n'est pas une réussite : ce sont trois natures de contrat. L'échelle catégorielle
+    de la charte existe exactement pour ça — elle n'emprunte ni au vert ni au rouge, pour ne
+    pas se lire comme un jugement.
+
+    ⚠️ LA FRÉQUENCE, ELLE, GARDE SON AMBRE, et c'est juste : « annuel » et « trimestriel »
+    signalent que le montant affiché à côté est DÉRIVÉ — divisé par 12 ou par 3. C'est une
+    réserve sur un chiffre, pas une catégorie.
+    """
+    bloc = _gabarit()
+    bloc = bloc[bloc.index("<style>"):bloc.index("</style>")]
+    for contrat in ("badge-ft", "badge-pt", "badge-ext"):
+        regle = bloc[bloc.index("." + contrat):bloc.index("}", bloc.index("." + contrat))]
+        assert "--cat-" in regle, f"{contrat} : {regle.strip()}"
+        assert "green" not in regle and "red" not in regle and "amber" not in regle, regle
+    for freq in ("badge-annual", "badge-quarterly"):
+        regle = bloc[bloc.index("." + freq):bloc.index("}", bloc.index("." + freq))]
+        assert "amber" in regle, f"{freq} a perdu sa réserve : {regle.strip()}"

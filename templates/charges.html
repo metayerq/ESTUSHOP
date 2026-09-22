@@ -14,140 +14,64 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<link rel="stylesheet" href="/static/dashboard.css?v={{ v }}">
 <style>
 /* ── Nav ── */
-.page-nav { display:flex; align-items:center; gap:12px; margin-bottom:36px; }
-.page-nav a { font-size:13px; color:var(--muted); text-decoration:none; }
-.page-nav a:hover { color:var(--text); }
-.page-nav .sep { color:var(--faint); }
 
 /* ── Tabs ── */
-.view-tabs {
-  display:flex; gap:0; margin-bottom:28px;
-  border:1px solid var(--border); border-radius:8px;
-  overflow:hidden; width:fit-content;
-}
-.view-tab {
-  font-family:inherit; font-size:13px; font-weight:500;
-  padding:8px 20px; border:none; background:transparent;
-  color:var(--muted); cursor:pointer;
-  transition:background .12s, color .12s;
-  border-right:1px solid var(--border);
-}
-.view-tab:last-child { border-right:none; }
-.view-tab:hover { background:var(--bg-hover); color:var(--text); }
-.view-tab.active {
-  background:var(--bg-card); color:var(--text);
-  font-weight:600; box-shadow:inset 0 -2px 0 var(--spec);
-}
-.tab-badge {
-  display:inline-block; margin-left:6px; font-size:10px; font-weight:500;
-  background:var(--bg-hover); color:var(--faint);
-  padding:1px 6px; border-radius:10px; vertical-align:middle;
-}
 
 /* ── Summary bar ── */
-.summary-bar {
-  display:flex; gap:0; flex-wrap:nowrap;
-  background:var(--bg-card); border:1px solid var(--border);
-  border-radius: 4px; overflow:hidden; margin-bottom:28px;
-}
-.sum-item { flex:1; padding:16px 20px; border-right:1px solid var(--border); }
-.sum-item:last-child { border-right:none; }
-.sum-label { font-family:var(--mono); font-size:9px; font-weight:400; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-bottom:5px; }
-.sum-val   { font-family:var(--mono); font-size:19px; font-weight:700; letter-spacing:-.5px; color:var(--text); font-variant-numeric:tabular-nums; }
-.sum-sub   { font-size:11px; color:var(--faint); margin-top:3px; }
 
 /* ── Section header ── */
-.sec-header {
-  display:flex; align-items:center; justify-content:space-between;
-  margin-bottom:14px;
-}
-.section-label {
-  font-family:var(--mono); font-size:10px; font-weight:400; letter-spacing:.1em;
-  text-transform:uppercase; color:var(--muted);
-}
-.section-label::before { content:"— "; color:var(--faint); }
 
 /* ── Buttons ── */
-.btn-add {
-  font-family:inherit; font-size:12px; font-weight:500;
-  padding:6px 14px; border-radius:6px; cursor:pointer;
-  border:1px solid var(--border); background:var(--bg-card);
-  color:var(--text); transition:background .1s;
-}
-.btn-add:hover { background:var(--bg-hover); }
-.btn-primary {
-  font-family:inherit; font-size:12px; font-weight:600;
-  padding:7px 16px; border-radius:6px; cursor:pointer;
-  border:none; background:var(--accent); color:#fff;
-  transition:opacity .1s;
-}
-.btn-primary:hover { opacity:.85; }
-.btn-ghost {
-  font-family:inherit; font-size:12px;
-  padding:5px 10px; border-radius:6px; cursor:pointer;
-  border:1px solid var(--border); background:transparent;
-  color:var(--muted); transition:background .1s;
-}
-.btn-ghost:hover { background:var(--bg-hover); color:var(--text); }
-.btn-danger {
-  font-family:inherit; font-size:12px;
-  padding:5px 10px; border-radius:6px; cursor:pointer;
-  border:1px solid transparent; background:transparent;
-  color:var(--red); transition:background .1s;
-}
-.btn-danger:hover { background:rgba(196,85,77,.07); }
 
-/* ── Table ── */
-.table-wrap { border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:32px; }
-table { width:100%; border-collapse:collapse; }
-th {
-  font-size:10px; font-weight:600; letter-spacing:.07em; text-transform:uppercase;
-  color:var(--muted); padding:7px 13px; background:var(--bg-page);
-  border-bottom:1px solid var(--border); text-align:left;
-}
-th.right, td.right { text-align:right; }
-td { font-size:12px; padding:8px 13px; border-bottom:1px solid var(--border); color:var(--text); vertical-align:middle; }
-tr:last-child td { border-bottom:none; }
-tr:hover td { background:var(--bg-hover); }
-.inactive td { opacity:.45; }
+/* ── Table ─────────────────────────────────────────────────────────────────────
+      ⚠️ SIX RÈGLES SUR `table`, `th`, `td` ONT DISPARU : c'était un contre-thème posé
+      sur des sélecteurs d'élément, donc sous la charte en spécificité — la moitié
+      gagnait, l'autre perdait, et le résultat n'était ni l'un ni l'autre. Les colonnes
+      de droite prennent `.r`, le nom que tout le produit emploie.
+
+      ⚠️ CE QUI RESTE EST PROPRE À CETTE PAGE : une ligne éteinte s'efface sans
+      disparaître. Elle ne compte plus dans les totaux, et elle doit pouvoir être
+      rouverte — la cacher obligerait à deviner qu'elle existe. ── */
+.db tbody tr.inactive td { opacity:.45; }
 
 .badge {
-  font-family:var(--mono); font-size:9.5px; font-weight:600; padding:2px 8px; border-radius:10px;
+  font-size:9.5px; font-weight:600; padding:2px 8px; border-radius:999px;
   display:inline-block; letter-spacing:.02em;
 }
-/* Palette app : neutre / ambre (converti en mensuel) / vert / bleu */
-.badge-monthly  { background:var(--bg-hover); color:var(--muted); }
-.badge-annual   { background:var(--amber-soft); color:var(--amber); }
-.badge-quarterly{ background:var(--amber-soft); color:var(--amber); }
-.badge-ft  { background:var(--green-soft); color:var(--green); }
-.badge-pt  { background:var(--amber-soft); color:var(--amber); }
-.badge-ext { background:var(--spec-soft); color:var(--accent); }
+/* ── Deux familles de pastilles, et une seule était juste ─────────────────────
+      ⚠️ LA FRÉQUENCE EST UNE RÉSERVE, PAS UNE CATÉGORIE. « Annuel » et « trimestriel »
+      portent l'ambre parce que le montant affiché à côté est DÉRIVÉ — divisé par 12 ou
+      par 3. Le mensuel n'a rien à signaler. Ça, c'était déjà juste.
+
+      ⚠️ LE TYPE DE CONTRAT, LUI, ÉTAIT PEINT EN ÉTATS : CDI vert, temps partiel ambre,
+      extra bleu. Un temps partiel n'est pas un avertissement et un CDI n'est pas une
+      réussite — ce sont trois natures de contrat, et rien d'autre. Elles prennent
+      l'échelle catégorielle de la charte, celle qui n'emprunte ni au vert ni au rouge
+      précisément pour ne pas se lire comme un jugement. ── */
+.badge-monthly  { background:var(--db-alt); color:var(--db-muted); }
+.badge-annual   { background:var(--db-amber-soft); color:var(--db-amber); }
+.badge-quarterly{ background:var(--db-amber-soft); color:var(--db-amber); }
+.badge-ft  { background:var(--cat-1-soft); color:var(--cat-1); }
+.badge-pt  { background:var(--cat-2-soft); color:var(--cat-2); }
+.badge-ext { background:var(--cat-3-soft); color:var(--cat-3); }
 
 /* ── Inline form (add row) ── */
-.add-row { background:var(--bg-page); }
-.add-row td { padding:7px 9px; }
-.field-input {
-  font-family:inherit; font-size:13px;
-  padding:6px 10px; border:1px solid var(--border); border-radius:6px;
-  background:var(--bg-card); color:var(--text); outline:none; width:100%;
-  transition:border-color .15s;
-}
-.field-input:focus { border-color:var(--faint); }
 select.field-input { cursor:pointer; }
 
 /* ── Employee card ── */
 .emp-cards { display:flex; flex-direction:column; gap:12px; margin-bottom:32px; }
 .emp-card {
-  border:1px solid var(--border); border-radius: 4px;
-  background:var(--bg-card); overflow:hidden;
+  border:1px solid var(--db-line); border-radius:var(--db-r);
+  background:var(--db-card); overflow:hidden;
 }
 .emp-card.inactive { opacity:.5; }
 .emp-card-header {
   display:flex; align-items:center; justify-content:space-between;
-  padding:14px 20px; border-bottom:1px solid var(--border);
-  background:var(--bg-page);
+  padding:14px 20px; border-bottom:1px solid var(--db-line);
+  background:var(--db-alt);
 }
 .emp-name { font-size:15px; font-weight:600; }
 .emp-type { margin-left:10px; }
@@ -157,51 +81,53 @@ select.field-input { cursor:pointer; }
   gap:0;
 }
 .emp-cell {
-  padding:14px 20px; border-right:1px solid var(--border);
+  padding:14px 20px; border-right:1px solid var(--db-line);
 }
 .emp-cell:last-child { border-right:none; }
-.emp-cell-label { font-family:var(--mono); font-size:9px; font-weight:400; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-bottom:5px; }
-.emp-cell-val   { font-family:var(--mono); font-size:14px; font-weight:700; letter-spacing:-.3px; font-variant-numeric:tabular-nums; }
-.emp-cell-sub   { font-size:11px; color:var(--faint); margin-top:3px; }
-.emp-cost-total { font-size:16px; font-weight:700; color:var(--spec); }
+.emp-cell-label { font-size:9px; font-weight:400; letter-spacing:.08em; text-transform:uppercase; color:var(--db-muted); margin-bottom:5px; }
+.emp-cell-val   { font-size:14px; font-weight:700; letter-spacing:-.3px; font-variant-numeric:tabular-nums; }
+.emp-cell-sub   { font-size:11px; color:var(--db-faint); margin-top:3px; }
+.emp-cost-total { font-size:16px; font-weight:700; color:var(--db-iris); }
 
 /* ── Modal ── */
 .modal-overlay {
-  position:fixed; inset:0; background:rgba(0,0,0,.35);
+  position:fixed; inset:0; background:var(--db-scrim);
   display:flex; align-items:center; justify-content:center;
   z-index:100; opacity:0; pointer-events:none; transition:opacity .15s;
 }
 .modal-overlay.open { opacity:1; pointer-events:auto; }
 .modal {
-  background:var(--bg-card); border-radius:12px;
+  background:var(--db-card); border-radius:999px;
   padding:28px 32px; width:500px; max-width:95vw;
-  box-shadow:0 8px 32px rgba(0,0,0,.12);
+  box-shadow:var(--db-sh-pop);
   transform:translateY(8px); transition:transform .15s;
 }
 .modal-overlay.open .modal { transform:translateY(0); }
 .modal-title { font-size:16px; font-weight:700; margin-bottom:20px; }
 .modal-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 .modal-grid .full { grid-column:1/-1; }
-.field-label { font-size:11px; font-weight:500; color:var(--muted); margin-bottom:5px; }
 .modal-footer { display:flex; justify-content:flex-end; gap:8px; margin-top:24px; }
 
-/* ── TSU info box ── */
+/* ── L'aperçu du coût employeur ───────────────────────────────────────────────
+      ⚠️ IL ÉTAIT VERT, FOND ET TEXTE. Un salaire n'est ni bon ni mauvais : c'est un
+      calcul. Le vert disait « tout va bien » sur le chiffre le plus lourd de la page,
+      et il rendait la ligne de total illisible à côté de son propre fond. ── */
 .tsu-box {
-  background:var(--green-soft); border:1px solid rgba(46,125,50,.25);
-  border-radius: 4px; padding:13px 16px;
-  font-size:12px; color:var(--green); margin-top:12px;
+  background:var(--db-alt); border:1px solid var(--db-line);
+  border-radius:var(--db-r-sm); padding:13px 16px;
+  font-size:12px; color:var(--db-muted); margin-top:12px;
 }
-.tsu-box.warning { background:var(--amber-soft); border-color:var(--amber-soft); color:var(--amber); }
+.tsu-box b, .tsu-box strong { color:var(--db-ink); }
 .tsu-row { display:flex; justify-content:space-between; padding:2px 0; }
 
 /* ── Loading ── */
-.spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--muted); border-radius:50%; animation:spin .6s linear infinite; vertical-align:middle; }
+.spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--db-line); border-top-color:var(--db-muted); border-radius:50%; animation:spin .6s linear infinite; vertical-align:middle; }
 @keyframes spin { to { transform:rotate(360deg); } }
 
 .toast {
   position:fixed; bottom:28px; left:50%; transform:translateX(-50%) translateY(20px);
-  background:var(--text); color:var(--bg-card); font-size:13px; font-weight:500;
-  padding:10px 20px; border-radius:8px; z-index:200;
+  background:var(--db-ink); color:var(--db-card); font-size:13px; font-weight:500;
+  padding:10px 20px; border-radius:var(--db-r-sm); z-index:200;
   opacity:0; transition:opacity .2s, transform .2s;
 }
 .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
@@ -212,82 +138,95 @@ select.field-input { cursor:pointer; }
 
 @media (max-width:760px) {
 
-  .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
-  .table-wrap table { min-width:520px; }
+  /* ⚠️ LA CARTE NE DÉFILE PAS TOUTE SEULE. Six colonnes sur un téléphone débordent ;
+     `overflow-x` sur la carte garde la page entière verticale. */
+  .db-card { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .db-card table { min-width:520px; }
   .emp-grid { grid-template-columns:repeat(2, 1fr); }
-  .summary-bar { flex-wrap:wrap; }
-  .summary-bar .sum-item { flex:1 1 50%; border-bottom:1px solid var(--border); }
+  /* La grille de résumé se replie toute seule : `.db-g4` passe à deux colonnes sous 900 px. */
   .modal { padding:22px; }
   .modal-grid { grid-template-columns:1fr; }
 }
 
 
 /* ── Le versionnement ────────────────────────────────────────────────────────────────────── */
-.versionnement{border:1px solid var(--border);border-left:2px solid var(--spec);
-  border-radius:4px;padding:11px 13px;background:var(--bg)}
-.ver-titre{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--spec);margin-bottom:9px}
+.versionnement{border:1px solid var(--db-line);border-left:2px solid var(--db-iris);
+  border-radius:var(--db-r);padding:11px 13px;background:var(--db-alt)}
+.ver-titre{font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--db-iris);margin-bottom:9px}
 .ver-grid{display:grid;grid-template-columns:1fr 1.4fr;gap:10px}
-.ver-avant-apres{margin-top:9px;font-size:11.5px;color:var(--muted);
-  font-family:var(--mono);font-variant-numeric:tabular-nums;line-height:1.55}
-.ver-avant-apres b{color:var(--text);font-weight:700}
-.ver-avant-apres .hausse{color:var(--red,var(--red))}
-.ver-avant-apres .baisse{color:var(--green)}
+.ver-avant-apres{margin-top:9px;font-size:11.5px;color:var(--db-muted);
+  font-variant-numeric:tabular-nums;line-height:1.55}
+.ver-avant-apres b{color:var(--db-ink);font-weight:700}
+.ver-avant-apres .hausse{color:var(--db-red)}
+.ver-avant-apres .baisse{color:var(--db-green)}
 .ver-avant-apres:empty{display:none}
 /* L'historique d'un poste, sous la ligne. */
-.histo{font-family:var(--mono);font-size:10.5px;color:var(--faint);
+.histo{font-size:10.5px;color:var(--db-faint);
   font-variant-numeric:tabular-nums;margin-top:3px}
-.histo b{color:var(--muted);font-weight:600}
+.histo b{color:var(--db-muted);font-weight:600}
 @media(max-width:560px){.ver-grid{grid-template-columns:1fr}}
 
 /* Ce qui est décidé mais pas encore en vigueur. */
-.sum-attente{font-size:12px;color:var(--muted);line-height:1.6;margin:10px 0 0;
+.sum-attente{font-size:12px;color:var(--db-muted);line-height:1.6;margin:10px 0 0;
   font-variant-numeric:tabular-nums}
 .sum-attente:empty{display:none}
-.sum-attente b{color:var(--text);font-weight:600}
-.sum-attente .hausse{color:var(--red,var(--red))}
-.sum-attente .baisse{color:var(--green)}
+.sum-attente b{color:var(--db-ink);font-weight:600}
+.sum-attente .hausse{color:var(--db-red)}
+.sum-attente .baisse{color:var(--db-green)}
 
 /* ⚠️ DISCRET, PAS CACHÉ. Effacer est parfois la bonne réponse — une fiche d'essai n'a aucun
    passé à garder — mais ce n'est jamais le geste courant. */
-.effacer{color:var(--faint);padding-left:7px;padding-right:7px}
-.effacer:hover{color:var(--red,var(--red));border-color:var(--red,var(--red))}
+.effacer{color:var(--db-faint);padding-left:7px;padding-right:7px}
+.effacer:hover{color:var(--db-red);border-color:var(--db-red)}
 </style>
 </head>
 <body>
 {% include "_rail.html" %}
-<div class="page">
+{#
+  ⚠️ `db` ACTIVE LA CHARTE. Sans cette classe, `dashboard.css` est chargé mais aucun jeton
+  `--db-*` n'est défini : chaque `var()` se résout dans le vide, la page s'affiche sans bordures
+  ni couleurs, et rien dans la console ne le dit.
+#}
+<div class="page db">
 
-  <!-- Header -->
-  <div class="header">
-    <div>
-      <div class="header-title">Costs &amp; Staff</div>
-      <div class="header-sub">Monthly cost structure — basis for profitability calculations</div>
-    </div>
-    <button class="btn-refresh" onclick="loadAll()" title="Refresh">↻</button>
+  <div class="db-head">
+    <h2 class="db-title">Co&ucirc;ts &amp; personnel</h2>
+    <span class="db-id">la base des calculs de rentabilit&eacute;</span>
+    <span class="db-sp"></span>
+    <button class="db-icone" onclick="loadAll()" title="Recharger">&#8635;</button>
+    <a class="db-icone" href="/logout" title="Se d&eacute;connecter">&#9099;</a>
   </div>
 
-  <!-- Summary bar -->
-  <div class="summary-bar">
-    <div class="sum-item" title="Sum of your active fixed costs, all normalised to a monthly amount (quarterly ÷ 3, annual ÷ 12).">
-      <div class="sum-label">Total fixed costs / month</div>
-      <div class="sum-val" id="sum-fixes">—</div>
-      <div class="sum-sub" id="sum-fixes-sub"></div>
+  {#
+    ⚠️ QUATRE CHIFFRES SOUDÉS BORD À BORD SONT DEVENUS QUATRE CARTES. Les trois premiers sont
+    les termes d'une addition — fixes + personnel = total — et la quatrième en est le quotient.
+    C'est une chaîne, pas quatre mesures indépendantes : les cartes la laissent se lire de
+    gauche à droite, ce que la bande soudée écrasait.
+
+    ⚠️ ET LE COÛT PAR JOUR PORTE L'ACCENT. C'est le seul des quatre qui sort d'ici : il devient
+    le point mort quotidien du tableau de bord. Les trois autres n'existent que pour lui.
+  #}
+  <div class="db-grid db-g4 db-mb">
+    <div class="db-card db-compact" title="Somme des charges fixes actives, toutes ramenées au mois (trimestriel ÷ 3, annuel ÷ 12).">
+      <div class="db-l">Charges fixes</div>
+      <div class="db-v" id="sum-fixes">&mdash;</div>
+      <div class="db-s" id="sum-fixes-sub"></div>
     </div>
-    <div class="sum-item" title="Real employer cost, smoothed monthly: gross × 14 (13th & 14th month), employer TSU 23.75%, and meal cards (~242 days/year).">
-      <div class="sum-label">Total staff / month (smoothed)</div>
-      <div class="sum-val" id="sum-perso">—</div>
-      <div class="sum-sub" id="sum-perso-sub">incl. TSU + 13th/14th + meals</div>
+    <div class="db-card db-compact" title="Coût employeur réel, lissé au mois : brut × 14 (13e et 14e mois), TSU employeur 23,75 %, et cartes repas (~242 jours/an).">
+      <div class="db-l">Personnel</div>
+      <div class="db-v" id="sum-perso">&mdash;</div>
+      <div class="db-s" id="sum-perso-sub">TSU + 13e/14e + repas compris</div>
     </div>
-    <div class="sum-item" title="Fixed costs + staff. This is the monthly base your break-even and EBITDA are computed from.">
-      <div class="sum-label">Total cost / month</div>
-      <div class="sum-val" id="sum-total">—</div>
-      <div class="sum-sub" id="sum-total-sub"></div>
+    <div class="db-card db-compact" title="Charges fixes + personnel. C'est la base mensuelle dont sortent le point mort et l'EBITDA.">
+      <div class="db-l">Total / mois</div>
+      <div class="db-v" id="sum-total">&mdash;</div>
+      <div class="db-s" id="sum-total-sub"></div>
     </div>
-    <div class="sum-item" title="Monthly cost ÷ 21.25 average open days. This per-day figure drives the daily break-even on the dashboard.">
-      <div class="sum-label">Cost / open day</div>
-      <div class="sum-val" id="sum-jour">—</div>
-      <div class="sum-sub">over 21.25 days/month</div>
+    <div class="db-card db-compact" data-etat="ok" title="Coût mensuel ÷ 21,25 jours ouvrés en moyenne. C'est ce chiffre qui fixe le point mort quotidien du tableau de bord.">
+      <div class="db-l">Co&ucirc;t / jour ouvr&eacute;</div>
+      <div class="db-v" id="sum-jour">&mdash;</div>
+      <div class="db-s">sur 21,25 jours par mois</div>
     </div>
   </div>
 
@@ -298,61 +237,70 @@ select.field-input { cursor:pointer; }
   -->
   <div class="sum-attente" id="sum-attente"></div>
 
-  <!-- Tabs -->
-  <div class="view-tabs">
-    <button class="view-tab active" id="tab-charges" onclick="switchTab('charges')">
-      Fixed costs <span class="tab-badge" id="badge-charges">—</span>
+  {# ⚠️ QUATRIÈME COPIE DE LA MÊME BARRE D'ONGLETS. Fidélité, Réglages et COGS partagent
+     `.nav-seg` ; celle-ci avait gardé son propre jeu de règles et son propre marqueur d'actif
+     (`.active` au lieu d'`aria-selected`). Quatre copies d'une forme, c'est une forme dont on
+     corrige trois exemplaires sur quatre. #}
+  <nav class="nav-seg" role="tablist" aria-label="Vues des co&ucirc;ts">
+    <button role="tab" id="tab-charges" aria-selected="true" onclick="switchTab('charges')">
+      Charges fixes <span class="n" id="badge-charges">&mdash;</span>
     </button>
-    <button class="view-tab" id="tab-personnel" onclick="switchTab('personnel')">
-      Staff <span class="tab-badge" id="badge-personnel">—</span>
+    <button role="tab" id="tab-personnel" aria-selected="false" onclick="switchTab('personnel')">
+      Personnel <span class="n" id="badge-personnel">&mdash;</span>
     </button>
-  </div>
+  </nav>
 
   <!-- ── Tab: Charges fixes ── -->
   <div id="view-charges">
-    <div class="sec-header">
-      <div class="section-label">Monthly fixed costs</div>
-      <button class="btn-add" onclick="openChargeModal()">+ Add</button>
-    </div>
-    <div class="table-wrap">
+    <div class="db-card db-mb">
+      <div class="db-card-h">
+        <span class="db-card-t">Charges fixes mensuelles</span>
+        <span class="db-sp"></span>
+        <button class="db-btn" onclick="openChargeModal()">+ Ajouter</button>
+      </div>
       <table>
         <thead>
           <tr>
             <th>Name</th>
             <th>Category</th>
             <th>Frequency</th>
-            <th class="right">Amount</th>
-            <th class="right">/ month</th>
+            <th class="r">Amount</th>
+            <th class="r">/ month</th>
             <th></th>
           </tr>
         </thead>
         <tbody id="charges-body">
-          <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px;"><span class="spinner"></span></td></tr>
+          <tr><td colspan="6" style="text-align:center;color:var(--db-muted);padding:32px;"><span class="spinner"></span></td></tr>
         </tbody>
       </table>
     </div>
   </div>
 
-  <!-- ── Tab: Personnel ── -->
   <div id="view-personnel" style="display:none;">
-    <div class="sec-header">
-      <div class="section-label">Team</div>
-      <button class="btn-add" onclick="openEmpModal()">+ Add</button>
+    <div class="db-head" style="margin-bottom:12px">
+      <span class="db-card-t">&Eacute;quipe</span>
+      <span class="db-sp"></span>
+      <button class="db-btn" onclick="openEmpModal()">+ Ajouter</button>
     </div>
     <div class="emp-cards" id="emp-cards">
-      <div style="text-align:center;color:var(--muted);padding:32px;"><span class="spinner"></span></div>
+      <div class="db-empty" style="text-align:center"><span class="spinner"></span></div>
     </div>
 
-    <!-- Info box TSU Portugal -->
-    <div style="border:1px solid var(--border);border-radius:8px;background:var(--bg-card);padding:20px 24px;margin-bottom:32px;">
-      <div class="section-label" style="margin-bottom:12px;">Portugal TSU rules applied</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;font-size:12px;color:var(--muted);">
-        <div><strong style="color:var(--text);display:block;margin-bottom:4px;">Permanent / Part-time</strong>
-          Employer TSU: 23.75%<br>TSU exempt (first job): 0%<br>Employee: 11% (deducted from gross)</div>
-        <div><strong style="color:var(--text);display:block;margin-bottom:4px;">13th &amp; 14th month</strong>
-          Salary × 14 ÷ 12<br>= +16.7% on monthly gross<br>TSU applied over 14 months</div>
-        <div><strong style="color:var(--text);display:block;margin-bottom:4px;">Meal allowance</strong>
-          Exempt from TSU and IRS<br>up to €10.20/day (electronic)<br>~242 days/year (11 months × 22d)</div>
+    {# ⚠️ CE BLOC EXPLIQUE D'OÙ SORT LE CHIFFRE, il n'annonce rien de bon ni de mauvais. Il
+       était sur fond de carte comme les données ; c'est de la documentation, et elle se pose
+       sur un creux pour qu'on la distingue de ce qui se lit. #}
+    <div class="db-card db-mb">
+      <div class="db-card-h"><span class="db-card-t">R&egrave;gles TSU appliqu&eacute;es (Portugal)</span></div>
+      <div class="db-card-p db-grid db-g3">
+        <div><div class="db-l">CDI / temps partiel</div><div class="db-s" style="display:block;line-height:1.7">
+          TSU employeur&nbsp;: 23,75&nbsp;%<br>Exon&eacute;ration premier emploi&nbsp;: 0&nbsp;%<br>
+          Salari&eacute;&nbsp;: 11&nbsp;% (retenus sur le brut)</div></div>
+        <div><div class="db-l">13e et 14e mois</div><div class="db-s" style="display:block;line-height:1.7">
+          Salaire &times; 14 &divide; 12<br>= +16,7&nbsp;% sur le brut mensuel<br>
+          TSU appliqu&eacute;e sur 14 mois</div></div>
+        <div><div class="db-l">Carte repas</div><div class="db-s" style="display:block;line-height:1.7">
+          Exon&eacute;r&eacute;e de TSU et d'IRS<br>jusqu'&agrave; 10,20&nbsp;&euro;/jour (&eacute;lectronique)<br>
+          ~242 jours/an (11 mois &times; 22&nbsp;j)</div></div>
       </div>
     </div>
   </div>
@@ -366,25 +314,25 @@ select.field-input { cursor:pointer; }
     <input type="hidden" id="charge-id">
     <div class="modal-grid">
       <div class="full">
-        <div class="field-label">Name *</div>
-        <input class="field-input" id="charge-name" placeholder="e.g. Rent">
+        <div class="db-l">Name *</div>
+        <input class="db-champ" id="charge-name" placeholder="e.g. Rent">
       </div>
       <div>
-        <div class="field-label">Amount (€) *</div>
-        <input class="field-input" id="charge-amount" type="number" step="0.01" placeholder="0.00"
+        <div class="db-l">Amount (€) *</div>
+        <input class="db-champ" id="charge-amount" type="number" step="0.01" placeholder="0.00"
                oninput="majApercu('charge')">
       </div>
       <div>
-        <div class="field-label">Frequency</div>
-        <select class="field-input" id="charge-frequency" onchange="majApercu('charge')">
+        <div class="db-l">Frequency</div>
+        <select class="db-champ" id="charge-frequency" onchange="majApercu('charge')">
           <option value="monthly">Monthly</option>
           <option value="quarterly">Quarterly</option>
           <option value="annual">Annual</option>
         </select>
       </div>
       <div class="full">
-        <div class="field-label">Category</div>
-        <input class="field-input" id="charge-category" placeholder="e.g. Energy, Licenses…" list="cat-list">
+        <div class="db-l">Category</div>
+        <input class="db-champ" id="charge-category" placeholder="e.g. Energy, Licenses…" list="cat-list">
         <datalist id="cat-list">
           <option value="Real estate">
           <option value="Energy & utilities">
@@ -399,9 +347,10 @@ select.field-input { cursor:pointer; }
         </datalist>
       </div>
       <div class="full">
-        <div class="field-label">Notes</div>
-        <input class="field-input" id="charge-notes" placeholder="Optional">
-  
+        <div class="db-l">Notes</div>
+        <input class="db-champ" id="charge-notes" placeholder="Optional">
+      </div>
+
       <!--
         ⚠️ CE BLOC N'APPARAÎT QUE SI LE COÛT CHANGE. Le serveur refuse un changement de montant
         sans date d'effet ni motif : sans ces champs, le refus arriverait sans dire quoi saisir.
@@ -412,20 +361,20 @@ select.field-input { cursor:pointer; }
         <div class="ver-titre">This changes the cost from a date — past months stay as they were</div>
         <div class="ver-grid">
           <div>
-            <div class="field-label">In effect from</div>
-            <input class="field-input" id="charge-effet" type="date" onchange="majApercu('charge')">
+            <div class="db-l">In effect from</div>
+            <input class="db-champ" id="charge-effet" type="date" onchange="majApercu('charge')">
           </div>
           <div>
-            <div class="field-label">Reason *</div>
-            <input class="field-input" id="charge-motif" placeholder="e.g. annual increase">
+            <div class="db-l">Reason *</div>
+            <input class="db-champ" id="charge-motif" placeholder="e.g. annual increase">
           </div>
         </div>
         <div class="ver-avant-apres" id="charge-apercu"></div>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeChargeModal()">Cancel</button>
-      <button class="btn-primary" onclick="saveCharge()">Save</button>
+      <button class="db-btn" onclick="closeChargeModal()">Cancel</button>
+      <button class="db-btn fort" onclick="saveCharge()">Save</button>
     </div>
   </div>
 </div>
@@ -437,28 +386,28 @@ select.field-input { cursor:pointer; }
     <input type="hidden" id="emp-id">
     <div class="modal-grid">
       <div class="full">
-        <div class="field-label">Name *</div>
-        <input class="field-input" id="emp-name" placeholder="First Last">
+        <div class="db-l">Name *</div>
+        <input class="db-champ" id="emp-name" placeholder="First Last">
       </div>
       <div>
-        <div class="field-label">Contract type</div>
-        <select class="field-input" id="emp-type" onchange="updateEmpPreview()">
+        <div class="db-l">Contract type</div>
+        <select class="db-champ" id="emp-type" onchange="updateEmpPreview()">
           <option value="full_time">Permanent full-time</option>
           <option value="part_time">Permanent part-time</option>
           <option value="extra">Extra / Recibos verdes</option>
         </select>
       </div>
       <div>
-        <div class="field-label">Hours/week</div>
-        <input class="field-input" id="emp-hours" type="number" value="40" min="1" max="40" oninput="updateEmpPreview()">
+        <div class="db-l">Hours/week</div>
+        <input class="db-champ" id="emp-hours" type="number" value="40" min="1" max="40" oninput="updateEmpPreview()">
       </div>
       <div>
-        <div class="field-label" id="emp-gross-label">Gross monthly salary (€) *</div>
-        <input class="field-input" id="emp-gross" type="number" step="0.01" placeholder="0.00" oninput="updateEmpPreview()">
+        <div class="db-l" id="emp-gross-label">Gross monthly salary (€) *</div>
+        <input class="db-champ" id="emp-gross" type="number" step="0.01" placeholder="0.00" oninput="updateEmpPreview()">
       </div>
       <div>
-        <div class="field-label">Meal allowance (€/day)</div>
-        <input class="field-input" id="emp-meal" type="number" step="0.01" value="10.20" oninput="updateEmpPreview()">
+        <div class="db-l">Meal allowance (€/day)</div>
+        <input class="db-champ" id="emp-meal" type="number" step="0.01" value="10.20" oninput="updateEmpPreview()">
       </div>
       <div class="full" id="emp-tsu-wrap">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
@@ -467,9 +416,10 @@ select.field-input { cursor:pointer; }
         </label>
       </div>
       <div class="full">
-        <div class="field-label">Notes</div>
-        <input class="field-input" id="emp-notes" placeholder="Optional">
-  
+        <div class="db-l">Notes</div>
+        <input class="db-champ" id="emp-notes" placeholder="Optional">
+      </div>
+
       <!--
         ⚠️ CE BLOC N'APPARAÎT QUE SI LE COÛT CHANGE. Le serveur refuse un changement de montant
         sans date d'effet ni motif : sans ces champs, le refus arriverait sans dire quoi saisir.
@@ -480,12 +430,12 @@ select.field-input { cursor:pointer; }
         <div class="ver-titre">This changes the cost from a date — past months stay as they were</div>
         <div class="ver-grid">
           <div>
-            <div class="field-label">In effect from</div>
-            <input class="field-input" id="emp-effet" type="date" onchange="majApercu('emp')">
+            <div class="db-l">In effect from</div>
+            <input class="db-champ" id="emp-effet" type="date" onchange="majApercu('emp')">
           </div>
           <div>
-            <div class="field-label">Reason *</div>
-            <input class="field-input" id="emp-motif" placeholder="e.g. annual increase">
+            <div class="db-l">Reason *</div>
+            <input class="db-champ" id="emp-motif" placeholder="e.g. annual increase">
           </div>
         </div>
         <div class="ver-avant-apres" id="emp-apercu"></div>
@@ -499,14 +449,14 @@ select.field-input { cursor:pointer; }
       <div class="tsu-row"><span>+ 13th &amp; 14th smoothed (+16.7%)</span><span id="prev-mois">—</span></div>
       <div class="tsu-row"><span id="prev-tsu-label">+ Employer TSU 23.75%</span><span id="prev-tsu">—</span></div>
       <div class="tsu-row"><span>+ Meal allowance (~242d/yr)</span><span id="prev-repas">—</span></div>
-      <div class="tsu-row" style="border-top:1px solid rgba(46,125,50,.3);margin-top:6px;padding-top:6px;font-weight:700;font-size:13px;">
+      <div class="tsu-row" style="border-top:1px solid var(--db-line);margin-top:6px;padding-top:6px;font-weight:650;font-size:13px;color:var(--db-ink);">
         <span>Total / month (employer)</span><span id="prev-total">—</span>
       </div>
     </div>
 
     <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeEmpModal()">Cancel</button>
-      <button class="btn-primary" onclick="saveEmployee()">Save</button>
+      <button class="db-btn" onclick="closeEmpModal()">Cancel</button>
+      <button class="db-btn fort" onclick="saveEmployee()">Save</button>
     </div>
   </div>
 </div>
@@ -525,8 +475,11 @@ let employeesData = [];
 function switchTab(tab) {
   document.getElementById('view-charges').style.display   = tab === 'charges'   ? '' : 'none';
   document.getElementById('view-personnel').style.display = tab === 'personnel' ? '' : 'none';
-  document.getElementById('tab-charges').classList.toggle('active',   tab === 'charges');
-  document.getElementById('tab-personnel').classList.toggle('active', tab === 'personnel');
+  /* ⚠️ `aria-selected`, PAS UNE CLASSE. Le segmenté partagé se peint sur l'attribut ; garder
+   * `.active` laisserait les deux onglets à l'identique — et l'attribut manquant priverait
+   * aussi les lecteurs d'écran de l'information. */
+  document.getElementById('tab-charges').setAttribute('aria-selected', String(tab === 'charges'));
+  document.getElementById('tab-personnel').setAttribute('aria-selected', String(tab === 'personnel'));
 }
 
 // ── Load ──────────────────────────────────────────────────────────────────
@@ -568,7 +521,7 @@ function toMonthly(amount, freq) {
 function renderCharges() {
   const tbody = document.getElementById('charges-body');
   if (!chargesData.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px;">No costs — click "+ Add"</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--db-muted);padding:32px;">No costs — click "+ Add"</td></tr>`;
     document.getElementById('badge-charges').textContent = '0';
     return;
   }
@@ -581,27 +534,27 @@ function renderCharges() {
   }
   let html = '';
   for (const [cat, items] of Object.entries(byCat)) {
-    html += `<tr style="background:var(--bg-page);">
-      <td colspan="6" style="font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);padding:8px 16px 6px;">${cat}</td>
+    html += `<tr style="background:var(--db-alt);">
+      <td colspan="6" style="font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--db-faint);padding:8px 16px 6px;">${cat}</td>
     </tr>`;
     for (const c of items) {
       const monthly = toMonthly(c.amount, c.frequency);
       const inactive = !c.active ? 'inactive' : '';
       html += `<tr class="${inactive}" data-id="${c.id}">
-        <td>${c.name}${c.notes ? `<span style="color:var(--faint);font-size:11px;margin-left:8px;">${c.notes}</span>` : ''}
+        <td>${c.name}${c.notes ? `<span style="color:var(--db-faint);font-size:11px;margin-left:8px;">${c.notes}</span>` : ''}
           ${histoLigne(c) ? `<div class="histo">${histoLigne(c)}</div>` : ''}</td>
-        <td><span style="color:var(--faint);font-size:12px;">${c.category||''}</span></td>
+        <td><span style="color:var(--db-faint);font-size:12px;">${c.category||''}</span></td>
         <td>${freqBadge(c.frequency)}</td>
-        <td class="right">${fmt(c.amount)}</td>
-        <td class="right" style="font-weight:600;">${c.frequency !== 'monthly' ? fmt(monthly) : '—'}</td>
-        <td class="right" style="white-space:nowrap;">
-          <button class="btn-ghost" onclick="editCharge('${c.id}')" style="margin-right:4px;">Edit</button>
+        <td class="r">${fmt(c.amount)}</td>
+        <td class="r" style="font-weight:600;">${c.frequency !== 'monthly' ? fmt(monthly) : '—'}</td>
+        <td class="r" style="white-space:nowrap;">
+          <button class="db-btn" onclick="editCharge('${c.id}')" style="margin-right:4px;">Edit</button>
           ${arretAVenir(c)
-            ? `<button class="btn-ghost" onclick="annulerArret('charges', '${c.id}')">Cancel stop</button>`
+            ? `<button class="db-btn" onclick="annulerArret('charges', '${c.id}')">Cancel stop</button>`
             : c.valid_to || c.active === false
-            ? `<button class="btn-ghost" onclick="rouvrir('charges', '${c.id}')">Reopen…</button>`
+            ? `<button class="db-btn" onclick="rouvrir('charges', '${c.id}')">Reopen…</button>`
             : `<button class="btn-danger" onclick="deleteCharge('${c.id}')">Stop…</button>`}
-          <button class="btn-ghost effacer" onclick="supprimerDefinitivement('charges', '${c.id}')"
+          <button class="db-btn effacer" onclick="supprimerDefinitivement('charges', '${c.id}')"
                   title="Delete permanently — for a line created by mistake">✕</button>
         </td>
       </tr>`;
@@ -609,10 +562,10 @@ function renderCharges() {
   }
   // Total ligne
   const totalMonthly = chargesData.filter(c=>c.active).reduce((s,c) => s + toMonthly(c.amount, c.frequency), 0);
-  html += `<tr style="background:var(--bg-page);">
-    <td colspan="3" style="font-weight:600;font-size:12px;color:var(--muted);">Total active fixed costs</td>
+  html += `<tr style="background:var(--db-alt);">
+    <td colspan="3" style="font-weight:600;font-size:12px;color:var(--db-muted);">Total active fixed costs</td>
     <td></td>
-    <td class="right" style="font-weight:700;font-size:15px;">${fmt(totalMonthly)}</td>
+    <td class="r" style="font-weight:700;font-size:15px;">${fmt(totalMonthly)}</td>
     <td></td>
   </tr>`;
   tbody.innerHTML = html;
@@ -654,7 +607,7 @@ function calcEmpCost(e) {
 function renderEmployees() {
   const container = document.getElementById('emp-cards');
   if (!employeesData.length) {
-    container.innerHTML = `<div style="text-align:center;color:var(--muted);padding:32px;">No employees — click "+ Add"</div>`;
+    container.innerHTML = `<div style="text-align:center;color:var(--db-muted);padding:32px;">No employees — click "+ Add"</div>`;
     document.getElementById('badge-personnel').textContent = '0';
     return;
   }
@@ -663,8 +616,8 @@ function renderEmployees() {
     const cost = calcEmpCost(e);
     const inactive = !e.active ? 'inactive' : '';
     const tsuInfo = e.tsu_exempt
-      ? `<span style="color:var(--green);font-size:11px;">TSU exempt</span>`
-      : `<span style="font-size:11px;color:var(--faint);">TSU ${fmt(cost.tsu)}/mo</span>`;
+      ? `<span style="color:var(--db-green);font-size:11px;">TSU exempt</span>`
+      : `<span style="font-size:11px;color:var(--db-faint);">TSU ${fmt(cost.tsu)}/mo</span>`;
 
     let detailCells = '';
     if (e.type === 'extra') {
@@ -696,18 +649,18 @@ function renderEmployees() {
         <div style="display:flex;align-items:center;">
           <span class="emp-name">${e.name}</span>
           <span class="badge ${TYPE_BADGES[e.type]||''} emp-type">${TYPE_LABELS[e.type]||e.type}</span>
-          ${e.type === 'part_time' ? `<span style="font-size:12px;color:var(--muted);margin-left:8px;">${e.hours_week}h/wk</span>` : ''}
-          ${e.notes ? `<span style="font-size:11px;color:var(--faint);margin-left:10px;">${e.notes}</span>` : ''}
+          ${e.type === 'part_time' ? `<span style="font-size:12px;color:var(--db-muted);margin-left:8px;">${e.hours_week}h/wk</span>` : ''}
+          ${e.notes ? `<span style="font-size:11px;color:var(--db-faint);margin-left:10px;">${e.notes}</span>` : ''}
           ${histoLigne(e) ? `<span class="histo" style="margin-left:10px;">${histoLigne(e)}</span>` : ''}
         </div>
         <div class="emp-actions">
-          <button class="btn-ghost" onclick="editEmployee('${e.id}')">Edit</button>
+          <button class="db-btn" onclick="editEmployee('${e.id}')">Edit</button>
           ${arretAVenir(e)
-            ? `<button class="btn-ghost" onclick="annulerArret('employees', '${e.id}')">Cancel stop</button>`
+            ? `<button class="db-btn" onclick="annulerArret('employees', '${e.id}')">Cancel stop</button>`
             : e.valid_to || e.active === false
-            ? `<button class="btn-ghost" onclick="rouvrir('employees', '${e.id}')">Reopen…</button>`
+            ? `<button class="db-btn" onclick="rouvrir('employees', '${e.id}')">Reopen…</button>`
             : `<button class="btn-danger" onclick="deleteEmployee('${e.id}')">Stop…</button>`}
-          <button class="btn-ghost effacer" onclick="supprimerDefinitivement('employees', '${e.id}')"
+          <button class="db-btn effacer" onclick="supprimerDefinitivement('employees', '${e.id}')"
                   title="Delete permanently — for a line created by mistake">✕</button>
         </div>
       </div>
@@ -1175,7 +1128,7 @@ function updateEmpPreview() {
   if (type === 'extra') {
     preview.innerHTML = `<div style="font-weight:600;font-size:13px;">Monthly cost — Extra</div>
       <div class="tsu-row" style="margin-top:8px;"><span>Invoice amount</span><span>${fmt(gross)}</span></div>
-      <div class="tsu-row" style="color:var(--faint);font-size:11px;"><span>No employer TSU or 13th/14th</span><span></span></div>`;
+      <div class="tsu-row" style="color:var(--db-faint);font-size:11px;"><span>No employer TSU or 13th/14th</span><span></span></div>`;
     return;
   }
 

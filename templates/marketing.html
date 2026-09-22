@@ -37,7 +37,12 @@
   background:var(--bg-page); border:1px solid var(--border); border-radius: 4px; padding:10px 12px; margin-top:8px;
   word-break:break-word; }
 .mk-enveloppe b { color:var(--text); font-weight:600; }
-.mk-tel { max-width:320px; margin:0 auto; background:#111; border-radius:20px; padding:12px; }
+/* ⚠️ LE CADRE DU TÉLÉPHONE RESTE SOMBRE DANS LES DEUX THÈMES, et c'est voulu : c'est la
+   coque de l'appareil, pas une surface de l'application. Mais `#111` n'était le noir de
+   personne — il ne venait d'aucune palette et ne suivait rien. L'encre du mode sombre est
+   le noir que ce produit emploie. */
+.mk-tel { max-width:320px; margin:0 auto; background:var(--coque-tel);
+  border-radius:20px; padding:12px; }
 .mk-bulle { background:var(--green-soft); color:var(--green); border-radius: 4px 14px 14px 4px; padding:10px 12px;
   font-size:13px; line-height:1.45; word-break:break-word; }
 .mk-cible { display:flex; flex-wrap:wrap; gap:14px; margin-top:4px; }

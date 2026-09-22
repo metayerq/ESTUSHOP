@@ -75,7 +75,7 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
 .badge-rent      { background:var(--cat-4-soft); color:var(--cat-4); }
 .badge-payroll   { background:var(--cat-3-soft); color:var(--cat-3); }
 .badge-admin     { background:var(--cat-2-soft); color:var(--cat-2); }
-.badge-other     { background:var(--cat-6-soft); color:#555; }
+.badge-other     { background:var(--cat-6-soft); color:var(--cat-6); }
 
 .empty { text-align:center; color:var(--muted); padding:40px; font-size:13px; }
 
@@ -393,7 +393,7 @@ function renderCategoryBreakdown(rows, total){
   for (const e of rows) byCat[e.category] = (byCat[e.category] || 0) + Number(e.amount);
   const sorted = Object.entries(byCat).sort((a,b) => b[1] - a[1]);
   const BAR_COLORS = { groceries:'var(--green)', supplier:'var(--cat-1)', works:'var(--cat-5)', rent:'var(--cat-4)',
-                       payroll:'var(--cat-3)', admin:'var(--cat-2)', other:'#777' };
+                       payroll:'var(--cat-3)', admin:'var(--cat-2)', other:'var(--cat-6)' };
   box.innerHTML = `<div class="ins-label" style="margin-bottom:12px;">Breakdown by category</div>` +
     sorted.map(([cat, amt]) => {
       const pct = total ? Math.round(amt / total * 100) : 0;
@@ -403,7 +403,7 @@ function renderCategoryBreakdown(rows, total){
           <span style="color:var(--muted);">${fmt(amt)} · ${pct}%</span>
         </div>
         <div style="height:5px;background:var(--bg-page);border-radius:3px;">
-          <div style="height:5px;border-radius:3px;width:${pct}%;background:${BAR_COLORS[cat]||'#999'};"></div>
+          <div style="height:5px;border-radius:3px;width:${pct}%;background:${BAR_COLORS[cat]||'var(--muted)'};"></div>
         </div>
       </div>`;
     }).join('');

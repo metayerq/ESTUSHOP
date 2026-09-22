@@ -36,8 +36,15 @@ def _charge_la_feuille(nom):
 
 
 def _sans_commentaires(s):
+    """
+    ⚠️ LES TROIS FORMES, DONT CELLE DES FEUILLES DE STYLE. Cinquième fois de cette refonte
+    qu'un détecteur reconnaît sa propre explication : le commentaire qui dit pourquoi `#111` a
+    été remplacé contient `#111`. Les `/* */` d'un bloc `<style>` échappaient au nettoyage — et
+    un contrôle qui punit le fait de s'expliquer apprend à ne plus s'expliquer.
+    """
     s = re.sub(r"<!--.*?-->", " ", s, flags=re.S)
-    return re.sub(r"\{#.*?#\}", " ", s, flags=re.S)
+    s = re.sub(r"\{#.*?#\}", " ", s, flags=re.S)
+    return re.sub(r"/\*.*?\*/", " ", s, flags=re.S)
 
 
 @pytest.mark.parametrize("nom", PAGES)
@@ -64,7 +71,18 @@ def test_aucune_couleur_en_dur(nom):
         # système du téléphone la lit AVANT tout CSS.
         if "theme-color" in l:
             continue
-        for m in re.finditer(r"#[0-9a-fA-F]{6}\b", l):
+        # ⚠️ LA FORME COURTE COMPTE AUSSI. Le motif ne connaissait que six chiffres : `#888`,
+        # `#555`, `#777` passaient sans être vus — et ce sont justement les gris qu'on écrit à
+        # la main sans y penser, ceux qui ne suivent aucun thème.
+        #
+        # ⚠️ DEUX EXCEPTIONS, TOUTES DEUX ÉPROUVÉES AILLEURS. `#fff` est légitime sur l'accent,
+        # qui reste sombre dans les deux thèmes — et le cas dangereux, du blanc sur une couleur
+        # qui s'inverse, a son propre contrôle. Et `#acf-price` est un SÉLECTEUR D'ID, pas une
+        # couleur : sans le garde-fou, le détecteur trouvait treize couleurs à COGS dont aucune
+        # n'en était une.
+        for m in re.finditer(r"#[0-9a-fA-F]{3}(?![0-9a-fA-F_-])|#[0-9a-fA-F]{6}\b", l):
+            if m.group(0).lower() in ("#fff",):
+                continue
             fautifs.append(f"{nom}:{i} {m.group(0)}")
     assert not fautifs, fautifs[:10]
 
@@ -267,3 +285,48 @@ def test_pas_de_blanc_pose_sur_une_couleur_qui_sinverse(nom):
             if fond and encre and fond.group(1) in ("--text", "--db-ink", "--db-ink-2"):
                 fautifs.append(regle.strip()[:90])
     assert not fautifs, fautifs
+
+
+# ── Le balisage se referme ───────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("nom", PAGES)
+def test_les_conteneurs_se_referment(nom):
+    """
+    ⚠️ DEUX `<div>` N'ÉTAIENT JAMAIS FERMÉS DANS `charges.html`, et personne ne l'a vu parce que
+    le navigateur répare. La cellule « Notes » des deux modales restait ouverte : le bloc de
+    versionnement se retrouvait NESTÉ DEDANS au lieu d'être un élément de la grille, et le
+    `</div>` censé fermer la grille fermait autre chose.
+
+    ⚠️ CE GENRE DE DÉFAUT NE CASSE RIEN, IL DÉPLACE. La page s'affiche, presque juste, et le
+    jour où une règle de grille change, un bloc part où personne ne l'attend — sans qu'aucune
+    ligne récente n'explique pourquoi.
+    """
+    # ⚠️ UN PARTIEL EST UN FRAGMENT, PAS UN DOCUMENT. `_pied.html` referme ce que `_rail.html`
+    # ouvre : les compter séparément reviendrait à exiger qu'un demi-mot soit un mot. Leur
+    # équilibre À DEUX est vérifié juste en dessous.
+    if nom.startswith("_"):
+        pytest.skip("partiel — son équilibre se compte avec sa paire")
+    s = _sans_commentaires(_lire(nom))
+    # Les gabarits Jinja ouvrent des balises dans des branches : on ne compte que les pages
+    # dont le balisage est inconditionnel.
+    if re.search(r"\{%\s*(if|for)\b", s):
+        pytest.skip("balisage conditionnel — l'équilibre ne se compte pas statiquement")
+    for balise in ("div", "table", "tbody", "thead", "section", "details", "nav", "main"):
+        ouvrants = len(re.findall(r"<" + balise + r"[\s>]", s))
+        fermants = len(re.findall(r"</" + balise + r"\s*>", s))
+        assert ouvrants == fermants, (
+            f"{nom} : {ouvrants} <{balise}> pour {fermants} </{balise}>")
+
+
+def test_la_coquille_souvre_et_se_referme():
+    """
+    ⚠️ `_rail.html` OUVRE LA COQUILLE, `_pied.html` LA REFERME. Deux partiels plutôt qu'un
+    parce que le contenu de chaque page va au milieu. Rien ne garantit qu'ils restent d'accord :
+    une balise ajoutée d'un côté laisse toutes les pages du produit mal fermées d'un coup, et
+    le navigateur répare en silence.
+    """
+    ensemble = _sans_commentaires(_lire("_rail.html") + "\n" + _lire("_pied.html"))
+    for balise in ("div", "nav", "aside", "main"):
+        ouvrants = len(re.findall(r"<" + balise + r"[\s>]", ensemble))
+        fermants = len(re.findall(r"</" + balise + r"\s*>", ensemble))
+        assert ouvrants == fermants, f"{balise} : {ouvrants} ouverts, {fermants} fermés"
