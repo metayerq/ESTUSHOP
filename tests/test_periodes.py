@@ -264,3 +264,51 @@ def test_la_charge_utile_annonce_la_periode():
     # close fait lire un recul tous les matins et une reprise tous les soirs.
     j = js.index("function renderPeriode(")
     assert "en_cours" in js[j:js.index("\n}", j)]
+
+
+# ── Le dénominateur affiché est celui du chiffre ─────────────────────────────────────────────
+
+def test_lecran_decrit_la_fenetre_reellement_calculee():
+    """
+    ⚠️ UN JEUDI, « SEMAINE EN COURS » ANNONÇAIT 2 SERVICES ET CALCULAIT SUR 1. La journée en
+    cours est retirée de l'économie — une recette partielle face à des charges entières bascule
+    l'EBITDA dans le rouge sans raison — mais la ligne de période décrivait encore la fenêtre
+    DEMANDÉE. Le chiffre était juste, sa légende doublait sa base.
+
+    ⚠️ ET C'EST LA PIRE FORME D'ERREUR SUR CETTE PAGE : les deux nombres sont vrais, seul leur
+    rapprochement ment. Rien ne cloche à la lecture.
+    """
+    import os
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "app.py"), encoding="utf-8").read()
+    assert 'result["economics"]["periode"] = _per.decrire(eco_from, eco_to, today_real)' in src, \
+        "la fenêtre du calcul n'est pas décrite"
+    js = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "static", "dashboard.js"), encoding="utf-8").read()
+    i = js.index("function renderPeriode(")
+    bloc = js[i:js.index("\n}", i)]
+    assert "eco.periode" in bloc, "l'écran lit encore la période demandée"
+    # ⚠️ ET IL LE DIT. Retirer un service du calcul sans l'annoncer ferait chercher pourquoi le
+    # total d'hier ne retombe pas sur celui d'aujourd'hui.
+    assert "excludes_today" in bloc and "exclue" in bloc
+
+
+def test_les_deux_comptes_de_lecran_viennent_de_la_meme_fenetre():
+    """
+    ⚠️ LA RÉPONSE DIT « N SERVICES » ET LA LIGNE DE PÉRIODE AUSSI. S'ils venaient de deux
+    sources, on lirait « 420 € sur 5 services » juste au-dessus de « 4 services » — et on
+    passerait la journée à chercher lequel croire.
+    """
+    import os
+    js = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "static", "dashboard.js"), encoding="utf-8").read()
+    import re
+    i = js.index("function renderReponse(")
+    bloc = js[i:js.index("\n}\n", i)]
+    # ⚠️ SANS LES COMMENTAIRES. Le mot « services » vit aussi dans l'explication au-dessus de la
+    # ligne : un mutant qui écrivait « jour » à l'écran survivait, puisque le mot restait dans
+    # le fichier. Chercher dans le commentaire revient à vérifier qu'on a eu l'intention.
+    code = re.sub(r"/\*.*?\*/", " ", bloc, flags=re.S)
+    code = re.sub(r"//[^\n]*", " ", code)
+    assert "eco.open_days" in code, "la réponse ne compte pas les jours de la fenêtre calculée"
+    assert "service" in code, "la réponse ne dit pas l'unité"

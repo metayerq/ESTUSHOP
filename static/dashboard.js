@@ -264,7 +264,10 @@ function renderReponse(d) {
   const bouts = [];
   if (eco.ca_ttc != null) bouts.push(`<b>${fmt(eco.ca_ttc)}</b> encaissés`);
   if (eco.seuil_ca_ttc != null) bouts.push(`point mort <b>${fmt(eco.seuil_ca_ttc)}</b>`);
-  if (jours) bouts.push(`<b>${jours}</b> jour${jours > 1 ? 's' : ''} ouvert${jours > 1 ? 's' : ''}`);
+  /* ⚠️ LE MÊME COMPTE QUE LA LIGNE DE PÉRIODE. `open_days` vient de `daily_economics`, qui
+   * reçoit la fenêtre RÉELLEMENT calculée : les deux sont donc d'accord par construction. Les
+   * laisser diverger ferait lire « 420 € sur 5 services » à côté de « 4 services ». */
+  if (jours) bouts.push(`<b>${jours}</b> service${jours > 1 ? 's' : ''}`);
   E('db-sub').innerHTML = bouts.join(' · ');
 
   /* ⚠️ CE QUI EST ESTIMÉ SE DIT À CÔTÉ DU CHIFFRE. Sous la couverture COGS complète, la marge
@@ -450,7 +453,7 @@ function render(d) {
   const ecoTop = d.economics;
   const ebitdaOpenN = ecoTop && ecoTop.open_days;
   document.getElementById('kpi-ebitda-label').textContent =
-    'Est. EBITDA' + (d.is_single_day ? '' : (ebitdaOpenN ? ` · ${ebitdaOpenN} open days` : ` · ${d.n_days} days`))
+    'Résultat' + (d.is_single_day ? '' : (ebitdaOpenN ? ` · ${ebitdaOpenN} services` : ` · ${d.n_days} jours`))
     + (ecoTop && ecoTop.excludes_today ? ' · hors journée en cours' : '');
   if (ecoTop && ecoTop.ebitda_ht != null) {
     ebitdaEl.textContent = fmt(ecoTop.ebitda_ht);
@@ -489,7 +492,7 @@ function render(d) {
   // jours calendaires — sinon "Since opening · 55 days" alors qu'on a ouvert 42j.
   const openN = (d.economics && d.economics.open_days) || null;
   const periodSuffix = d.is_single_day ? '(jour)'
-    : (openN ? `· ${openN} open days` : `· ${d.n_days} days`)
+    : (openN ? `· ${openN} services` : `· ${d.n_days} jours`)
       + (d.economics && d.economics.excludes_today ? ' · hors journée en cours' : '');
   document.getElementById('eco-label').textContent      = `Economics ${periodSuffix}`;
   document.getElementById('eco-charges-label').textContent = `Charges ${periodSuffix}`;
@@ -518,7 +521,7 @@ function render(d) {
       // puis appliquée au reste. Le dire, plutôt que d'afficher un pourcentage de couverture que
       // le lecteur doit interpréter lui-même.
       const covStr = cov == null ? ''
-        : est ? `<span style="color:${covColor}">measured on ${cov}% of sales, applied to the rest</span>`
+        : est ? `<span style="color:${covColor}">mesurée sur ${cov} % des ventes, appliquée au reste</span>`
               : `<span style="color:${covColor}">couverture des coûts ${cov} %</span>`;
       document.getElementById('eco-marge-pct').innerHTML =
         `${eco.marge_brute_ht_pct}%${est ? ' <span style="color:#b07d00">est.</span>' : ''}` +
@@ -561,8 +564,8 @@ function render(d) {
     chargesEl.textContent = fmt(eco.cout_total_periode ?? eco.cout_total_jour);
     const openDays = eco.open_days || d.n_days;
     const chargesSub = d.is_single_day
-      ? `Fixed ${fmt(eco.cout_fixe_periode ?? eco.cout_fixe_jour)} · Staff ${fmt(eco.cout_perso_periode ?? eco.cout_perso_jour)}`
-      : `${fmt(eco.cout_fixe_periode ?? eco.cout_fixe_jour)} fixed · ${fmt(eco.cout_perso_periode ?? eco.cout_perso_jour)} staff · <span style="color:var(--faint)">${openDays} open days × ${fmt(eco.cout_jour ?? (eco.cout_total_jour / openDays))}/day</span>`;
+      ? `Fixes ${fmt(eco.cout_fixe_periode ?? eco.cout_fixe_jour)} · Personnel ${fmt(eco.cout_perso_periode ?? eco.cout_perso_jour)}`
+      : `${fmt(eco.cout_fixe_periode ?? eco.cout_fixe_jour)} de fixes · ${fmt(eco.cout_perso_periode ?? eco.cout_perso_jour)} de personnel · <span style="color:var(--faint)">${openDays} services × ${fmt(eco.cout_jour ?? (eco.cout_total_jour / openDays))}/jour</span>`;
     document.getElementById('eco-charges-sub').innerHTML = chargesSub;
 
     // Prime cost — COGS + labour, sur la période (déplacé des cartes Insights)
@@ -736,12 +739,12 @@ function render(d) {
   const topSection = document.getElementById('top-products-section');
   if (topSection) {
     topSection.style.display = '';
-    const periodLbl = d.is_single_day ? (d.is_today ? 'today' : 'ce jour') : (d.period_label?.toLowerCase() || 'the period');
+    const periodLbl = d.is_single_day ? (d.is_today ? 'aujourd’hui' : 'ce jour') : (d.period_label?.toLowerCase() || 'la période');
     document.getElementById('products-section-label').textContent = `Ce qui s'est vendu — ${periodLbl}`;
   }
   if (!d.has_items) {
     document.getElementById('products-body').innerHTML =
-      '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Item detail not available for this period.</td></tr>';
+      '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px;">Le d&eacute;tail par article n&rsquo;existe pas sur cette p&eacute;riode.</td></tr>';
   } else if (d.products) {
     const maxQty = d.products.length ? d.products[0].qty : 1;
     const cntEl = document.getElementById('products-count');
@@ -816,13 +819,23 @@ const WD_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
  */
 function renderPeriode(d) {
   const zone = document.getElementById('periode-dit');
-  const p = d && d.periode;
+  /* ⚠️ ON DÉCRIT LA FENÊTRE DU CALCUL, PAS CELLE QU'ON A DEMANDÉE. Quand la journée en cours
+   * est retirée de l'économie — une recette partielle face à des charges entières bascule
+   * l'EBITDA dans le rouge sans raison — le résultat porte sur une fenêtre plus courte. Un
+   * jeudi, « Semaine en cours » annonçait 2 services et calculait sur 1 : le chiffre était
+   * juste, sa légende doublait sa base. */
+  const eco = d && d.economics;
+  const p = (eco && eco.periode) || (d && d.periode);
   if (!p) { zone.innerHTML = ''; return; }
   const bouts = [];
   const n = p.jours_ouverts;
   bouts.push(`<b>${n}</b> service${n > 1 ? 's' : ''} sur ${p.jours_calendaires} jour`
              + (p.jours_calendaires > 1 ? 's' : ''));
-  if (p.en_cours) bouts.push('<span class="att">période en cours, pas terminée</span>');
+  if (eco && eco.excludes_today) {
+    bouts.push('<span class="att">journée en cours exclue du calcul</span>');
+  } else if (p.en_cours) {
+    bouts.push('<span class="att">période en cours, pas terminée</span>');
+  }
   if (d.comp_label) bouts.push(d.comp_label);
   else bouts.push('<span class="att">pas de période comparable</span>');
   zone.innerHTML = bouts.join(' · ');
@@ -885,7 +898,7 @@ function renderInsights(d) {
       ? `<strong>${rush.top_share}%</strong> de l'encaissé sur les 3 heures les plus chargées (${rush.hours.map(h => h + 'h').join(', ')})`
       : 'plus foncé = plus encaissé · heures 8–16';
     document.getElementById('ins-heatmap').innerHTML = `
-      <div class="ins-label">Rush heatmap — revenue by hour (28 days)</div>
+      <div class="ins-label">Carte des pics — encaissé par heure (28 jours)</div>
       ${html}
       <div class="ins-sub">${rushLine}</div>`;
   } else {
@@ -950,7 +963,7 @@ function renderInsights(d) {
     document.getElementById('ins-calendar').innerHTML = `
       <div class="ins-label">Calendrier du point mort</div>
       <div class="cal-grid">${cal}</div>
-      <div class="ins-sub">green = above break-even · ${greens}/${opens.length} open days</div>`;
+      <div class="ins-sub">vert = au-dessus du point mort · ${greens}/${opens.length} services</div>`;
   } else {
     document.getElementById('ins-month').innerHTML = `<div class="ins-label">Month EBITDA</div><div class="ins-sub">Pas encore assez de données.</div>`;
     document.getElementById('ins-calendar').innerHTML = `<div class="ins-label">Calendrier du point mort</div><div class="ins-sub">Pas encore assez de données.</div>`;
@@ -962,7 +975,7 @@ function renderInsights(d) {
     document.getElementById('ins-basket').innerHTML = `
       <div class="ins-label">Articles par ticket (${d.period_label.toLowerCase()})</div>
       <div class="ins-big">${bk.items_per_ticket.toFixed(2)}</div>
-      <div class="ins-sub">${bk.attach_pct}% of tickets have 2+ items — the cheapest growth lever</div>`;
+      <div class="ins-sub">${bk.attach_pct} % des tickets portent 2 articles ou plus — le levier le moins cher</div>`;
   } else {
     document.getElementById('ins-basket').innerHTML = `<div class="ins-label">Articles par ticket</div><div class="ins-sub">Pas encore assez de données.</div>`;
   }
@@ -973,7 +986,7 @@ function renderInsights(d) {
     document.getElementById('ins-seat').innerHTML = `
       <div class="ins-label">Encaissé par place / open day</div>
       <div class="ins-big">${fmt(st.per_seat_day)}</div>
-      <div class="ins-sub">${st.seats} seats (${st.terrace} terrace + ${st.inside} inside) · ${fmt(st.per_seat_period)}/seat over the period</div>`;
+      <div class="ins-sub">${st.seats} places (${st.terrace} en terrasse + ${st.inside} en salle) · ${fmt(st.per_seat_period)}/place sur la période</div>`;
   } else {
     document.getElementById('ins-seat').innerHTML = `<div class="ins-label">Encaissé par place</div><div class="ins-sub">Pas encore assez de données.</div>`;
   }
@@ -1015,7 +1028,7 @@ function renderHourlyDelta(hours, vals, prevByHour, prevLabel, h) {
       const tip = (now || pv)
         ? `${hr}h · ${fmt(now)} vs ${fmt(pv)} — ${dv >= 0 ? '+' : ''}${fmt(dv)}`
           + (pct !== null ? ` (${dv >= 0 ? '+' : ''}${pct}%)` : '')
-        : `${hr}h · no sales`;
+        : `${hr}h · aucune vente`;
       const bar = px > 0
         ? `<div class="dfill ${dv >= 0 ? 'pos' : 'neg'}" style="height:${Math.max(px, 3)}px;"></div>`
         : '';
@@ -1274,7 +1287,7 @@ async function saveProductPopup() {
     errEl.textContent = 'Erreur : ' + e.message;
     errEl.style.display = '';
   } finally {
-    btn.disabled = false; btn.textContent = 'Save';
+    btn.disabled = false; btn.textContent = 'Enregistrer';
   }
 }
 

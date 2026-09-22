@@ -1164,6 +1164,12 @@ def api_data():
                         revenue_deduct=(eco_pop["chef_ttc"], eco_pop["chef_ht"])),
         eco_from.isoformat(), eco_to.isoformat(), popup_com=eco_pop["com_ht"])
     result["economics"]["excludes_today"] = excludes_today
+    # ⚠️ LE DÉNOMINATEUR AFFICHÉ DOIT ÊTRE CELUI DU CHIFFRE. `periode` décrit la période
+    # DEMANDÉE ; quand la journée en cours est retirée du calcul — parce qu'une recette partielle
+    # face à des charges entières bascule l'EBITDA dans le rouge sans raison — le résultat porte
+    # sur une fenêtre plus courte. Un jeudi, « Semaine en cours » annonçait 2 services et
+    # calculait sur 1 : le chiffre était juste, sa légende doublait sa base.
+    result["economics"]["periode"] = _per.decrire(eco_from, eco_to, today_real)
     # Le bouton n'a de sens que sur une période multi-jours contenant aujourd'hui.
     result["economics"]["today_toggleable"] = (
         not is_single and from_date <= today_real <= to_date and from_date < today_real)
