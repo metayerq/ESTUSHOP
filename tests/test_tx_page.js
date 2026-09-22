@@ -27,7 +27,7 @@ const tpl = fs.readFileSync(TPL_PATH, 'utf8');
 const NOMS = [
   'fmtTx', 'fmtEur', 'fmtPct', 'fmtDay', 'fmtLongDay', 'fmtRange', 'fmtHour',
   'reasonLabel', 'joinReasons', 'deltaModel', 'reliableWindows', 'pickWindows',
-  'cappedModel', 'answerModel', 'sparkline', 'sparkSvg',
+  'cappedModel', 'answerModel',
   'dailyModel', 'windowStep', 'hourlyModel', 'weekdayRows',
 ];
 
@@ -55,7 +55,7 @@ const M = new Function(
 
 const {
   fmtTx, fmtEur, fmtPct, reasonLabel, joinReasons, deltaModel, reliableWindows,
-  pickWindows, cappedModel, answerModel, sparkline, sparkSvg,
+  pickWindows, cappedModel, answerModel,
   dailyModel, hourlyModel, weekdayRows,
 } = M;
 
@@ -325,7 +325,6 @@ console.log('\n— rien reçu : « — » partout, aucune exception');
   check('et il nomme la cause',
     a.note === 'no 7-day window has enough full open days yet', a.note);
 
-  check('aucune sparkline n’est dessinée sur du vide', sparkSvg([], 92, 26) === '');
 
   const d = dailyModel([], []);
   check('aucun jour ⇒ aucune barre, et yMax n’est pas un maximum inventé',
@@ -344,9 +343,9 @@ console.log('\n— une médiane de trois jours n’est pas une journée typique'
     }),
   ]);
   // ⚠️ LA TABLE DES FENÊTRES A DISPARU DE L'ÉCRAN ; LE REFUS, LUI, RESTE. Une médiane d'un
-  // seul jour ne doit entrer ni dans une comparaison, ni dans une sparkline, ni dans le verdict
+  // seul jour ne doit entrer ni dans une comparaison, ni dans un palier, ni dans le verdict
   // du bandeau — c'est là que le danger vivait, pas dans la table qui l'exposait.
-  check('une fenêtre fragile n’entre dans aucune sparkline ni aucun écart',
+  check('une fenêtre fragile n’entre dans aucun palier ni aucun écart',
     reliableWindows(wins).length === 5);
   check('et les raisons cumulées se déplient, jointes par « · »',
     reasonLabel(joinReasons('truncated', 'too-few-days'))
@@ -402,50 +401,17 @@ console.log('\n— une médiane de trois jours n’est pas une journée typique'
 // d'objet : il ne reste qu'un chiffre, et il nomme sa paire de fenêtres lui-même (§1).
 
 // ══ 10. SPARKLINE — pas de tendance, pas d'interpolation, pas de plancher ══
-console.log('\n— la sparkline est une liste de paliers, pas une pente');
-{
-  const s = sparkline([25, 37, 26, 28, 26], 92, 26);
-  check('cinq points mesurés ⇒ une seule polyligne',
-    s.ok === true && s.segments.length === 1 && s.segments[0].length === 5,
-    JSON.stringify([s.segments.length, s.segments[0] && s.segments[0].length]));
-  check('les bornes sont les vraies valeurs, pas 0 et un arrondi supérieur',
-    s.min === 25 && s.max === 37, JSON.stringify([s.min, s.max]));
-  check('le maximum est en haut, le minimum en bas',
-    s.segments[0][1].y < s.segments[0][0].y);
-}
-{
-  const s = sparkline([25, null, 26, 28, 26], 92, 26);
-  check('un trou COUPE la ligne — on n’interpole pas par-dessus une absence',
-    s.segments.length === 2 && s.gaps === 1,
-    JSON.stringify([s.segments.length, s.gaps]));
-  check('le point resté seul est isolé pour être tracé quand même',
-    s.isolated.length === 1 && s.isolated[0].x === 3, JSON.stringify(s.isolated));
-  const svg = sparkSvg([25, null, 26, 28, 26], 92, 26);
-  check('le SVG trace une polyligne pour le groupe restant',
-    (svg.match(/<polyline/g) || []).length === 1, svg);
-  // Une mesure qui n'a pas de voisine ne DISPARAÎT pas du dessin : elle se voit,
-  // en creux, et l'absence de trait dit qu'aucune ligne ne la rejoint.
-  check('et un cercle creux pour la mesure restée seule',
-    /circle[^>]*fill="none"/.test(svg), svg);
-}
-{
-  const s = sparkline([26, 26, 26], 92, 26);
-  check('une série plate se dessine au MILIEU, pas collée au plancher',
-    s.flat === true && s.segments[0].every(p => p.y === 13),
-    JSON.stringify(s.segments[0]));
-}
-{
-  check('un seul point mesuré ne fait pas une ligne',
-    sparkline([26], 92, 26).ok === false && sparkSvg([26], 92, 26) === '');
-  check('une série vide non plus',
-    sparkline([], 92, 26).ok === false && sparkline([null, null], 92, 26).ok === false);
-}
-
-// ⚠️ LE BANDEAU DE PÉRIMÈTRE A DISPARU DU HAUT DE PAGE, ET C'EST UN ARBITRAGE À DÉFENDRE.
-// L'exclusion de juin reste écrite — dans le bloc replié « Ce que cette page ne peut pas dire »,
-// avec sa date et sa raison. Elle occupait un encart permanent au-dessus du premier chiffre pour
-// une décision prise une fois, il y a trois mois, et qui ne changera plus : elle se relit, elle
-// ne se surveille pas. Le gabarit est vérifié en §15.
+// ══ LA SPARKLINE — retirée le 22/09/2026 ════════════════════════════════════
+// Onze contrôles vivaient ici : la pente refusée sur un point, le trou qui coupe la
+// ligne plutôt que de l'interpoler, la série plate dessinée au milieu et non collée au
+// plancher. Ils étaient justes, et ils décrivaient un dessin que la page ne fait plus
+// depuis que les quatre cellules KPI sont parties.
+//
+// ⚠️ DU CODE MORT SOUS TEST SE LIT COMME DU CODE EN SERVICE. C'est pire que du code mort
+// nu : la suite verte affirme que ça marche, ce qui est vrai et sans objet. On hésite à
+// y toucher, on le maintient, on l'adapte aux refontes — pour un dessin qui n'apparaît
+// nulle part. Si la sparkline revient, elle reviendra avec la cellule qui la porte, et
+// ses contrôles reviendront avec elle.
 
 // ══ 12. JOURS DE SEMAINE ═══════════════════════════════════════════════════
 console.log('\n— le n vit à côté de chaque médiane');

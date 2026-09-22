@@ -187,7 +187,7 @@ function deltaModel(cur, prev) {
 }
 
 // ── Les fenêtres fiables, de la plus ancienne à la plus récente ───────────────
-// Une fenêtre non fiable n'entre dans AUCUNE comparaison ni sparkline : sa médiane
+// Une fenêtre non fiable n'entre dans AUCUNE comparaison ni aucun palier : sa médiane
 // porte trop peu de jours pleins pour se lire comme une journée typique, et elle
 // serait indiscernable des autres une fois dessinée.
 
@@ -294,7 +294,7 @@ function cappedModel(windows) {
 //   b) l'érosion — le CA/personne de la DERNIÈRE fenêtre fiable contre celui de la
 //      PREMIÈRE. Deux points nommés, datés, avec leurs n. Ce n'est pas une pente :
 //      rien n'est ajusté, rien n'est extrapolé, et les fenêtres du milieu sont
-//      visibles juste en dessous dans la sparkline et le graphique.
+//      visibles juste en dessous, dans les paliers du graphique.
 
 function answerModel(payload) {
   const p = (payload && typeof payload === 'object') ? payload : {};
@@ -388,121 +388,20 @@ function answerModel(payload) {
   return out;
 }
 
-// ── 2. Cellules KPI ───────────────────────────────────────────────────────────
-// Quatre mesures de la MÊME paire de fenêtres. Chacune : sa valeur, son écart en
-// pastille, et une sparkline sur TOUTES les fenêtres fiables — la sparkline
-// n'est pas une tendance, c'est la suite des paliers déjà tracés plus bas.
+// ── 2. Les cellules KPI, et leurs sparklines ──────────────────────────────────
 //
-// ⚠️ `ca_per_cover` n'est PAS `ca_median / covers_median`. C'est un ratio calculé
-// sur la fenêtre entière côté serveur. Diviser deux médianes ne donnerait la médiane
-// de rien, et le lecteur qui divise les deux colonnes du tableau ne retombera pas
-// sur ce chiffre — la page le lui dit plutôt que de le laisser croire à une erreur.
-
-// ⚠️ LES RÉSERVES SONT ÉCRITES, PAS SURVOLÉES. La première version posait ces
-// phrases dans un `data-tip`, comme les cellules du dashboard. Mais le tooltip
-// partagé `[data-tip]` est implémenté dans static/dashboard.js, que cette page NE
-// CHARGE PAS : les quatre réserves n'auraient existé nulle part, et style.css aurait
-// quand même mis un curseur « help » promettant une explication qui ne venait
-// jamais. Elles sont donc du texte visible. C'est de toute façon la bonne place :
-// « estimé, plafond 8 » n'est pas un détail à découvrir au survol.
-
-
-// ── Sparkline ─────────────────────────────────────────────────────────────────
-// Rendue en SVG pur, sans Chart.js : quatre canvas de 90×26 px pour quatre suites
-// de cinq points coûteraient plus cher que la page entière.
+// ⚠️ ELLES SONT PARTIES À LA SIMPLIFICATION DU 21/09/2026, ET LEUR CODE ÉTAIT RESTÉ.
+// Quatre cellules, chacune avec sa valeur, son écart et une sparkline SVG sur toutes
+// les fenêtres fiables. Le rendu a disparu avec les cellules ; `sparkline` et
+// `sparkSvg` sont restées, pures, testées, et appelées par personne.
 //
-// Trois refus explicites :
-//   · une série de moins de deux points mesurés ne donne pas de ligne (un point
-//     n'a pas de direction, et le dessiner en tracerait une),
-//   · un trou (fenêtre sans mesure) COUPE la ligne — pas d'interpolation par-dessus
-//     une absence,
-//   · une série plate se dessine au MILIEU de la boîte, pas collée en bas : min=max
-//     n'est pas « zéro », et coller la ligne au plancher le laisserait croire.
-
-function sparkline(values, w, h) {
-  const src = Array.isArray(values) ? values : [];
-  const width = (typeof w === 'number' && w > 0) ? w : 92;
-  const height = (typeof h === 'number' && h > 0) ? h : 26;
-  const out = {
-    ok: false, w: width, h: height, segments: [], last: null,
-    min: null, max: null, n: 0, gaps: 0, flat: false,
-  };
-  const nums = [];
-  for (let i = 0; i < src.length; i++) {
-    const v = src[i];
-    if (typeof v === 'number' && isFinite(v)) nums.push(v);
-    else out.gaps++;
-  }
-  out.n = nums.length;
-  if (nums.length < 2) return out;
-
-  let min = nums[0], max = nums[0];
-  for (let i = 1; i < nums.length; i++) {
-    if (nums[i] < min) min = nums[i];
-    if (nums[i] > max) max = nums[i];
-  }
-  out.min = min; out.max = max;
-  out.flat = (max === min);
-
-  const pad = 3;
-  const span = max - min;
-  const px = function (i) {
-    if (src.length < 2) return width / 2;
-    return Math.round((pad + i * (width - 2 * pad) / (src.length - 1)) * 10) / 10;
-  };
-  const py = function (v) {
-    if (span <= 0) return Math.round(height / 2 * 10) / 10;
-    return Math.round(((height - pad) - (v - min) / span * (height - 2 * pad)) * 10) / 10;
-  };
-
-  let seg = [];
-  let last = null;
-  for (let i = 0; i < src.length; i++) {
-    const v = src[i];
-    if (typeof v === 'number' && isFinite(v)) {
-      const pt = { x: px(i), y: py(v) };
-      seg.push(pt);
-      last = pt;
-    } else if (seg.length) {
-      out.segments.push(seg);
-      seg = [];
-    }
-  }
-  if (seg.length) out.segments.push(seg);
-  // Un segment d'un seul point n'est pas une ligne — mais c'est une MESURE, et une
-  // mesure ne disparaît pas du dessin. Il est isolé ici pour être tracé en point.
-  out.isolated = out.segments.filter(function (s) { return s.length === 1; })
-                             .map(function (s) { return s[0]; });
-  out.last = last;
-  out.ok = out.segments.some(function (s) { return s.length >= 2; });
-  return out;
-}
-
-// Le SVG est construit ici (fonction pure, testable) et non dans le rendu : c'est
-// le seul endroit où la géométrie et le balisage doivent rester d'accord.
-function sparkSvg(values, w, h) {
-  const m = sparkline(values, w, h);
-  if (!m.ok) return '';
-  const polys = m.segments
-    .filter(function (s) { return s.length >= 2; })
-    .map(function (s) {
-      return '<polyline fill="none" stroke="currentColor" stroke-width="1.5" '
-        + 'stroke-linecap="round" stroke-linejoin="round" points="'
-        + s.map(function (pt) { return pt.x + ',' + pt.y; }).join(' ') + '"/>';
-    }).join('');
-  // Les points isolés (une fenêtre mesurée entre deux fenêtres qui ne le sont pas)
-  // sont tracés en creux : ils existent, et on voit qu'aucune ligne ne les rejoint.
-  const lone = (m.isolated || []).map(function (pt) {
-    return '<circle cx="' + pt.x + '" cy="' + pt.y + '" r="1.8" fill="none" '
-      + 'stroke="currentColor" stroke-width="1.2"/>';
-  }).join('');
-  const dot = m.last
-    ? '<circle cx="' + m.last.x + '" cy="' + m.last.y + '" r="2" fill="currentColor"/>'
-    : '';
-  return '<svg class="tx-spark" viewBox="0 0 ' + m.w + ' ' + m.h + '" width="' + m.w
-    + '" height="' + m.h + '" aria-hidden="true" focusable="false">'
-    + polys + lone + dot + '</svg>';
-}
+// ⚠️ DU CODE MORT SOUS TEST EST PIRE QUE DU CODE MORT. Les tests verts attestaient
+// qu'il fonctionnait, ce qui est vrai et sans objet : ils décrivaient le comportement
+// d'un dessin que la page ne fait plus. On relit ça comme une fonctionnalité en
+// service, et la feuille commune portait encore `.tx-spark` pour la peindre.
+//
+// Si la sparkline revient un jour, elle reviendra avec la cellule qui la porte —
+// pas avant, et pas toute seule.
 
 // ── 3a. Graphique du haut — l'affluence ───────────────────────────────────────
 // Une barre par jour PRÉSENT dans le payload. Un jour fermé n'a pas de barre : il
