@@ -121,34 +121,12 @@
 #}
 <div class="page db">
 
-  <!-- Header -->
-  <div class="header">
-    <div>
-      <div class="header-title">Estudantina</div>
-      <div class="header-sub" id="subtitle">Alcântara — chargement…</div>
-    </div>
-    <div style="display:flex;align-items:center;gap:8px;">
-      <div class="updated" id="updated-at" style="display:none;"></div>
-      <!-- Flux introduit un mode sombre. Il suit l'OS par défaut, mais ce bouton en fait un
-           choix : basculer d'identité sans laisser la main serait une décision imposée. -->
-      <button class="btn-refresh" id="theme-toggle" onclick="cycleTheme()"
-              title="Thème : système / clair / sombre">◐</button>
-      <button class="btn-refresh" onclick="loadData(true)" title="Refresh (bypass cache)">↻</button>
-      <a href="/logout" title="Log out" style="font-size:12px;color:var(--faint);text-decoration:none;padding:5px 8px;">⎋</a>
-    </div>
-  </div>
-
-  <!-- Overview / Cashflow -->
-  {% if role != 'investor' %}
   {#
-    ⚠️ LES DEUX ONGLETS « OVERVIEW / CASHFLOW » ONT DISPARU AVEC LA SECONDE VUE. La trésorerie
-    a sa page et son entrée de menu : la garder cachée derrière un onglet d'une autre page la
-    rendait introuvable pour qui ne savait pas déjà qu'elle existait — et elle ne partage rien
-    avec le tableau de bord, ni période, ni source, ni question.
+    ⚠️ L'EN-TÊTE « ESTUDANTINA / ALCÂNTARA » EST PARTI. Il occupait la première ligne de
+    l'écran pour dire où l'on est — ce que le rail de gauche dit déjà, en permanence. Ses trois
+    boutons (thème, rechargement, sortie) rejoignent la barre de période : la même ligne, le
+    même geste, et une hauteur d'écran rendue au contenu.
   #}
-  {% endif %}
-
-
   <!--
     ⚠️ LE GRAPHIQUE MÈNE, LES CHIFFRES SUIVENT. La page ouvrait sur des nombres qu'il fallait
     comparer de tête ; une courbe répond à « où on en va » avant qu'on ait lu quoi que ce soit.
@@ -159,6 +137,7 @@
   -->
   <div class="db-head">
     <h2 class="db-title" id="db-titre">Vue d'ensemble</h2>
+    <span class="db-badge flat" id="subtitle"></span>
     <span class="db-sp"></span>
     <div class="db-seg" id="period-pills" role="group" aria-label="Période">
       <button type="button" data-preset="today"     aria-pressed="true"  onclick="setPreset('today')">Aujourd'hui</button>
@@ -170,7 +149,13 @@
       <button type="button" data-preset="all"       aria-pressed="false" onclick="setPreset('all')">Tout</button>
       <button type="button" data-preset="custom"    aria-pressed="false" onclick="openCustomRange()">Dates&hellip;</button>
     </div>
-    <span class="db-compare"><span class="db-dash"></span> p&eacute;riode pr&eacute;c&eacute;dente</span>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span class="db-badge flat" id="updated-at" style="display:none"></span>
+      <button class="db-icone" id="theme-toggle" onclick="cycleTheme()"
+              title="Thème : système / clair / sombre">&#9689;</button>
+      <button class="db-icone" onclick="loadData(true)" title="Recharger">&#8635;</button>
+      <a class="db-icone" href="/logout" title="Se déconnecter">&#9099;</a>
+    </div>
   </div>
 
   <div class="periode-dit" id="periode-dit"></div>
@@ -209,6 +194,13 @@
           <div class="db-v" id="db-seuil">&mdash;</div>
           <div class="db-s" id="db-seuil-sub"></div>
         </div>
+        <span class="db-sp"></span>
+        {#
+          ⚠️ LA LÉGENDE VIT AVEC LA COURBE QU'ELLE EXPLIQUE. Posée en haut de page, à côté du
+          sélecteur de dates, elle annonçait des pointillés qu'on ne voyait pas encore — et on
+          la lisait comme une option de période.
+        #}
+        <span class="db-compare"><span class="db-dash"></span> p&eacute;riode pr&eacute;c&eacute;dente</span>
       </div>
       <div style="height:210px;margin-top:18px"><canvas id="chart-daily"></canvas></div>
       <div class="db-reason" id="db-note" style="display:none"></div>
@@ -237,37 +229,68 @@
     </div>
   </div>
 
-  <!-- ══ OÙ VA L'ARGENT · POINT MORT · PRIME COST ═══════════════════════════════════════ -->
-  <div class="db-grid db-g-2-1 db-mb">
-    <div class="db-card">
-      <div class="db-card-h"><span class="db-card-t">O&ugrave; va l'argent</span>
-        <span class="db-sp"></span><span class="db-badge flat" id="db-va-periode"></span></div>
-      <div class="db-card-p">
-        <div class="db-stack" id="db-stack"></div>
-        <div class="db-rows" id="db-va"></div>
+  <!-- ══ LES DEUX SEUILS, SUR UNE LIGNE ════════════════════════════════════════════════ -->
+  {#
+    ⚠️ DEUX CARTES EN COLONNE POUR DEUX BARRES DE HUIT PIXELS. Mises côte à côte et allégées,
+    elles tiennent sur une ligne et laissent la page remonter d'autant.
+  #}
+  <div class="db-grid db-g2 db-mb">
+    <div class="db-card db-card-p db-compact">
+      <div class="db-l" id="eco-seuil-label">Point mort</div>
+      <div class="db-v" id="eco-seuil">&mdash;</div>
+      <div class="db-prog" style="margin:11px 0 8px">
+        <span id="eco-seuil-bar" style="width:0%"></span>
+        <span class="seuil" id="eco-seuil-mark" style="left:100%"></span>
       </div>
+      <div class="db-s" id="eco-seuil-sub"></div>
+      <div class="db-s" id="eco-seuil-avg"></div>
     </div>
-    <div class="db-grid" style="gap:16px;align-content:start">
-      <div class="db-card db-card-p">
-        <div class="db-l" id="eco-seuil-label">Point mort</div>
-        <div class="db-v" id="eco-seuil">&mdash;</div>
-        <div class="db-prog" style="margin:13px 0 9px">
-          <span id="eco-seuil-bar" style="width:0%"></span>
-          <span class="seuil" id="eco-seuil-mark" style="left:100%"></span>
-        </div>
-        <div class="db-s" id="eco-seuil-sub"></div>
-        <div class="db-s" id="eco-seuil-avg"></div>
+    <div class="db-card db-card-p db-compact">
+      <div class="db-l" id="eco-prime-label">Prime cost</div>
+      <div class="db-v" id="eco-prime">&mdash;</div>
+      <div class="db-prog" style="margin:11px 0 8px">
+        <span id="eco-prime-bar" style="width:0%;background:var(--db-iris)"></span>
+        <span class="seuil" style="left:65%"></span>
       </div>
-      <div class="db-card db-card-p">
-        <div class="db-l" id="eco-prime-label">Prime cost</div>
-        <div class="db-v" id="eco-prime">&mdash;</div>
-        <div class="db-prog" style="margin:13px 0 9px">
-          <span id="eco-prime-bar" style="width:0%;background:var(--db-iris)"></span>
-          <span class="seuil" style="left:65%"></span>
-        </div>
-        <div class="db-s" id="eco-prime-sub"></div>
-      </div>
+      <div class="db-s" id="eco-prime-sub"></div>
     </div>
+  </div>
+
+  <!-- ══ QUATRE MESURES QU'AUCUNE AUTRE CARTE NE PORTE ═══════════════════════════════════ -->
+  {#
+    ⚠️ « OÙ VA L'ARGENT » DÉCOMPOSAIT CE QUE LES DEUX CARTES CI-DESSUS RÉSUMENT DÉJÀ — la part
+    de marchandise et de personnel EST le prime cost, et le reste est le résultat, affiché en
+    tête. Une décomposition qui n'ajoute rien à ce qu'on vient de lire fait douter des deux.
+
+    ⚠️ CE QUI LA REMPLACE N'EXISTE NULLE PART AILLEURS SUR LA PAGE : le jour de semaine qui
+    porte le chiffre, la TVA mise de côté, la taille du panier, et la part des ventes dont le
+    coût est réellement connu — la seule des quatre qui appelle un geste.
+  #}
+  <div class="db-grid db-g4 db-mb">
+    <div class="db-card db-card-p db-compact">
+      <div class="db-l">Par jour de semaine</div>
+      <div class="db-v" id="db-wd-v" style="font-size:19px;letter-spacing:-.2px">&mdash;</div>
+      <div id="db-wd" style="margin-top:10px"></div>
+      <div class="db-s" id="db-wd-sub"></div>
+    </div>
+    <div class="db-card db-card-p db-compact">
+      <div class="db-l">TVA collect&eacute;e</div>
+      <div class="db-v" id="db-tva">&mdash;</div>
+      <div class="db-s" id="db-tva-sub"></div>
+    </div>
+    <div class="db-card db-card-p db-compact">
+      <div class="db-l">Articles par ticket</div>
+      <div class="db-v" id="db-panier">&mdash;</div>
+      <div class="db-s" id="db-panier-sub"></div>
+    </div>
+    <a class="db-card db-card-p db-compact" href="/cogs" style="text-decoration:none;color:inherit">
+      <div class="db-l">Co&ucirc;ts connus</div>
+      <div class="db-v" id="db-couv">&mdash;</div>
+      <div class="db-prog" style="margin:11px 0 8px">
+        <span id="db-couv-bar" style="width:0%;background:var(--db-iris)"></span>
+      </div>
+      <div class="db-s" id="db-couv-sub"></div>
+    </a>
   </div>
 
   {#

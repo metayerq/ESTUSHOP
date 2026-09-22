@@ -57,16 +57,16 @@ def test_le_chiffre_nest_plus_colore():
 # _avant_tout_le_reste` ; la justesse de la répartition, par le fait qu'elle est calculée à
 # partir d'un seul total (`ca_ttc`) plutôt que recomposée à la main.
 
-def test_la_repartition_se_calcule_sur_un_seul_total():
+def test_les_quatre_cartes_portent_chacune_une_seule_mesure():
     """
-    ⚠️ CINQ PARTS CALCULÉES SUR CINQ DÉNOMINATEURS NE FONT PAS 100 %. La barre empilée promet
-    une décomposition ; si les parts ne somment pas au tout, la promesse se casse à l'œil — une
-    bande blanche apparaît au bout, ou la dernière déborde.
+    ⚠️ LA BARRE EMPILÉE « OÙ VA L'ARGENT » A ÉTÉ RETIRÉE : elle décomposait ce que le prime cost
+    et le résultat disent déjà. Ce qui la remplace n'a pas de somme à faire tomber juste — chaque
+    carte porte UNE mesure, avec sa propre absence.
     """
-    i = DASH.index("function renderRepartition(")
+    i = DASH.index("function renderQuatre(")
     bloc = DASH[i:DASH.index("\nfunction ", i + 10)]
-    assert bloc.count("/ ttc * 100") == 2, "les parts ne viennent pas toutes du même total"
-    assert "const ttc = eco.ca_ttc;" in bloc
+    for ancre in ("db-wd-v", "db-tva", "db-panier", "db-couv"):
+        assert f"E('{ancre}')" in bloc, ancre
 
 
 def test_la_bande_detat_suit_les_conteneurs_que_la_fonction_connait():

@@ -224,3 +224,79 @@
   .db-g3, .db-g2, .db-g-2-1 { grid-template-columns: 1fr; }
   .db-v.xl { font-size: 30px; }
 }
+
+
+/* ── Quatre cartes courtes ───────────────────────────────────────────────────
+      ⚠️ PLUS PETITES QUE LES TROIS DU HAUT, ET C'EST VOULU. Elles portent du contexte,
+      pas la réponse : leur donner la même taille remettrait six chiffres de même
+      poids sur l'écran, ce qu'on vient précisément de défaire. ── */
+.db .db-g4 { grid-template-columns: repeat(4, 1fr); }
+.db-compact { padding: 13px 15px; }
+.db-compact .db-v { font-size: 20px; letter-spacing: -.4px; }
+.db-compact .db-s { font-size: 11.5px; margin-top: 4px; }
+.db-compact .db-l { font-size: 11.5px; margin-bottom: 4px; }
+@media (max-width: 900px) { .db .db-g4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .db .db-g4 { grid-template-columns: 1fr; } }
+
+/* ── Les trois boutons de la barre de période ────────────────────────────────
+      ⚠️ ILS VIENNENT DE L'EN-TÊTE SUPPRIMÉ. Thème, rechargement, sortie : trois gestes
+      rares, qui n'ont jamais mérité une ligne d'écran pour eux seuls. ── */
+.db-icone {
+  font: inherit; font-size: 14px; line-height: 1; padding: 6px 9px;
+  border: 1px solid var(--db-line); border-radius: var(--db-r-sm);
+  background: var(--db-card); color: var(--db-muted); cursor: pointer;
+  text-decoration: none; display: inline-grid; place-items: center;
+}
+.db-icone:hover { color: var(--db-ink); border-color: var(--db-faint); }
+.db-icone:focus-visible { outline: 2px solid var(--db-iris); outline-offset: 1px; }
+
+/* ── La zone « Tendances », reprise dans le même langage ─────────────────────
+      ⚠️ ELLE ÉTAIT RESTÉE À L'ANCIENNE FEUILLE. Une section qui garde l'apparence
+      d'avant, au bas d'une page refaite, se lit comme une partie qui n'a pas chargé. ── */
+.db .zone-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.db .zone-badge {
+  font-size: 11.5px; color: var(--db-faint); background: var(--db-alt);
+  padding: 2px 8px; border-radius: var(--db-r-sm);
+}
+.db .section-label {
+  font-size: 13.5px; font-weight: 650; color: var(--db-ink); letter-spacing: -.1px;
+  text-transform: none; font-family: inherit; margin: 0;
+}
+.db .ins-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;
+}
+.db .ins-card {
+  background: var(--db-card); border: 1px solid var(--db-line); border-radius: var(--db-r);
+  box-shadow: var(--db-sh); padding: 16px 18px;
+}
+.db .ins-label {
+  font-size: 12.5px; color: var(--db-muted); font-weight: 550; margin-bottom: 6px;
+}
+.db .ins-sub { font-size: 12px; color: var(--db-muted); line-height: 1.55; }
+.db .ins-value {
+  font-size: 22px; font-weight: 650; letter-spacing: -.5px; font-variant-numeric: tabular-nums;
+}
+.db .chart-block, .db #last7-block > div {
+  background: var(--db-card); border: 1px solid var(--db-line) !important;
+  border-radius: var(--db-r) !important; box-shadow: var(--db-sh);
+}
+.db .wow-strip {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 12px 20px; border-top: 1px solid var(--db-line-soft);
+  font-size: 12.5px; color: var(--db-muted);
+}
+.db .wow-item strong { color: var(--db-ink); font-variant-numeric: tabular-nums; }
+.db .wow-sep { color: var(--db-faint); }
+.db .cal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; margin: 8px 0;
+}
+.db .cal-cell {
+  aspect-ratio: 1; display: grid; place-items: center; border-radius: 4px;
+  font-size: 11px; font-variant-numeric: tabular-nums;
+}
+.db .hm-lbl { font-size: 10px; color: var(--db-faint); text-align: center; }
+.db .table-wrap, .db .products-scroll {
+  border: 0; border-radius: 0; background: transparent;
+}

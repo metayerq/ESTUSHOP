@@ -346,42 +346,80 @@ function renderMinis(d) {
   miniCourbe('mini-marge', [], j.iris);
 }
 
-/** Où va l'argent : une barre empilée, puis le détail chiffré. */
-function renderRepartition(d) {
+/**
+ * LES QUATRE MESURES QU'AUCUNE AUTRE CARTE NE PORTE.
+ *
+ * ⚠️ « OÙ VA L'ARGENT » DÉCOMPOSAIT CE QUE LES DEUX SEUILS RÉSUMENT DÉJÀ : la part de
+ * marchandise et de personnel EST le prime cost, et le reste est le résultat, affiché en tête.
+ * Une décomposition qui n'ajoute rien à ce qu'on vient de lire fait douter des deux.
+ *
+ * ⚠️ CHACUNE DE CES QUATRE DIT « — » PLUTÔT QU'UN ZÉRO quand elle n'est pas mesurée. « Aucune
+ * donnée » et « zéro » mènent à des décisions opposées, et sur une carte de trois lignes rien
+ * ne les distingue si l'on écrit 0.
+ */
+function renderQuatre(d) {
+  const E = (id) => document.getElementById(id);
   const eco = d.economics || {};
-  const j = jetons();
-  const stack = document.getElementById('db-stack');
-  const rows = document.getElementById('db-va');
-  const per = document.getElementById('db-va-periode');
-  if (!stack || !rows) return;
 
-  const ttc = eco.ca_ttc;
-  if (!ttc || eco.ebitda_ht == null) {
-    /* ⚠️ SANS MARGE, LA RÉPARTITION N'EST PAS UNE RÉPARTITION : il manquerait le plus gros
-     * poste, et les parts affichées sembleraient tout couvrir. */
-    stack.innerHTML = '';
-    rows.innerHTML = '<div class="db-s">Se calcule à partir de la marge, donc des prix d’achat. '
-      + '<a href="/cogs" class="db-link">Ouvrir COGS →</a></div>';
-    if (per) per.textContent = '';
-    return;
+  /* Par jour de semaine — le jour qui porte le chiffre, et l'écart au plus faible. */
+  const wd = d.weekdays;
+  if (Array.isArray(wd) && wd.length) {
+    const JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+    const tri = wd.slice().sort((a, b) => a.day - b.day);
+    const max = Math.max(...tri.map((x) => x.avg_ca));
+    const fort = wd[0];
+    E('db-wd-v').textContent = JOURS[fort.day] || '—';
+    E('db-wd').innerHTML = tri.map((x) => {
+      const h = max > 0 ? Math.max(3, Math.round(x.avg_ca / max * 26)) : 3;
+      const on = x.day === fort.day;
+      return `<span title="${JOURS[x.day]} · ${fmt(x.avg_ca)} en moyenne" style="display:inline-block;`
+        + `width:11px;height:${h}px;margin-right:3px;border-radius:2px;vertical-align:bottom;`
+        + `background:var(--db-${on ? 'iris' : 'line'})"></span>`;
+    }).join('');
+    E('db-wd-sub').innerHTML = `<span>${fmt(fort.avg_ca)} en moyenne · ${fort.n_days} jours</span>`;
+  } else {
+    E('db-wd-v').textContent = '—';
+    E('db-wd').innerHTML = '';
+    E('db-wd-sub').innerHTML = '<span>pas encore assez de jours pleins</span>';
   }
-  if (per) per.textContent = d.period_label || '';
 
-  const postes = [
-    ['TVA collectée',  (eco.ca_ttc - eco.ca_ht), j.slate],
-    ['Marchandise',    eco.cogs_ht,              '#B54708'],
-    ['Personnel',      eco.cout_perso_periode ?? eco.cout_perso_jour, j.iris],
-    ['Charges fixes',  eco.cout_fixe_periode ?? eco.cout_fixe_jour,   j.faint],
-    ['Résultat',       eco.ebitda_ht,            j.green],
-  ].filter((p) => typeof p[1] === 'number' && isFinite(p[1]));
+  /* TVA collectée — ce qui est encaissé et qui n'appartient pas au café. */
+  if (d.today && d.today.ca != null && d.today.ca_ht != null) {
+    const tva = d.today.ca - d.today.ca_ht;
+    E('db-tva').textContent = fmt(tva);
+    E('db-tva-sub').innerHTML =
+      `<span>${(d.today.ca ? tva / d.today.ca * 100 : 0).toFixed(1)} % de l’encaissé</span>`;
+  } else {
+    E('db-tva').textContent = '—';
+    E('db-tva-sub').innerHTML = '';
+  }
 
-  stack.innerHTML = postes.map(([, v, c]) =>
-    `<span style="width:${Math.max(0, v / ttc * 100)}%;background:${c}"></span>`).join('');
-  rows.innerHTML = postes.map(([k, v, c], i) =>
-    `<div class="db-row${i === postes.length - 1 ? ' tot' : ''}">` +
-    `<i style="background:${c}"></i><span class="k">${k}</span>` +
-    `<span class="v"${i === postes.length - 1 ? ` style="color:${j.green}"` : ''}>${fmt(v)}</span>` +
-    `<span class="p">${(v / ttc * 100).toFixed(1)} %</span></div>`).join('');
+  /* Articles par ticket — la vente additionnelle, qui ne se lit nulle part ailleurs. */
+  const bk = d.insights && d.insights.basket;
+  if (bk && bk.items_per_ticket != null) {
+    E('db-panier').textContent = bk.items_per_ticket.toFixed(2).replace('.', ',');
+    E('db-panier-sub').innerHTML = bk.attach_pct != null
+      ? `<span>${bk.attach_pct} % des tickets portent 2 articles ou plus</span>` : '';
+  } else {
+    E('db-panier').textContent = '—';
+    E('db-panier-sub').innerHTML = '<span>pas encore assez de données</span>';
+  }
+
+  /* Couverture des coûts — la seule des quatre qui appelle un geste. */
+  const cov = eco.cogs_coverage_pct;
+  if (cov != null) {
+    E('db-couv').textContent = cov + ' %';
+    E('db-couv-bar').style.width = Math.min(100, cov) + '%';
+    /* ⚠️ SOUS 100 %, LA MARGE EST EXTRAPOLÉE — donc le résultat et le point mort aussi. La
+     * carte renvoie vers l'écran qui répare, plutôt que de constater. */
+    E('db-couv-sub').innerHTML = cov >= 99
+      ? '<span class="db-badge up">tous les coûts connus</span>'
+      : `<span class="db-badge warn">marge extrapolée</span><span class="db-link">Compléter →</span>`;
+  } else {
+    E('db-couv').textContent = '—';
+    E('db-couv-bar').style.width = '0%';
+    E('db-couv-sub').innerHTML = '<span class="db-link">Ouvrir COGS →</span>';
+  }
 }
 
 function renderReponse(d) {
@@ -877,7 +915,7 @@ function renderInsights(d) {
   renderPeriode(d);
   renderCourbe(d);
   renderMinis(d);
-  renderRepartition(d);
+  renderQuatre(d);
   const ins = d.insights;
   const monthZone    = document.getElementById('month-zone');
   const patternsZone = document.getElementById('patterns-zone');

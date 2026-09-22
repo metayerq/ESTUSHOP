@@ -471,12 +471,61 @@ def test_une_mini_courbe_refuse_de_tracer_un_seul_point():
     assert "display = 'none'" in bloc
 
 
-def test_la_repartition_se_tait_sans_marge():
+def test_les_quatre_cartes_disent_moins_plutot_que_zero():
     """
-    ⚠️ SANS MARGE, LA RÉPARTITION N'EN EST PAS UNE : il manquerait le plus gros poste, et les
-    parts affichées sembleraient tout couvrir.
+    ⚠️ « AUCUNE DONNÉE » ET « ZÉRO » MÈNENT À DES DÉCISIONS OPPOSÉES, et sur une carte de trois
+    lignes rien ne les distingue si l'on écrit 0. Les quatre écrivent « — » et disent pourquoi.
     """
     js = _js()
-    i = js.index("function renderRepartition(")
+    i = js.index("function renderQuatre(")
     bloc = js[i:js.index("\nfunction renderReponse(", i)]
-    assert "ebitda_ht == null" in bloc and "/cogs" in bloc
+    assert bloc.count("= '—'") >= 4, "une carte affiche un zéro à la place d'une absence"
+    # ⚠️ ET LA COUVERTURE RENVOIE VERS L'ÉCRAN QUI RÉPARE, plutôt que de constater : sous
+    # 100 %, la marge est extrapolée, donc le résultat et le point mort aussi. Le lien porte
+    # la carte ENTIÈRE, dans le gabarit — un renvoi en fin de phrase se rate au doigt.
+    assert "extrapolée" in bloc
+    html = _gabarit()
+    i = html.index('id="db-couv"')
+    assert 'href="/cogs"' in html[max(0, i - 400):i], "la carte n'est pas cliquable"
+
+
+def test_les_quatre_cartes_ne_repetent_rien_de_la_page():
+    """
+    ⚠️ « OÙ VA L'ARGENT » DÉCOMPOSAIT CE QUE LES DEUX SEUILS RÉSUMENT DÉJÀ : marchandise plus
+    personnel EST le prime cost, et le reste est le résultat, affiché en tête. Une décomposition
+    qui n'ajoute rien à ce qu'on vient de lire fait douter des deux.
+    """
+    js = _js()
+    i = js.index("function renderQuatre(")
+    bloc = js[i:js.index("\nfunction renderReponse(", i)]
+    for deja_ailleurs in ("cout_perso_periode", "cout_fixe_periode", "ebitda_ht", "marge_brute_ht"):
+        assert deja_ailleurs not in bloc, f"{deja_ailleurs} est déjà affiché ailleurs"
+
+
+def test_le_selecteur_marque_la_periode_active():
+    """
+    ⚠️ UN BOUTON QUI NE S'ENFONCE PAS EST UN BOUTON QU'ON RECLIQUE. L'ancienne bascule visait
+    `.pill`, qui n'existe plus depuis le passage au segmenté : la page se rechargeait bien, mais
+    rien ne disait quelle période était affichée — et le chiffre du haut, lui, avait changé.
+
+    ⚠️ ET C'EST `aria-pressed`, PAS UNE CLASSE. Le style s'y accroche, et un lecteur d'écran
+    l'annonce ; une classe ne fait ni l'un ni l'autre.
+    """
+    js = _js()
+    i = js.index("function setPreset(")
+    bloc = js[i:js.index("\n}", i)]
+    # ⚠️ SANS LES COMMENTAIRES. L'explication au-dessus de la ligne contient « aria-pressed » :
+    # un mutant qui remettait `classList.toggle` à l'écran survivait, puisque le mot restait
+    # dans le fichier. Chercher dans le commentaire revient à vérifier qu'on a eu l'intention.
+    code = re.sub(r"/\*.*?\*/", " ", bloc, flags=re.S)
+    code = re.sub(r"//[^\n]*", " ", code)
+    assert "aria-pressed" in code, "le segmenté n'est pas marqué"
+    assert "#period-pills button[data-preset]" in code, "la bascule ne vise pas le segmenté"
+    css = open(os.path.join(RACINE, "static", "dashboard.css"), encoding="utf-8").read()
+    assert '.db-seg button[aria-pressed="true"]' in css, "l'état sélectionné n'est pas peint"
+    # ⚠️ ET LE GABARIT EN POSE UN SEUL À VRAI AU CHARGEMENT : deux boutons enfoncés diraient
+    # deux périodes, un seul chiffre étant affiché.
+    html = _gabarit()
+    i = html.index('id="period-pills"')
+    barre = html[i:html.index("</div>", i)]
+    assert barre.count('aria-pressed="true"') == 1, barre.count('aria-pressed="true"')
