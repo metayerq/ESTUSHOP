@@ -455,6 +455,31 @@
 .db-hbar.top .v { color: var(--db-ink); font-weight: 650; }
 .db-hbar.top .h { color: var(--db-ink); font-weight: 650; }
 
+/* ── La même colonne, avec sa piste ──────────────────────────────────────────
+      ⚠️ UN TAUX EST UNE FRACTION DE QUELQUE CHOSE, UN COMPTE NE L'EST PAS. Des tickets
+      par heure se lisent les uns contre les autres : la plus haute donne l'échelle. Un
+      pourcentage se lit contre 100, et sans piste rien à l'écran ne figure ce 100 — une
+      colonne à 42 % paraîtrait pleine si ses voisines sont plus basses. ── */
+.db-hbar .piste {
+  width: 100%; height: 78px; display: flex; align-items: flex-end;
+  background: var(--db-alt); border-radius: var(--db-r-sm); overflow: hidden;
+}
+.db-hbar .piste > .f { border-radius: var(--db-r-sm) var(--db-r-sm) 0 0; }
+.db-hbar .sous {
+  font-size: 11px; color: var(--db-muted); font-variant-numeric: tabular-nums;
+}
+.db-hbar .v.fort { color: var(--db-iris); font-weight: 650; }
+
+/* ⚠️ « RIEN DE MESURÉ » ET « PAS ENCORE FINI » SONT DEUX CHOSES, et les peindre pareil invente
+   une histoire. `absent` : la mesure n'existe pas — la colonne reste à la piste nue, aucune
+   barre, parce qu'une barre à zéro raconterait un effondrement qui n'a pas eu lieu. `partiel` :
+   la période court encore — hachures, comme le jour en cours d'Affluence. */
+.db-hbar.absent .f { background: var(--db-line); }
+.db-hbar.partiel .f {
+  background: repeating-linear-gradient(135deg,
+    var(--db-iris), var(--db-iris) 4px, transparent 4px, transparent 8px), var(--db-iris);
+}
+
 /* ── Ce que la page ne sait pas — replié ─────────────────────────────────────
       ⚠️ FERMÉ, PAS SUPPRIMÉ. On sait qu'il existe, et on l'ouvre le jour où un chiffre
       surprend — c'est exactement ce jour-là qu'il sert. Chacune de ces limites répond à

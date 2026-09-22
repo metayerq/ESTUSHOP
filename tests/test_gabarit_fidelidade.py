@@ -106,7 +106,7 @@ def test_un_champ_desactive_dit_pourquoi_et_ou_le_reparer():
 
 def test_le_message_de_reparation_est_en_HAUT_du_bloc_reglages():
     """En bas, sous le bouton, il n'aurait pas été lu — c'est exactement ce qui vient d'arriver."""
-    bloc = SOURCE.index('<section class="bloc" id="reglages"')
+    bloc = SOURCE.index('id="reglages"')
     manque = SOURCE.index('id="r-manque"', bloc)
     champs = SOURCE.index('id="r-start"', bloc)
     assert manque < champs, "le message doit précéder les champs qu'il explique"

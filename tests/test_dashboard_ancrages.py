@@ -359,7 +359,7 @@ def test_qui_charge_la_charte_en_porte_la_classe():
         assert "/static/dashboard.css?v=" in html, f"{chemin} : feuille chargée sans version"
         assert 'class="page db"' in html, (
             f"{chemin} charge la charte sans porter `db` — tous ses var() se résoudront dans le vide")
-    assert porteuses == ["index.html", "transactions.html"], porteuses
+    assert porteuses == ["fidelidade.html", "index.html", "transactions.html"], porteuses
 
 
 def _courbe(payload):

@@ -40,8 +40,12 @@ def _mots(x):
 
 
 def _apercu():
+    # ⚠️ LA DÉCOUPE PARTAIT D'UN `style` EN LIGNE. Le titre est passé à l'en-tête de la charte
+    # (`db-title`) et l'ancre a disparu avec lui : `index` aurait levé, ce qui est le bon
+    # comportement — mais une ancre attachée à une taille de police en pixels ne pouvait pas
+    # survivre à une refonte. Elle porte maintenant sur la structure.
     g = _gabarit()
-    i = g.index('<h1 style="font-size:22px')
+    i = g.index('<div class="db-head">')
     return g[i:g.index("</div><!-- /apercu -->")]
 
 
@@ -54,7 +58,7 @@ def test_la_page_ouvre_sur_une_reponse_pas_sur_une_grille():
     lequel regarder.
     """
     a = _apercu()
-    assert a.index('tx-card tx-answer') < a.index('id="kpis"'), \
+    assert a.index('id="fd-lead"') < a.index('id="kpis"'), \
         "la grille de chiffres passe avant la réponse"
     assert "Le programme prend-il" in a
     for champ in ("fd-lead", "fd-value", "fd-delta", "fd-n", "fd-rule", "fd-note"):
@@ -193,9 +197,18 @@ def test_une_baisse_nest_pas_peinte_en_rouge():
     """
     ⚠️ RIEN ICI N'EST UN SOLDE. Un rattachement qui recule est une mesure à regarder, pas une
     alarme : la direction est portée par la flèche et le signe.
+
+    ⚠️ ET CE CONTRÔLE A CHANGÉ DE SENS AVEC LA CHARTE, CE QUI EST UN PIÈGE. Il EXIGEAIT la
+    présence de `tx-chip-down` — la variante GRISE de l'ancienne feuille. Dans la charte,
+    `down` est la variante ROUGE. Reporter l'assertion telle quelle sur le nouveau nom aurait
+    donc exigé exactement ce qu'elle existe pour interdire, et le test serait resté vert en
+    protégeant le contraire de ce qu'il dit.
     """
     r = _reponse({**H, "delta_pts": -6.0})
-    assert "tx-chip-down" in r["delta"] and "red" not in r["delta"]
+    assert "db-badge" in r["delta"], "la pastille n'est plus celle de la charte"
+    assert "down" not in r["delta"], "la variante rouge de la charte est revenue"
+    assert "red" not in r["delta"]
+    assert "▼" in r["delta"] and "6,0" in r["delta"], "la direction n'est plus lisible"
 
 
 # ── Ce qu'on ne sait pas encore ──────────────────────────────────────────────────────────────
@@ -203,7 +216,8 @@ def test_une_baisse_nest_pas_peinte_en_rouge():
 def test_sans_recul_on_ne_compare_pas_et_on_dit_pourquoi():
     """Comparer contre la première semaine opposerait un régime à un démarrage."""
     r = _reponse({**H, "delta_pts": None, "prev": None, "reason": "not-enough-weeks"})
-    assert "tx-chip-none" in r["delta"] and "pas de recul" in r["delta"]
+    # L'ambre dit « il manque quelque chose pour conclure », pas « c'est mauvais ».
+    assert "db-badge plain warn" in r["delta"] and "pas de recul" in r["delta"]
     assert r["noteVisible"] and "démarrage" in r["note"]
     assert r["value"] == "42.3 %", "le taux mesuré disparaît alors qu'il est connu"
 
@@ -236,14 +250,29 @@ def test_le_bandeau_reponse_nest_defini_quune_fois():
     ⚠️ DEUX JEUX DE RÈGLES À TENIR D'ACCORD, ET CELUI QU'ON OUVRE LE MOINS VIEILLIT EN SILENCE.
     C'est déjà arrivé dans ce dépôt : la feuille de style de la nav laissée derrière sur
     `marketing.html` a rendu la page illisible sans qu'aucun test ne rougisse.
+
+    ⚠️ LA FORME A CHANGÉ DE MAISON, PAS DE NATURE. Elle vivait en `.tx-*` dans `style.css`, un
+    vocabulaire inventé pour ces deux pages ; elle vit maintenant dans la charte, sous des noms
+    communs à tout le produit. Le contrôle est le même — UN seul endroit la déclare — et il
+    porte désormais sur les composants qui la portent réellement.
     """
-    commun = open(os.path.join(RACINE, "static", "style.css"), encoding="utf-8").read()
-    for regle in (".tx-answer", ".tx-value", ".tx-chip", ".tx-limites", ".tx-card"):
-        assert f"{regle} " in commun or f"{regle}{{" in commun or f"{regle}," in commun, regle
+    charte = open(os.path.join(RACINE, "static", "dashboard.css"), encoding="utf-8").read()
+    for regle in (".db-card", ".db-lead", ".db-v", ".db-badge", ".db-fold", ".db-fine"):
+        assert f"{regle} " in charte or f"{regle}{{" in charte or f"{regle}," in charte, regle
         for page in ("transactions.html", "fidelidade.html"):
-            bloc = _gabarit(page)
-            bloc = bloc[bloc.index("<style>"):bloc.index("</style>")]
-            assert f"\n{regle} " not in bloc and f"\n{regle}{{" not in bloc, f"{regle} recopié dans {page}"
+            src = _gabarit(page)
+            # Les deux pages ont un bloc de style chacune ; aucun ne doit redéclarer la forme.
+            for a in [i for i, _ in enumerate(src) if src.startswith("<style>", i)]:
+                bloc = src[a:src.index("</style>", a)]
+                assert f"\n{regle} " not in bloc and f"\n{regle}{{" not in bloc, (
+                    f"{regle} recopié dans {page}")
+
+    # ⚠️ ET L'ANCIEN VOCABULAIRE NE DOIT PAS REPOUSSER. Une règle `.tx-*` qui réapparaîtrait
+    # donnerait deux façons d'écrire la même carte, et la page écrite ensuite prendrait celle
+    # qu'elle a sous les yeux.
+    commun = open(os.path.join(RACINE, "static", "style.css"), encoding="utf-8").read()
+    commun = re.sub(r"/\*.*?\*/", " ", commun, flags=re.S)
+    assert not re.search(r"^\s*\.tx-", commun, re.M), re.findall(r"^\s*\.tx-[a-z-]+", commun, re.M)
 
 
 def test_les_deux_pages_portent_la_meme_forme():
@@ -358,3 +387,148 @@ def test_le_releve_reste_ferme_aux_autres_roles(monkeypatch):
         monkeypatch.setattr(flask_app, "_current_role", lambda r=role: r)
         flask_app.app.config["TESTING"] = True
         assert flask_app.app.test_client().get("/api/loyalty/diag").status_code in (401, 403)
+
+
+# ── Le graphique des semaines, exécuté ───────────────────────────────────────────────────────
+#
+# ⚠️ IL N'AVAIT AUCUNE COUVERTURE DE RENDU. Les tests lisaient le modèle de la réponse et le
+# gabarit ; entre les deux, la fonction qui dessine huit colonnes n'était vue par personne. La
+# migration vers la charte a réécrit chacune de ces colonnes — et rien n'aurait rougi si une
+# semaine sans mesure s'était mise à ressembler à une semaine à zéro.
+
+
+def _rendu(nom, appel, socle_sup=""):
+    """Extrait une fonction du gabarit et l'exécute sur un DOM minimal."""
+    js = _js()
+    i = js.index(f"  function {nom}(")
+    fonction = js[i:js.index("\n  }", i) + 4]
+    return _node("""
+const champs = {};
+function E(id){ return champs[id] || (champs[id] = {textContent:'',innerHTML:'',style:{}}); }
+function reponse(){}
+function eur(c){ return (c/100).toFixed(2).replace('.',',') + ' \u20ac'; }
+function nb(n){ return (n===null||n===undefined) ? '\u2014' : n; }
+""" + socle_sup + fonction + appel + """
+console.log(JSON.stringify(Object.keys(champs).reduce(function(o,k){
+  o[k] = champs[k].innerHTML || champs[k].textContent; return o; }, {})));
+""")
+
+
+SEMAINES = {
+    "weeks": [
+        {"start": "2026-08-10", "rate_pct": 30,   "linked": 3,  "returning": 10, "new_customers": 5},
+        {"start": "2026-08-17", "rate_pct": None, "linked": 0,  "returning": 0,  "new_customers": 0},
+        {"start": "2026-08-24", "rate_pct": 38,   "linked": 8,  "returning": 21, "new_customers": 3},
+        {"start": "2026-09-14", "rate_pct": 42,   "linked": 11, "returning": 26, "new_customers": 4},
+    ],
+    "customers_total": 63, "this_week_customers": 4, "undated_links": 2, "opted_out": 1,
+}
+
+
+def _colonnes():
+    r = _rendu("conversion", f"conversion({json.dumps(SEMAINES)});")
+    return r["conv-graph"]
+
+
+def test_une_semaine_sans_revenant_nest_pas_une_semaine_a_zero():
+    """
+    ⚠️ ELLE N'A RIEN MESURÉ, ET C'EST TOUT AUTRE CHOSE QU'UN ÉCHEC. Lui donner une barre à zéro
+    — ou pire, la peindre comme les autres — fabriquerait un effondrement au démarrage du
+    programme, au moment précis où l'on regarde si l'idée prend.
+    """
+    g = _colonnes()
+    assert g.count("db-hbar") == 4, "les quatre semaines ne sont plus dessinées"
+    assert "db-hbar absent" in g, "la semaine sans mesure ne se distingue plus"
+    assert '<span class="sous">\u2014</span>' in g, "elle affiche un taux au lieu d'un tiret"
+    # La colonne garde sa piste : on voit qu'il y avait une place, et qu'elle est vide.
+    assert g.count('class="piste"') == 4
+
+
+def test_la_semaine_en_cours_est_marquee_parce_quelle_nest_pas_finie():
+    """Une semaine en cours comparée aux précédentes est un tronçon comparé à des semaines."""
+    g = _colonnes()
+    assert "db-hbar partiel" in g
+    assert g.count("partiel") == 1, "plus d'une semaine se dit en cours"
+    # Et c'est la DERNIÈRE, pas une autre.
+    assert g.rindex("partiel") > g.rindex("db-hbar absent")
+
+
+def test_les_inscrits_de_la_semaine_sont_un_nombre_jamais_une_hauteur():
+    """
+    ⚠️ DEUX ÉCHELLES SUR UN MÊME GRAPHIQUE NE SE COMPARENT PAS, ELLES SE CONFONDENT. Le taux
+    est une hauteur ; les inscrits de la semaine sont écrits. Leur donner une seconde barre
+    ferait lire deux mesures sur un seul axe.
+    """
+    g = _colonnes()
+    assert '<span class="v fort">+5</span>' in g
+    assert '<span class="v">\u00b7</span>' in g, "une semaine sans inscrit n'affiche pas son point"
+    # Une seule hauteur par colonne.
+    assert g.count("style=\"height:") == 4
+
+
+def test_les_colonnes_portent_le_composant_de_la_charte():
+    """
+    ⚠️ CE CONTRÔLE EXISTE PARCE QUE LA MIGRATION A RÉÉCRIT CES COLONNES. Elles avaient leur
+    propre jeu de règles (`sem`, `sem-piste`, `sem-barre`) ; elles empruntent maintenant celui
+    d'Affluence. Deux formes identiques sous deux noms, c'est une forme qui diverge.
+    """
+    g = _colonnes()
+    for mort in ("sem-piste", "sem-barre", "sem-taux", "sem-neufs"):
+        assert mort not in g, f"{mort} : l'ancien vocabulaire est revenu"
+    # ⚠️ ON CHERCHE UN SÉLECTEUR, PAS UNE SOUS-CHAÎNE. Le premier jet testait `".db-hbar .piste"
+    # in charte` — et `.db-hbar .pisteX` le contient. Renommer la règle laissait le contrôle
+    # vert pendant que les colonnes perdaient leur piste.
+    charte = open(os.path.join(RACINE, "static", "dashboard.css"), encoding="utf-8").read()
+    charte = re.sub(r"/\*.*?\*/", " ", charte, flags=re.S)
+    regles = set()
+    for bloc in re.findall(r"([^{}]+)\{", charte):
+        regles |= {x.strip() for x in bloc.split(",")}
+    for vivant in (".db-hbar", ".db-hbar .piste", ".db-hbar.absent .f", ".db-hbar.partiel .f"):
+        assert vivant in regles, f"{vivant} : la charte ne porte pas ce que la page pose"
+
+
+def test_la_serie_de_conversion_porte_laccent_et_labsence_reste_grise():
+    """
+    ⚠️ DEUX RÈGLES QUI SE BATTENT À SPÉCIFICITÉ ÉGALE, ET L'ORDRE TRANCHE. La charte peint ces
+    colonnes en gris — Affluence en aligne quatorze et n'en met que trois en avant. Cette page
+    n'a qu'une mesure, et la laisser grise la ferait passer pour du décor : le bloc du gabarit
+    la repeint en accent.
+
+    ⚠️ MAIS `.conv-graph .db-hbar .f` ET `.db-hbar.absent .f` PÈSENT PAREIL (0,3,0). Le bloc du
+    gabarit étant chargé après la charte, il gagne — et le talon de 2 px d'une semaine sans
+    revenant se peindrait en accent, c'est-à-dire comme une toute petite mesure au lieu d'une
+    absence. La seconde règle est la seule chose qui l'en empêche.
+    """
+    bloc = _gabarit()
+    bloc = bloc[bloc.index(".conv-graph .db-hbar"):]
+    i = bloc.index(".conv-graph .db-hbar .f")
+    j = bloc.index(".conv-graph .db-hbar.absent .f")
+    assert "var(--db-iris)" in bloc[i:bloc.index("}", i)], "la série n'est plus à l'accent"
+    assert "var(--db-line)" in bloc[j:bloc.index("}", j)], "l'absence n'est plus grise"
+    assert j > i, "la règle d'absence passe avant celle qu'elle doit corriger"
+
+
+def test_le_filtre_des_clients_annonce_lequel_est_choisi():
+    """
+    ⚠️ LE SEGMENTÉ DE LA CHARTE SE PEINT SUR `aria-pressed`, pas sur une classe. L'ancien
+    marquait sa sélection avec `.on` ; reprendre le composant sans reprendre l'attribut aurait
+    donné quatre boutons dont aucun ne paraît choisi — et l'on ne saurait plus ce qu'on regarde.
+    """
+    g = _gabarit()
+    barre = g[g.index('id="filtres"'):g.index("</div>", g.index('id="filtres"'))]
+    assert barre.count("aria-pressed") == 4, barre
+    assert barre.count('aria-pressed="true"') == 1, "aucun filtre choisi au chargement, ou deux"
+    js = _js()
+    i = js.index("E('filtres').children")
+    assert "aria-pressed" in js[i - 200:i + 200], "le clic ne déplace plus la sélection"
+
+
+def test_les_cellules_de_contexte_sont_des_cartes_de_la_charte():
+    """Trois cellules, et chacune porte son unité — un nombre nu ne décide de rien."""
+    s = {"points_outstanding": 1840, "liability_cents": 36800, "rewards_due": 3,
+         "regulars": 9, "at_risk": [{}, {}]}
+    r = _rendu("kpis", f"kpis({json.dumps(s)});")
+    k = r["kpis"]
+    assert k.count("db-card db-compact") == 3, k[:120]
+    assert "368,00" in k, "la contrepartie en euros des points a disparu"
+    assert "kpi-v" not in k and "kpi-l" not in k, "l'ancien vocabulaire est revenu"

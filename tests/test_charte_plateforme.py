@@ -163,3 +163,80 @@ def test_la_page_autonome_copie_la_charte():
     declares = set(re.findall(r"(--[a-z-]+)\s*:", bloc))
     for u in set(re.findall(r"var\((--[a-z-]+)\)", src)):
         assert u in declares, f"{u} est utilisé mais jamais déclaré sur la page autonome"
+
+
+# ── Une classe posée doit exister quelque part ───────────────────────────────────────────────
+
+def _classes_posees(nom):
+    """Les classes écrites en dur dans le balisage — hors style et hors script.
+
+    ⚠️ LES TROIS EXCLUSIONS COMPTENT. Un `<style>` DÉCLARE, il ne pose pas ; dans un
+    `<script>`, `class="' + variante + '"` fait passer le nom de la variable pour une classe ;
+    et un commentaire qui cite une classe ne la pose pas. Sans elles, le contrôle invente des
+    manques et on apprend à ne plus le croire.
+    """
+    s = _lire(nom)
+    s = re.sub(r"<style>.*?</style>", " ", s, flags=re.S)
+    s = re.sub(r"<script[^>]*>.*?</script>", " ", s, flags=re.S)
+    # ⚠️ ET LES COMMENTAIRES, QUI NE POSENT RIEN. C'est la troisième fois de cette refonte qu'un
+    # détecteur reconnaît sa propre explication : celle qui dit pourquoi `<main class="wrap">` a
+    # été retiré contient les mots `class="wrap"`. Un contrôle qui punit le fait de s'expliquer
+    # apprend à ne plus s'expliquer.
+    s = _sans_commentaires(s)
+    out = set()
+    for m in re.finditer(r'class="([^"<>{}]*)"', s):
+        out |= {c for c in m.group(1).split() if re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_-]*", c)}
+    return out
+
+
+def _sans_commentaires_css(css):
+    return re.sub(r"/\*.*?\*/", " ", css, flags=re.S)
+
+
+def _classes_declarees(nom):
+    """
+    ⚠️ LES COMMENTAIRES CSS SONT RETIRÉS AVANT LA LECTURE, et c'est la même erreur que du côté
+    du balisage, commise une quatrième fois. Le commentaire qui explique pourquoi `.muted` a dû
+    être déclarée contient `.muted` : supprimer la règle laissait le contrôle vert, puisqu'il
+    trouvait la classe dans le texte qui raconte son absence.
+    """
+    decl = set()
+    for f in sorted(os.listdir(os.path.join(RACINE, "static"))):
+        if f.endswith(".css"):
+            chemin = os.path.join(RACINE, "static", f)
+            decl |= set(re.findall(r"\.([a-zA-Z][a-zA-Z0-9_-]*)",
+                                   _sans_commentaires_css(open(chemin, encoding="utf-8").read())))
+    for bloc in re.findall(r"<style>(.*?)</style>", _lire(nom), re.S):
+        decl |= set(re.findall(r"\.([a-zA-Z][a-zA-Z0-9_-]*)", _sans_commentaires_css(bloc)))
+    return decl
+
+
+# ⚠️ CE QUI RESTE À FAIRE, MESURÉ ET NOMMÉ PLUTÔT QUE TU. Ces pages posent des classes qu'aucune
+# règle ne déclare : elles s'affichent sans le style qu'on croyait leur donner, et rien ne le
+# signale — c'est exactement le défaut trouvé sur `.muted`, employée douze fois pour rien. Elles
+# ne sont pas encore passées à la charte ; la liste rétrécit, elle ne grandit pas.
+DETTE = {
+    "cashflow.html": {'check-row'},
+    "cogs.html": {'btn-add', 'comm-preset', 'usage-head'},
+    "reconciliation.html": {'field'},
+}
+
+
+@pytest.mark.parametrize("nom", PAGES)
+def test_une_classe_posee_a_une_regle_quelque_part(nom):
+    """
+    ⚠️ UNE CLASSE ABSENTE NE CASSE RIEN : ELLE NE FAIT RIEN. `.muted` était posée douze fois,
+    sur les phrases secondaires de Fidélité et du mode opératoire, et déclarée nulle part — elles
+    s'affichaient toutes en encre pleine, au même poids que le texte principal. Aucune erreur,
+    aucune console, rien à voir en relisant le gabarit : juste une hiérarchie qui n'existe pas.
+    """
+    orphelines = _classes_posees(nom) - _classes_declarees(nom) - DETTE.get(nom, set())
+    assert not orphelines, sorted(orphelines)
+
+
+def test_la_dette_de_classes_ne_grandit_pas():
+    """⚠️ ET LA LISTE DOIT RESTER EXACTE. Une entrée qui ne correspond plus à rien laisse passer
+    une vraie classe orpheline le jour où quelqu'un réutilise ce nom."""
+    for nom, connues in DETTE.items():
+        reelles = _classes_posees(nom) - _classes_declarees(nom)
+        assert reelles == connues, f"{nom} : attendu {sorted(connues)}, trouvé {sorted(reelles)}"
