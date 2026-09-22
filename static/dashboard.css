@@ -1,0 +1,226 @@
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   LE TABLEAU DE BORD — langage visuel propre à cette page.
+   ═══════════════════════════════════════════════════════════════════════════════════════════
+
+   ⚠️ CETTE FEUILLE N'EST CHARGÉE QUE PAR `index.html`, ET C'EST DÉLIBÉRÉ. Poser ces jetons sur
+   `:root` dans `static/style.css` repeindrait les quinze autres pages d'un coup — Affluence,
+   Fidélité, Charges, Réconciliation — sans que personne ne les ait relues. Une refonte
+   silencieuse de quinze écrans est exactement le genre de chose qu'on découvre en production.
+
+   ⚠️ LA CONSÉQUENCE EST ASSUMÉE ET TEMPORAIRE : le tableau de bord ne ressemble plus au reste
+   de la plateforme. C'est le prix d'une refonte page par page ; la suite consiste à propager
+   ces jetons, pas à les dupliquer.
+
+   ⚠️ TOUT EST EN JETONS, AUCUNE COULEUR EN DUR. Le mode sombre suit tout seul, et il n'existe
+   pas de valeur qui ne serait juste que dans un seul thème.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+.db {
+  --db-bg:        #F7FAFC;
+  --db-card:      #FFFFFF;
+  --db-alt:       #F7FAFC;
+  --db-line:      #E3E8EE;
+  --db-line-soft: #EDF1F6;
+  --db-ink:       #1A1F36;
+  --db-ink-2:     #3C4257;
+  --db-muted:     #697386;
+  --db-faint:     #8792A2;
+
+  --db-iris:      #635BFF;
+  --db-iris-soft: #F1F0FE;
+  --db-green:     #067647;
+  --db-green-soft:#ECFDF3;
+  --db-red:       #B42318;
+  --db-red-soft:  #FEF3F2;
+  --db-amber:     #B54708;
+  --db-amber-soft:#FFFAEB;
+  --db-slate:     #A3ACBA;
+
+  --db-r:    8px;
+  --db-r-sm: 6px;
+  --db-sh:   0 1px 1px rgba(10, 15, 40, .04), 0 0 0 1px rgba(10, 15, 40, .03);
+}
+@media (prefers-color-scheme: dark) {
+  .db {
+    --db-bg:#0C111D; --db-card:#141B2A; --db-alt:#111726;
+    --db-line:#232B3B; --db-line-soft:#1C2331;
+    --db-ink:#F2F4F8; --db-ink-2:#CDD3E0; --db-muted:#8B94A8; --db-faint:#6B748A;
+    --db-iris:#9A94FF; --db-iris-soft:#1B1A3A;
+    --db-green:#4ED396; --db-green-soft:#0E2A1E;
+    --db-red:#F08A7B; --db-red-soft:#2C1614;
+    --db-amber:#E0A050; --db-amber-soft:#2A2012;
+    --db-slate:#5B6478;
+    --db-sh: 0 1px 1px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,.04);
+  }
+}
+:root[data-theme="dark"] .db {
+  --db-bg:#0C111D; --db-card:#141B2A; --db-alt:#111726;
+  --db-line:#232B3B; --db-line-soft:#1C2331;
+  --db-ink:#F2F4F8; --db-ink-2:#CDD3E0; --db-muted:#8B94A8; --db-faint:#6B748A;
+  --db-iris:#9A94FF; --db-iris-soft:#1B1A3A;
+  --db-green:#4ED396; --db-green-soft:#0E2A1E;
+  --db-red:#F08A7B; --db-red-soft:#2C1614;
+  --db-amber:#E0A050; --db-amber-soft:#2A2012;
+  --db-slate:#5B6478;
+  --db-sh: 0 1px 1px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,.04);
+}
+:root[data-theme="light"] .db {
+  --db-bg:#F7FAFC; --db-card:#FFFFFF; --db-alt:#F7FAFC;
+  --db-line:#E3E8EE; --db-line-soft:#EDF1F6;
+  --db-ink:#1A1F36; --db-ink-2:#3C4257; --db-muted:#697386; --db-faint:#8792A2;
+  --db-iris:#635BFF; --db-iris-soft:#F1F0FE;
+  --db-green:#067647; --db-green-soft:#ECFDF3;
+  --db-red:#B42318; --db-red-soft:#FEF3F2;
+  --db-amber:#B54708; --db-amber-soft:#FFFAEB;
+  --db-slate:#A3ACBA;
+  --db-sh: 0 1px 1px rgba(10,15,40,.04), 0 0 0 1px rgba(10,15,40,.03);
+}
+
+.db { background: var(--db-bg); color: var(--db-ink); }
+.db .n { font-variant-numeric: tabular-nums; }
+
+/* ── L'en-tête de page ──────────────────────────────────────────────────── */
+.db-head {
+  display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; margin-bottom: 18px;
+}
+.db-title { font-size: 20px; font-weight: 650; letter-spacing: -.3px; margin: 0; }
+.db-sp { margin-left: auto; }
+
+/* ⚠️ LE SÉLECTEUR EST UN SEGMENTÉ, PAS DES PASTILLES DÉTACHÉES. Des boutons séparés se lisent
+   comme des filtres cumulables ; un segmenté dit qu'un seul choix est possible. */
+.db-seg {
+  display: inline-flex; border: 1px solid var(--db-line); border-radius: var(--db-r-sm);
+  overflow: hidden; background: var(--db-card); max-width: 100%; overflow-x: auto;
+}
+.db-seg button {
+  font: inherit; font-size: 12.5px; font-weight: 550; padding: 6px 12px;
+  color: var(--db-muted); background: transparent; border: 0;
+  border-right: 1px solid var(--db-line); white-space: nowrap; cursor: pointer;
+}
+.db-seg button:last-child { border-right: 0; }
+.db-seg button:hover { color: var(--db-ink); background: var(--db-alt); }
+.db-seg button[aria-pressed="true"] {
+  background: var(--db-iris-soft); color: var(--db-iris); font-weight: 650;
+}
+.db-seg button:focus-visible { outline: 2px solid var(--db-iris); outline-offset: -2px; }
+
+.db-compare {
+  font-size: 12.5px; color: var(--db-muted); display: flex; align-items: center; gap: 7px;
+}
+.db-dash {
+  width: 20px; height: 0; border-top: 2px dashed var(--db-slate); display: inline-block;
+}
+
+/* ── Cartes ─────────────────────────────────────────────────────────────── */
+.db-card {
+  background: var(--db-card); border: 1px solid var(--db-line);
+  border-radius: var(--db-r); box-shadow: var(--db-sh);
+}
+.db-card-p { padding: 18px 20px; }
+.db-card-h {
+  display: flex; align-items: center; gap: 8px; padding: 14px 20px;
+  border-bottom: 1px solid var(--db-line-soft);
+}
+.db-card-t { font-size: 13.5px; font-weight: 650; }
+.db-link { font-size: 12.5px; font-weight: 600; color: var(--db-iris); text-decoration: none; }
+.db-link:hover { text-decoration: underline; }
+
+.db-grid { display: grid; gap: 16px; }
+.db-g3 { grid-template-columns: repeat(3, 1fr); }
+.db-g2 { grid-template-columns: repeat(2, 1fr); }
+.db-g-2-1 { grid-template-columns: 1.9fr 1fr; }
+.db-mb { margin-bottom: 16px; }
+
+/* ── Métriques ──────────────────────────────────────────────────────────── */
+.db-l { font-size: 12.5px; color: var(--db-muted); font-weight: 550; margin-bottom: 5px; }
+.db-v {
+  font-size: 28px; font-weight: 650; letter-spacing: -.7px; line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.db-v.xl { font-size: 36px; letter-spacing: -1px; }
+.db-s {
+  font-size: 12.5px; color: var(--db-muted); margin-top: 5px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.db-s:empty { display: none; }
+
+/* ⚠️ LA PASTILLE PORTE L'ÉTAT, LE CHIFFRE RESTE EN ENCRE. Un nombre coloré se lit moins bien
+   qu'un nombre noir, et sur douze indicateurs colorés plus rien ne ressort. */
+.db-badge {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600;
+  padding: 1px 8px; border-radius: var(--db-r-sm); font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.db-badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.db-badge.up   { background: var(--db-green-soft); color: var(--db-green); }
+.db-badge.down { background: var(--db-red-soft);   color: var(--db-red); }
+.db-badge.flat { background: var(--db-alt);        color: var(--db-muted); }
+.db-badge.warn { background: var(--db-amber-soft); color: var(--db-amber); }
+.db-badge.iris { background: var(--db-iris-soft);  color: var(--db-iris); }
+
+.db-axis {
+  display: flex; justify-content: space-between; font-size: 11.5px; color: var(--db-faint);
+  margin-top: 6px; font-variant-numeric: tabular-nums;
+}
+
+/* ── La répartition ─────────────────────────────────────────────────────── */
+.db-stack { height: 10px; display: flex; gap: 2px; }
+.db-stack > span { height: 100%; border-radius: 2px; }
+.db-rows { margin-top: 14px; }
+.db-row {
+  display: grid; grid-template-columns: 14px 1fr auto 56px; gap: 10px; align-items: center;
+  padding: 9px 0; border-top: 1px solid var(--db-line-soft); font-size: 13px;
+}
+.db-row:first-child { border-top: 0; }
+.db-row i { width: 9px; height: 9px; border-radius: 2.5px; display: block; }
+.db-row .k { color: var(--db-ink-2); }
+.db-row .v { font-weight: 600; font-variant-numeric: tabular-nums; }
+.db-row .p { color: var(--db-muted); font-size: 12.5px; text-align: right;
+             font-variant-numeric: tabular-nums; }
+.db-row.tot { border-top: 1px solid var(--db-line); }
+.db-row.tot .k, .db-row.tot .v { font-weight: 650; color: var(--db-ink); }
+
+/* ── Progression avec repère ────────────────────────────────────────────── */
+/* ⚠️ LE REPÈRE EST DANS LA BARRE, PAS À CÔTÉ. Une légende « seuil 1 430 € » sous la barre
+   oblige à convertir une largeur en euros — c'est le calcul qu'un repère évite. */
+.db-prog {
+  height: 8px; border-radius: 999px; background: var(--db-alt); position: relative;
+  border: 1px solid var(--db-line-soft);
+}
+.db-prog > span { display: block; height: 100%; border-radius: 999px; background: var(--db-green); }
+.db-prog .seuil {
+  position: absolute; top: -5px; bottom: -5px; width: 2px; background: var(--db-ink);
+  border-radius: 2px;
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+.db table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.db th, .db td { text-align: left; padding: 10px 20px; border-top: 1px solid var(--db-line-soft); }
+.db th {
+  font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--db-faint); background: var(--db-alt); border-top: 0; white-space: nowrap;
+}
+.db td.r, .db th.r { text-align: right; font-variant-numeric: tabular-nums; }
+.db tbody tr:hover td { background: var(--db-alt); }
+.db-id { color: var(--db-muted); font-size: 12.5px; }
+.db-scroll { max-height: 340px; overflow-y: auto; }
+
+/* ── Liste d'actions ────────────────────────────────────────────────────── */
+.db-act {
+  display: flex; align-items: center; gap: 10px; padding: 11px 20px;
+  border-top: 1px solid var(--db-line-soft); font-size: 13px;
+}
+.db-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+
+/* ── Ce que la page ne sait pas ─────────────────────────────────────────── */
+/* ⚠️ UNE RAISON PREND LA PLACE DU CHIFFRE ABSENT : même poids visuel, pas une note. */
+.db-reason {
+  font-size: 12.5px; color: var(--db-amber); margin-top: 10px;
+  border-left: 2px solid var(--db-amber); padding-left: 10px;
+}
+.db-reason:empty { display: none; }
+
+@media (max-width: 900px) {
+  .db-g3, .db-g2, .db-g-2-1 { grid-template-columns: 1fr; }
+  .db-v.xl { font-size: 30px; }
+}

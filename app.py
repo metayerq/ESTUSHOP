@@ -1111,6 +1111,13 @@ def api_data():
         "seuil":         SEUIL_TRANSACTIONS,
         # Graphe temporel
         "daily":         daily_breakdown(docs_main),
+        # ⚠️ LA COMPARAISON EST UNE COURBE, PAS UN POURCENTAGE. « −9 % » dit de combien ;
+        # la série dit QUAND l'écart s'est creusé — un samedi creux et cinq jours identiques
+        # donnent le même pourcentage et appellent deux gestes opposés.
+        #
+        # ⚠️ ET ELLE EST DÉJÀ CHARGÉE. `docs_comp` sert au bandeau de comparaison depuis
+        # toujours ; l'agréger par jour ne coûte pas un appel de plus.
+        "daily_comp":    daily_breakdown(docs_comp),
         # Paiements & TVA (données document-level — toujours disponibles)
         "payments":      payment_breakdown(docs_main),
         "tva":           tva_breakdown(docs_main),

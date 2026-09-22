@@ -98,8 +98,12 @@ def test_le_contenu_est_dans_la_zone_de_travail(nom):
     h = rendre(nom)
     if 'class="rail"' not in h:
         pytest.skip("page sans rail, par décision")
-    assert h.index('class="statut"') < h.index('<div class="page">')
-    assert h.index('<div class="page">') < h.index("<!-- /app -->")
+    # ⚠️ ON CHERCHE LA CLASSE, PAS LA BALISE EXACTE. Le tableau de bord porte
+    # `class="page db"` depuis qu'il a ses propres jetons : chercher `<div class="page">`
+    # faisait échouer ce test sur un ajout de classe, pas sur un contenu mal placé.
+    i = h.index('class="page')
+    assert h.index('class="statut"') < i
+    assert i < h.index("<!-- /app -->")
 
 
 # ── Le rail lui-même ─────────────────────────────────────────────────────────────────────────

@@ -15,6 +15,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<link rel="stylesheet" href="/static/dashboard.css?v={{ v }}">
 <style>
 /* ── Overview / Cashflow tabs ── */
 .view-tabs {
@@ -113,7 +114,12 @@
 </head>
 <body>
 {% include "_rail.html" %}
-<div class="page">
+{#
+  ⚠️ `db` PORTE LES JETONS DE CETTE PAGE, ET D'ELLE SEULE. Les poser sur `:root` dans
+  `static/style.css` repeindrait les quinze autres écrans d'un coup, sans que personne ne les
+  ait relus — une refonte silencieuse qu'on découvrirait en production.
+#}
+<div class="page db">
 
   <!-- Header -->
   <div class="header">
@@ -143,265 +149,131 @@
   {% endif %}
 
 
-  <!-- Filtres de période -->
-  <div class="period-pills" id="period-pills">
-    <button class="pill active" data-preset="today"     onclick="setPreset('today')">Aujourd'hui</button>
-    <button class="pill"        data-preset="yesterday" onclick="setPreset('yesterday')">Dernier service</button>
-    <button class="pill"        data-preset="services5" onclick="setPreset('services5')">5 derniers services</button>
-    <button class="pill"        data-preset="week"      onclick="setPreset('week')">Semaine en cours</button>
-    <button class="pill"        data-preset="lastweek"  onclick="setPreset('lastweek')">Semaine derni&egrave;re</button>
-    <button class="pill"        data-preset="month"     onclick="setPreset('month')">Ce mois-ci</button>
-    <button class="pill"        data-preset="all"       onclick="setPreset('all')">Depuis l'ouverture</button>
-    <button class="pill"        data-preset="custom"    onclick="openCustomRange()">Dates&hellip;</button>
+  <!--
+    ⚠️ LE GRAPHIQUE MÈNE, LES CHIFFRES SUIVENT. La page ouvrait sur des nombres qu'il fallait
+    comparer de tête ; une courbe répond à « où on en va » avant qu'on ait lu quoi que ce soit.
+
+    ⚠️ ET LA COMPARAISON EST UNE COURBE, PAS UN POURCENTAGE. « −9 % » dit de combien ; la série
+    en pointillés dit QUAND l'écart s'est creusé — un samedi creux et cinq jours identiques
+    donnent le même pourcentage et appellent deux gestes opposés.
+  -->
+  <div class="db-head">
+    <h2 class="db-title" id="db-titre">Vue d'ensemble</h2>
+    <span class="db-sp"></span>
+    <div class="db-seg" id="period-pills" role="group" aria-label="Période">
+      <button type="button" data-preset="today"     aria-pressed="true"  onclick="setPreset('today')">Aujourd'hui</button>
+      <button type="button" data-preset="yesterday" aria-pressed="false" onclick="setPreset('yesterday')">Dernier service</button>
+      <button type="button" data-preset="services5" aria-pressed="false" onclick="setPreset('services5')">5 derniers</button>
+      <button type="button" data-preset="week"      aria-pressed="false" onclick="setPreset('week')">Semaine</button>
+      <button type="button" data-preset="lastweek"  aria-pressed="false" onclick="setPreset('lastweek')">Sem. derni&egrave;re</button>
+      <button type="button" data-preset="month"     aria-pressed="false" onclick="setPreset('month')">Mois</button>
+      <button type="button" data-preset="all"       aria-pressed="false" onclick="setPreset('all')">Tout</button>
+      <button type="button" data-preset="custom"    aria-pressed="false" onclick="openCustomRange()">Dates&hellip;</button>
+    </div>
+    <span class="db-compare"><span class="db-dash"></span> p&eacute;riode pr&eacute;c&eacute;dente</span>
   </div>
 
-  <!-- Le jour en cours dans l'économie de la période : masqué quand la période
-       n'en contient pas, où le choix n'aurait rien à changer. -->
-  <label id="incl-today-bar" style="display:none;align-items:center;gap:7px;margin:-8px 0 18px;
-         font-size:12.5px;color:var(--muted);cursor:pointer;user-select:none;">
+  <div class="periode-dit" id="periode-dit"></div>
+
+  <div id="custom-range-bar" style="display:none; align-items:center; gap:8px; margin:-4px 0 18px;">
+    <input type="date" id="custom-start" style="padding:6px 10px; border:1px solid var(--db-line); border-radius:6px; font-family:inherit; font-size:13px;">
+    <span style="color:var(--db-muted); font-size:13px;">au</span>
+    <input type="date" id="custom-end" style="padding:6px 10px; border:1px solid var(--db-line); border-radius:6px; font-family:inherit; font-size:13px;">
+    <button class="db-link" style="border:1px solid var(--db-iris);background:transparent;border-radius:6px;padding:5px 12px;cursor:pointer" onclick="applyCustomRange()">Appliquer</button>
+  </div>
+
+  <label id="incl-today-bar" style="display:none;align-items:center;gap:7px;margin:0 0 16px;
+         font-size:12.5px;color:var(--db-muted);cursor:pointer;user-select:none;">
     <input type="checkbox" id="incl-today" onchange="toggleInclToday()"
            style="width:15px;height:15px;cursor:pointer;">
     <span>Inclure la journée en cours dans l'économie de la période</span>
-    <span id="incl-today-hint" style="color:var(--faint);"></span>
+    <span id="incl-today-hint" style="color:var(--db-faint);"></span>
   </label>
 
-  <!--
-    ⚠️ « LA SEMAINE DERNIÈRE » EST AMBIGUË : sept jours calendaires, ou cinq de service ? Les
-    deux réponses existent et donnent des chiffres différents. Tant que l'écran ne dit pas
-    laquelle il applique, on lit un total sans savoir sur quoi il porte.
-
-    ⚠️ ET C'EST CE QUI REND LA COMPARAISON LISIBLE. « Semaine en cours » un jeudi contient DEUX
-    services ; « semaine dernière » en contient cinq. Les opposer sans le dire fait conclure à
-    un effondrement de 60 % qui n'est qu'un décalage de calendrier.
-  -->
-  <div class="periode-dit" id="periode-dit"></div>
-
-  <div id="custom-range-bar" style="display:none; align-items:center; gap:8px; margin:-8px 0 20px;">
-    <input type="date" id="custom-start" style="padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px;">
-    <span style="color:var(--muted); font-size:13px;">au</span>
-    <input type="date" id="custom-end" style="padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px;">
-    <button class="pill" onclick="applyCustomRange()" style="background:var(--accent,#37352f); color:#fff;">Appliquer</button>
-  </div>
-
-  <!-- Strip "Today" — visible seulement sur période multi-jours incluant aujourd'hui -->
-  <div id="today-strip" style="display:none; margin-bottom:32px;">
-    <div class="section-label">Aujourd'hui</div>
-    <div class="kpi-grid">
-      <div class="kpi-cell" data-tip="Ce que la journée a fait jusqu'ici, au-dessus de la période choisie. La pastille compare au même jour de semaine, la semaine passée, À LA MÊME HEURE — sans quoi on opposerait une matinée à une journée entière.">
-        <div class="kpi-label">Encaiss&eacute; aujourd'hui</div>
-        <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
-          <span class="kpi-value" id="ts-ca">—</span><span id="ts-ca-badge"></span>
+  <!-- ══ LA COURBE ══════════════════════════════════════════════════════════════════════ -->
+  <div class="db-card db-mb">
+    <div class="db-card-p" style="padding-bottom:12px">
+      <div style="display:flex;gap:42px;flex-wrap:wrap;align-items:flex-start">
+        <div>
+          <div class="db-l">Encaiss&eacute;</div>
+          <div class="db-v xl" id="db-ca">&mdash;</div>
+          <div class="db-s" id="db-ca-sub"></div>
         </div>
-        <div class="kpi-delta" id="ts-ca-sub"></div>
-      </div>
-      <div class="kpi-cell" data-tip="Tickets passés en caisse aujourd'hui, comparés au même jour de semaine la semaine passée, à la même heure.">
-        <div class="kpi-label">Tickets</div>
-        <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
-          <span class="kpi-value" id="ts-nb">—</span><span id="ts-nb-badge"></span>
+        <div>
+          <div class="db-l" id="db-res-l">R&eacute;sultat</div>
+          <div class="db-v" id="db-res">&mdash;</div>
+          <div class="db-s" id="db-res-sub"></div>
         </div>
-        <div class="kpi-delta" id="ts-nb-sub"></div>
-      </div>
-      <div class="kpi-cell" data-tip="Le ticket moyen du jour, comparé au même jour de semaine la semaine passée, à la même heure.">
-        <div class="kpi-label">Ticket moyen</div>
-        <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
-          <span class="kpi-value" id="ts-ticket">—</span><span id="ts-ticket-badge"></span>
+        <div>
+          <div class="db-l">Point mort</div>
+          <div class="db-v" id="db-seuil">&mdash;</div>
+          <div class="db-s" id="db-seuil-sub"></div>
         </div>
-        <div class="kpi-delta" id="ts-ticket-sub"></div>
+      </div>
+      <div style="height:210px;margin-top:18px"><canvas id="chart-daily"></canvas></div>
+      <div class="db-reason" id="db-note" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- ══ TROIS MÉTRIQUES ════════════════════════════════════════════════════════════════ -->
+  <div class="db-grid db-g3 db-mb">
+    <a class="db-card db-card-p" href="/transactions" style="text-decoration:none;color:inherit">
+      <div class="db-l">Tickets</div>
+      <div class="db-v" id="kpi-nb">&mdash;</div>
+      <div class="db-s"><span id="kpi-nb-delta"></span><span id="kpi-nb-perday"></span></div>
+      <div style="height:46px;margin-top:12px"><canvas id="mini-tickets"></canvas></div>
+    </a>
+    <div class="db-card db-card-p">
+      <div class="db-l">Ticket moyen</div>
+      <div class="db-v" id="kpi-ticket">&mdash;</div>
+      <div class="db-s"><span id="kpi-ticket-delta"></span><span id="kpi-ticket-median"></span></div>
+      <div style="height:46px;margin-top:12px"><canvas id="mini-ticket"></canvas></div>
+    </div>
+    <div class="db-card db-card-p">
+      <div class="db-l" id="eco-marge-label">Marge brute</div>
+      <div class="db-v" id="eco-marge">&mdash;</div>
+      <div class="db-s" id="eco-marge-pct"></div>
+      <div style="height:46px;margin-top:12px"><canvas id="mini-marge"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ══ OÙ VA L'ARGENT · POINT MORT · PRIME COST ═══════════════════════════════════════ -->
+  <div class="db-grid db-g-2-1 db-mb">
+    <div class="db-card">
+      <div class="db-card-h"><span class="db-card-t">O&ugrave; va l'argent</span>
+        <span class="db-sp"></span><span class="db-badge flat" id="db-va-periode"></span></div>
+      <div class="db-card-p">
+        <div class="db-stack" id="db-stack"></div>
+        <div class="db-rows" id="db-va"></div>
       </div>
     </div>
-  </div>
-
-  <!--
-    ⚠️ HUIT CELLULES DÉCRIVAIENT LA MÊME PÉRIODE, EN DEUX GRILLES SÉPARÉES. « KPIs » portait le
-    CA, les tickets, le ticket moyen et l'EBITDA ; « Today's economics » la marge, les charges,
-    le prime cost et le point mort. Toutes de même poids, certaines à cinq sous-lignes. Une
-    grille où tout pèse pareil ne hiérarchise rien : on la balaie sans rien y lire.
-
-    ⚠️ CE SONT POURTANT LES MAILLONS D'UNE SEULE CHAÎNE. Le CA paie la marchandise, ce qui reste
-    paie les charges, ce qui reste encore est le résultat. Les mettre bout à bout raconte une
-    histoire ; les poser en quatre carrés en oblige le lecteur à la reconstituer de tête, chaque
-    matin.
-
-    ⚠️ ET LES TICKETS ONT LEUR PAGE. `/transactions` les compte par jour, par heure et par jour
-    de semaine ; les répéter ici en pleine taille donnait deux endroits où lire la même chose,
-    et deux endroits à tenir d'accord.
-  -->
-  <div class="tx-section">
-    <div class="tx-card tx-answer">
-      <div class="tx-q">Est-ce qu'on couvre nos co&ucirc;ts&nbsp;?</div>
-      <div class="tx-lead" id="db-lead">&mdash;</div>
-      <div class="tx-answer-main">
-        <span class="tx-value" id="db-value">&mdash;</span>
-        <span class="tx-unit" id="db-unit">de r&eacute;sultat</span>
-        <span id="db-delta"></span>
+    <div class="db-grid" style="gap:16px;align-content:start">
+      <div class="db-card db-card-p">
+        <div class="db-l" id="eco-seuil-label">Point mort</div>
+        <div class="db-v" id="eco-seuil">&mdash;</div>
+        <div class="db-prog" style="margin:13px 0 9px">
+          <span id="eco-seuil-bar" style="width:0%"></span>
+          <span class="seuil" id="eco-seuil-mark" style="left:100%"></span>
+        </div>
+        <div class="db-s" id="eco-seuil-sub"></div>
+        <div class="db-s" id="eco-seuil-avg"></div>
       </div>
-      <div class="tx-sub" id="db-sub"></div>
-      <div class="tx-rule" id="db-rule"></div>
-      <div class="tx-reason" id="db-note" style="display:none"></div>
-    </div>
-  </div>
-
-  <!--
-    ⚠️ LA CHAÎNE DOIT ÊTRE ARITHMÉTIQUEMENT VRAIE. Ma première version enchaînait
-    « CA − marchandise − charges = résultat » : faux, parce que le CA est TTC et la marge se
-    calcule HORS TAXES. Une chaîne qui ne tombe pas juste est pire qu'une grille — elle promet
-    une addition vérifiable, et la promesse se casse au premier calcul mental.
-    Ce qui tombe juste : marge brute − charges = résultat. Le CA reste en tête, comme ce qui
-    entre, et la marchandise vit sous la marge qu'elle a déjà retranchée.
-  -->
-  <div class="section-label" id="kpi-section-label">La cha&icirc;ne</div>
-  <div class="chaine" id="chaine">
-    <div class="maillon" data-tip="Total encaissé auprès des clients, TVA comprise. La ligne du dessous le ventile en chiffre d'affaires hors taxes et TVA collectée.">
-      <div class="maillon-l">Chiffre d'affaires</div>
-      <div class="maillon-v" id="kpi-ca">&mdash;</div>
-      <div class="maillon-s" id="kpi-ca-delta"></div>
-      <div class="maillon-s" id="kpi-ca-drivers"></div>
-      <div class="maillon-s" id="kpi-ca-ht"></div>
-      <div class="maillon-s" id="kpi-ca-perday"></div>
-    </div>
-    <div class="maillon-fleche" aria-hidden="true">&rsaquo;</div>
-    <div class="maillon" data-tip="Chiffre d'affaires hors taxes moins le coût de la marchandise vendue, d'après les prix de revient Vendus. La couverture dit quelle part des ventes a un coût réellement connu.">
-      <div class="maillon-l" id="eco-marge-label">Marge brute</div>
-      <div class="maillon-v" id="eco-marge">&mdash;</div>
-      <div class="maillon-s" id="eco-marge-pct"></div>
-    </div>
-    <div class="maillon-fleche" aria-hidden="true">&minus;</div>
-    <div class="maillon" data-tip="Charges fixes et salaires de la période, répartis sur les jours RÉELLEMENT ouverts — pas sur les jours du calendrier.">
-      <div class="maillon-l" id="eco-charges-label">Charges</div>
-      <div class="maillon-v" id="eco-charges">&mdash;</div>
-      <div class="maillon-s" id="eco-charges-sub"></div>
-    </div>
-    <div class="maillon-fleche" aria-hidden="true">=</div>
-    <div class="maillon fin" data-tip="Ce qu'il reste une fois la marchandise et toutes les charges payées.">
-      <div class="maillon-l" id="kpi-ebitda-label">R&eacute;sultat</div>
-      <div class="maillon-v" id="kpi-ebitda">&mdash;</div>
-      <div class="maillon-s" id="kpi-ebitda-sub"></div>
-    </div>
-  </div>
-
-  <!-- Le point mort et le prime cost, en barres : « où on en est » d'un coup d'œil. -->
-  <div class="section-label" id="eco-label">O&ugrave; on en est</div>
-  <div class="seuil-strip" id="seuil-strip">
-    <div class="seuil-tete">
-      <span class="seuil-l" id="eco-seuil-label">Point mort</span>
-      <span class="seuil-v" id="eco-seuil">&mdash;</span>
-      <span class="seuil-s" id="eco-seuil-sub"></span>
-      <span class="seuil-s" id="eco-seuil-avg"></span>
-    </div>
-    <div class="progress-track"><div class="progress-fill" id="eco-seuil-bar" style="width:0%"></div></div>
-    <div class="seuil-tete" style="margin-top:12px">
-      <span class="seuil-l" id="eco-prime-label">Prime cost</span>
-      <span class="seuil-v" id="eco-prime">&mdash;</span>
-      <span class="seuil-s" id="eco-prime-sub"></span>
-    </div>
-    <div style="display:flex;height:4px;border-radius:2px;overflow:hidden;background:var(--bar-bg);" id="eco-prime-bar"></div>
-  </div>
-
-  <!-- Le volume, en une ligne : il a sa page, il n'a pas besoin d'un quart de l'écran. -->
-  <a class="volume" href="/transactions">
-    <span><b id="kpi-nb">&mdash;</b> tickets</span>
-    <span id="kpi-nb-delta"></span>
-    <span class="volume-sep">&middot;</span>
-    <span><b id="kpi-ticket">&mdash;</b> ticket moyen</span>
-    <span id="kpi-ticket-delta"></span>
-    <span class="volume-sep">&middot;</span>
-    <span id="kpi-ticket-median"></span>
-    <span id="kpi-nb-perday"></span>
-    <span class="volume-go">Affluence &rarr;</span>
-  </a>
-
-  <!-- ═══ Bloc Activity — peaks + revenue by hour + rush heatmap, groupés (Mesa) ═══ -->
-  <!-- Pics d'activité (conditionnel — jour unique) -->
-  {#
-    ⚠️ « ACTIVITY PEAKS » RÉSUMAIT LE GRAPHIQUE SITUÉ JUSTE EN DESSOUS. Trois pastilles
-    « 12h — 14 tickets » au-dessus d'une courbe qui dit la même chose, en mieux : on lisait
-    deux fois, puis on cessait de lire les deux. Et « Quand les tickets tombent » sur
-    /transactions porte la même question sur tout l'historique.
-  #}
-
-  {#
-    ⚠️ « RETURNING CUSTOMERS » A DEUX PAGES À LUI. `/clientes` analyse les empreintes de cartes
-    du terminal, `/loyalty` suit le rattachement au programme — et les tuiles d'ici ne faisaient
-    que renvoyer vers la première. Un chiffre qui existe pour être cliqué n'a pas besoin d'un
-    quart de l'écran d'accueil ; le rail y mène en un geste.
-  #}
-  <div class="section-head">
-    <div class="section-label">Quand l'argent entre</div>
-    <span class="section-quoi">par heure, et ce qui le compose</span>
-  </div>
-    {#
-      ⚠️ CES DEUX GRAPHIQUES SE CONSULTENT, ILS NE SE SURVEILLENT PAS. On les ouvre pour
-      répondre à « à quelle heure faut-il du monde au comptoir ? » ou « qu'est-ce qui porte le
-      chiffre ? » — deux questions qu'on se pose une fois par semaine, pas chaque matin. Les
-      laisser déroulés poussait la réponse du haut hors de l'écran.
-
-      ⚠️ ET UN GRAPHIQUE REPLIÉ SE DESSINE DANS UN CANVAS DE TAILLE NULLE. Chart.js mesure son
-      conteneur au moment du tracé : dans un `<details>` fermé, il vaut zéro, et le graphique
-      sort écrasé à l'ouverture. `dashboard.js` le redimensionne au dépliage.
-    #}
-  <div class="charts-row">
-    <div class="chart-block">
-      <div class="section-label" id="time-chart-label" style="margin-bottom:4px;">Par heure</div>
-      <div class="hswitch" id="hourly-switch" style="display:none;">
-        <button class="hswitch-btn active" id="hsw-abs" onclick="setHourlyMode('abs')">Encaiss&eacute;</button>
-        <button class="hswitch-btn" id="hsw-delta" onclick="setHourlyMode('delta')">vs semaine pass&eacute;e</button>
-      </div>
-    </div>
-    <div id="hourly-sub" style="font-size:12px;color:var(--muted);margin-bottom:16px;min-height:16px;"></div>
-    <div id="hourly-bars" style="overflow-x:auto;"></div>
-    <canvas id="chart-daily" height="130" style="display:none;"></canvas>
-  </div>
-
-  <!-- Payment methods + Product mix, groupés (répartitions) -->
-  <div class="charts-grid" style="margin-bottom:14px;">
-    <div class="chart-block">
-      <div class="section-label" style="margin-bottom:14px;">R&eacute;partition des ventes</div>
-      <div id="mix-bars">
-        <span style="font-size:12px;color:var(--muted);">Chargement&hellip;</span>
+      <div class="db-card db-card-p">
+        <div class="db-l" id="eco-prime-label">Prime cost</div>
+        <div class="db-v" id="eco-prime">&mdash;</div>
+        <div class="db-prog" style="margin:13px 0 9px">
+          <span id="eco-prime-bar" style="width:0%;background:var(--db-iris)"></span>
+          <span class="seuil" style="left:65%"></span>
+        </div>
+        <div class="db-s" id="eco-prime-sub"></div>
       </div>
     </div>
   </div>
 
   {#
-    ⚠️ « PAYMENT METHODS » DONNAIT LA RÉPARTITION DÉCLARÉE PAR VENDUS. `/reconciliation` donne
-    la même chose MESURÉE sur le terminal Revolut, ligne à ligne, avec l'écart entre les deux —
-    c'est-à-dire l'information que celle-ci prétendait porter, plus le moyen de savoir si elle
-    est juste. Garder les deux, c'était offrir le choix entre une mesure et une déclaration.
-  #}
-
-  <!-- Insights de la période (suivent le sélecteur) -->
-  <div class="ins-grid on" style="margin-bottom:32px;">
-    <div class="ins-card" id="ins-basket"></div>
-    <div class="ins-card" id="ins-seat"></div>
-  </div>
-
-  <div class="section-head">
-    <div class="section-label">L'allure de la journée</div>
-    <span class="section-quoi">le cumul heure par heure — jour unique</span>
-  </div>
-    {#
-      ⚠️ ELLE N'EXISTE QUE SUR UN JOUR UNIQUE, et le bloc reste donc vide le reste du temps.
-      Replié, un bloc vide ne coûte qu'une ligne ; déroulé, il laissait un cadre blanc qu'on
-      prenait pour un graphique qui n'a pas chargé.
-    #}
-  <!-- Courbe cumulative (conditionnel — jour unique) -->
-  <div id="curve-section" style="display:none;margin-bottom:32px;">
-    <div class="section-label">Cumul de la journ&eacute;e</div>
-    <div class="card" style="padding:20px 22px;">
-      <canvas id="chart-curve" height="90"></canvas>
-    </div>
-  </div>
-
-  {#
-    ⚠️ LA LISTE DES COMMANDES EST REVENUE, À LA DEMANDE. Je l'avais retirée comme doublon de
-    `/reconciliation`, qui détaille chaque ticket avec son rapprochement bancaire. Ce
-    raisonnement valait pour la RÉCONCILIATION — vérifier que la caisse tombe juste — pas pour
-    le geste courant : regarder ce qui vient d'être vendu, sans quitter l'écran où l'on est.
-
-    ⚠️ DEUX ÉCRANS PEUVENT MONTRER LA MÊME DONNÉE SANS ÊTRE UN DOUBLON, à condition qu'ils
-    répondent à deux questions. Ici : « qu'est-ce qui se passe maintenant ». Là-bas : « est-ce
-    que tout est encaissé ». Ce qui serait un doublon, ce serait deux CALCULS de la même chose ;
-    les deux listes lisent la même source.
+    ⚠️ LA CARTE « CHARGES » A ÉTÉ RETIRÉE : la répartition juste au-dessus montre déjà le
+    personnel et les charges fixes, chacun avec sa part. Un total à côté de ses deux composantes
+    fait chercher ce qu'il ajoute — et il n'ajoute rien.
   #}
   <!-- Transactions récentes -->
   <div style="display:flex;align-items:baseline;justify-content:space-between;">

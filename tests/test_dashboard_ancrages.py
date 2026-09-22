@@ -133,11 +133,11 @@ def _rendre(economics):
     prog = SOCLE + bloc + f"""
         renderReponse({json.dumps({"economics": economics})});
         console.log(JSON.stringify({{
-          lead: champs['db-lead'].textContent,
-          value: champs['db-value'].textContent,
-          etat: champs['db-value'].attrs['data-etat'] || null,
-          delta: champs['db-delta'].innerHTML,
-          sub: champs['db-sub'].innerHTML,
+          lead: champs['db-res-l'].textContent,
+          value: champs['db-res'].textContent,
+          couleur: champs['db-res'].style.color || null,
+          delta: champs['db-res-sub'].innerHTML,
+          seuil: champs['db-seuil'].textContent,
           note: champs['db-note'].innerHTML,
           noteVisible: champs['db-note'].style.display !== 'none',
         }}));
@@ -152,11 +152,15 @@ ECO = {"ebitda_ht": 420.0, "ca_ttc": 3100.0, "seuil_ca_ttc": 2600.0, "open_days"
 
 
 def test_la_reponse_est_bien_remplie():
+    """
+    ⚠️ LE LIBELLÉ PORTE LE NOMBRE DE SERVICES, PAS LE VERDICT. Celui-ci est passé dans la
+    pastille : une phrase qui répète la couleur d'à côté occupe une ligne pour rien.
+    """
     r = _rendre(ECO)
-    assert "couverts" in r["lead"] and "ne sont pas" not in r["lead"]
+    assert "5 services" in r["lead"]
     assert "420.00" in r["value"]
-    assert r["etat"] == "ok"
-    assert "3100.00" in r["sub"] and "2600.00" in r["sub"] and "5" in r["sub"]
+    assert "couverts" in r["delta"]
+    assert "2600.00" in r["seuil"], "le point mort est dit en euros, pas en pourcentage"
 
 
 def test_la_reponse_est_appelee_a_chaque_rendu():
@@ -173,9 +177,8 @@ def test_un_resultat_negatif_dit_ce_quil_manque_en_VENTES():
     compare à une journée. Les deux diffèrent du taux de marge, et c'est le second qu'on vise.
     """
     r = _rendre({**ECO, "ebitda_ht": -180.0, "manque_seuil": 740.0})
-    assert "ne sont pas couverts" in r["lead"]
-    assert r["etat"] == "alerte"
     assert "740.00" in r["delta"] and "ventes" in r["delta"]
+    assert "db-badge down" in r["delta"], "un manque n'est pas peint comme une réussite"
 
 
 def test_sans_prix_dachat_la_reponse_nomme_le_geste():
@@ -185,7 +188,7 @@ def test_sans_prix_dachat_la_reponse_nomme_le_geste():
     """
     r = _rendre({"ebitda_ht": None})
     assert r["value"] == "—"
-    assert r["etat"] is None, "une case vide porte un état"
+    assert r["delta"] == "", "une case vide porte une pastille"
     assert r["noteVisible"] and "/cogs" in r["note"]
 
 
@@ -244,7 +247,9 @@ def test_la_reponse_vient_avant_tout_le_reste():
     devant le chiffre qu'on ouvre la page pour voir.
     """
     html = _gabarit()
-    ordre = ['id="db-value"', 'class="chaine"', 'id="eco-seuil"',
+    # ⚠️ LA CHAÎNE A LAISSÉ PLACE À LA COURBE. Les ancrages changent ; la règle ne bouge pas —
+    # ce qu'on vient lire chaque matin d'abord, ce qu'on va chercher ensuite.
+    ordre = ['id="db-ca"', 'id="db-res"', 'id="eco-seuil"',
              'id="recent-body"', 'id="products-body"', 'id="month-zone"', 'id="patterns-zone"']
     positions = [html.index(a) for a in ordre]
     assert positions == sorted(positions), \
@@ -254,7 +259,7 @@ def test_la_reponse_vient_avant_tout_le_reste():
 def test_la_periode_est_annoncee_avant_le_premier_chiffre():
     """Un total sans sa période est un nombre qui flotte."""
     html = _gabarit()
-    assert html.index('id="periode-dit"') < html.index('id="db-value"')
+    assert html.index('id="periode-dit"') < html.index('id="db-ca"')
 
 
 # ⚠️ LES TESTS DE LA GARDE DE REDIMENSIONNEMENT SONT PARTIS AVEC ELLE. Ils éprouvaient un
@@ -318,3 +323,160 @@ def test_ouvrir_une_commande_remplit_le_tiroir():
     assert "Café" in out["items"]
     assert "12.50" in out["total"]
     assert "open" in out["ouvert"], "le tiroir ne s'ouvre pas"
+
+
+# ── La feuille du tableau de bord ────────────────────────────────────────────────────────────
+
+def test_les_jetons_du_tableau_de_bord_ne_debordent_pas_sur_les_autres_pages():
+    """
+    ⚠️ POSER CES JETONS SUR `:root` REPEINDRAIT QUINZE ÉCRANS D'UN COUP. Affluence, Fidélité,
+    Charges, Réconciliation n'ont pas été relus dans ce langage : une refonte silencieuse se
+    découvre en production, sur la page qu'on ouvre le moins.
+    """
+    css = open(os.path.join(RACINE, "static", "dashboard.css"), encoding="utf-8").read()
+    assert ":root {" not in css, "les jetons sont posés globalement"
+    assert css.count(".db {") >= 1
+    html = _gabarit()
+    assert 'class="page db"' in html, "la page ne porte pas le préfixe qui active les jetons"
+    assert "/static/dashboard.css?v=" in html, "la feuille n'est pas chargée, ou sans version"
+    # ⚠️ ET ELLE N'EST CHARGÉE QUE LÀ. Une autre page qui l'inclurait hériterait de jetons
+    # pensés pour celle-ci, sans en porter la structure.
+    import glob
+    for chemin in glob.glob(os.path.join(RACINE, "templates", "*.html")):
+        if os.path.basename(chemin) == "index.html":
+            continue
+        assert "dashboard.css" not in open(chemin, encoding="utf-8").read(), chemin
+
+
+def _courbe(payload):
+    """
+    Exécute `renderCourbe` sur un faux Chart et rend la configuration produite.
+
+    ⚠️ LIRE LE CODE N'ATTESTE PAS DE CE QU'IL DESSINE. Quatre mutants ont survécu à une
+    batterie parce que mes contrôles cherchaient « borderDash » dans le source : il y en a deux,
+    en retirer un laissait l'autre, et le test restait vert pendant que la comparaison devenait
+    une ligne pleine.
+    """
+    if not shutil.which("node"):
+        pytest.skip("node absent — vérifié en local et à la revue")
+    js = _js()
+    bloc = ""
+    for nom in ("jetons", "voile", "renderCourbe"):
+        i = js.index(f"function {nom}(")
+        bloc += js[i:js.index("\n}", i) + 2] + "\n"
+    prog = """
+      let config = null;
+      class Chart {
+        constructor(ctx, cfg) { config = cfg; }
+        destroy() {}
+      }
+      let chartDaily = null;
+      const faux = { getContext: () => ({ createLinearGradient: () => ({ addColorStop(){} }) }) };
+      const document = {
+        getElementById: (id) => (id === 'chart-daily' ? faux : null),
+        querySelector: () => null, documentElement: {},
+      };
+      const getComputedStyle = () => ({ getPropertyValue: () => '#000000' });
+      const fmt = (v) => Number(v).toFixed(2);
+    """ + bloc + f"""
+      renderCourbe({json.dumps(payload)});
+      console.log(JSON.stringify({{
+        jeux: config.data.datasets.map(j => ({{
+          label: j.label, data: j.data, dash: j.borderDash || null, spanGaps: j.spanGaps,
+        }})),
+        labels: config.data.labels,
+      }}));
+    """
+    r = subprocess.run(["node", "-e", prog], capture_output=True, text=True, timeout=20)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout)
+
+
+JOURS = [{"date": "2026-09-18", "ca_ttc": 380, "nb": 40},
+         {"date": "2026-09-19", "ca_ttc": 420, "nb": 44},
+         {"date": "2026-09-21", "ca_ttc": 455, "nb": 47}]
+COMP = [{"date": "2026-09-11", "ca_ttc": 350, "nb": 38},
+        {"date": "2026-09-12", "ca_ttc": 400, "nb": 42},
+        {"date": "2026-09-14", "ca_ttc": 410, "nb": 43}]
+PAYLOAD = {"daily": JOURS, "daily_comp": COMP,
+           "economics": {"seuil_ca_ttc_jour": 287.0}}
+
+
+def test_la_comparaison_est_tracee_en_pointilles():
+    """⚠️ « −9 % » DIT DE COMBIEN ; LA COURBE DIT QUAND l'écart s'est creusé."""
+    r = _courbe(PAYLOAD)
+    comp = [j for j in r["jeux"] if j["data"] == [350, 400, 410]]
+    assert comp, "la série de comparaison n'est pas tracée"
+    assert comp[0]["dash"], "la comparaison n'est pas en pointillés"
+
+
+def test_le_point_mort_est_une_ligne_sur_la_courbe():
+    """
+    ⚠️ IL MONTRE QUELS SERVICES ONT PAYÉ LEUR JOURNÉE. Un pourcentage de couverture donne le
+    total et cache la dispersion : trois jours au-dessus et deux très en dessous se lisent
+    comme cinq jours moyens.
+    """
+    r = _courbe(PAYLOAD)
+    seuil = [j for j in r["jeux"] if j["data"] == [287.0, 287.0, 287.0]]
+    assert seuil, "le point mort n'est pas tracé"
+    assert seuil[0]["dash"], "le point mort n'est pas en tirets"
+
+
+def test_sans_point_mort_connu_aucune_ligne_nest_inventee():
+    r = _courbe({"daily": JOURS, "daily_comp": [], "economics": {}})
+    assert len(r["jeux"]) == 1, "une ligne est tracée sans seuil connu"
+
+
+def test_un_jour_ferme_nest_pas_relie_au_suivant():
+    """
+    ⚠️ RELIER DEUX JOURS SÉPARÉS PAR UNE FERMETURE DESSINE UNE PENTE QUI N'A PAS EU LIEU. Le
+    café ferme mardi et mercredi : la courbe traverserait le creux comme s'il avait été mesuré.
+    """
+    r = _courbe(PAYLOAD)
+    # ⚠️ LA LIGNE DU POINT MORT N'A PAS DE `spanGaps` : c'est une constante, sans trou. Exiger
+    # la clé partout ferait échouer le test sur un jeu de données qui n'a pas le problème.
+    porteurs = [j for j in r["jeux"] if "spanGaps" in j and j["spanGaps"] is not None]
+    assert len(porteurs) == 2, "les deux séries mesurées ne portent pas la garde"
+    assert all(j["spanGaps"] is False for j in porteurs)
+
+
+def test_les_deux_series_sont_alignees_sur_le_rang_pas_sur_la_date():
+    """
+    ⚠️ LES DEUX FENÊTRES N'ONT PAS LES MÊMES QUANTIÈMES — c'est tout l'intérêt d'une
+    comparaison à nombre de services égal. Les aligner par date ferait glisser la courbe d'un
+    cran à chaque jour fermé.
+    """
+    r = _courbe(PAYLOAD)
+    assert len(r["labels"]) == 3
+    for j in r["jeux"]:
+        assert len(j["data"]) == 3
+
+
+def test_le_serveur_sert_bien_la_serie_de_comparaison():
+    """⚠️ SANS ELLE, LA COURBE EN POINTILLÉS DISPARAÎT SANS ERREUR : le jeu de données est
+    simplement absent, et la page perd sa comparaison en silence."""
+    src = open(os.path.join(RACINE, "app.py"), encoding="utf-8").read()
+    assert '"daily_comp":    daily_breakdown(docs_comp),' in src
+
+
+def test_une_mini_courbe_refuse_de_tracer_un_seul_point():
+    """
+    ⚠️ UN POINT UNIQUE DONNE UNE LIGNE PLATE, qui se lit « stable » — alors qu'on n'a rien
+    mesuré. C'est la même faute que d'afficher 0 pour une absence.
+    """
+    js = _js()
+    i = js.index("function miniCourbe(")
+    bloc = js[i:js.index("\nfunction renderMinis(", i)]
+    assert "mesures.length < 2" in bloc
+    assert "display = 'none'" in bloc
+
+
+def test_la_repartition_se_tait_sans_marge():
+    """
+    ⚠️ SANS MARGE, LA RÉPARTITION N'EN EST PAS UNE : il manquerait le plus gros poste, et les
+    parts affichées sembleraient tout couvrir.
+    """
+    js = _js()
+    i = js.index("function renderRepartition(")
+    bloc = js[i:js.index("\nfunction renderReponse(", i)]
+    assert "ebitda_ht == null" in bloc and "/cogs" in bloc

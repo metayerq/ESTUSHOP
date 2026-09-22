@@ -55,8 +55,11 @@ let customStart = null, customEnd = null;
 function setPreset(p) {
   currentPreset = p;
   document.getElementById('custom-range-bar').style.display = 'none';
-  document.querySelectorAll('.pill').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.preset === p);
+  /* ⚠️ LE SEGMENTÉ SE MARQUE PAR `aria-pressed`, PAS PAR UNE CLASSE. L'ancienne bascule visait
+   * `.pill`, qui n'existe plus : le bouton cliqué restait gris, la page se rechargeait, et rien
+   * ne disait quelle période était active. */
+  document.querySelectorAll('#period-pills button[data-preset]').forEach(btn => {
+    btn.setAttribute('aria-pressed', String(btn.dataset.preset === p));
   });
   loadData();
 }
@@ -64,8 +67,8 @@ function setPreset(p) {
 function openCustomRange() {
   const bar = document.getElementById('custom-range-bar');
   bar.style.display = bar.style.display === 'none' ? 'flex' : 'none';
-  document.querySelectorAll('.pill').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.preset === 'custom');
+  document.querySelectorAll('#period-pills button[data-preset]').forEach(btn => {
+    btn.setAttribute('aria-pressed', String(btn.dataset.preset === 'custom'));
   });
   if (!document.getElementById('custom-start').value) {
     const today = new Date().toISOString().slice(0, 10);
@@ -105,47 +108,10 @@ function delta(cur, prev, label) {
 }
 
 // Pastille seule (flèche + %), sans libellé — pour le strip Today.
-function deltaBadge(cur, prev) {
-  if (prev == null || prev === 0) return '';
-  const pct = Math.round((cur - prev) / Math.abs(prev) * 100);
-  const up = pct >= 0;
-  return `<span class="${up ? 'delta-up' : 'delta-down'}">${up ? '▲ +' : '▼ '}${pct}%</span>`;
-}
 
 // "Sat 18 Jul"
-function dayShort(iso) {
-  return new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
-}
 
 // Strip "Today" : snapshot du jour + delta vs jour ouvré précédent.
-function renderTodayStrip(d) {
-  const strip = document.getElementById('today-strip');
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const includesToday = !d.is_single_day && d.to_date === todayIso && Array.isArray(d.week);
-  if (!includesToday) { strip.style.display = 'none'; return; }
-
-  const wk = d.week;
-  const today = wk[wk.length - 1];                     // dernier point = aujourd'hui
-  // Comparaison au MÊME JOUR DE LA SEMAINE précédente (samedi vs samedi), à
-  // heure égale — pas au jour précédent, qui n'a pas la même saisonnalité.
-  const prev = d.today_lastweek
-    || [...wk.slice(0, -1)].reverse().find(x => x.nb > 0)   // repli si indisponible
-    || null;
-  const tTicket = today.nb ? today.ca / today.nb : 0;
-  const pTicket = prev && prev.nb ? prev.ca / prev.nb : 0;
-  const vs = prev ? `vs ${dayShort(prev.date)}${d.today_lastweek ? ' same time' : ''} · ` : '';
-
-  document.getElementById('ts-ca').textContent      = fmt(today.ca);
-  document.getElementById('ts-ca-badge').innerHTML  = prev ? deltaBadge(today.ca, prev.ca) : '';
-  document.getElementById('ts-ca-sub').textContent  = prev ? vs + fmt(prev.ca) : '';
-  document.getElementById('ts-nb').textContent      = today.nb;
-  document.getElementById('ts-nb-badge').innerHTML  = prev ? deltaBadge(today.nb, prev.nb) : '';
-  document.getElementById('ts-nb-sub').textContent  = prev ? vs + prev.nb : '';
-  document.getElementById('ts-ticket').textContent  = fmt(tTicket);
-  document.getElementById('ts-ticket-badge').innerHTML = (prev && prev.nb && today.nb) ? deltaBadge(tTicket, pTicket) : '';
-  document.getElementById('ts-ticket-sub').textContent = (prev && prev.nb) ? vs + fmt(pTicket) : '';
-  strip.style.display = '';
-}
 
 function fmtDate(iso) {
   return new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', {
@@ -225,76 +191,257 @@ let _retReq = 0;
  * ⚠️ ET « PAS DE DONNÉE » N'EST PAS « À L'ÉQUILIBRE ». Sans prix d'achat, le résultat n'est pas
  * calculable : la réponse le dit et nomme le geste, au lieu d'afficher un zéro rassurant.
  */
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   LA COURBE — et la comparaison en pointillés.
+   ═══════════════════════════════════════════════════════════════════════════════════════════
+
+   ⚠️ « −9 % » DIT DE COMBIEN ; LA COURBE DIT QUAND. Un samedi creux et cinq jours identiques
+   donnent le même pourcentage et appellent deux gestes opposés. La série précédente est tracée
+   en pointillés par-dessus, alignée sur le même axe.
+
+   ⚠️ ET LE POINT MORT EST UNE LIGNE, PAS UNE CARTE. Tracé à `seuil_ca_ttc_jour`, il dit d'un
+   coup d'œil quels services ont payé leur journée — ce qu'aucun pourcentage ne montre.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+let chartMini = {};
+
+function jetons() {
+  const c = getComputedStyle(document.querySelector('.db') || document.documentElement);
+  const v = (n) => (c.getPropertyValue(n) || '').trim();
+  return {
+    iris: v('--db-iris') || '#635BFF',
+    slate: v('--db-slate') || '#A3ACBA',
+    line: v('--db-line-soft') || '#EDF1F6',
+    faint: v('--db-faint') || '#8792A2',
+    ink: v('--db-ink') || '#1A1F36',
+    card: v('--db-card') || '#FFFFFF',
+    green: v('--db-green') || '#067647',
+  };
+}
+
+/** Un dégradé vertical sous la courbe, comme Stripe. */
+function voile(ctx, couleur, h) {
+  const g = ctx.createLinearGradient(0, 0, 0, h || 200);
+  g.addColorStop(0, couleur + '38');
+  g.addColorStop(1, couleur + '00');
+  return g;
+}
+
+function renderCourbe(d) {
+  const cv = document.getElementById('chart-daily');
+  if (!cv || typeof Chart === 'undefined') return;
+  const j = jetons();
+  const jours = (d.daily || []);
+  const comp = (d.daily_comp || []);
+
+  /* ⚠️ LA COMPARAISON EST ALIGNÉE SUR LE RANG, PAS SUR LA DATE. Les deux fenêtres n'ont pas les
+   * mêmes quantièmes — c'est tout l'intérêt d'une comparaison à nombre de services égal. On
+   * superpose donc le 1er service au 1er, le 2e au 2e. Les aligner par date ferait glisser la
+   * courbe d'un cran à chaque jour fermé. */
+  const n = Math.max(jours.length, comp.length);
+  const labels = [];
+  for (let i = 0; i < n; i++) {
+    const x = jours[i];
+    labels.push(x ? new Date(x.date + 'T12:00:00')
+      .toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' }) : '');
+  }
+  const serie = [], precedente = [];
+  for (let i = 0; i < n; i++) {
+    serie.push(jours[i] ? jours[i].ca_ttc : null);
+    precedente.push(comp[i] ? comp[i].ca_ttc : null);
+  }
+
+  const seuilJour = d.economics && d.economics.seuil_ca_ttc_jour;
+  const jeux = [
+    {
+      label: 'Encaissé', data: serie, borderColor: j.iris, borderWidth: 2.5,
+      pointRadius: 0, pointHoverRadius: 4, tension: .25, fill: true,
+      backgroundColor: (c) => voile(c.chart.ctx, j.iris, c.chart.height),
+      spanGaps: false, order: 1,
+    },
+  ];
+  if (precedente.some((v) => v != null)) {
+    jeux.push({
+      label: 'Période précédente', data: precedente, borderColor: j.slate, borderWidth: 2,
+      borderDash: [5, 5], pointRadius: 0, pointHoverRadius: 3, tension: .25, fill: false,
+      spanGaps: false, order: 2,
+    });
+  }
+  if (seuilJour > 0) {
+    jeux.push({
+      label: 'Point mort / service', data: new Array(n).fill(seuilJour),
+      borderColor: j.ink, borderWidth: 1.5, borderDash: [2, 5], pointRadius: 0,
+      pointHoverRadius: 0, fill: false, order: 3,
+    });
+  }
+
+  if (chartDaily) chartDaily.destroy();
+  chartDaily = new Chart(cv.getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets: jeux },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: j.ink, padding: 10, displayColors: true, boxWidth: 8, boxHeight: 8,
+          callbacks: {
+            /* ⚠️ UN TROU N'EST PAS UN ZÉRO. Un jour fermé n'a pas de point ; l'infobulle doit
+             * le dire plutôt que d'afficher 0 €, qui se lirait « ouvert, personne n'est venu ». */
+            label: (c) => c.raw == null
+              ? ` ${c.dataset.label} : non mesuré`
+              : ` ${c.dataset.label} : ${fmt(c.raw)}`,
+          },
+        },
+      },
+      scales: {
+        y: {
+          beginAtZero: true, border: { display: false },
+          grid: { color: j.line },
+          ticks: { font: { size: 11 }, color: j.faint, maxTicksLimit: 5,
+                   callback: (v) => fmt(v) },
+        },
+        x: {
+          grid: { display: false }, border: { display: false },
+          ticks: { font: { size: 11 }, color: j.faint, maxRotation: 0, autoSkipPadding: 18 },
+        },
+      },
+    },
+  });
+}
+
+/** Une mini-courbe, sans axes : la forme suffit, le chiffre est au-dessus. */
+function miniCourbe(id, valeurs, couleur) {
+  const cv = document.getElementById(id);
+  if (!cv || typeof Chart === 'undefined') return;
+  const mesures = (valeurs || []).filter((v) => v != null);
+  if (chartMini[id]) { chartMini[id].destroy(); chartMini[id] = null; }
+  /* ⚠️ MOINS DE DEUX POINTS NE FAIT PAS UNE COURBE. Un seul point tracé donne une ligne plate
+   * qui se lit « stable » — alors qu'on n'a rien mesuré du tout. */
+  if (mesures.length < 2) { cv.style.display = 'none'; return; }
+  cv.style.display = '';
+  chartMini[id] = new Chart(cv.getContext('2d'), {
+    type: 'line',
+    data: { labels: valeurs.map(() => ''), datasets: [{
+      data: valeurs, borderColor: couleur, borderWidth: 2, pointRadius: 0,
+      tension: .3, fill: true,
+      backgroundColor: (c) => voile(c.chart.ctx, couleur, 60), spanGaps: false,
+    }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: { x: { display: false }, y: { display: false, beginAtZero: false } },
+    },
+  });
+}
+
+function renderMinis(d) {
+  const j = jetons();
+  const jours = d.daily || [];
+  miniCourbe('mini-tickets', jours.map((x) => x.nb), j.iris);
+  miniCourbe('mini-ticket', jours.map((x) => (x.nb ? x.ca_ttc / x.nb : null)), j.green);
+  /* ⚠️ LA MARGE N'EXISTE PAS JOUR PAR JOUR DANS CETTE CHARGE UTILE. Tracer le CA HT à sa place
+   * donnerait une courbe crédible et fausse — on dessinerait des ventes en croyant lire une
+   * marge. La carte garde son chiffre et se passe de courbe. */
+  miniCourbe('mini-marge', [], j.iris);
+}
+
+/** Où va l'argent : une barre empilée, puis le détail chiffré. */
+function renderRepartition(d) {
+  const eco = d.economics || {};
+  const j = jetons();
+  const stack = document.getElementById('db-stack');
+  const rows = document.getElementById('db-va');
+  const per = document.getElementById('db-va-periode');
+  if (!stack || !rows) return;
+
+  const ttc = eco.ca_ttc;
+  if (!ttc || eco.ebitda_ht == null) {
+    /* ⚠️ SANS MARGE, LA RÉPARTITION N'EST PAS UNE RÉPARTITION : il manquerait le plus gros
+     * poste, et les parts affichées sembleraient tout couvrir. */
+    stack.innerHTML = '';
+    rows.innerHTML = '<div class="db-s">Se calcule à partir de la marge, donc des prix d’achat. '
+      + '<a href="/cogs" class="db-link">Ouvrir COGS →</a></div>';
+    if (per) per.textContent = '';
+    return;
+  }
+  if (per) per.textContent = d.period_label || '';
+
+  const postes = [
+    ['TVA collectée',  (eco.ca_ttc - eco.ca_ht), j.slate],
+    ['Marchandise',    eco.cogs_ht,              '#B54708'],
+    ['Personnel',      eco.cout_perso_periode ?? eco.cout_perso_jour, j.iris],
+    ['Charges fixes',  eco.cout_fixe_periode ?? eco.cout_fixe_jour,   j.faint],
+    ['Résultat',       eco.ebitda_ht,            j.green],
+  ].filter((p) => typeof p[1] === 'number' && isFinite(p[1]));
+
+  stack.innerHTML = postes.map(([, v, c]) =>
+    `<span style="width:${Math.max(0, v / ttc * 100)}%;background:${c}"></span>`).join('');
+  rows.innerHTML = postes.map(([k, v, c], i) =>
+    `<div class="db-row${i === postes.length - 1 ? ' tot' : ''}">` +
+    `<i style="background:${c}"></i><span class="k">${k}</span>` +
+    `<span class="v"${i === postes.length - 1 ? ` style="color:${j.green}"` : ''}>${fmt(v)}</span>` +
+    `<span class="p">${(v / ttc * 100).toFixed(1)} %</span></div>`).join('');
+}
+
 function renderReponse(d) {
   const eco = d.economics || {};
   const E = (id) => document.getElementById(id);
   const note = E('db-note');
   const jours = eco.open_days != null ? eco.open_days : null;
 
+  /* ⚠️ LE MÊME COMPTE QUE LA LIGNE DE PÉRIODE. `open_days` vient de `daily_economics`, qui
+   * reçoit la fenêtre RÉELLEMENT calculée : les deux sont d'accord par construction. Les
+   * laisser diverger ferait lire « 412 € sur 5 services » à côté de « 4 services ». */
+  E('db-res-l').textContent = 'Résultat'
+    + (d.is_single_day ? '' : (jours ? ` · ${jours} service${jours > 1 ? 's' : ''}` : ''));
+
+  /* ⚠️ LE POINT MORT EST DIT EN EUROS, PAS EN POURCENTAGE. « 145 % » ne se compare à rien
+   * qu'on connaisse ; « 1 430 € » se compare à une journée de caisse. */
+  if (eco.seuil_ca_ttc != null) {
+    E('db-seuil').textContent = fmt(eco.seuil_ca_ttc);
+    E('db-seuil-sub').innerHTML = eco.manque_seuil > 0
+      ? `<span class="db-badge warn">${fmt(eco.manque_seuil)} manquants</span>`
+      : `<span class="db-badge up">dépassé</span>`;
+  } else {
+    E('db-seuil').textContent = '—';
+    E('db-seuil-sub').textContent = '';
+  }
+
   if (eco.ebitda_ht == null) {
-    E('db-lead').textContent = 'Le résultat n’est pas calculable sur cette période.';
-    E('db-value').textContent = '—';
-    E('db-delta').innerHTML = '';
-    E('db-sub').innerHTML = '';
-    E('db-rule').innerHTML = '';
-    note.innerHTML = 'Il manque les prix d’achat pour connaître la marge. '
-      + '<a href="/cogs">Ouvrir COGS &amp; recettes →</a>';
+    /* ⚠️ « PAS DE DONNÉE » N'EST PAS « À L'ÉQUILIBRE ». Afficher 0 € rassurerait à tort ; dire
+     * seulement « non calculable » laisse devant un écran mort sans indiquer le geste. */
+    E('db-res').textContent = '—';
+    E('db-res').style.color = '';
+    E('db-res-sub').innerHTML = '';
+    note.innerHTML = 'Le résultat se calcule à partir de la marge, donc des prix d’achat. '
+      + '<a href="/cogs" class="db-link">Ouvrir COGS &amp; recettes →</a>';
     note.style.display = '';
-    etat(E('db-value'), null);
     return;
   }
 
   const couvre = eco.ebitda_ht >= 0;
-  E('db-value').textContent = fmt(eco.ebitda_ht);
-  etat(E('db-value'), couvre ? 'ok' : 'alerte');
-  E('db-lead').textContent = couvre
-    ? 'Les coûts sont couverts.'
-    : 'Les coûts ne sont pas couverts.';
+  E('db-res').textContent = fmt(eco.ebitda_ht);
+  E('db-res').style.color = couvre ? 'var(--db-green)' : 'var(--db-red)';
 
-  /* ⚠️ LE MANQUE EST DIT EN EUROS DE CHIFFRE D'AFFAIRES, PAS EN RÉSULTAT. « Il manque 180 € »
-     de résultat n'indique aucun geste ; « il manque 740 € de ventes » se compare à une
-     journée. Les deux diffèrent du taux de marge, et c'est le second qu'on peut viser. */
-  const manque = eco.manque_seuil;
-  E('db-delta').innerHTML = couvre
-    ? '<span class="tx-chip tx-chip-up">au-dessus du point mort</span>'
-    : (manque > 0
-        ? `<span class="tx-chip tx-chip-down">${fmt(manque)} de ventes manquantes</span>`
-        : '');
+  /* ⚠️ LE MANQUE EST DIT EN EUROS DE VENTES, PAS EN RÉSULTAT. « Il manque 180 € » de résultat
+   * n'indique aucun geste ; « il manque 740 € de ventes » se compare à une journée. Les deux
+   * diffèrent du taux de marge, et c'est le second qu'on peut viser. */
+  E('db-res-sub').innerHTML = couvre
+    ? '<span class="db-badge up">coûts couverts</span>'
+    : `<span class="db-badge down">${fmt(eco.manque_seuil || 0)} de ventes manquantes</span>`;
 
-  const bouts = [];
-  if (eco.ca_ttc != null) bouts.push(`<b>${fmt(eco.ca_ttc)}</b> encaissés`);
-  if (eco.seuil_ca_ttc != null) bouts.push(`point mort <b>${fmt(eco.seuil_ca_ttc)}</b>`);
-  /* ⚠️ LE MÊME COMPTE QUE LA LIGNE DE PÉRIODE. `open_days` vient de `daily_economics`, qui
-   * reçoit la fenêtre RÉELLEMENT calculée : les deux sont donc d'accord par construction. Les
-   * laisser diverger ferait lire « 420 € sur 5 services » à côté de « 4 services ». */
-  if (jours) bouts.push(`<b>${jours}</b> service${jours > 1 ? 's' : ''}`);
-  E('db-sub').innerHTML = bouts.join(' · ');
-
-  /* ⚠️ CE QUI EST ESTIMÉ SE DIT À CÔTÉ DU CHIFFRE. Sous la couverture COGS complète, la marge
-     est extrapolée — donc le résultat ET le point mort le sont aussi. Le taire ferait lire un
-     résultat mesuré là où il y a une projection. */
+  /* ⚠️ CE QUI EST ESTIMÉ SE DIT À CÔTÉ DU CHIFFRE. Sous la couverture complète des coûts, la
+   * marge est extrapolée — donc le résultat ET le point mort le sont aussi. Le taire ferait
+   * lire un résultat mesuré là où il y a une projection. */
   if (eco.marge_is_estimated === true) {
-    note.innerHTML = `Marge extrapolée sur <b>${eco.cogs_coverage_pct}%</b> des ventes — `
+    note.innerHTML = `Marge extrapolée sur <b>${eco.cogs_coverage_pct} %</b> des ventes — `
       + 'le résultat et le point mort en héritent.';
     note.style.display = '';
   } else {
     note.style.display = 'none';
   }
-
-  E('db-rule').innerHTML = 'Résultat = marge brute &minus; charges fixes et salaires, '
-    + 'répartis sur les jours <b>réellement ouverts</b>.';
 }
-
-/* ⚠️ LA GARDE DE REDIMENSIONNEMENT EST PARTIE AVEC LES BLOCS REPLIÉS. Chart.js mesure son
- * conteneur au moment du tracé : dans un `<details>` fermé il vaut zéro, et le graphique sort
- * écrasé à l'ouverture. Le problème était réel ; il n'a plus d'objet ici, puisque plus aucun
- * graphique de cette page n'est replié.
- *
- * ⚠️ ET UNE PROTECTION SANS CIBLE EST PIRE QU'ABSENTE : on la maintient, on la relit, on la
- * croit active — et le jour où un graphique replié réapparaît ailleurs, personne ne pense à
- * vérifier qu'elle le couvre. Si le pli revient, ce code est dans l'historique, au commit
- * « Cinq blocs du tableau de bord se replient ».
- */
 
 function render(d) {
   window._lastData = d;
@@ -323,11 +470,10 @@ function render(d) {
   }
   document.getElementById('subtitle').textContent = subtitle;
 
-  // Label KPI dynamique
-  const kpiLabel = d.is_single_day
+  // Le titre de page porte la période choisie.
+  document.getElementById('db-titre').textContent = d.is_single_day
     ? (d.is_today ? 'Aujourd’hui' : fmtDate(d.date).replace(/^\w/, c => c.toUpperCase()))
     : d.period_label;
-  document.getElementById('kpi-section-label').textContent = kpiLabel;
 
   // Mis à jour
   const updatedEl = document.getElementById('updated-at');
@@ -355,8 +501,8 @@ function render(d) {
     }
   }
 
-  // ── KPIs ─────────────────────────────────────────────────────────────────
-  document.getElementById('kpi-ca').textContent = fmt(d.today.ca);
+  // ── Les trois chiffres du bandeau ────────────────────────────────────────
+  document.getElementById('db-ca').textContent = fmt(d.today.ca);
   if (d.economics) {
     // Le brut reste écrit : c'est lui qui coïncide avec Vendus, la trésorerie
     // et la page comptable. Le net est ce que le café gagne réellement.
@@ -364,66 +510,29 @@ function render(d) {
     // reprendre son ca_ht ici affichait un HT + TVA qui ne recomposait pas le
     // total affiché juste au-dessus. Les stats couvrent la période entière.
     const chef = d.today.popup_chef;
-    document.getElementById('kpi-ca-ht').innerHTML =
-      `${fmt(d.today.ca_ht)} HT · TVA ${fmt(d.today.ca - d.today.ca_ht)}`
-      + (chef ? `<br><span style="color:#7c4dbe;">${fmt(d.today.ca_gross)} facturé · ${fmt(chef)} reversé au chef</span>` : '');
+    document.getElementById('db-ca-sub').innerHTML =
+      `<span>${fmt(d.today.ca_ht)} HT · TVA ${fmt(d.today.ca - d.today.ca_ht)}</span>`
+      + (chef ? `<span class="db-badge iris">${fmt(chef)} reversé au chef</span>` : '');
   } else {
-    document.getElementById('kpi-ca-ht').textContent = '';
+    document.getElementById('db-ca-sub').textContent = '';
   }
   // Deltas "vs yesterday" seulement en jour unique. En multi-jours, le strip
   // Today porte la comparaison ; le bloc période reste descriptif (comme Mesa).
   // Deltas vs période de comparaison — sur TOUTES les périodes (le backend
   // aligne la fenêtre : même jour / mêmes jours de semaine / même quantième).
   // delta() renvoie '' si la période de comparaison est vide (ex. since opening).
+  /* ⚠️ L'ÉCART DU CHIFFRE D'AFFAIRES REJOINT LE BANDEAU, ET LA DÉCOMPOSITION « trafic ×
+   * panier » DISPARAÎT. Elle expliquait POURQUOI le chiffre bougeait — utile, et déjà porté
+   * par les deux cartes Tickets et Ticket moyen, qui montrent chacune sa propre courbe. Deux
+   * façons de dire la même chose, dont une en pourcentages imbriqués.
+   */
   const caDelta = delta(d.today.ca, d.yesterday.ca, compLabel);
-  document.getElementById('kpi-ca-delta').innerHTML     = caDelta;
+  const caSub = document.getElementById('db-ca-sub');
+  if (caDelta) caSub.insertAdjacentHTML('afterbegin', caDelta);
 
-  // Décomposition de la croissance : CA = trafic (tx) × panier (ticket moyen).
-  // Répond à "POURQUOI ça bouge" — plus de clients, ou panier plus gros ?
-  const driversEl = document.getElementById('kpi-ca-drivers');
-  const prevNb = d.yesterday.nb, prevTicket = d.yesterday.ticket;
-  if (caDelta && prevNb > 0 && prevTicket > 0) {
-    const gNb = Math.round((d.today.nb     - prevNb)     / prevNb     * 100);
-    const gTk = Math.round((d.today.ticket - prevTicket) / prevTicket * 100);
-    const part = (g, label) => {
-      const col = g > 0 ? 'var(--green)' : g < 0 ? 'var(--red)' : 'var(--muted)';
-      return `<span style="color:var(--muted)">${label}</span> <span style="color:${col};font-weight:500">${g >= 0 ? '+' : ''}${g}%</span>`;
-    };
-    driversEl.innerHTML =
-      `<span style="color:var(--faint)">=</span> ${part(gNb, 'traffic')}` +
-      `<span style="color:var(--faint)"> × </span>${part(gTk, 'basket')}`;
-  } else {
-    driversEl.innerHTML = '';
-  }
-  // Moyenne par jour ouvert — seulement en multi-jours (sur un jour unique, la
-  // moyenne EST le total). Le CA/jour est confronté au point mort/jour : c'est
-  // la lecture qui dit d'un coup d'œil si la période tient la route.
-  const openDays  = d.economics?.open_days || 0;
-  const perDayEl  = document.getElementById('kpi-ca-perday');
+  const openDays = d.economics?.open_days || 0;
   const nbPerDayEl = document.getElementById('kpi-nb-perday');
   if (!d.is_single_day && openDays > 1) {
-    // Confronté au point mort, donc calculé sur la MÊME base que lui : quand
-    // l'économie exclut le jour courant, sa recette sort aussi du numérateur —
-    // sinon on divisait 4 jours de recette par 3 jours de charges.
-    const caBase   = d.economics?.excludes_today && d.economics?.ca_ttc != null
-                     ? d.economics.ca_ttc : d.today.ca;
-    const caDay    = caBase / openDays;
-    const seuilDay = d.economics?.seuil_ca_ttc_jour;
-    let verdict = '';
-    if (seuilDay > 0) {
-      const above = caDay >= seuilDay;
-      const gap   = Math.round(Math.abs(caDay - seuilDay));
-      verdict = ` <span style="color:${above ? 'var(--green)' : 'var(--red)'};font-weight:500">`
-              + `${above ? '▲' : '▼'} ${fmt(gap)}</span>`
-              + `<span style="color:var(--faint);font-size:11px;"> vs le point mort</span>`;
-    }
-    perDayEl.innerHTML = `<strong style="color:var(--text)">${fmt(caDay)}</strong>`
-      + `<span style="color:var(--faint);font-size:11px;"> / jour ouvert</span>${verdict}`;
-    // ⚠️ Calculé par le serveur (_tx_per_open_day), plus ici. La division faite à cet endroit
-    // comptait la journée EN COURS des deux côtés : un vendredi matin, trois tickets face à un
-    // jour ouvré entier faisaient chuter la moyenne d'un tiers, qui remontait ensuite toute
-    // seule au fil des heures. Le serveur ne retient que les jours pleins et sait répondre
-    // « on ne sait pas » quand il n'y en a aucun — un 0 se lirait « aucune transaction ».
     const tx = d.basket && d.basket.tx_per_open_day;
     nbPerDayEl.innerHTML = tx != null
       ? `<strong style="color:var(--text)">${tx}</strong>`
@@ -447,44 +556,7 @@ function render(d) {
   document.getElementById('kpi-ticket-median').innerHTML =
     d.median != null ? `median ${fmt(d.median)}` : '';
 
-  // EBITDA en rangée d'or — le chiffre qui répond à "est-ce que je gagne de l'argent ?"
-  const ebitdaEl  = document.getElementById('kpi-ebitda');
-  const ebitdaSub = document.getElementById('kpi-ebitda-sub');
   const ecoTop = d.economics;
-  const ebitdaOpenN = ecoTop && ecoTop.open_days;
-  document.getElementById('kpi-ebitda-label').textContent =
-    'Résultat' + (d.is_single_day ? '' : (ebitdaOpenN ? ` · ${ebitdaOpenN} services` : ` · ${d.n_days} jours`))
-    + (ecoTop && ecoTop.excludes_today ? ' · hors journée en cours' : '');
-  if (ecoTop && ecoTop.ebitda_ht != null) {
-    ebitdaEl.textContent = fmt(ecoTop.ebitda_ht);
-    ebitdaEl.style.color = ecoTop.ebitda_ht > 0 ? 'var(--green)' : ecoTop.ebitda_ht < 0 ? 'var(--red)' : 'var(--text)';
-    // L'EBITDA descend de la marge brute, donc du taux mesuré sur la partie couverte du CA.
-    // Si ce taux est extrapolé, « Profitable ✓ » affirme plus que ce qu'on sait — la coche
-    // se lit comme un fait vérifié. Le verdict est alors donné au conditionnel.
-    const ebitdaEst = ecoTop.marge_is_estimated === true;
-    ebitdaSub.innerHTML = (ecoTop.ebitda_ht >= 0
-      ? `<span style="color:var(--green)">Profitable${ebitdaEst ? '' : ' ✓'}</span>`
-      : `<span style="color:var(--red)">Loss</span>`)
-      + (ebitdaEst ? ` <span style="color:#b07d00">sur une marge extrapolée</span>` : '');
-  } else {
-    /* ⚠️ UNE CASE VIDE NOMME LE GESTE. L'EBITDA se calcule à partir de la marge, qui se
-       calcule à partir des prix d'achat : dire « pas mesurable » sans dire pourquoi laisse
-       chercher la panne au mauvais endroit. */
-    ebitdaEl.textContent = '—'; ebitdaEl.style.color = '';
-    etat(ebitdaEl, null);
-    ebitdaSub.innerHTML = '<span style="color:var(--muted)">Se calcule à partir de la marge. ' +
-      '<a href="/cogs" style="color:var(--accent)">Ouvrir COGS &amp; recettes →</a></span>';
-  }
-
-  // ── Strip "Today" (période multi-jours incluant aujourd'hui) ──────────────
-  // Mesa affiche toujours un snapshot du jour au-dessus de la période. Dérivé
-  // de d.week (7 derniers jours) : dernier point = aujourd'hui, jour ouvré
-  // précédent = dernier point antérieur avec des ventes.
-  renderTodayStrip(d);
-
-  // (Barre "Break-even N tx/day" supprimée : constante BP statique, redondante
-  //  et parfois contradictoire avec le seuil CA réel affiché dans Economics.)
-
 
   // ── Économie ──────────────────────────────────────────────────────────────
   // Labels dynamiques selon la période
@@ -494,8 +566,6 @@ function render(d) {
   const periodSuffix = d.is_single_day ? '(jour)'
     : (openN ? `· ${openN} services` : `· ${d.n_days} jours`)
       + (d.economics && d.economics.excludes_today ? ' · hors journée en cours' : '');
-  document.getElementById('eco-label').textContent      = `Economics ${periodSuffix}`;
-  document.getElementById('eco-charges-label').textContent = `Charges ${periodSuffix}`;
   document.getElementById('eco-prime-label').textContent   = `Prime cost ${periodSuffix}`;
   document.getElementById('eco-seuil-label').textContent   = `Point mort ${periodSuffix}`;
   document.getElementById('eco-marge-label').textContent   = 'Marge brute';
@@ -546,28 +616,10 @@ function render(d) {
     // période ne contient aucun jour ouvré — un mardi-mercredi, café fermé. Le repli sur le
     // coût JOURNALIER y réafficherait les ~197 € que la correction serveur venait justement
     // de retirer. Sans jour ouvré, il n'y a rien à imputer : on le dit.
-    const chargesEl = document.getElementById('eco-charges');
-    if (eco.open_days === 0) {
-      chargesEl.textContent = '—';
-      document.getElementById('eco-charges-sub').innerHTML =
-        '<span style="color:var(--muted)">aucun jour d\'ouverture sur la période</span>';
-      document.getElementById('eco-prime').textContent = '—';
-      etat(document.getElementById('eco-prime'), null);
-      document.getElementById('eco-prime-sub').innerHTML =
-        '<span style="color:var(--muted)">Aucun jour d\'ouverture sur la période.</span>';
-      document.getElementById('eco-prime-bar').innerHTML = '';
-      document.getElementById('eco-seuil').textContent = '—';
-      document.getElementById('eco-seuil-sub').innerHTML =
-        '<span style="color:var(--muted)">pas de point mort sans jour ouvré</span>';
-      return;
-    }
-    chargesEl.textContent = fmt(eco.cout_total_periode ?? eco.cout_total_jour);
-    const openDays = eco.open_days || d.n_days;
-    const chargesSub = d.is_single_day
-      ? `Fixes ${fmt(eco.cout_fixe_periode ?? eco.cout_fixe_jour)} · Personnel ${fmt(eco.cout_perso_periode ?? eco.cout_perso_jour)}`
-      : `${fmt(eco.cout_fixe_periode ?? eco.cout_fixe_jour)} de fixes · ${fmt(eco.cout_perso_periode ?? eco.cout_perso_jour)} de personnel · <span style="color:var(--faint)">${openDays} services × ${fmt(eco.cout_jour ?? (eco.cout_total_jour / openDays))}/jour</span>`;
-    document.getElementById('eco-charges-sub').innerHTML = chargesSub;
-
+    /* ⚠️ LA CARTE « CHARGES » A ÉTÉ RETIRÉE : la répartition montre déjà le personnel et les
+     * charges fixes, chacun avec sa part. Un total à côté de ses deux composantes fait chercher
+     * ce qu'il ajoute — et il n'ajoute rien.
+     */
     // Prime cost — COGS + labour, sur la période (déplacé des cartes Insights)
     const primePerso = eco.cout_perso_periode ?? eco.cout_perso_jour;
     const primeEl = document.getElementById('eco-prime');
@@ -697,32 +749,11 @@ function render(d) {
     `<span style="${i === peakIdx && w.ca > 0 ? 'color:var(--text);font-weight:600' : ''}">${fmt(w.ca)}</span>`
   ).join('');
 
-  // ── Graphe temporel : horaire (1j) ou journalier (multi-jours) ───────────
-  const hourlyBars  = document.getElementById('hourly-bars');
-  const hourlySub   = document.getElementById('hourly-sub');
-  const dailyCanvas = document.getElementById('chart-daily');
-  const timeLabel   = document.getElementById('time-chart-label');
-
-  if (d.is_single_day && d.hourly) {
-    hourlyBars.style.display = '';
-    dailyCanvas.style.display = 'none';
-    timeLabel.textContent = 'Par heure';
-    // Libellé court de la référence : "vs last Sat same time" → "last Sat"
-    const prevLbl = (d.comp_label || '').replace(/^vs\s+/, '').replace(/\s+same time$/, '');
-    renderHourlyBars(d.hourly, d.hourly_prev, prevLbl);
-  } else if (d.daily && d.daily.length) {
-    hourlyBars.style.display = 'none';
-    hourlySub.textContent = '';
-    dailyCanvas.style.display = '';
-    timeLabel.textContent = 'Par jour';
-    hideHourlySwitch();
-    renderDailyChart(d.daily);
-  } else {
-    hourlyBars.style.display = 'none';
-    hourlySub.textContent = '';
-    dailyCanvas.style.display = 'none';
-    hideHourlySwitch();
-  }
+  /* ⚠️ LE GRAPHIQUE PRINCIPAL EST DESSINÉ PAR `renderCourbe`, appelée depuis `renderOverview`.
+   * L'ancien aiguillage — barres horaires sur un jour, courbe sur plusieurs — a disparu avec le
+   * bloc « Par heure » : une seule forme désormais, le cumul ou la série selon la période, et la
+   * comparaison en pointillés par-dessus.
+   */
 
   /* ⚠️ LA RÉPARTITION DES PAIEMENTS EST PARTIE VERS `/reconciliation`. Celle d'ici venait de
    * ce que Vendus DÉCLARE ; celle de là-bas est MESURÉE sur le terminal Revolut, ligne à
@@ -844,6 +875,9 @@ function renderPeriode(d) {
 function renderInsights(d) {
   renderReponse(d);
   renderPeriode(d);
+  renderCourbe(d);
+  renderMinis(d);
+  renderRepartition(d);
   const ins = d.insights;
   const monthZone    = document.getElementById('month-zone');
   const patternsZone = document.getElementById('patterns-zone');
@@ -969,214 +1003,12 @@ function renderInsights(d) {
     document.getElementById('ins-calendar').innerHTML = `<div class="ins-label">Calendrier du point mort</div><div class="ins-sub">Pas encore assez de données.</div>`;
   }
 
-  // Articles par ticket (attach)
-  const bk = ins.basket;
-  if (bk && bk.items_per_ticket != null) {
-    document.getElementById('ins-basket').innerHTML = `
-      <div class="ins-label">Articles par ticket (${d.period_label.toLowerCase()})</div>
-      <div class="ins-big">${bk.items_per_ticket.toFixed(2)}</div>
-      <div class="ins-sub">${bk.attach_pct} % des tickets portent 2 articles ou plus — le levier le moins cher</div>`;
-  } else {
-    document.getElementById('ins-basket').innerHTML = `<div class="ins-label">Articles par ticket</div><div class="ins-sub">Pas encore assez de données.</div>`;
-  }
-
-  // 7. CA par place assise
-  const st = ins.seat;
-  if (st && st.per_seat_day != null) {
-    document.getElementById('ins-seat').innerHTML = `
-      <div class="ins-label">Encaissé par place / open day</div>
-      <div class="ins-big">${fmt(st.per_seat_day)}</div>
-      <div class="ins-sub">${st.seats} places (${st.terrace} en terrasse + ${st.inside} en salle) · ${fmt(st.per_seat_period)}/place sur la période</div>`;
-  } else {
-    document.getElementById('ins-seat').innerHTML = `<div class="ins-label">Encaissé par place</div><div class="ins-sub">Pas encore assez de données.</div>`;
-  }
+  /* ⚠️ « ARTICLES PAR TICKET » ET « ENCAISSÉ PAR PLACE » SONT PARTIS avec les cartes qui les
+   * portaient. Les deux étaient justes et se lisaient une fois : l'un mesure la vente
+   * additionnelle, l'autre le rendement de la salle. Aucun n'a jamais changé une décision — et
+   * ils occupaient la ligne située juste sous le résultat.
+   */
 }
-
-// ── Graphe horaire : deux vues exclusives ───────────────────────────────────
-// 'abs'   → CA par heure (vue par défaut, inchangée)
-// 'delta' → écart par heure vs le même jour la semaine passée, autour de zéro.
-// Une seule information à la fois : rien n'est superposé aux barres.
-let _hourlyMode = 'abs';
-let _hourlyData = null;
-
-function hideHourlySwitch() {
-  const sw = document.getElementById('hourly-switch');
-  if (sw) sw.style.display = 'none';
-  _hourlyData = null;
-}
-
-function setHourlyMode(mode) {
-  _hourlyMode = mode;
-  document.getElementById('hsw-abs').classList.toggle('active', mode === 'abs');
-  document.getElementById('hsw-delta').classList.toggle('active', mode === 'delta');
-  if (_hourlyData) renderHourlyBars(_hourlyData.h, _hourlyData.prev, _hourlyData.prevLabel);
-}
-
-// Vue "écarts" : barres vertes vers le haut (mieux que la semaine passée),
-// rouges vers le bas, de part et d'autre d'une ligne de zéro.
-function renderHourlyDelta(hours, vals, prevByHour, prevLabel, h) {
-  const diffs = hours.map((hr, i) => (vals[i] || 0) - (prevByHour[hr] || 0));
-  const maxAbs = Math.max(...diffs.map(Math.abs), 0) || 1;
-  const ref = prevLabel || 'semaine passée';
-
-  document.getElementById('hourly-bars').innerHTML =
-    `<div class="dbar-row"><div class="dbar-zero"></div>` + hours.map((hr, i) => {
-      const dv  = diffs[i];
-      const now = vals[i] || 0, pv = prevByHour[hr] || 0;
-      const px  = Math.round(Math.abs(dv) / maxAbs * 58);
-      const pct = pv > 0 ? Math.round(dv / pv * 100) : null;
-      const tip = (now || pv)
-        ? `${hr}h · ${fmt(now)} vs ${fmt(pv)} — ${dv >= 0 ? '+' : ''}${fmt(dv)}`
-          + (pct !== null ? ` (${dv >= 0 ? '+' : ''}${pct}%)` : '')
-        : `${hr}h · aucune vente`;
-      const bar = px > 0
-        ? `<div class="dfill ${dv >= 0 ? 'pos' : 'neg'}" style="height:${Math.max(px, 3)}px;"></div>`
-        : '';
-      return `<div class="dbar" data-tip="${tip}">
-        <div class="up-half">${dv > 0 ? bar : ''}</div>
-        <div class="down-half">${dv < 0 ? bar : ''}</div>
-        <span class="dhr">${hr}</span>
-      </div>`;
-    }).join('') + `</div>`;
-
-  // Sous-titre : les créneaux qui expliquent le plus l'écart
-  const ranked = hours.map((hr, i) => ({ hr, d: diffs[i] })).filter(x => Math.abs(x.d) > 0.5);
-  const best  = ranked.filter(x => x.d > 0).sort((a, b) => b.d - a.d).slice(0, 2);
-  const worst = ranked.filter(x => x.d < 0).sort((a, b) => a.d - b.d).slice(0, 2);
-  const totalDiff = diffs.reduce((s, v) => s + v, 0);
-  const line = (label, arr, col) => arr.length
-    ? ` · <span style="color:var(--faint)">${label}</span> `
-      + arr.map(x => `<span style="color:${col};font-weight:500">${x.hr}h ${x.d >= 0 ? '+' : ''}${fmt(x.d)}</span>`).join(' ')
-    : '';
-  document.getElementById('hourly-sub').innerHTML =
-    `<span style="color:var(--faint)">vs ${ref}:</span> `
-    + `<b style="color:${totalDiff >= 0 ? 'var(--green)' : 'var(--red)'}">${totalDiff >= 0 ? '+' : ''}${fmt(totalDiff)}</b>`
-    + line('gained', best, 'var(--green)')
-    + line('lost', worst, 'var(--red)');
-}
-
-// hourly.labels = ["7h","8h",…] · values/nb/avg_ticket/avg_gap alignés.
-function renderHourlyBars(h, prev, prevLabel) {
-  // Mémorise les données pour pouvoir basculer entre les deux vues sans
-  // recharger (la bascule ne fait que re-rendre).
-  _hourlyData = { h, prev, prevLabel };
-
-  const hours = h.labels.map(l => parseInt(l, 10));
-  const vals  = h.values;
-  // Comparaison "même jour la semaine passée" : jamais superposée aux barres.
-  // Elle vit dans le sous-titre, les tooltips, et la vue "vs last week".
-  const prevByHour = {};
-  if (prev && Array.isArray(prev.labels)) {
-    prev.labels.forEach((l, i) => { prevByHour[parseInt(l, 10)] = prev.values[i] || 0; });
-  }
-  const hasPrev = Object.values(prevByHour).some(v => v > 0);
-
-  // Bascule visible seulement s'il y a une référence à comparer
-  const sw = document.getElementById('hourly-switch');
-  if (sw) sw.style.display = hasPrev ? '' : 'none';
-  if (!hasPrev) _hourlyMode = 'abs';
-
-  if (_hourlyMode === 'delta' && hasPrev) {
-    renderHourlyDelta(hours, vals, prevByHour, prevLabel, h);
-    return;
-  }
-
-  const maxV = Math.max(...vals, 0) || 1;
-  const peakIdx = vals.reduce((mi, v, i, a) => v > a[mi] ? i : mi, 0);
-  const peakHour = hours[peakIdx];
-
-  // Heures creuses : entre la première et la dernière heure active, < 5% du pic.
-  const active = hours.filter((_, i) => vals[i] > 0);
-  const first = active[0], last = active[active.length - 1];
-  const dead = active.length >= 2
-    ? hours.filter((hr, i) => hr > first && hr < last && vals[i] < maxV * 0.05)
-    : [];
-  const deadSet = new Set(dead);
-
-  document.getElementById('hourly-bars').innerHTML =
-    `<div class="hbar-row">` + hours.map((hr, i) => {
-      const isPeak = i === peakIdx && vals[i] > 0;
-      const hpx = Math.round(vals[i] / maxV * 118);
-      const pv  = prevByHour[hr] || 0;
-      let tip = `${hr}h · ${fmt(vals[i])} · ${h.nb[i]} tx`;
-      if (hasPrev && (pv > 0 || vals[i] > 0)) {
-        const diff = vals[i] - pv;
-        const pct  = pv > 0 ? Math.round(diff / pv * 100) : null;
-        tip += ` — ${prevLabel || 'semaine passée'}: ${fmt(pv)}`
-             + (pct !== null ? ` (${diff >= 0 ? '+' : ''}${pct}%)` : '');
-      }
-      return `<div class="hbar" data-tip="${tip}">
-        <div class="fill ${isPeak ? 'peak' : 'norm'}" style="height:${hpx}px;${vals[i] > 0 ? 'min-height:3px;' : 'border:none;'}"></div>
-        <span class="hr ${deadSet.has(hr) ? 'dead' : ''}">${hr}</span>
-      </div>`;
-    }).join('') + `</div>`;
-
-  // Sous-titre : pic du jour + total vs référence + légende du repère
-  const totalNow  = vals.reduce((s, v) => s + v, 0);
-  const totalPrev = hasPrev ? Object.values(prevByHour).reduce((s, v) => s + v, 0) : 0;
-  let cmp = '';
-  if (hasPrev && totalPrev > 0) {
-    const pct = Math.round((totalNow - totalPrev) / totalPrev * 100);
-    const up  = pct >= 0;
-    cmp = ` · <span style="color:${up ? 'var(--green)' : 'var(--red)'};font-weight:500">${up ? '▲ +' : '▼ '}${pct}%</span>`
-        + ` <span style="color:var(--faint)">vs ${prevLabel || 'semaine passée'}</span>`;
-  }
-  document.getElementById('hourly-sub').innerHTML =
-    `Peak at <b style="color:var(--text)">${peakHour}h</b> · ${fmt(maxV === 1 && vals[peakIdx] === 0 ? 0 : vals[peakIdx])}`
-    + (dead.length ? ` · dead hours: <b style="color:var(--text)">${dead.map(x => x + 'h').join(', ')}</b>` : '')
-    + cmp;
-}
-
-// ── Graphe journalier (multi-jours) ───────────────────────────────────────
-function renderDailyChart(daily) {
-  const maxVal = Math.max(...daily.map(d => d.ca_ttc)) || 1;
-  const dCtx = document.getElementById('chart-daily').getContext('2d');
-  if (chartDaily) chartDaily.destroy();
-  chartDaily = new Chart(dCtx, {
-    type: 'bar',
-    data: {
-      labels: daily.map(d => {
-        const dt = new Date(d.date + 'T12:00:00');
-        return dt.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
-      }),
-      datasets: [{
-        data: daily.map(d => d.ca_ttc),
-        backgroundColor: daily.map(d => d.ca_ttc === maxVal ? BAR_ACTIVE : BAR_IDLE),
-        borderRadius: 3, borderSkipped: false,
-      }]
-    },
-    options: {
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: ctx => {
-              const day = daily[ctx.dataIndex];
-              return ` ${fmt(ctx.raw)} · ${day.nb} tx`;
-            }
-          }
-        }
-      },
-      scales: {
-        y: { beginAtZero: true, ticks:{callback:v=>v+' €',font:{size:11},color:'rgba(120,119,111,1)'}, grid:{color:'rgba(55,53,47,0.06)'}, border:{display:false} },
-        x: { ticks:{font:{size:11},color:'rgba(120,119,111,1)',maxTicksLimit:16}, grid:{display:false}, border:{display:false} }
-      }
-    }
-  });
-}
-
-// ── Drawer ticket ──────────────────────────────────────────────────────────
-
-
-
-// ── Overview / Cashflow ───────────────────────────────────────────────────
-let cashflowData = null;   // chargé une seule fois, mis en cache côté client
-let chartCashflow = null;
-
-
-
-// ── Commissions reçues : liste + saisie (vue Cashflow) ──────────────────────
-
 
 // ── Tooltip instantanée partagée ([data-tip]) ───────────────────────────────
 // Remplace les title natifs : affichage immédiat au survol, suit la souris,
