@@ -9,159 +9,93 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Estudantina">
+{# ⚠️ CETTE COULEUR NE PEUT PAS ÊTRE UN JETON. La barre système du téléphone la lit avant tout
+     CSS : elle doit être écrite en clair. C'est la seule de la page. #}
 <meta name="theme-color" content="#F7FAFC">
 <title>Estudantina · Footfall</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v={{ v }}">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<link rel="stylesheet" href="/static/dashboard.css?v={{ v }}">
 <style>
-/* ══ /transactions — habillage ══════════════════════════════════════════════
-   TOKENS UNIQUEMENT. Aucune couleur en dur : le mode sombre suit tout seul, et
-   il n'existe pas de valeur qui ne serait juste que dans un seul thème.
+/* ══ /transactions — ce que la charte ne porte pas ═══════════════════════════
+   ⚠️ CE BLOC EST CHARGÉ APRÈS `dashboard.css` : à spécificité égale, il GAGNE. Un
+   contre-thème embarqué dans le gabarit battrait donc la charte sans que rien ne le
+   signale. Ce qui reste ici est la COMPOSITION propre à cette page, jamais une
+   couleur, jamais une police, jamais un rayon.
 
-   AUCUN ROUGE. Rien sur cette page n'est un solde : une affluence qui baisse est
-   une mesure, pas une perte, et un CA/personne qui recule est un constat à
-   regarder, pas une alarme à faire clignoter. Le vert marque LA MESURE MISE EN
-   AVANT (le palier de fenêtre, le pic horaire) ; tout le reste est neutre.
+   ⚠️ AUCUN ROUGE, ET C'EST UNE RÈGLE DE FOND. Rien sur cette page n'est un solde :
+   une affluence qui baisse est une mesure, pas une perte. La direction est portée par
+   la flèche et le signe. L'accent marque LA MESURE MISE EN AVANT — le palier de
+   fenêtre, le sommet d'un bloc d'heures ; le vert est réservé à la seule bonne
+   nouvelle possible ici, « ça tient ». Douze couleurs d'alarme sur une page de mesure
+   ne hiérarchisent plus rien.                                                       */
 
-   Les cellules KPI reprennent .kpi-grid / .kpi-cell / .kpi-label / .kpi-value et
-   les barres reprennent .progress-track / .progress-fill de style.css — mêmes
-   composants que le dashboard, donc même vocabulaire visuel. Ce fichier n'ajoute
-   que ce que le dashboard n'a pas : pastilles sans rouge, sparklines SVG,
-   colonnes d'heures, bandeau de périmètre.                                     */
+/* La définition du segment vit DANS le bouton : « Soir » seul ne dit pas 19h–23h, et
+   une légende à côté obligerait à faire le lien soi-même. */
+.db-seg button .def { color: var(--db-faint); font-weight: 400; margin-left: 5px; }
+.db-seg button[aria-pressed="true"] .def { color: var(--db-iris); }
 
-.tx-legend {
-  display: flex; gap: 16px; flex-wrap: wrap;
-  font-size: 11.5px; color: var(--muted); margin-bottom: 10px;
-}
-.tx-legend span { display: inline-flex; align-items: center; gap: 6px; }
-.tx-legend i { width: 13px; height: 10px; border-radius: 2px; flex: none; display: inline-block; }
-.tx-legend i.k-bar    { background: var(--flux-tax); }
-.tx-legend i.k-median { background: transparent; border-top: 2px solid var(--green); height: 2px; border-radius: 0; }
-.tx-legend i.k-people { background: transparent; border-top: 2px dashed var(--muted); height: 2px; border-radius: 0; }
-.tx-legend i.k-dot    { background: var(--flux-tax); border-radius: 50%; width: 8px; height: 8px; }
-.tx-legend i.k-part   { background: var(--bg); border: 1px dashed var(--faint); }
+/* Le graphique du haut — une hauteur fixe, sinon le canvas se redimensionne à chaque
+   tracé et la page tressaute au chargement. */
+.tx-plot { height: 260px; }
 
-/* ── 4. Heures ── */
-.tx-blocks { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 22px; }
-.tx-block { border: 1px solid var(--border); border-radius: 4px; padding: 14px 16px; }
-.tx-block-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.tx-block-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
-.tx-block-val {
-  font-family: var(--mono); font-size: 22px; font-weight: 600;
-  color: var(--text); margin: 8px 0 8px;
-}
-.tx-block-sub { font-size: 11px; color: var(--muted); margin-top: 6px; }
-.tx-hours-scroll { overflow-x: auto; }
-.tx-hours-bars {
-  display: flex; align-items: flex-end; gap: 5px; height: 150px; min-width: 460px;
-}
-.tx-hbar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
-.tx-hbar-val { font-family: var(--mono); font-size: 10px; color: var(--text); height: 14px; line-height: 14px; }
-.tx-hbar-fill { width: 100%; background: var(--flux-tax); border-radius: 4px 4px 0 0; min-height: 2px; }
-.tx-hbar.is-peak .tx-hbar-fill { background: var(--green); }
-.tx-hbar-hr { font-family: var(--mono); font-size: 10px; color: var(--faint); margin-top: 6px; }
-.tx-hbar.is-peak .tx-hbar-hr { color: var(--text); font-weight: 600; }
-.tx-hours-meta { font-size: 11.5px; color: var(--muted); margin-bottom: 14px; }
-.tx-hours-foot { font-size: 11.5px; color: var(--faint); margin-top: 14px; line-height: 1.7; }
+/* Les trois blocs d'heures : plus petits que les cartes, ils portent du contexte. */
+.tx-parts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
+.tx-part { border: 1px solid var(--db-line); border-radius: var(--db-r-sm); padding: 12px 14px; }
 
-/* ── 5./6. Tables ── */
-.tx-table-scroll { overflow-x: auto; }
-.tx-table { width: 100%; border-collapse: collapse; font-size:12px; min-width: 620px; }
-.tx-table th {
-  text-align: left; font-family: var(--mono);
-  font-size: 10px; font-weight: 600; letter-spacing: .1em;
-  text-transform: uppercase; color: var(--faint);
-  padding: 0 10px 8px; border-bottom: 1px solid var(--border); white-space: nowrap;
+@media (max-width: 900px) {
+  .tx-parts { grid-template-columns: 1fr; }
+  .tx-plot  { height: 210px; }
 }
-.tx-table td { padding:6px 9px; border-bottom: 1px solid var(--border); color: var(--text); }
-.tx-table tr:last-child td { border-bottom: none; }
-.tx-num  { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.tx-num.tx-lead { color: var(--text); font-weight: 600; }
-.tx-mono { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
-.tx-row-thin td { color: var(--faint); }
-.tx-note-row td {
-  font-size: 11.5px; color: var(--amber); padding: 0 10px 9px;
-  border-bottom: 1px solid var(--border);
-}
-.tx-bar-cell { width: 38%; }
-.tx-bar { display: block; height: 8px; border-radius: 3px; background: var(--flux-tax); min-width: 0; }
-
-#tx-error {
-  display: none; margin-bottom: 20px; padding: 11px 14px; border-radius: 4px;
-  border: 1px solid var(--amber); color: var(--amber); font-size: 12.5px;
-}
-
-@media (max-width: 760px) {
-  .tx-value { font-size: 32px; }
-  .tx-lead  { font-size: 16px; }
-  .tx-wrap-tall  { height: 190px; }
-  .tx-bar-cell { display: none; }
-  .tx-table { min-width: 560px; }
-}
-
-/* ── Le découpage jour / soir ─────────────────────────────────────────────────
-      ⚠️ LE SÉLECTEUR EST EN HAUT, AVANT LE PREMIER CHIFFRE. Tout ce qui suit dépend
-      de lui : le placer sous les graphiques ferait lire une médiane sans savoir sur
-      quelle partie de la journée elle porte. ── */
-.tx-segment { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 22px; }
-.tx-segment button {
-  font-family: inherit; font-size: 12.5px; line-height: 1.3;
-  padding: 7px 13px; border: 1px solid var(--border); border-radius: 4px;
-  background: var(--bg-card); color: var(--muted); cursor: pointer; text-align: left;
-}
-.tx-segment button span { display: block; font-family: var(--mono); font-size: 10px;
-  color: var(--faint); letter-spacing: .04em; }
-.tx-segment button:hover { color: var(--text); border-color: var(--text); }
-.tx-segment button[aria-pressed="true"] {
-  color: var(--text); font-weight: 600; border-color: var(--green);
-  background: var(--spec-soft);
-}
-.tx-segment button[aria-pressed="true"] span { color: var(--green); }
-.tx-segment button:focus-visible { outline: 2px solid var(--spec); outline-offset: 1px; }
-/* ⚠️ COMBIEN DE JOURS MANQUENT À L'APPEL, ET POURQUOI. Un historique à moitié
-   instrumenté qui se tairait se lirait comme un historique complet. */
-.tx-segment-note { flex-basis: 100%; font-size: 11.5px; color: var(--amber); line-height: 1.55; }
-.tx-segment-note:empty { display: none; }
 </style>
 </head>
 <body>
 {% include "_rail.html" %}
-<div class="page">
+{#
+  ⚠️ `db` ACTIVE LA CHARTE. Sans cette classe, `dashboard.css` est chargé mais aucun jeton
+  `--db-*` n'est défini : chaque `var()` se résout dans le vide, la page s'affiche sans
+  bordures ni couleurs, et rien dans la console ne le dit.
+#}
+<div class="page db">
 
-  <div class="header" style="margin-bottom:20px;">
-    <div>
-      <div class="header-title">Footfall</div>
-      <div class="header-sub">Footfall and spend per open day · <span id="tx-scope" class="tx-dim"></span></div>
+  <div class="db-head">
+    <h2 class="db-title">Footfall</h2>
+    {# ⚠️ LA FENÊTRE D'ANALYSE EST AFFICHÉE, PAS SUPPOSÉE. Juin est exclu — l'ouverture et ses
+       commandes de groupe écraseraient toutes les médianes. L'exclusion est légitime ; la taire
+       ne l'est pas, et cet emplacement était vide depuis la refonte. #}
+    <span class="db-badge flat" id="tx-scope"></span>
+    <span class="db-sp"></span>
+    <!--
+      ⚠️ UN ÉVÉNEMENT DU SOIR FAUSSE LA COMPARAISON DES JOURS. Un concert un vendredi ajoute
+      quarante tickets à ce vendredi-là ; la médiane du vendredi monte, et l'on conclut que le
+      vendredi se tient mieux que le jeudi. C'est l'événement qu'on mesure, pas le café.
+
+      ⚠️ LE DÉFAUT EXCLUT DONC LE SOIR. Comparer des jours entre eux est ce qu'on vient faire
+      ici ; les soirées d'événement sont l'exception qui le fausse. Un défaut qui inclut tout
+      donnerait raison à l'exception.
+
+      ⚠️ ET C'EST UN SEGMENTÉ, PAS TROIS CARTES. Des boutons détachés se lisent comme des
+      filtres cumulables ; un segmenté dit qu'un seul choix est possible. Il est en haut, avant
+      le premier chiffre : tout ce qui suit dépend de lui.
+    -->
+    <div class="db-seg" id="tx-segment" role="group" aria-label="Part of the day">
+      <button type="button" data-seg="day"     aria-pressed="true">Daytime<span class="def">before 19h</span></button>
+      <button type="button" data-seg="evening" aria-pressed="false">Evening<span class="def">19h&ndash;23h</span></button>
+      <button type="button" data-seg="all"     aria-pressed="false">All day</button>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <button class="btn-secondary" onclick="loadTx()" title="Reload">↻</button>
-      <a href="/logout" title="Log out" style="font-size:12px;color:var(--faint);text-decoration:none;padding:5px 8px;">⎋</a>
+    <div style="display:flex;gap:6px">
+      <button class="db-icone" onclick="loadTx()" title="Reload">&#8635;</button>
+      <a class="db-icone" href="/logout" title="Log out">&#9099;</a>
     </div>
   </div>
 
-  <div id="tx-error"></div>
-
-  <!--
-    ⚠️ UN ÉVÉNEMENT DU SOIR FAUSSE LA COMPARAISON DES JOURS. Un concert un vendredi ajoute
-    quarante tickets à ce vendredi-là ; la médiane du vendredi monte, et l'on conclut que le
-    vendredi se tient mieux que le jeudi. C'est l'événement qu'on mesure, pas le café.
-
-    ⚠️ LE DÉFAUT EXCLUT DONC LE SOIR, ET C'EST UN CHOIX QUI SE DÉFEND. Comparer des jours entre
-    eux est ce qu'on vient faire ici ; les soirées d'événement sont l'exception qui le fausse.
-    Un défaut qui inclut tout donnerait raison à l'exception.
-
-    ⚠️ TROIS BOUTONS PLUTÔT QU'UNE CASE À COCHER. « Exclure le soir » décoché ne dit pas si
-    l'on regarde la journée entière ou seulement le soir — il faudrait une case ET un mode,
-    donc deux commandes pour un seul choix à trois issues.
-  -->
-  <div class="tx-segment" role="group" aria-label="Partie de la journée">
-    <button type="button" data-seg="day"     aria-pressed="true">Journ&eacute;e <span>hors soir</span></button>
-    <button type="button" data-seg="evening" aria-pressed="false">Soir <span>19h&ndash;23h</span></button>
-    <button type="button" data-seg="all"     aria-pressed="false">Tout <span>la journ&eacute;e enti&egrave;re</span></button>
-    <div class="tx-segment-note" id="tx-segment-note"></div>
-  </div>
+  {# ⚠️ COMBIEN DE JOURS MANQUENT À L'APPEL, ET POURQUOI. Les lignes de cache écrites avant la
+     mesure horaire n'ont pas « zéro ticket le soir » : elles n'ont pas la mesure. Un historique
+     à moitié instrumenté qui se tairait se lirait comme un historique complet. #}
+  <div class="db-reason" id="tx-segment-note"></div>
+  <div class="db-reason" id="tx-error" style="display:none"></div>
 
   {#
     ⚠️ CETTE PAGE DÉFENDAIT SA MÉTHODE À CHAQUE ÉTAPE : 744 mots de prose, dont 426 en notes de
@@ -170,90 +104,83 @@
     traverser pour trouver son nombre est une page qu'on n'ouvre plus.
 
     ⚠️ ET LA SIMPLIFICATION N'EST PAS UN RACCOURCISSEMENT DES AVERTISSEMENTS. Effacer la mise en
-    garde sans effacer le chiffre qu'elle protège rendrait la page plus courte ET plus fausse. Ce
-    qui part, ce sont les CHIFFRES qui avaient besoin d'un paragraphe pour être honnêtes ; les
-    réserves qui restent tiennent en quelques mots, collées au nombre qu'elles concernent.
+    garde sans effacer le chiffre qu'elle protège rendrait la page plus courte ET plus fausse.
   #}
 
-  <!-- ── 1. LA RÉPONSE ─────────────────────────────────────────────────────── -->
-  <div class="tx-section">
-    <div class="tx-card tx-answer">
-      <div class="tx-q">Is footfall holding?</div>
-      <div class="tx-lead" id="hl-lead">&mdash;</div>
-      <div class="tx-answer-main">
-        <span class="tx-value" id="hl-value">&mdash;</span>
-        <span class="tx-unit">tickets / open day</span>
+  <!-- ══ LA RÉPONSE ════════════════════════════════════════════════════════════════════════ -->
+  <div class="db-card db-mb">
+    <div class="db-card-p">
+      <div class="db-l">Is footfall holding?</div>
+      <div class="db-lead" id="hl-lead">&mdash;</div>
+      <div class="db-hero">
+        <span class="db-v xl" id="hl-value">&mdash;</span>
+        <span class="db-unit">tickets / open day</span>
         <span id="hl-delta"></span>
       </div>
-      <div class="tx-sub"  id="hl-n"></div>
+      <div class="db-s" id="hl-n"></div>
       <!-- ⚠️ DEUX ÉLÉMENTS QUE J'AVAIS RETIRÉS À TORT EN SIMPLIFIANT. `hl-note` porte la RAISON
            quand le chiffre manque : sans elle, un « — » reste sans explication, et c'est
-           précisément le moment où l'on a besoin d'une. `hl-rule` publie le seuil du verdict —
+           précisément le moment où l'on en a besoin. `hl-rule` publie le seuil du verdict —
            « tient » est un jugement à ±10 %, pas une mesure ; le taire donnerait au mot
-           l'autorité d'un fait. Raccourcir une page ne veut pas dire lui retirer ce qui
-           l'empêche d'affirmer plus qu'elle ne sait. -->
-      <div class="tx-rule" id="hl-rule"></div>
-      <div class="tx-reason" id="hl-note" style="display:none"></div>
-      <!--
-        ⚠️ LA LIGNE « CA PAR PERSONNE » A ÉTÉ RETIRÉE LE 21/09/2026, À LA DEMANDE. Elle
-        répondait à une question que personne ne se posait devant cet écran, et elle traînait
-        la seule dépendance au CHIFFRE D'AFFAIRES d'une page qui ne parle que de tickets.
-
-        ⚠️ ET SON DÉPART DÉBLOQUE LE DÉCOUPAGE JOUR / SOIR. Le cache compte les passages en
-        caisse heure par heure, mais stocke le CA par JOUR : tant qu'un chiffre d'argent vivait
-        ici, une vue « soir seulement » aurait mêlé des tickets filtrés à un CA de journée
-        entière. La page ne parlant plus que de tickets, le filtre s'applique partout sans
-        réserve à écrire.
-      -->
-      <div class="tx-reason" id="hl-caveat" style="display:none"></div>
+           l'autorité d'un fait. -->
+      <div class="db-fine" id="hl-rule"></div>
+      <div class="db-reason" id="hl-note" style="display:none"></div>
+      <div class="db-reason" id="hl-caveat" style="display:none"></div>
     </div>
   </div>
 
-  <!-- ── 2. L'AFFLUENCE DANS LE TEMPS ──────────────────────────────────────── -->
-  <div class="tx-section">
-    <div class="tx-section-title">Tickets per open day</div>
-    <div class="tx-card">
-      <div class="tx-legend">
-        <span><i class="k-bar"></i> that day</span>
-        <span><i class="k-median"></i> 7-day median &mdash; a measured step, not a trend</span>
-        <span><i class="k-part"></i> today, partial &mdash; excluded from every median</span>
-      </div>
-      <div class="tx-wrap-tall" id="tx-chart-grid"><canvas id="chart-footfall"></canvas></div>
-      <div class="tx-empty" id="tx-chart-empty" style="display:none"></div>
-      <div class="tx-chart-foot" id="tx-chart-foot"></div>
+  <!-- ══ L'AFFLUENCE DANS LE TEMPS ═════════════════════════════════════════════════════════ -->
+  <div class="db-card db-mb">
+    <div class="db-card-h">
+      <span class="db-card-t">Tickets per open day</span>
+      <span class="db-sp"></span>
+      <span class="db-legend">
+        <span><i class="bar"></i>that day</span>
+        <span><i class="step"></i>7-day median</span>
+        <span><i class="part"></i>today, partial</span>
+      </span>
+    </div>
+    <div class="db-card-p">
+      <div class="tx-plot" id="tx-chart-grid"><canvas id="chart-footfall"></canvas></div>
+      <div class="db-empty" id="tx-chart-empty" style="display:none"></div>
+      <div class="db-fine" id="tx-chart-foot"></div>
     </div>
   </div>
 
-  <!-- ── 3. QUAND LES TICKETS TOMBENT ──────────────────────────────────────── -->
-  <div class="tx-section">
-    <div class="tx-section-title">When the tickets land</div>
-    <div class="tx-card">
-      <div class="tx-hours-meta" id="tx-hours-meta"></div>
-      <div class="tx-blocks" id="tx-blocks"></div>
-      <div class="tx-hours-scroll" id="tx-hours-box">
-        <div class="tx-hours-bars" id="tx-hours-bars"></div>
-      </div>
-      <div class="tx-empty" id="tx-hours-empty" style="display:none"></div>
-      <div class="tx-hours-foot" id="tx-hours-foot"></div>
-    </div>
-  </div>
+  <!-- ══ LES HEURES, ET LES JOURS DE SEMAINE ═══════════════════════════════════════════════
+       ⚠️ DEUX CARTES SUR UNE LIGNE, DE LARGEURS DIFFÉRENTES. Les heures ont besoin de place —
+       quatorze colonnes ; les sept jours de semaine tiennent dans un tiers. Leur donner la même
+       largeur ferait respirer l'une et étoufferait l'autre.                                  -->
+  <div class="db-grid db-g-2-1 db-mb">
 
-  <!-- ── 4. PAR JOUR DE SEMAINE ────────────────────────────────────────────── -->
-  <div class="tx-section">
-    <div class="tx-section-title">Median tickets by weekday</div>
-    <div class="tx-card">
-      <div class="tx-table-scroll">
-        <table class="tx-table">
-          <thead>
-            <tr><th>Day</th><th class="tx-num">Median tickets</th><th></th>
-              <th class="tx-num">Days measured (n)</th><th></th></tr>
-          </thead>
-          <tbody id="tx-wd-body">
-            <tr><td colspan="5" class="tx-empty">Loading&hellip;</td></tr>
-          </tbody>
-        </table>
+    <div class="db-card">
+      <div class="db-card-h">
+        <span class="db-card-t">When the tickets land</span>
+        <span class="db-sp"></span>
+        <span class="db-badge flat" id="tx-hours-meta"></span>
+      </div>
+      <div class="db-card-p">
+        <div class="tx-parts" id="tx-blocks"></div>
+        <div class="db-hscroll" id="tx-hours-box">
+          <div class="db-hbars" id="tx-hours-bars"></div>
+        </div>
+        <div class="db-empty" id="tx-hours-empty" style="display:none"></div>
+        <div class="db-fine" id="tx-hours-foot"></div>
       </div>
     </div>
+
+    <div class="db-card serre">
+      <div class="db-card-h"><span class="db-card-t">Median tickets by weekday</span></div>
+      <table>
+        <thead>
+          <tr><th>Day</th><th></th><th class="r">Median</th><th class="r">n</th></tr>
+        </thead>
+        <tbody id="tx-wd-body">
+          <tr><td colspan="4" class="db-empty">Loading&hellip;</td></tr>
+        </tbody>
+      </table>
+    </div>
+
   </div>
 
   <!--
@@ -264,7 +191,7 @@
     ⚠️ ET LE DÉTAIL EST FERMÉ PAR DÉFAUT, PAS CACHÉ. Fermé, on sait qu'il existe et on l'ouvre
     le jour où le chiffre surprend — c'est exactement ce jour-là qu'il sert.
   -->
-  <details class="tx-limites">
+  <details class="db-fold">
     <summary>What this page cannot tell you &mdash; and how it measures</summary>
     <dl>
       <dt>Regulars are not measurable, and no proxy will do</dt>

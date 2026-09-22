@@ -327,25 +327,39 @@ def test_ouvrir_une_commande_remplit_le_tiroir():
 
 # ── La feuille du tableau de bord ────────────────────────────────────────────────────────────
 
-def test_les_jetons_du_tableau_de_bord_ne_debordent_pas_sur_les_autres_pages():
+def test_qui_charge_la_charte_en_porte_la_classe():
     """
-    ⚠️ POSER CES JETONS SUR `:root` REPEINDRAIT QUINZE ÉCRANS D'UN COUP. Affluence, Fidélité,
-    Charges, Réconciliation n'ont pas été relus dans ce langage : une refonte silencieuse se
-    découvre en production, sur la page qu'on ouvre le moins.
+    ⚠️ CE CONTRÔLE GARDAIT « UNE SEULE PAGE CHARGE CETTE FEUILLE », ET CETTE RÈGLE EST MORTE.
+    Elle tenait tant que `dashboard.css` DÉCLARAIT des couleurs : une autre page l'incluant
+    aurait hérité d'une palette que personne n'avait relue chez elle. La palette est maintenant
+    commune, la feuille ne porte plus que des composants, et Affluence l'a rejointe.
+
+    ⚠️ CE QUI LA REMPLACE EST PLUS SERRÉ, PAS PLUS LÂCHE. Les composants lisent `--db-*`, qui
+    n'existent que sous `.db`. Une page qui charge la feuille sans porter la classe s'affiche
+    sans bordures, sans fonds et sans couleurs — chaque `var()` se résout dans le vide, et RIEN
+    ne le signale : ni erreur, ni console, ni page blanche. C'est le mode de panne qui vient de
+    se produire sur /tpa, à une feuille près.
     """
     css = open(os.path.join(RACINE, "static", "dashboard.css"), encoding="utf-8").read()
     assert ":root {" not in css, "les jetons sont posés globalement"
     assert css.count(".db {") >= 1
-    html = _gabarit()
-    assert 'class="page db"' in html, "la page ne porte pas le préfixe qui active les jetons"
-    assert "/static/dashboard.css?v=" in html, "la feuille n'est pas chargée, ou sans version"
-    # ⚠️ ET ELLE N'EST CHARGÉE QUE LÀ. Une autre page qui l'inclurait hériterait de jetons
-    # pensés pour celle-ci, sans en porter la structure.
+    # ⚠️ ET ELLE NE DÉCLARE PLUS AUCUNE COULEUR. C'est ce qui autorise une deuxième page à la
+    # charger : le jour où une valeur littérale y revient, elle redevient une palette parallèle.
+    import re
+    couleurs = [c for c in re.findall(r"#[0-9a-fA-F]{6}\b", re.sub(r"/\*.*?\*/", " ", css, flags=re.S))]
+    assert not couleurs, f"la charte redéclare des couleurs : {couleurs}"
+
     import glob
-    for chemin in glob.glob(os.path.join(RACINE, "templates", "*.html")):
-        if os.path.basename(chemin) == "index.html":
+    porteuses = []
+    for chemin in sorted(glob.glob(os.path.join(RACINE, "templates", "*.html"))):
+        html = open(chemin, encoding="utf-8").read()
+        if "dashboard.css" not in html:
             continue
-        assert "dashboard.css" not in open(chemin, encoding="utf-8").read(), chemin
+        porteuses.append(os.path.basename(chemin))
+        assert "/static/dashboard.css?v=" in html, f"{chemin} : feuille chargée sans version"
+        assert 'class="page db"' in html, (
+            f"{chemin} charge la charte sans porter `db` — tous ses var() se résoudront dans le vide")
+    assert porteuses == ["index.html", "transactions.html"], porteuses
 
 
 def _courbe(payload):

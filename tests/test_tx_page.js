@@ -521,9 +521,11 @@ console.log('\n— le gabarit');
   // poserait autrement avec un chiffre inventé. La page a maigri de 744 mots lus à 181 en
   // DÉPLAÇANT cette prose, pas en l'effaçant : effacer la mise en garde sans effacer le chiffre
   // qu'elle protège aurait rendu la page plus courte ET plus fausse.
-  const details = tpl.slice(tpl.indexOf('<details class="tx-limites"'), tpl.indexOf('</details>'));
+  // ⚠️ `tx-limites` EST DEVENU `db-fold`, un composant de la charte. Fidélité garde l'ancien
+  // nom tant qu'elle n'est pas passée : deux pages, deux vocabulaires, le temps d'une refonte.
+  const details = tpl.slice(tpl.indexOf('<details class="db-fold"'), tpl.indexOf('</details>'));
   check('le bloc des limites existe et il est REPLIÉ par défaut',
-    details.length > 0 && !/<details class="tx-limites"[^>]*\sopen/.test(tpl));
+    details.length > 0 && !/<details class="db-fold"[^>]*\sopen/.test(tpl));
   check('il porte les habitués et la preuve chiffrée du NIF vide',
     /Regulars/.test(details) && /59 of 60 tickets/.test(details) && /fiscal_id/.test(details));
   check('il porte l’estimation des personnes et sa règle',
@@ -538,10 +540,26 @@ console.log('\n— le gabarit');
   // ⚠️ LA PROSE LUE SANS DÉPLIER EST PLAFONNÉE. C'était la demande : « truffée de textes, je
   // veux lire plus facilement ». Sans chiffre, la page se remplit à nouveau une explication à
   // la fois, et chacune paraîtra justifiée.
-  const corps = tpl.slice(tpl.indexOf('<div class="page">'), tpl.indexOf('<script src="/static/ui.js'));
+  // ⚠️ `db` A REJOINT `page` : la découpe cherchait `<div class="page">` au caractère près et
+  // aurait rendu −1, donc une tranche partant de la FIN du gabarit — un compte de mots proche de
+  // zéro, et un contrôle de concision vert parce qu'il ne lisait plus rien.
+  const debutCorps = tpl.indexOf('<div class="page db">');
+  check('le conteneur de page porte la classe qui active la charte', debutCorps !== -1);
+  const corps = tpl.slice(debutCorps, tpl.indexOf('<script src="/static/ui.js'));
   const ouvert = corps.slice(0, corps.indexOf('<details')) + corps.slice(corps.indexOf('</details>'));
-  const mots = ouvert.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().split(' ').length;
-  check('moins de 220 mots se lisent sans rien déplier (744 avant)', mots < 220, String(mots));
+  // ⚠️ IL COMPTAIT LES COMMENTAIRES COMME DE LA PROSE. `<!-- -->` disparaissait par accident —
+  // la regex de balises l'avale tant qu'il ne contient pas de `>` — mais `{# #}` restait, et
+  // chaque paragraphe expliquant POURQUOI un bloc existe s'ajoutait au budget de mots d'une page
+  // qu'on voulait courte. Un contrôle de concision qui taxe la documentation pousse à effacer
+  // exactement ce qui n'est pas lu à l'écran.
+  const lisible = ouvert
+    .replace(/\{#[\s\S]*?#\}/g, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]+>/g, ' ');
+  const mots = lisible.replace(/\s+/g, ' ').trim().split(' ').length;
+  // Mesuré à 41 après la refonte : la page ne porte plus que ses intitulés, tout le reste est
+  // de la donnée. Le plafond est posé juste au-dessus pour qu'il morde encore.
+  check('moins de 70 mots se lisent sans rien déplier (744 avant)', mots < 70, String(mots));
 
   check('le mot « customers » n’est jamais employé pour les personnes estimées',
     !/\d+\s*customers/i.test(tpl));
@@ -553,13 +571,24 @@ console.log('\n— le gabarit');
   check('le bloc de style ne contient aucune couleur en dur',
     !/#[0-9a-fA-F]{3,8}\b/.test(bloc) && !/rgba?\(/.test(bloc),
     (bloc.match(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)/g) || []).join(' '));
+  // ⚠️ CETTE GARDE SERAIT PASSÉE AU VERT SANS RIEN GARDER. Elle cherchait `delta-down`, le nom
+  // de l'ancienne pastille ; la charte en apporte une autre, `db-badge down`, ROUGE — et le
+  // rouge serait revenu par le vocabulaire qu'on vient d'adopter, sous un nom que le test ne
+  // connaissait pas. Un contrôle qui suit une refonte doit apprendre les noms d'après.
   check('AUCUN ROUGE : rien ici n’est un solde',
-    !/--red|--flux-neg|delta-down/.test(bloc));
+    !/--red|--db-red|--flux-neg|delta-down/.test(bloc), bloc.match(/--[a-z-]*red[a-z-]*/g));
+  // ⚠️ ON CHERCHE DANS LE CODE, PAS DANS LES COMMENTAIRES. Premier jet : la regex trouvait le
+  // commentaire qui explique justement pourquoi `db-badge down` est interdit ici. Un détecteur
+  // qui reconnaît sa propre mise en garde condamne la page à ne pas s'expliquer.
+  const codeSeul = src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
+  check('…y compris par la pastille rouge de la charte',
+    !/db-badge[^"']*\bdown\b/.test(codeSeul) && !/--db-red|--red\b/.test(codeSeul),
+    (codeSeul.match(/db-badge[^"']*down[^"']*|--db-red|--red\b/g) || []).join(' '));
   check('le source ne peint rien en dur non plus',
     !/#[0-9a-fA-F]{6}\b/.test(src), (src.match(/#[0-9a-fA-F]{6}\b/g) || []).join(' '));
   check('le source ne lit que des tokens connus',
     (src.match(/cssVar\('([^']+)'\)/g) || [])
-      .every(c => /--(bg|bg-card|text|border|muted|faint|green|amber|mono|flux-keep|flux-leave|flux-tax)\b/.test(c)),
+      .every(c => /--(bg|bg-card|text|border|muted|faint|accent|green|amber|mono|flux-keep|flux-leave|flux-tax)\b/.test(c)),
     (src.match(/cssVar\('([^']+)'\)/g) || []).join(' '));
 }
 {
@@ -621,12 +650,20 @@ function faireDom() {
              setAttribute(k, v) { this.attrs[k] = v; },
              getAttribute(k) { return this.attrs[k]; } };
   });
-  const barre = { addEventListener() {} };
+  // ⚠️ LE HARNAIS NOTE LE CÂBLAGE. Un sélecteur qui ne correspond plus renvoie `null`, la page
+  // saute le branchement sans lever, et le filtre jour/soir devient trois boutons décoratifs.
+  const barre = { ecoutes: [], addEventListener(ev) { this.ecoutes.push(ev); } };
+  const demandes = [];
   const document = {
     documentElement: {},
     getElementById: (id) => (Object.prototype.hasOwnProperty.call(ids, id) ? ids[id] : null),
     createElement: () => ({ width: 0, height: 0, getContext: ctx2d }),
-    querySelector: (sel) => (sel === '.tx-segment' ? barre : null),
+    // ⚠️ LE HARNAIS NE CONNAÎT PLUS LE SÉLECTEUR PAR CŒUR. Il le codait en dur (`.tx-segment`) :
+    // la refonte l'a renommé en `#tx-segment`, le faux document a répondu `null`, et la page a
+    // perdu son filtre EN SILENCE — des deux côtés, puisque le harnais ne savait plus non plus
+    // ce qu'il montait. Il note maintenant ce qu'on lui demande, et le contrôle vérifie que ce
+    // sélecteur existe VRAIMENT dans le gabarit.
+    querySelector: (sel) => { demandes.push(sel); return barre; },
     querySelectorAll: () => boutons,
     addEventListener() {},
   };
@@ -638,7 +675,7 @@ function faireDom() {
     src + '\nreturn { renderAll: renderAll, renderCharts: renderCharts,'
         + ' majSegment: majSegment, segment: function (v) { if (v) segment = v; return segment; } };'
   )(document, win, getComputedStyle, Chart, fetch);
-  return { ids, charts, api, boutons };
+  return { ids, charts, api, boutons, barre, demandes };
 }
 
 {
@@ -666,10 +703,64 @@ function faireDom() {
   check('et le sommet est annoncé montré en entier',
     /no scale clipping/.test(t('tx-chart-foot')));
   check('les trois blocs horaires sont rendus avec leurs barres',
-    (t('tx-blocks').match(/progress-fill/g) || []).length === 3
+    (t('tx-blocks').match(/db-prog accent/g) || []).length === 3
     && /50\.4 %/.test(t('tx-blocks')), t('tx-blocks').slice(0, 100));
   check('les sept jours de semaine sont rendus',
     (t('tx-wd-body').match(/<tr>/g) || []).length === 7);
+
+  // ⚠️ QUATRE MUTANTS ONT SURVÉCU À LA REFONTE, ET C'EST CE BLOC QUI LEUR RÉPOND. Chacun
+  // touchait quelque chose que la page AFFICHE, sur un chemin qu'aucun contrôle ne traversait :
+  // lire le source ne suffisait pas, parce que les quatre passent par de la concaténation ou
+  // par un branchement.
+
+  // 1. Le rouge, qui arrive par une classe CONSTRUITE. `'db-badge plain ' + dir` ne contient
+  //    jamais le littéral « down » : une garde qui grep le source est aveugle ici. C'est le
+  //    rendu qu'il faut lire.
+  {
+    const bas = faireDom();
+    bas.api.renderAll({ ...PAYLOAD, headline: { ...HEADLINE, delta_pct: -32 } });
+    const pastille = bas.ids['hl-delta'].innerHTML;
+    check('une chute de 32 % ne s’affiche PAS en rouge',
+      /db-badge/.test(pastille) && !/\bdown\b/.test(pastille), pastille);
+    check('…et la direction reste lisible malgré tout',
+      /▼/.test(pastille) && /32/.test(pastille), pastille);
+  }
+
+  // 2. La fenêtre d'analyse. Cet emplacement est resté VIDE des mois : présent dans le gabarit,
+  //    gardé par le test de la liste d'ancres, et rempli par personne. Une ancre qu'on vérifie
+  //    sans vérifier ce qu'elle porte est un contrôle qui atteste d'un trou.
+  check('le périmètre d’analyse est écrit, pas supposé',
+    /since 1 Jul 2026/.test(t('tx-scope')), t('tx-scope'));
+  {
+    const muet = faireDom();
+    muet.api.renderAll({ ...PAYLOAD, analysis_start: null });
+    check('…et sans date, il le DIT plutôt que de rester vide',
+      /not reported/.test(muet.ids['tx-scope'].textContent), muet.ids['tx-scope'].textContent);
+  }
+
+  // 3. Le filtre jour/soir, câblé au chargement. Le sélecteur a changé avec la refonte ; s'il
+  //    rate sa cible, les trois boutons restent à l'écran et ne font plus rien.
+  check('la barre de segment est trouvée ET écoutée',
+    dom.barre.ecoutes.indexOf('click') !== -1, JSON.stringify(dom.barre.ecoutes));
+  // ⚠️ LE PREMIER JET AVAIT UNE ÉCHAPPATOIRE QUI ANNULAIT TOUT : un repli en `indexOf(nom)`
+  // acceptait n'importe quelle sous-chaîne. `.tx-segment` — le sélecteur d'avant la refonte —
+  // se retrouvait dans `tx-segment-note`, qui est un AUTRE élément, et le contrôle validait un
+  // sélecteur qui ne désigne rien. Un nom de classe se cherche comme un mot entier, dans un
+  // attribut `class`.
+  const existe = (sel) => {
+    if (sel.startsWith('#')) return tpl.indexOf('id="' + sel.slice(1) + '"') !== -1;
+    if (!sel.startsWith('.')) return tpl.indexOf('<' + sel) !== -1;
+    return (tpl.match(/class="([^"]*)"/g) || [])
+      .some(a => a.slice(7, -1).split(/\s+/).indexOf(sel.slice(1)) !== -1);
+  };
+  check('…et le sélecteur qu’elle interroge désigne un élément de la page',
+    dom.demandes.length > 0 && dom.demandes.every(existe), dom.demandes.join(' '));
+
+  // 4. La raison À LA PLACE du chiffre absent. Le mardi n'est pas un mardi à zéro ticket : c'est
+  //    un jour jamais ouvert. Un « — » muet dans une colonne étroite se lit comme une panne.
+  check('un jour jamais ouvert porte sa raison, pas un tiret',
+    /never open on this day yet/.test(t('tx-wd-body'))
+    && !/<td class="r"><b>—<\/b>/.test(t('tx-wd-body')), t('tx-wd-body').slice(0, 160));
 
   // ⚠️ UN SEUL GRAPHIQUE DÉSORMAIS — et la garde sur le double axe reste, pour le jour où une
   // seconde série reviendra. Caler deux échelles l'une sur l'autre fabriquerait une corrélation

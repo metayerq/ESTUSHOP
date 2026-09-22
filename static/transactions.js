@@ -773,12 +773,20 @@ function hatchPattern(color) {
 }
 
 // Pastille d'écart. AUCUN ROUGE : une baisse d'affluence est une mesure, pas une
-// perte. « up » est vert, tout le reste est neutre — la direction est portée par la
-// flèche et le signe, pas par une couleur d'alarme.
+// perte. « up » est vert — la seule bonne nouvelle possible ici ; tout le reste est
+// neutre, et la direction est portée par la flèche et le signe.
+//
+// ⚠️ LA CHARTE OFFRE `db-badge down`, EN ROUGE, ET C'EST EXACTEMENT CE QU'IL NE FAUT PAS
+// PRENDRE. Reprendre un vocabulaire ne veut pas dire en accepter toutes les entrées : sur
+// une page sans solde, le rouge dirait « perte » là où la mesure dit « moins de monde ».
+//
+// ⚠️ ET LA PASTILLE EST `plain` : la puce colorée de la charte répéterait la flèche. Deux
+// signaux pour une direction, dont un muet faute de rouge, c'est un de trop.
 function chipHtml(d) {
   if (!d || !d.ok || !d.text) return '';
   const arrow = d.dir === 'up' ? '▲ ' : d.dir === 'down' ? '▼ ' : '= ';
-  return '<span class="tx-chip tx-chip-' + d.dir + '">' + arrow + esc(d.text) + '</span>';
+  return '<span class="db-badge plain ' + (d.dir === 'up' ? 'up' : 'flat') + '">'
+    + arrow + esc(d.text) + '</span>';
 }
 
 
@@ -795,7 +803,7 @@ function renderAnswer(d) {
     ? 'median of <b>' + (m.n == null ? '?' : m.n) + '</b> full open days'
       + (m.range ? ' · ' + esc(m.range) : '')
       + (m.prevValue !== '—'
-        ? ' <span class="tx-dim">· against <b>' + esc(m.prevValue) + '</b> over '
+        ? ' <span class="db-id">· against <b>' + esc(m.prevValue) + '</b> over '
           + (m.prevN == null ? '?' : m.prevN) + ' full days'
           + (m.prevRange ? ', ' + esc(m.prevRange) : '') + '</span>'
         : '')
@@ -867,12 +875,14 @@ function renderCharts(d) {
   grid.style.display = '';
   empty.style.display = 'none';
 
-  const gray = cssVar('--flux-tax');
-  const green = cssVar('--green');
+  // ⚠️ LA MESURE MISE EN AVANT PASSE DU VERT À L'ACCENT. Dans l'ancienne charte, le vert
+  // portait DEUX rôles : « interactif » et « bon état ». Le palier de fenêtre n'est ni l'un
+  // ni l'autre — c'est la ligne qu'on vient lire. Le vert reste au seul endroit où il dit
+  // vraiment quelque chose de bon : la pastille « ça tient ».
+  const gray = cssVar('--flux-leave');
+  const accent = cssVar('--accent');
   const faint = cssVar('--faint');
-  const muted = cssVar('--muted');
   const border = cssVar('--border');
-  const surface = cssVar('--bg-card');
   const hatch = hatchPattern(faint);
 
   // ── Haut : affluence ──
@@ -897,7 +907,7 @@ function renderCharts(d) {
           data: foot.steps,
           stepped: 'middle',    // escalier : un palier par fenêtre, jamais une courbe
           spanGaps: false,      // fenêtre non fiable ⇒ trou visible, pas d'interpolation
-          borderColor: green, borderWidth: 2,
+          borderColor: accent, borderWidth: 2,
           pointRadius: 0, fill: false, order: 1,
         },
       ],
@@ -943,6 +953,7 @@ function renderCharts(d) {
         ? ' · hatched = ' + esc(foot.partialDays.join(', '))
           + ' <b>partial, excluded from every median</b>'
         : '')
+    + ' · the line is a <b>step of measured window medians</b>, not a trend'
     + ' · peak ' + foot.yMax + ' tickets, shown in full (no scale clipping)'
     + (capped.any ? ' · <b>' + esc(capped.text) + '</b>' : '');
 }
@@ -969,25 +980,29 @@ function renderHourly(d) {
   box.style.display = '';
   msg.style.display = 'none';
 
+  // ⚠️ LA BARRE DE PART EST EN `accent`, PAS EN VERT. `.db-prog > span` est vert par défaut
+  // parce que la charte l'a dessinée pour une progression vers une cible. Une matinée à 50 %
+  // n'est ni bonne ni mauvaise : c'est la mesure qu'on met en avant.
   el('tx-blocks').innerHTML = m.blocks.map(function (b) {
-    return '<div class="tx-block">'
-      + '<div class="tx-block-head"><span class="tx-block-name">' + esc(b.label) + '</span>'
-      + '<span class="tx-mono">' + esc(b.range) + '</span></div>'
-      + '<div class="tx-block-val">' + esc(b.pctText) + '</div>'
-      + '<div class="progress-track"><div class="progress-fill" style="width:' + b.width + '%"></div></div>'
-      + '<div class="tx-block-sub">'
-      + (b.perDay == null ? '—' : fmtTx(b.perDay) + ' tickets / open day')
-      + (b.tickets == null ? '' : ' · ' + b.tickets + ' tickets total')
+    return '<div class="tx-part">'
+      + '<div class="db-l">' + esc(b.label)
+      + ' <span class="db-id">' + esc(b.range) + '</span></div>'
+      + '<div class="db-v">' + esc(b.pctText) + '</div>'
+      + '<div class="db-prog accent fine" style="margin-top:8px">'
+      + '<span style="width:' + b.width + '%"></span></div>'
+      + '<div class="db-s">'
+      + (b.perDay == null ? '—' : fmtTx(b.perDay) + ' / open day')
+      + (b.tickets == null ? '' : ' · ' + b.tickets + ' total')
       + '</div></div>';
   }).join('');
 
   el('tx-hours-bars').innerHTML = m.bars.map(function (b) {
-    return '<div class="tx-hbar' + (b.peak ? ' is-peak' : '') + '">'
-      + '<span class="tx-hbar-val">' + (b.peak ? b.tickets : '') + '</span>'
-      + '<span class="tx-hbar-fill" style="height:' + Math.max(b.height, 2) + '%" '
+    return '<div class="db-hbar' + (b.peak ? ' top' : '') + '">'
+      + '<span class="v">' + (b.peak ? b.tickets : '') + '</span>'
+      + '<span class="f" style="height:' + Math.max(b.height, 2) + '%" '
       + 'title="' + esc(b.label + ' · ' + b.tickets + ' tickets · ' + fmtPct(b.pct)
         + ' · ' + fmtTx(b.perDay) + '/open day') + '"></span>'
-      + '<span class="tx-hbar-hr">' + esc(b.label) + '</span>'
+      + '<span class="h">' + esc(b.label) + '</span>'
       + '</div>';
   }).join('');
 
@@ -999,22 +1014,42 @@ function renderHourly(d) {
 }
 
 
+// ⚠️ LA RAISON PREND LA PLACE DU CHIFFRE ABSENT, elle ne s'ajoute pas en cinquième colonne.
+// La carte fait un tiers d'écran : une colonne de notes y serait illisible, et le mardi — jamais
+// ouvert — affichait un « — » muet à côté d'une barre vide et d'un n à zéro. Trois cases pour
+// dire « rien », là où une phrase dit pourquoi.
 function renderWeekday(d) {
   const rows = weekdayRows(d && d.weekday);
   el('tx-wd-body').innerHTML = rows.map(function (r) {
+    if (r.value == null) {
+      return '<tr><td>' + esc(r.label) + '</td>'
+        + '<td colspan="3" class="db-id">' + esc(r.note || '—') + '</td></tr>';
+    }
     return '<tr>'
       + '<td>' + esc(r.label) + '</td>'
-      + '<td class="tx-num">' + esc(r.tx) + '</td>'
-      + '<td class="tx-bar-cell"><span class="tx-bar" style="width:' + r.width + '%"></span></td>'
-      + '<td class="tx-num tx-dim">' + r.n + '</td>'
-      + '<td class="tx-dim">' + esc(r.note || '') + '</td>'
+      + '<td style="width:45%"><div class="db-prog accent fine">'
+      + '<span style="width:' + r.width + '%"></span></div></td>'
+      + '<td class="r"><b>' + esc(r.tx) + '</b></td>'
+      + '<td class="r db-id">' + r.n + '</td>'
       + '</tr>';
   }).join('');
 }
 
 
+// ⚠️ CET EMPLACEMENT ÉTAIT VIDE DEPUIS LA REFONTE. `tx-scope` existait dans le gabarit, le
+// test en gardait la présence, et RIEN ne l'écrivait : une ancre qu'on vérifie et que personne
+// ne remplit. Ce qu'elle devait porter — que l'analyse démarre au 1er juillet et non à
+// l'ouverture — est précisément l'exclusion que la page s'était promis de ne pas taire.
+function renderScope(d) {
+  const cible = el('tx-scope');
+  if (!cible) return;
+  const debut = d && d.analysis_start;
+  cible.textContent = debut ? 'since ' + fmtLongDay(debut) : 'analysis window not reported';
+}
+
 function renderAll(d) {
   lastPayload = d || {};
+  renderScope(lastPayload);
   renderAnswer(lastPayload);
   renderCharts(lastPayload);
   renderHourly(lastPayload);
@@ -1033,7 +1068,7 @@ function renderAll(d) {
 let segment = 'day';
 
 function majSegment(d) {
-  const boutons = document.querySelectorAll('.tx-segment button[data-seg]');
+  const boutons = document.querySelectorAll('#tx-segment button[data-seg]');
   for (let i = 0; i < boutons.length; i++) {
     boutons[i].setAttribute('aria-pressed', String(boutons[i].dataset.seg === segment));
   }
@@ -1087,7 +1122,7 @@ if (typeof window !== 'undefined' && window.matchMedia) {
 }
 
 if (typeof document !== 'undefined') {
-  const barre = document.querySelector('.tx-segment');
+  const barre = document.querySelector('#tx-segment');
   if (barre) {
     barre.addEventListener('click', function (e) {
       const b = e.target.closest ? e.target.closest('button[data-seg]') : null;

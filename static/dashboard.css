@@ -1,15 +1,16 @@
 /* ═══════════════════════════════════════════════════════════════════════════════════════════
-   LE TABLEAU DE BORD — langage visuel propre à cette page.
+   LA CHARTE — les composants, page par page.
    ═══════════════════════════════════════════════════════════════════════════════════════════
 
-   ⚠️ CETTE FEUILLE N'EST CHARGÉE QUE PAR `index.html`, ET C'EST DÉLIBÉRÉ. Poser ces jetons sur
-   `:root` dans `static/style.css` repeindrait les quinze autres pages d'un coup — Affluence,
-   Fidélité, Charges, Réconciliation — sans que personne ne les ait relues. Une refonte
-   silencieuse de quinze écrans est exactement le genre de chose qu'on découvre en production.
+   ⚠️ CETTE FEUILLE N'ÉTAIT CHARGÉE QUE PAR `index.html`, ET CE N'EST PLUS VRAI. Elle l'était
+   tant qu'elle DÉCLARAIT des couleurs : les poser plus haut aurait repeint quinze écrans que
+   personne n'avait relus. La palette est maintenant au niveau de la plateforme et cette feuille
+   n'en déclare plus aucune — elle ne porte que des COMPOSANTS. Une page l'ajoute quand elle
+   passe à la charte, et n'emporte rien avec elle en le faisant.
 
-   ⚠️ LA CONSÉQUENCE EST ASSUMÉE ET TEMPORAIRE : le tableau de bord ne ressemble plus au reste
-   de la plateforme. C'est le prix d'une refonte page par page ; la suite consiste à propager
-   ces jetons, pas à les dupliquer.
+   ⚠️ QUI LA CHARGE, À CE JOUR : le tableau de bord et Affluence. La classe `db` sur le
+   conteneur de page est ce qui l'active ; sans elle, les jetons `--db-*` ne sont pas définis et
+   chaque `var()` se résout dans le vide, sans erreur.
 
    ⚠️ TOUT EST EN JETONS, AUCUNE COULEUR EN DUR. Le mode sombre suit tout seul, et il n'existe
    pas de valeur qui ne serait juste que dans un seul thème.
@@ -375,3 +376,112 @@
 }
 .db-prog > span:first-of-type { position: absolute; top: 0; bottom: 0; left: 0; }
 .db-prog > .db-prog-part { left: auto; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   CE QU'AFFLUENCE A APPORTÉ À LA CHARTE — des composants, pas une page.
+   ═══════════════════════════════════════════════════════════════════════════════════════════
+
+   ⚠️ CHACUN DE CEUX-CI EXISTAIT DÉJÀ, ÉCRIT À LA MAIN, dans le gabarit d'Affluence. Les
+   recopier une deuxième fois dans le tableau de bord le jour où il en aura besoin est la
+   manière dont les composants divergent : on en corrige un sur deux. Ils vivent donc ici, où
+   les deux pages les lisent.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ── La phrase qui répond ────────────────────────────────────────────────────
+      ⚠️ ELLE PRÉCÈDE LE CHIFFRE, ET C'EST TOUT L'INTÉRÊT. « L'affluence tient » se lit
+      en un coup d'œil ; « 26,5 » demande de savoir contre quoi. Le nombre reste plus
+      gros — il est la preuve, elle est la réponse. ── */
+.db-lead { font-size: 17px; font-weight: 600; line-height: 1.35; margin: 2px 0 14px; }
+.db-hero { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.db-unit { font-size: 13px; color: var(--db-muted); }
+
+/* ⚠️ LA CONVENTION S'AFFICHE, ELLE NE SE SUPPOSE PAS. « Tient » est un jugement à ±10 %, pas
+   une mesure : l'écrire en petit sous le chiffre laisse le lecteur le contester. Taire le seuil
+   donnerait au mot l'autorité d'un fait. */
+.db-fine { font-size: 11.5px; color: var(--db-faint); line-height: 1.6; margin-top: 10px; }
+.db-fine:empty { display: none; }
+.db-fine b { color: var(--db-muted); font-weight: 600; }
+.db-empty { color: var(--db-muted); font-size: 13px; padding: 18px 0; }
+
+/* ── La légende d'un graphique ───────────────────────────────────────────────
+      ⚠️ ELLE EST DANS L'EN-TÊTE DE LA CARTE, PAS SOUS LE TRACÉ. Une légende posée sous
+      les barres se lit APRÈS qu'on a essayé de deviner ce qu'elles sont. ── */
+.db-legend {
+  display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--db-muted);
+}
+.db-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.db-legend i { width: 12px; height: 9px; border-radius: 2px; flex: none; display: inline-block; }
+.db-legend i.bar  { background: var(--db-slate); }
+.db-legend i.step { height: 0; border-top: 2px solid var(--db-iris); border-radius: 0; }
+.db-legend i.part { background: transparent; border: 1px dashed var(--db-faint); }
+
+/* ── La barre de progression, variante « mesure mise en avant » ──────────────
+      ⚠️ `.db-prog > span` EST VERT PAR DÉFAUT, ET LE VERT DIT « BON ». Une part de
+      matinée à 50 % n'est ni bonne ni mauvaise : c'est la mesure qu'on met en avant, et
+      c'est le rôle de l'accent. Sur une page sans solde, tout vert se lirait comme un
+      satisfecit. ── */
+.db-prog.accent > span { background: var(--db-iris); }
+
+/* ── La pastille dont la direction est portée par un glyphe ──────────────────
+      ⚠️ LE POINT ET LA FLÈCHE DISENT LA MÊME CHOSE. Sur une page où « en baisse » n'a
+      pas le droit d'être rouge, la flèche et le signe portent seuls la direction — le
+      point coloré devient un second signal qui ne signale rien. ── */
+.db-badge.plain::before { content: none; }
+
+/* ── Des colonnes par heure ──────────────────────────────────────────────────
+      ⚠️ CE N'EST PAS UN GRAPHIQUE, ET ÇA NE DOIT PAS EN AVOIR L'AIR. Pas d'axe, pas de
+      grille : quatorze colonnes et leur heure. Un Chart.js pour ça coûterait un canvas,
+      une échelle et un thème à repeindre, pour quatorze rectangles. ── */
+.db-hscroll { overflow-x: auto; }
+.db-hbars { display: flex; align-items: flex-end; gap: 5px; height: 150px; min-width: 440px; }
+.db-hbar {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-end; height: 100%;
+}
+.db-hbar .v {
+  font-size: 10.5px; height: 15px; line-height: 15px; color: var(--db-muted);
+  font-variant-numeric: tabular-nums;
+}
+.db-hbar .f {
+  width: 100%; background: var(--db-slate); border-radius: 3px 3px 0 0; min-height: 2px;
+}
+.db-hbar .h {
+  font-size: 10.5px; color: var(--db-faint); margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+/* Le sommet de chaque bloc — une règle énoncée, pas un « pic » détecté. */
+.db-hbar.top .f { background: var(--db-iris); }
+.db-hbar.top .v { color: var(--db-ink); font-weight: 650; }
+.db-hbar.top .h { color: var(--db-ink); font-weight: 650; }
+
+/* ── Ce que la page ne sait pas — replié ─────────────────────────────────────
+      ⚠️ FERMÉ, PAS SUPPRIMÉ. On sait qu'il existe, et on l'ouvre le jour où un chiffre
+      surprend — c'est exactement ce jour-là qu'il sert. Chacune de ces limites répond à
+      une question qu'on se poserait autrement avec un chiffre inventé. ── */
+.db-fold {
+  background: var(--db-card); border: 1px solid var(--db-line);
+  border-radius: var(--db-r); box-shadow: var(--db-sh); padding: 0 20px;
+}
+.db-fold > summary {
+  font-size: 12.5px; font-weight: 600; color: var(--db-muted);
+  padding: 14px 0; cursor: pointer; list-style: none;
+}
+.db-fold > summary::-webkit-details-marker { display: none; }
+.db-fold > summary::before { content: "▸"; color: var(--db-faint); margin-right: 7px; }
+.db-fold[open] > summary::before { content: "▾"; }
+.db-fold > summary:hover { color: var(--db-ink); }
+.db-fold > summary:focus-visible { outline: 2px solid var(--db-iris); outline-offset: 2px; }
+.db-fold dl { padding-bottom: 8px; margin: 0; }
+.db-fold dt { font-size: 12.5px; font-weight: 650; color: var(--db-ink); margin-top: 16px; }
+.db-fold dd { font-size: 12.5px; color: var(--db-muted); line-height: 1.65; margin: 4px 0 0; }
+.db-fold dd b { color: var(--db-ink); font-weight: 600; }
+.db-fold code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11.5px;
+  background: var(--db-alt); padding: 1px 5px; border-radius: var(--db-r-sm);
+}
+
+/* ── Un tableau serré, pour une carte étroite ────────────────────────────────
+      ⚠️ `.db th/td` PAYE 20 px DE CHAQUE CÔTÉ, ce qui va pour un tableau pleine largeur
+      et mange une colonne sur trois dans un tiers d'écran. ── */
+.db-card.serre th, .db-card.serre td { padding: 8px 14px; }

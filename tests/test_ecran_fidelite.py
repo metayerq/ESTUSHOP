@@ -248,13 +248,27 @@ def test_le_bandeau_reponse_nest_defini_quune_fois():
 
 def test_les_deux_pages_portent_la_meme_forme():
     """Ce que « le même UI/UX » veut dire concrètement : la question, le chiffre, l'écart, le n,
-    la règle de lecture, et les limites repliées."""
-    for page in ("transactions.html", "fidelidade.html"):
+    la règle de lecture, et les limites repliées.
+
+    ⚠️ CE CONTRÔLE NOMMAIT DES CLASSES, ET AFFLUENCE VIENT D'EN CHANGER. Elle est passée à la
+    charte Stripe (`db-card`, `db-v`, `db-fold`), Fidélité porte encore `tx-*` : une refonte se
+    fait page par page, et pendant ce temps les deux vocabulaires cohabitent. Un test attaché
+    aux noms aurait obligé à refaire les deux le même jour, ou à le supprimer.
+
+    ⚠️ IL TIENT DONC LA FORME, PAS L'HABILLAGE. La question, le chiffre, l'écart, le n, la règle
+    et le repli sont ce que « même UI/UX » voulait dire ; ils sont repérés par leurs ANCRES, qui
+    survivent au changement de charte. Le jour où Fidélité passera à son tour, ce test ne
+    bougera pas — et c'est la preuve qu'il regardait la bonne chose.
+    """
+    # Chaque page préfixe ses ancres — `hl-` pour l'affluence, `fd-` pour la fidélité. C'est le
+    # RÔLE de chacune qui doit se retrouver des deux côtés, pas son identifiant.
+    for page, prefixe in (("transactions.html", "hl-"), ("fidelidade.html", "fd-")):
         g = _gabarit(page)
-        assert 'class="tx-card tx-answer"' in g, page
-        assert 'class="tx-q"' in g, page
-        assert 'class="tx-value"' in g, page
-        assert 'class="tx-limites"' in g, page
+        for role in ("lead", "value", "delta", "n", "rule"):
+            assert f'id="{prefixe}{role}"' in g, f"{page} : {prefixe}{role} manquant"
+        assert "<details" in g and "</details>" in g, f"{page} : les limites ne sont plus repliées"
+        assert " open" not in g[g.index("<details"):g.index(">", g.index("<details"))], (
+            f"{page} : les limites sont dépliées par défaut")
 
 
 # ⚠️ LA RÉSERVE AFFICHÉE À CÔTÉ DU CHIFFRE A ÉTÉ RETIRÉE : elle se déclenchait pour deux

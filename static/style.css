@@ -856,13 +856,6 @@ td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 
 .tx-unit { font-size: 14px; color: var(--muted); }
 .tx-sub  { font-size: 12.5px; color: var(--muted); margin-top: 12px; line-height: 1.6; }
 .tx-sub b { color: var(--text); font-family: var(--mono); font-weight: 600; }
-.tx-prev { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
-.tx-prev b { color: var(--text); font-family: var(--mono); font-weight: 600; }
-.tx-erosion {
-  font-size: 13px; color: var(--muted); line-height: 1.7;
-  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);
-}
-.tx-erosion b { color: var(--text); font-weight: 600; }
 .tx-rule { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.6; }
 /* Une raison prend la PLACE du chiffre absent : même poids visuel, pas une note. */
 .tx-reason {
@@ -909,36 +902,16 @@ td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 
 .tx-limites dd b { color: var(--text); font-weight: 600; }
 
 .tx-section { margin-bottom: 34px; }
-.tx-section-title {
-  font-family: var(--mono);
-  font-size: 11px; font-weight: 400; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--muted); margin-bottom: 10px;
-}
-.tx-section-title::before { content: "— "; color: var(--faint); }
-.tx-section-sub { font-size: 12.5px; color: var(--muted); margin: -4px 0 12px; line-height: 1.6; }
 
 .tx-card {
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: 4px; padding: 20px 22px;
 }
-.tx-dim   { color: var(--faint); font-weight: 400; }
-.tx-empty { color: var(--muted); font-size: 13px; padding: 18px 0; }
 
 /* ── 2. Cellules KPI ── */
-.tx-kpi { display: flex; flex-direction: column; }
-.tx-kpi .kpi-value { font-size: 28px; }
-.tx-kpi-delta { margin-top: 8px; min-height: 22px; }
-.tx-kpi-reason {
-  font-size: 11px; color: var(--amber); margin-top: 6px; line-height: 1.55;
-}
 /* Les réserves sont LUES, pas survolées : le tooltip [data-tip] du dashboard
    n'existe pas sur cette page, et « estimé, plafond 8 » n'est pas un détail. */
-.tx-kpi-hint { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.55; }
-.tx-spark-wrap { margin-top: auto; padding-top: 12px; }
 .tx-spark { display: block; color: var(--green); overflow: visible; }
-.tx-spark-cap {
-  display: block; font-size: 10.5px; color: var(--faint); margin-top: 4px; line-height: 1.4;
-}
 
 
 
