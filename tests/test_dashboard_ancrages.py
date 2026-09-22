@@ -329,20 +329,21 @@ def test_ouvrir_une_commande_remplit_le_tiroir():
 
 def test_qui_charge_la_charte_en_porte_la_classe():
     """
-    ⚠️ CE CONTRÔLE GARDAIT « UNE SEULE PAGE CHARGE CETTE FEUILLE », ET CETTE RÈGLE EST MORTE.
-    Elle tenait tant que `dashboard.css` DÉCLARAIT des couleurs : une autre page l'incluant
-    aurait hérité d'une palette que personne n'avait relue chez elle. La palette est maintenant
-    commune, la feuille ne porte plus que des composants, et Affluence l'a rejointe.
+    ⚠️ CE CONTRÔLE A EXIGÉ DEUX CHOSES CONTRAIRES, L'UNE APRÈS L'AUTRE, ET LES DEUX ÉTAIENT
+    JUSTES EN LEUR TEMPS. D'abord « une seule page charge cette feuille » — vrai tant qu'elle
+    DÉCLARAIT des couleurs. Puis « les jetons restent sous `.db` » — vrai tant qu'on croyait le
+    scope gratuit.
 
-    ⚠️ CE QUI LA REMPLACE EST PLUS SERRÉ, PAS PLUS LÂCHE. Les composants lisent `--db-*`, qui
-    n'existent que sous `.db`. Une page qui charge la feuille sans porter la classe s'affiche
-    sans bordures, sans fonds et sans couleurs — chaque `var()` se résout dans le vide, et RIEN
-    ne le signale : ni erreur, ni console, ni page blanche. C'est le mode de panne qui vient de
-    se produire sur /tpa, à une feuille près.
+    ⚠️ IL NE L'ÉTAIT PAS. Modales, tiroirs et voiles se posent PAR-DESSUS la page, donc hors de
+    `.page` dans le DOM — et hors de portée d'un jeton scopé. Chacun de leurs `var(--db-*)` se
+    résolvait dans le vide : fond transparent, aucune ombre. On voyait la page à travers le
+    texte d'une modale, sur toute la plateforme, et rien ne le signalait.
+
+    ⚠️ CE QUI RESTE VRAI : la feuille ne déclare AUCUNE couleur. C'est ça qui autorise à la
+    charger partout, et c'est ça qu'il faut garder.
     """
     css = open(os.path.join(RACINE, "static", "dashboard.css"), encoding="utf-8").read()
-    assert ":root {" not in css, "les jetons sont posés globalement"
-    assert css.count(".db {") >= 1
+    assert css.count(":root {") >= 1, "les jetons ne sont plus accessibles hors de .page"
     # ⚠️ ET ELLE NE DÉCLARE PLUS AUCUNE COULEUR. C'est ce qui autorise une deuxième page à la
     # charger : le jour où une valeur littérale y revient, elle redevient une palette parallèle.
     import re
@@ -358,9 +359,10 @@ def test_qui_charge_la_charte_en_porte_la_classe():
         porteuses.append(os.path.basename(chemin))
         assert "/static/dashboard.css?v=" in html, f"{chemin} : feuille chargée sans version"
         assert 'class="page db"' in html, (
-            f"{chemin} charge la charte sans porter `db` — tous ses var() se résoudront dans le vide")
-    assert porteuses == ["cashflow.html", "charges.html", "cogs.html", "fidelidade.html",
-                         "index.html", "reconciliation.html", "transactions.html"], porteuses
+            f"{chemin} charge la charte sans porter `db` — son fond et son encre manqueront")
+    assert porteuses == ["cashflow.html", "charges.html", "cogs.html", "expenses.html",
+                         "fidelidade.html", "index.html", "reconciliation.html",
+                         "transactions.html"], porteuses
 
 
 def _courbe(payload):

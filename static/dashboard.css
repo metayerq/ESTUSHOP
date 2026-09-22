@@ -16,8 +16,20 @@
    pas de valeur qui ne serait juste que dans un seul thème.
    ═══════════════════════════════════════════════════════════════════════════════════════════ */
 
-.db {
-  /* ⚠️ CES JETONS NE DÉCLARENT PLUS DE COULEURS : ILS RÉFÉRENCENT LA PALETTE COMMUNE. Elle
+:root {
+  /* ⚠️ CES JETONS SONT SUR `:root`, ET ILS ONT VÉCU SOUS `.db`. Le scope était juste tant
+     qu'ils DÉCLARAIENT des couleurs — les poser plus haut aurait repeint quinze écrans que
+     personne n'avait relus. Ils ne font plus que référencer la palette commune : le scope ne
+     protégeait donc plus rien, et il COÛTAIT.
+
+     ⚠️ CE QU'IL COÛTAIT : modales, tiroirs et voiles vivent HORS de `.page`, parce qu'ils se
+     posent par-dessus tout. Sous `.db`, chacun de leurs `var(--db-*)` se résolvait dans le
+     vide — fond transparent, aucune ombre, aucun rayon. Une modale sans fond laisse voir la
+     page à travers son texte, et rien dans la console ne le signale. Le tableau de bord
+     contournait en collant `class="db"` sur chaque surcouche ; un contournement qu'il faut
+     penser à répéter n'est pas une solution, c'est un piège qui attend.
+
+     ⚠️ CES JETONS NE DÉCLARENT PLUS DE COULEURS : ILS RÉFÉRENCENT LA PALETTE COMMUNE. Elle
      vient d'être promue au niveau de la plateforme (`static/style.css`), et redéclarer les
      mêmes valeurs ici aurait donné deux sources pour une seule vérité — celle qu'on corrige et
      celle qu'on oublie. Les quatre blocs de déclaration qui vivaient là (clair, sombre, et les
@@ -57,13 +69,13 @@
   --db-scrim: rgba(10, 15, 40, .35);
 }
 @media (prefers-color-scheme: dark) {
-  .db {
+  :root {
     --db-sh: 0 1px 1px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,.04);
     --db-sh-pop: 0 8px 28px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.05);
     --db-scrim: rgba(0,0,0,.55);
   }
 }
-:root[data-theme="dark"] .db {
+:root[data-theme="dark"] {
   --db-sh: 0 1px 1px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,.04);
   --db-sh-pop: 0 8px 28px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.05);
   --db-scrim: rgba(0,0,0,.55);
@@ -316,8 +328,11 @@
 .db thead th { border-bottom: 0; }
 
 /* ── Les surcouches : modale, tiroir, infobulles ─────────────────────────────
-      ⚠️ ELLES VIVENT HORS DE `.page`, donc hors de portée des jetons — d'où les couleurs en dur
-      qu'on y trouvait. Elles portent désormais la classe `db` et héritent de la charte. ── */
+      ⚠️ ELLES VIVENT HORS DE `.page`, ET C'EST TOUTE LA RAISON pour laquelle les jetons sont
+      remontés sur `:root`. Tant qu'ils vivaient sous `.db`, chaque surcouche devait porter la
+      classe à la main — et celle qu'on oubliait s'affichait transparente, sans que rien ne le
+      dise. Le sélecteur garde `.db` pour ne rien casser là où il est déjà posé, mais il n'est
+      plus nécessaire. ── */
 .db .drawer-title, .db .drawer-pay-row, .db .drawer-item { color: var(--db-ink); }
 .db .drawer-section-label {
   font-family: inherit; font-size: 12.5px; font-weight: 550; letter-spacing: normal;

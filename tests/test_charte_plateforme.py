@@ -281,8 +281,14 @@ def test_pas_de_blanc_pose_sur_une_couleur_qui_sinverse(nom):
         # Une déclaration : du `background` jusqu'au `}` de sa règle.
         for regle in re.findall(r"\{[^{}]*\}", bloc):
             fond = re.search(r"background(?:-color)?:\s*var\((--[a-z-]+)\)", regle)
-            encre = re.search(r"color:\s*(#fff\b|#ffffff\b|white\b)", regle)
+            encre = re.search(r"(?<!-)color:\s*(#fff\b|#ffffff\b|white\b)", regle)
             if fond and encre and fond.group(1) in ("--text", "--db-ink", "--db-ink-2"):
+                fautifs.append(regle.strip()[:90])
+            # ⚠️ `accent-color` PEINT LA COCHE D'UNE CASE, et c'est le même piège : posée sur
+            # l'encre, elle s'inverse avec le thème — case blanche, coche blanche, on ne voit
+            # plus ce qui est coché. Sur la page des dépenses, c'était le geste principal.
+            acc = re.search(r"accent-color:\s*var\((--[a-z-]+)\)", regle)
+            if acc and acc.group(1) in ("--text", "--db-ink", "--db-ink-2"):
                 fautifs.append(regle.strip()[:90])
     assert not fautifs, fautifs
 
@@ -330,3 +336,108 @@ def test_la_coquille_souvre_et_se_referme():
         ouvrants = len(re.findall(r"<" + balise + r"[\s>]", ensemble))
         fermants = len(re.findall(r"</" + balise + r"\s*>", ensemble))
         assert ouvrants == fermants, f"{balise} : {ouvrants} ouverts, {fermants} fermés"
+
+
+# ── Ce qui flotte au-dessus de la page ───────────────────────────────────────────────────────
+
+def _racines(extra=""):
+    """
+    Les noms déclarés sur `:root` — donc résolus n'importe où dans le document.
+
+    ⚠️ LES GABARITS EN DÉCLARENT AUSSI. `clientes.html` pose ses quatre teintes de cohorte dans
+    son propre `<style>` : ne lire que `static/*.css` les faisait passer pour introuvables, et
+    le contrôle criait au loup sur du code juste.
+    """
+    css = extra
+    for f in sorted(os.listdir(os.path.join(RACINE, "static"))):
+        if f.endswith(".css"):
+            css += open(os.path.join(RACINE, "static", f), encoding="utf-8").read()
+    css = _sans_commentaires_css(css)
+    noms = set()
+    for m in re.finditer(r":root[^{]*\{([^{}]*)\}", css):
+        noms |= set(re.findall(r"(--[a-z0-9-]+)\s*:", m.group(1)))
+    return noms
+
+
+def _jetons_accessibles_partout():
+    return _racines()
+
+
+@pytest.mark.parametrize("nom", PAGES)
+def test_une_surcouche_resout_ses_jetons(nom):
+    """
+    ⚠️ UNE MODALE SE POSE PAR-DESSUS LA PAGE, donc hors de `.page` dans le DOM. Un jeton scopé
+    à `.page.db` n'y existe pas : `background: var(--db-card)` se résout dans le VIDE, la
+    déclaration est ignorée, et la modale s'affiche transparente — on lit la page à travers son
+    texte. Aucune erreur, aucune console, rien.
+
+    ⚠️ C'EST ARRIVÉ SUR TOUTE LA PLATEFORME, et le tableau de bord le contournait en collant
+    `class="db"` sur chacune de ses surcouches. Un contournement qu'il faut penser à répéter
+    n'est pas une solution : c'est un piège qui attend la page suivante. Les jetons sont
+    remontés sur `:root` ; ce contrôle garde la propriété qui compte — ce qui flotte au-dessus
+    de la page doit pouvoir se peindre.
+    """
+    # ⚠️ ON REPÈRE LA FERMETURE AVANT DE NETTOYER. Le marqueur EST un commentaire HTML
+    # (`</div><!-- /page -->`) : nettoyer d'abord l'efface, et le contrôle se met à sauter les
+    # dix-neuf pages en annonçant « rien à vérifier ». Un test qui skippe tout est plus
+    # dangereux qu'un test absent — il occupe la place.
+    brut = _lire(nom)
+    i = brut.find("<!-- /page -->")
+    if i == -1:
+        pytest.skip("pas de fermeture de page repérable")
+    partout = _jetons_accessibles_partout()
+    employes = set(re.findall(r"var\((--[a-z0-9-]+)\)", _sans_commentaires(brut[i:])))
+    hors_portee = sorted(employes - partout)
+    assert not hors_portee, (
+        f"{nom} : {hors_portee} employés au-dessus de la page mais déclarés plus bas")
+
+
+@pytest.mark.parametrize("nom", PAGES)
+def test_chaque_var_nomme_un_jeton_qui_existe(nom):
+    """
+    ⚠️ UN `var()` QUI NE TROUVE RIEN NE LÈVE PAS : la déclaration entière est ignorée, en
+    silence. `background: var(--db-card)` sur une modale hors de portée donne une modale
+    TRANSPARENTE — on lit la page à travers son texte, et aucune console ne dit pourquoi.
+
+    ⚠️ C'EST LE MODE DE PANNE LE PLUS DISCRET DE CETTE CHARTE, et il s'est produit sur toute la
+    plateforme : les jetons vivaient sous `.db`, les surcouches vivent hors de `.page`. Ce
+    contrôle est plus large que le défaut — il exige que TOUT `var()` nomme quelque chose qui
+    existe, sans se demander où l'élément se trouve dans le DOM.
+
+    ⚠️ `var(--x, valeur)` EST PERMIS : la solution de repli EST la déclaration manquante, dite
+    à l'endroit où elle sert.
+    """
+    brut = _lire(nom)
+    src = _sans_commentaires(brut)
+    locaux = set(re.findall(r"(--[a-z0-9-]+)\s*:", src))
+    racines = _racines(extra="\n".join(re.findall(r"<style>(.*?)</style>", brut, re.S)))
+    # Sans solution de repli : `var(--x)` et non `var(--x, …)`.
+    employes = set(re.findall(r"var\(\s*(--[a-z0-9-]+)\s*\)", src))
+    orphelins = sorted(employes - racines - locaux)
+    assert not orphelins, f"{nom} : {orphelins} — la règle qui les emploie sera ignorée"
+
+
+def test_une_categorie_nemprunte_ni_au_vert_ni_au_rouge():
+    """
+    ⚠️ UNE CATÉGORIE PEINTE COMME UN ÉTAT SE LIT COMME UN JUGEMENT. « Courses » était verte
+    parmi six teintes catégorielles, et rien ne rend les courses plus vertueuses qu'un loyer.
+    Sur la page des coûts, le CDI était vert et le temps partiel ambre : un temps partiel n'est
+    pas un avertissement.
+
+    ⚠️ L'ÉCHELLE CATÉGORIELLE EXISTE EXACTEMENT POUR ÇA. Elle n'emprunte ni au vert ni au rouge
+    précisément pour qu'une nature ne se lise pas comme un verdict.
+    """
+    fautives = []
+    for nom in PAGES:
+        for bloc in re.findall(r"<style>(.*?)</style>", _lire(nom), re.S):
+            bloc = _sans_commentaires_css(bloc)
+            for m in re.finditer(r"\.badge-([a-z]+)\s*\{([^}]*)\}", bloc):
+                famille, regle = m.group(1), m.group(2)
+                # ⚠️ LA FRÉQUENCE GARDE SON AMBRE, ET C'EST JUSTE : « annuel » dit que le
+                # montant affiché à côté est DÉRIVÉ. C'est une réserve sur un chiffre, pas une
+                # catégorie — la seule famille qui a le droit d'emprunter à un état.
+                if famille in ("annual", "quarterly", "monthly"):
+                    continue
+                if re.search(r"var\(--(db-)?(green|red)(-soft)?\)", regle):
+                    fautives.append(f"{nom} .badge-{famille}")
+    assert not fautives, fautives

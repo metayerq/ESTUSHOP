@@ -14,86 +14,52 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<link rel="stylesheet" href="/static/dashboard.css?v={{ v }}">
 <style>
-.page-nav { display:flex; align-items:center; gap:12px; margin-bottom:32px; }
-.page-nav a { font-size:13px; color:var(--muted); text-decoration:none; }
-.page-nav a:hover { color:var(--text); }
-.page-nav .sep { color:var(--faint); }
 
-.summary-bar { display:flex; gap:0; background:var(--bg-card); border:1px solid var(--border);
-  border-radius: 4px; overflow:hidden; margin-bottom:20px; }
-.sum-item { flex:1; padding:16px 20px; border-right:1px solid var(--border); }
-.sum-item:last-child { border-right:none; }
-.sum-label { font-size:10px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
-.sum-val { font-size:20px; font-weight:600; letter-spacing:-.4px; }
 
-.progress-wrap { margin-bottom:20px; }
-.progress-track { height:6px; background:var(--bar-bg); border-radius:3px; overflow:hidden; }
-.progress-fill { height:6px; background:var(--green); border-radius:3px; transition:width .3s; }
-.progress-text { font-size:12px; color:var(--muted); margin-top:6px; }
 
-.month-pills { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
-.pill { font-family:inherit; font-size:12px; font-weight:500; padding:6px 14px;
-  border-radius:20px; border:1px solid var(--border); background:var(--bg-card);
-  color:var(--muted); cursor:pointer; white-space:nowrap; }
-.pill:hover { background:var(--bg-hover); }
-.pill.active { background:var(--spec); color:#fff; border-color:var(--spec); }
 
-.toolbar { display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; }
-.filters { display:flex; gap:6px; flex-wrap:wrap; }
-.btn-add { font-family:inherit; font-size:12px; font-weight:500; padding:7px 14px;
-  border-radius:6px; cursor:pointer; border:1px solid var(--border); background:var(--bg-card); color:var(--text); }
-.btn-add:hover { background:var(--bg-hover); }
-.btn-primary { font-family:inherit; font-size:12px; font-weight:600; padding:8px 16px;
-  border-radius:6px; cursor:pointer; border:none; background:var(--accent); color:#fff; }
-.btn-ghost { font-family:inherit; font-size:12px; padding:6px 12px; border-radius:6px;
-  cursor:pointer; border:1px solid var(--border); background:transparent; color:var(--muted); }
-.btn-danger { font-family:inherit; font-size:12px; padding:5px 10px; border-radius:6px; cursor:pointer;
-  border:1px solid transparent; background:transparent; color:var(--red); }
-.btn-danger:hover { background:rgba(196,85,77,.07); }
 
-.table-wrap { border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:32px; }
-table { width:100%; border-collapse:collapse; }
-th { font-size:10px; font-weight:600; letter-spacing:.07em; text-transform:uppercase;
-  color:var(--muted); padding:7px 11px; background:var(--bg-page);
-  border-bottom:1px solid var(--border); text-align:left; }
-th.right, td.right { text-align:right; }
-td { font-size:12px; padding:6px 11px; border-bottom:1px solid var(--border); color:var(--text); vertical-align:middle; }
-tr:last-child td { border-bottom:none; }
-tr:hover td { background:var(--bg-hover); }
-tr.checked td { color:var(--faint); }
+/* ⚠️ SEPT RÈGLES SUR `table`/`th`/`td` ONT DISPARU : un contre-thème posé sur des sélecteurs
+   d'élément, donc SOUS la charte en spécificité. La moitié gagnait, l'autre perdait, et le
+   résultat n'était ni l'un ni l'autre. Ce qui reste est propre à cette page. */
+.db tbody tr.checked td { color:var(--db-faint); }
 tr.checked td.supplier, tr.checked td.label-cell { text-decoration:line-through; }
 td.amount { font-variant-numeric:tabular-nums; font-weight:500; white-space:nowrap; }
-td.date { color:var(--muted); white-space:nowrap; }
-td.label-cell { color:var(--muted); font-size:12px; }
-input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var(--text); }
+td.date { color:var(--db-muted); white-space:nowrap; }
+td.label-cell { color:var(--db-muted); font-size:12px; }
+/* ⚠️ `accent-color: var(--db-ink)` S'INVERSE AVEC LE THÈME. En sombre, l'encre passe au blanc
+   cassé : case blanche, coche blanche, on ne voit plus ce qui est coché — sur une page dont
+   c'est le geste principal. L'accent, lui, reste sombre des deux côtés. */
+input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var(--db-iris); }
 
-.badge { font-size:10px; font-weight:500; padding:2px 8px; border-radius:10px; display:inline-block; white-space:nowrap; }
-.badge-groceries { background:var(--green-soft); color:var(--green); }
+.badge { font-size:10px; font-weight:500; padding:2px 8px; border-radius:999px; display:inline-block; white-space:nowrap; }
+/* ⚠️ « COURSES » ÉTAIT VERT PARMI SIX CATÉGORIELLES. Sept types de dépense, dont un peint
+   comme un bon état : rien ne rend les courses plus vertueuses qu'un loyer. Il prend la
+   sixième teinte catégorielle, et « divers » — qui est l'ABSENCE de catégorie — prend le
+   neutre, ce qu'il a toujours voulu dire. */
+.badge-groceries { background:var(--cat-6-soft); color:var(--cat-6); }
 .badge-supplier  { background:var(--cat-1-soft); color:var(--cat-1); }
 .badge-works     { background:var(--cat-5-soft); color:var(--cat-5); }
 .badge-rent      { background:var(--cat-4-soft); color:var(--cat-4); }
 .badge-payroll   { background:var(--cat-3-soft); color:var(--cat-3); }
 .badge-admin     { background:var(--cat-2-soft); color:var(--cat-2); }
-.badge-other     { background:var(--cat-6-soft); color:var(--cat-6); }
+.badge-other     { background:var(--db-alt); color:var(--db-muted); }
 
-.empty { text-align:center; color:var(--muted); padding:40px; font-size:13px; }
 
-.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none;
+.modal-overlay { position:fixed; inset:0; background:var(--db-scrim); display:none;
   align-items:center; justify-content:center; z-index:100; }
 .modal-overlay.open { display:flex; }
-.modal { background:var(--bg-card); border-radius:12px; padding:28px; width:440px; max-width:95vw; }
+.modal { background:var(--db-card); border-radius:999px; padding:28px; width:440px; max-width:95vw; }
 .modal-title { font-size:16px; font-weight:700; margin-bottom:18px; }
 .modal-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .modal-grid .full { grid-column:1/-1; }
-.field-label { font-size:11px; font-weight:500; color:var(--muted); margin-bottom:5px; display:block; }
-.field-input { font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border);
-  border-radius:6px; background:var(--bg-card); color:var(--text); width:100%; box-sizing:border-box; }
 .modal-foot { display:flex; gap:8px; margin-top:20px; }
 .check-row { display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; margin-top:2px; }
 
 .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(80px);
-  background:var(--text); color:var(--bg-card); padding:10px 18px; border-radius:8px; font-size:13px;
+  background:var(--db-ink); color:var(--db-card); padding:10px 18px; border-radius:var(--db-r-sm); font-size:13px;
   opacity:0; transition:all .25s; z-index:200; }
 .toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
 
@@ -103,10 +69,10 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
 
 @media (max-width:760px) {
 
-  .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
-  .table-wrap table { min-width:560px; }
-  .summary-bar { flex-wrap:wrap; }
-  .summary-bar .sum-item { flex:1 1 50%; border-bottom:1px solid var(--border); }
+  /* ⚠️ HUIT COLONNES SUR UN TÉLÉPHONE DÉBORDENT. La carte défile toute seule pour que la
+     page, elle, ne défile jamais de côté. */
+  .db-card { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .db-card table { min-width:560px; }
   .modal { padding:20px; }
   .modal-grid { grid-template-columns:1fr; }
 }
@@ -115,52 +81,70 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
 </head>
 <body>
 {% include "_rail.html" %}
-<div class="page">
+{#
+  ⚠️ `db` ACTIVE LA CHARTE. Sans cette classe, `dashboard.css` est chargé mais aucun jeton
+  `--db-*` n'est défini : chaque `var()` se résout dans le vide, la page s'affiche sans bordures
+  ni couleurs, et rien dans la console ne le dit.
+#}
+<div class="page db">
 
-  <div class="header">
-    <div>
-      <div class="header-title">Expenses &amp; receipts</div>
-      <div class="header-sub">Check off each line once you have the invoice/receipt saved in Google Drive</div>
+  <div class="db-head">
+    <h2 class="db-title">D&eacute;penses &amp; justificatifs</h2>
+    <span class="db-id">coche une ligne quand son re&ccedil;u est dans Drive</span>
+    <span class="db-sp"></span>
+    <button class="db-icone" onclick="loadAll()" title="Recharger">&#8635;</button>
+    <a class="db-icone" href="/logout" title="Se d&eacute;connecter">&#9099;</a>
+  </div>
+
+  {#
+    ⚠️ LA BARRE DE PROGRESSION EST DANS LA CARTE « MANQUANTS », pas sous les trois. Elle mesure
+    exactement ce que cette carte compte : une barre posée à part demandait de faire soi-même le
+    lien entre un pourcentage et le chiffre du dessus.
+
+    ⚠️ ET SEULE CETTE CARTE PORTE UN ÉTAT. « Total » et « justifié » sont des constats ; ce qui
+    manque est la seule chose qui demande un geste.
+  #}
+  <div class="db-grid db-g3 db-mb">
+    <div class="db-card db-compact"><div class="db-l">Total de cette vue</div>
+      <div class="db-v" id="s-total">&mdash;</div>
+      <div class="db-s" id="s-lignes"></div></div>
+    <div class="db-card db-compact"><div class="db-l">Justifi&eacute;</div>
+      <div class="db-v" id="s-checked">&mdash;</div>
+      <div class="db-s">re&ccedil;u class&eacute; dans Drive</div></div>
+    <div class="db-card db-compact" id="i-missing"><div class="db-l">Sans justificatif</div>
+      <div class="db-v" id="s-missing">&mdash;</div>
+      <div class="db-prog accent fine" style="margin-top:8px"><span id="progress-fill" style="width:0%"></span></div>
+      <div class="db-s" id="progress-text">0 / 0 lignes coch&eacute;es</div></div>
+  </div>
+
+  {# ⚠️ TROIS RANGÉES DE PASTILLES DÉTACHÉES SE LISAIENT COMME DES FILTRES CUMULABLES. Chacune
+     est un choix UNIQUE — un compte, un mois, une catégorie — et le segmenté de la charte le
+     dit par sa forme. Elles défilent horizontalement plutôt que de passer à la ligne : trois
+     rangées repliées sur deux hauteurs repoussaient le tableau sous la ligne de flottaison. #}
+  <div class="db-seg db-mb" id="account-pills" role="group" aria-label="Compte"></div>
+  <div class="db-seg db-mb" id="month-pills" role="group" aria-label="Mois"></div>
+
+  <div class="db-head">
+    <div class="db-seg" id="cat-filters" role="group" aria-label="Cat&eacute;gorie">
+      <button type="button" data-filter="all" aria-pressed="true" onclick="setFilter('all')">Tout</button>
+      <button type="button" data-filter="missing" aria-pressed="false" onclick="setFilter('missing')">Sans re&ccedil;u</button>
+      <button type="button" data-filter="groceries" aria-pressed="false" onclick="setFilter('groceries')">Courses</button>
+      <button type="button" data-filter="supplier" aria-pressed="false" onclick="setFilter('supplier')">Fournisseur</button>
+      <button type="button" data-filter="works" aria-pressed="false" onclick="setFilter('works')">Travaux</button>
+      <button type="button" data-filter="rent" aria-pressed="false" onclick="setFilter('rent')">Loyer</button>
+      <button type="button" data-filter="payroll" aria-pressed="false" onclick="setFilter('payroll')">Paie</button>
+      <button type="button" data-filter="admin" aria-pressed="false" onclick="setFilter('admin')">Admin</button>
+      <button type="button" data-filter="other" aria-pressed="false" onclick="setFilter('other')">Divers</button>
     </div>
-    <button class="btn-refresh" onclick="loadAll()" title="Refresh">↻</button>
+    <span class="db-sp"></span>
+    <button class="db-btn" onclick="exportCsv()">&#8681; Export CSV</button>
+    <button class="db-btn" onclick="openImport()">&#8657; Importer un relev&eacute;</button>
+    <button class="db-btn fort" onclick="openModal()">+ Ajouter</button>
   </div>
 
-  <div class="summary-bar">
-    <div class="sum-item"><div class="sum-label">Total this view</div><div class="sum-val" id="s-total">—</div></div>
-    <div class="sum-item"><div class="sum-label">Justified</div><div class="sum-val" id="s-checked" style="color:var(--green);">—</div></div>
-    <div class="sum-item"><div class="sum-label">Missing receipt</div><div class="sum-val" id="s-missing" style="color:var(--red);">—</div></div>
-  </div>
+  <div id="cat-breakdown" class="db-card db-card-p db-mb"></div>
 
-  <div class="progress-wrap">
-    <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
-    <div class="progress-text" id="progress-text">0 / 0 lines checked</div>
-  </div>
-
-  <div class="month-pills" id="account-pills"></div>
-  <div class="month-pills" id="month-pills"></div>
-
-  <div class="toolbar">
-    <div class="filters" id="cat-filters">
-      <button class="pill active" data-filter="all" onclick="setFilter('all')">All</button>
-      <button class="pill" data-filter="missing" onclick="setFilter('missing')">Missing receipt</button>
-      <button class="pill" data-filter="groceries" onclick="setFilter('groceries')">Groceries</button>
-      <button class="pill" data-filter="supplier" onclick="setFilter('supplier')">Supplier</button>
-      <button class="pill" data-filter="works" onclick="setFilter('works')">Works &amp; fit-out</button>
-      <button class="pill" data-filter="rent" onclick="setFilter('rent')">Rent</button>
-      <button class="pill" data-filter="payroll" onclick="setFilter('payroll')">Payroll</button>
-      <button class="pill" data-filter="admin" onclick="setFilter('admin')">Admin &amp; fees</button>
-      <button class="pill" data-filter="other" onclick="setFilter('other')">Materials / other</button>
-    </div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn-add" onclick="exportCsv()">⇩ Export CSV</button>
-      <button class="btn-add" onclick="openImport()">⇪ Import statement</button>
-      <button class="btn-add" onclick="openModal()">+ Add expense</button>
-    </div>
-  </div>
-
-  <div id="cat-breakdown" class="table-wrap" style="padding:16px 18px;"></div>
-
-  <div class="table-wrap">
+  <div class="db-card db-mb">
     <table>
       <thead>
         <tr>
@@ -170,11 +154,11 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
           <th>Supplier</th>
           <th>Note</th>
           <th>Category</th>
-          <th class="right">Amount</th>
+          <th class="r">Amount</th>
           <th style="width:80px;"></th>
         </tr>
       </thead>
-      <tbody id="tbody"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+      <tbody id="tbody"><tr><td colspan="8" class="db-empty">Chargement&hellip;</td></tr></tbody>
     </table>
   </div>
 
@@ -187,31 +171,31 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
     <input type="hidden" id="f-id">
     <div class="modal-grid">
       <div>
-        <label class="field-label">Date *</label>
-        <input class="field-input" id="f-date" type="date">
+        <label class="db-l">Date *</label>
+        <input class="db-champ" id="f-date" type="date">
       </div>
       <div>
-        <label class="field-label">Amount (€) *</label>
-        <input class="field-input" id="f-amount" type="number" step="0.01" min="0" placeholder="0.00">
+        <label class="db-l">Amount (€) *</label>
+        <input class="db-champ" id="f-amount" type="number" step="0.01" min="0" placeholder="0.00">
       </div>
       <div class="full">
-        <label class="field-label">Supplier *</label>
-        <input class="field-input" id="f-supplier" placeholder="e.g. Leroy Merlin Alfragide">
+        <label class="db-l">Supplier *</label>
+        <input class="db-champ" id="f-supplier" placeholder="e.g. Leroy Merlin Alfragide">
       </div>
       <div class="full">
-        <label class="field-label">Note</label>
-        <input class="field-input" id="f-label" placeholder="What was it for? (optional)">
+        <label class="db-l">Note</label>
+        <input class="db-champ" id="f-label" placeholder="What was it for? (optional)">
       </div>
       <div>
-        <label class="field-label">Account</label>
-        <select class="field-input" id="f-account">
+        <label class="db-l">Account</label>
+        <select class="db-champ" id="f-account">
           <option value="Revolut Business">Revolut Business</option>
           <option value="Caixa Geral">Caixa Geral</option>
         </select>
       </div>
       <div>
-        <label class="field-label">Category</label>
-        <select class="field-input" id="f-category">
+        <label class="db-l">Category</label>
+        <select class="db-champ" id="f-category">
           <option value="groceries">Groceries</option>
           <option value="supplier">Supplier</option>
           <option value="works">Works &amp; fit-out</option>
@@ -226,8 +210,8 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
       </div>
     </div>
     <div class="modal-foot">
-      <button class="btn-primary" style="flex:1;" onclick="saveExpense()">Save</button>
-      <button class="btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="db-btn fort" style="flex:1;" onclick="saveExpense()">Save</button>
+      <button class="db-btn" onclick="closeModal()">Cancel</button>
     </div>
   </div>
 </div>
@@ -237,38 +221,38 @@ input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var
   <div class="modal" style="width:820px;max-height:85vh;overflow-y:auto;">
     <div class="modal-title">Import bank statement</div>
     <div id="import-step-paste">
-      <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+      <p class="db-s" style="display:block;margin-bottom:10px;line-height:1.6">
         Paste raw lines from your bank / Revolut statement below (copy straight from your online banking —
         any format works as long as each transaction has a date and an amount with cents). We'll only pick up
         <strong>outgoing</strong> amounts by default.
       </p>
-      <textarea id="import-text" rows="12" class="field-input" style="font-family:monospace;font-size:12px;resize:vertical;" placeholder="21/04/2026  Leroy Merlin Alfragide  -155.12&#10;22/04/2026  Loyer Rosa Maria  -400.00&#10;..."></textarea>
+      <textarea id="import-text" rows="12" class="db-champ" style="font-family:monospace;font-size:12px;resize:vertical;" placeholder="21/04/2026  Leroy Merlin Alfragide  -155.12&#10;22/04/2026  Loyer Rosa Maria  -400.00&#10;..."></textarea>
       <div style="margin-top:10px;">
-        <label class="field-label">Account this statement is from</label>
-        <select class="field-input" id="import-account" style="width:220px;">
+        <label class="db-l">Account this statement is from</label>
+        <select class="db-champ" id="import-account" style="width:220px;">
           <option value="Revolut Business">Revolut Business</option>
           <option value="Caixa Geral">Caixa Geral</option>
         </select>
       </div>
       <label class="check-row" style="margin-top:10px;"><input type="checkbox" id="import-incl-positive"> Also include incoming (positive) amounts</label>
       <div class="modal-foot">
-        <button class="btn-primary" style="flex:1;" onclick="parseImport()">Parse</button>
-        <button class="btn-ghost" onclick="closeImport()">Cancel</button>
+        <button class="db-btn fort" style="flex:1;" onclick="parseImport()">Parse</button>
+        <button class="db-btn" onclick="closeImport()">Cancel</button>
       </div>
     </div>
     <div id="import-step-preview" style="display:none;">
-      <p style="font-size:12px;color:var(--muted);margin-bottom:10px;" id="import-summary"></p>
+      <p class="db-s" style="display:block;margin-bottom:10px" id="import-summary"></p>
       <div class="table-wrap" style="margin-bottom:16px;">
         <table>
           <thead><tr>
-            <th style="width:30px;"></th><th>Date</th><th>Supplier</th><th>Category</th><th class="right">Amount</th>
+            <th style="width:30px;"></th><th>Date</th><th>Supplier</th><th>Category</th><th class="r">Amount</th>
           </tr></thead>
           <tbody id="import-preview-body"></tbody>
         </table>
       </div>
       <div class="modal-foot">
-        <button class="btn-primary" style="flex:1;" onclick="confirmImport()">Import selected</button>
-        <button class="btn-ghost" onclick="backToPaste()">Back</button>
+        <button class="db-btn fort" style="flex:1;" onclick="confirmImport()">Import selected</button>
+        <button class="db-btn" onclick="backToPaste()">Back</button>
       </div>
     </div>
   </div>
@@ -310,8 +294,8 @@ function monthKey(dateStr){ return (dateStr || '').slice(0,7); }
 
 function buildAccountPills(){
   const accounts = [...new Set(expenses.map(e => e.account || 'Revolut Business'))].sort();
-  let html = `<button class="pill ${currentAccount==='all'?'active':''}" onclick="setAccount('all')">All accounts</button>`;
-  html += accounts.map(a => `<button class="pill ${a===currentAccount?'active':''}" onclick="setAccount('${a.replace(/'/g,"\\'")}')">${a}</button>`).join('');
+  let html = `<button type="button" aria-pressed="${currentAccount==='all'}" onclick="setAccount('all')">Tous les comptes</button>`;
+  html += accounts.map(a => `<button type="button" aria-pressed="${a===currentAccount}" onclick="setAccount('${a.replace(/'/g,"\\'")}')">${a}</button>`).join('');
   document.getElementById('account-pills').innerHTML = html;
 }
 
@@ -325,8 +309,8 @@ function buildMonthPills(){
     currentMonth = months.includes(thisMonth) ? thisMonth : (months[0] || 'all');
   }
   const fmtMonth = m => new Date(m + '-01T12:00:00').toLocaleDateString('en-GB', {month:'long', year:'numeric'});
-  let html = `<button class="pill ${currentMonth==='all'?'active':''}" onclick="setMonth('all')">All time</button>`;
-  html += months.map(m => `<button class="pill ${m===currentMonth?'active':''}" onclick="setMonth('${m}')">${fmtMonth(m)}</button>`).join('');
+  let html = `<button type="button" aria-pressed="${currentMonth==='all'}" onclick="setMonth('all')">Depuis l'ouverture</button>`;
+  html += months.map(m => `<button type="button" aria-pressed="${m===currentMonth}" onclick="setMonth('${m}')">${fmtMonth(m)}</button>`).join('');
   document.getElementById('month-pills').innerHTML = html;
 }
 
@@ -334,7 +318,8 @@ function setAccount(a){ currentAccount = a; buildAccountPills(); buildMonthPills
 function setMonth(m){ currentMonth = m; buildMonthPills(); render(); }
 function setFilter(f){
   currentFilter = f;
-  document.querySelectorAll('#cat-filters .pill').forEach(b => b.classList.toggle('active', b.dataset.filter === f));
+  document.querySelectorAll('#cat-filters button').forEach(b =>
+    b.setAttribute('aria-pressed', String(b.dataset.filter === f)));
   render();
 }
 
@@ -351,10 +336,23 @@ function render(){
   const checkedTotal = checked.reduce((s,e) => s + Number(e.amount), 0);
   document.getElementById('s-total').textContent   = fmt(total);
   document.getElementById('s-checked').textContent = fmt(checkedTotal);
-  document.getElementById('s-missing').textContent = rows.length - checked.length;
+  const manquants = rows.length - checked.length;
+  const manquantTotal = total - checkedTotal;
+  /* ⚠️ UN NOMBRE DE LIGNES NE DIT PAS COMBIEN D'ARGENT MANQUE. « 12 sans justificatif » peut
+   * être douze cafés ou douze loyers. La carte porte les euros, le compte des lignes passe
+   * sous la barre — qui, elle, mesure bien des lignes. */
+  document.getElementById('s-missing').textContent = fmt(manquantTotal);
+  document.getElementById('s-lignes').textContent =
+    `${rows.length} ligne${rows.length > 1 ? 's' : ''}`;
   const pct = rows.length ? Math.round(checked.length / rows.length * 100) : 0;
   document.getElementById('progress-fill').style.width = pct + '%';
-  document.getElementById('progress-text').textContent = `${checked.length} / ${rows.length} lines checked (${pct}%)`;
+  document.getElementById('progress-text').textContent =
+    `${checked.length} / ${rows.length} lignes cochées (${pct} %)`;
+  /* ⚠️ RIEN À JUSTIFIER N'EST PAS « TOUT EST JUSTIFIÉ ». Une vue vide n'a pas d'état : la
+   * bande verte y dirait que le classement est à jour alors que rien n'a été regardé. */
+  const carteManque = document.getElementById('i-missing');
+  if (!rows.length) carteManque.removeAttribute('data-etat');
+  else carteManque.setAttribute('data-etat', !manquants ? 'ok' : pct >= 80 ? 'attention' : 'alerte');
 
   renderCategoryBreakdown(rows, total);
 
@@ -377,8 +375,8 @@ function render(){
       <td class="label-cell">${e.label || ''}</td>
       <td><span class="badge ${CAT_CLASS[e.category]||'badge-other'}">${CAT_LABEL[e.category]||e.category}</span></td>
       <td class="amount right">${fmt(e.amount)}</td>
-      <td class="right">
-        <button class="btn-ghost" style="padding:3px 8px;" onclick="editExpense('${e.id}')">Edit</button>
+      <td class="r">
+        <button class="db-btn" style="padding:3px 8px;" onclick="editExpense('${e.id}')">Edit</button>
         <button class="btn-danger" onclick="delExpense('${e.id}','${(e.supplier||'').replace(/'/g,"\\'")}')">✕</button>
       </td>
     </tr>`;
@@ -392,19 +390,22 @@ function renderCategoryBreakdown(rows, total){
   const byCat = {};
   for (const e of rows) byCat[e.category] = (byCat[e.category] || 0) + Number(e.amount);
   const sorted = Object.entries(byCat).sort((a,b) => b[1] - a[1]);
-  const BAR_COLORS = { groceries:'var(--green)', supplier:'var(--cat-1)', works:'var(--cat-5)', rent:'var(--cat-4)',
-                       payroll:'var(--cat-3)', admin:'var(--cat-2)', other:'var(--cat-6)' };
-  box.innerHTML = `<div class="ins-label" style="margin-bottom:12px;">Breakdown by category</div>` +
+  /* ⚠️ LA MÊME COULEUR QUE LA PASTILLE DE LA LIGNE, SINON C'EST UNE AUTRE INFORMATION. Les
+   * courses étaient vertes ici comme dans leur pastille, seules parmi six teintes
+   * catégorielles : rien ne rend les courses plus vertueuses qu'un loyer. « Divers » prend le
+   * neutre — c'est l'absence de catégorie, pas une septième. */
+  const BAR_COLORS = { groceries:'var(--cat-6)', supplier:'var(--cat-1)', works:'var(--cat-5)',
+                       rent:'var(--cat-4)', payroll:'var(--cat-3)', admin:'var(--cat-2)',
+                       other:'var(--db-slate)' };
+  box.innerHTML = `<div class="db-l" style="margin-bottom:12px;">R&eacute;partition par cat&eacute;gorie</div>` +
     sorted.map(([cat, amt]) => {
       const pct = total ? Math.round(amt / total * 100) : 0;
-      return `<div style="margin-bottom:9px;">
-        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+      return `<div style="margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;">
           <span>${CAT_LABEL[cat] || cat}</span>
-          <span style="color:var(--muted);">${fmt(amt)} · ${pct}%</span>
+          <span class="db-id">${fmt(amt)} · ${pct} %</span>
         </div>
-        <div style="height:5px;background:var(--bg-page);border-radius:3px;">
-          <div style="height:5px;border-radius:3px;width:${pct}%;background:${BAR_COLORS[cat]||'var(--muted)'};"></div>
-        </div>
+        <div class="db-prog fine"><span style="width:${pct}%;background:${BAR_COLORS[cat]||'var(--db-slate)'}"></span></div>
       </div>`;
     }).join('');
 }
@@ -633,16 +634,16 @@ function parseImport(){
 
 function renderImportPreview(){
   document.getElementById('import-preview-body').innerHTML = importRows.map((r, i) => `
-    <tr style="${r.duplicate ? 'background:var(--amber-soft);' : ''}">
+    <tr style="${r.duplicate ? 'background:var(--db-amber-soft);' : ''}">
       <td><input type="checkbox" ${r.include?'checked':''} onchange="importRows[${i}].include=this.checked"></td>
       <td class="date">${r.date}</td>
       <td>
-        <input class="field-input" style="font-size:12px;padding:4px 6px;" value="${r.supplier.replace(/"/g,'&quot;')}"
+        <input class="db-champ" style="font-size:12px;padding:4px 6px;" value="${r.supplier.replace(/"/g,'&quot;')}"
               onchange="importRows[${i}].supplier=this.value">
-        ${r.duplicate ? '<div style="font-size:10px;color:var(--amber);margin-top:2px;">⚠ possible duplicate</div>' : ''}
+        ${r.duplicate ? '<div style="font-size:10.5px;color:var(--db-amber);margin-top:2px;">&#9888; doublon possible</div>' : ''}
       </td>
       <td>
-        <select class="field-input" style="font-size:12px;padding:4px 6px;" onchange="importRows[${i}].category=this.value">
+        <select class="db-champ" style="font-size:12px;padding:4px 6px;" onchange="importRows[${i}].category=this.value">
           ${Object.keys(CAT_LABEL).map(c => `<option value="${c}" ${c===r.category?'selected':''}>${CAT_LABEL[c]}</option>`).join('')}
         </select>
       </td>
