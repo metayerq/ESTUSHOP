@@ -55,6 +55,7 @@ def test_aucune_couleur_en_dur(nom):
     La page s'affiche ; le texte a disparu.
     """
     s = _sans_commentaires(_lire(nom))
+    s = _sans_apercu_client(s)
     # ⚠️ UNE PAGE AUTONOME NE PEUT PAS ÉCRIRE `var()`. /tpa ne charge pas style.css : la
     # substitution y a d'abord produit `--border: var(--border)`, qui ne résout rien — bordures
     # et couleurs d'état effacées sur la seule page qu'un tiers consulte. Elle garde donc ses
@@ -67,10 +68,11 @@ def test_aucune_couleur_en_dur(nom):
         pytest.skip("page autonome : ses littéraux sont vérifiés contre la palette")
     fautifs = []
     for i, l in enumerate(s.split("\n"), 1):
-        # ⚠️ `theme-color` EST LA SEULE EXCEPTION, et elle est éprouvée plus bas : la barre
+        # ⚠️ `theme-color` EST UNE EXCEPTION, et elle est éprouvée plus bas : la barre
         # système du téléphone la lit AVANT tout CSS.
         if "theme-color" in l:
             continue
+
         # ⚠️ LA FORME COURTE COMPTE AUSSI. Le motif ne connaissait que six chiffres : `#888`,
         # `#555`, `#777` passaient sans être vus — et ce sont justement les gris qu'on écrit à
         # la main sans y penser, ceux qui ne suivent aucun thème.
@@ -491,3 +493,111 @@ def test_le_mot_de_passe_est_le_premier_champ():
     assert "autofocus" in bloc, "le focus n'est pas sur le mot de passe"
     # ⚠️ LES COMPTES NOMINATIFS RESTENT : ils portent le nom dans les actions journalisées.
     assert 'name="email"' in page, "les comptes nominatifs ont disparu"
+
+
+# ── L'APERÇU DE LA VIGNETTE CLIENT ──────────────────────────────────────────────────────────
+
+
+def _sans_apercu_client(src):
+    """
+    Retire le bloc `.apercu { … }` avant de chercher des couleurs en dur.
+
+    ⚠️ CE N'EST PAS UN ASSOUPLISSEMENT DE LA RÈGLE, C'EST LA RÈGLE APPLIQUÉE À L'ENVERS. Cet encart
+    montre ce que verra un client sur `pontos.estudantina.com` — un autre site, une autre charte, un
+    seul thème. Le peindre avec les jetons du tableau de bord, qui s'inversent en mode sombre, en
+    ferait une jolie boîte qui ne ressemble à rien de ce qui est publié : l'aperçu mentirait, ce qui
+    est pire qu'une absence d'aperçu.
+
+    ⚠️ ET L'EXCEPTION PORTE SUR LE BLOC, PAS SUR LA LIGNE. Le premier jet sautait les lignes
+    contenant « apercu » — or `background: #6e2e33;` est sur SA propre ligne, qui ne contient pas ce
+    mot. Une exception qui ne couvre pas ce qu'elle prétend couvrir est le pire des deux mondes : le
+    test rougit quand même, et on finit par élargir l'exception au lieu de la corriger.
+
+    ⚠️ ELLE EST ÉTROITE EXPRÈS : le seul bloc `.apercu {`, pas ses voisins. Et
+    `test_l_apercu_client_copie_la_charte_du_site` tient ce bloc contre la palette du site client.
+    """
+    i = src.find(".apercu {")
+    if i == -1:
+        return src
+    j = src.find("}", i)
+    return src[:i] + src[j + 1:] if j != -1 else src
+
+
+def test_l_apercu_client_copie_la_charte_du_site():
+    """
+    ⚠️ IL ÉCHAPPE À LA RÈGLE DES JETONS, DONC IL DOIT ÊTRE TENU AUTREMENT. Ses couleurs sont
+    littérales parce qu'elles appartiennent à un AUTRE site — celui des clients. Sans ce contrôle,
+    l'exception deviendrait une porte ouverte à n'importe quelle couleur écrite à la main dans ce
+    fichier, du moment qu'elle se trouve sur une ligne contenant « apercu ».
+
+    Les trois valeurs viennent de `apps/pontos/app/globals.css` : `--bordeaux`, `--papier`. Le jour
+    où la charte du café change, cet aperçu doit changer avec elle — et c'est ce test qui le dira.
+    """
+    src = _lire("events.html")
+    i = src.index(".apercu {")
+    regle = src[i:src.index("}", i)]
+    assert "#6e2e33" in regle, "le bordeaux du site a changé ou disparu de l'aperçu"
+    assert "#fdfcf8" in regle, "le papier crème du site a changé ou disparu de l'aperçu"
+    # ⚠️ AUCUN JETON DU TABLEAU DE BORD ICI : ils s'inversent en mode sombre, l'aperçu non.
+    assert "var(--bg-card)" not in regle and "var(--text)" not in regle
+
+
+def test_l_apercu_dit_ce_qui_ne_s_affichera_pas():
+    """
+    ⚠️ C'EST LA MOITIÉ DE SON INTÉRÊT. Trois règles décident de ce que le client voit, et aucune
+    n'était écrite nulle part : sans description la vignette ne s'OUVRE pas, un événement annulé est
+    masqué même s'il est actif, et seuls les sept prochains jours sont montrés — deux au plus. On
+    les a découvertes en les rencontrant, une par une, en production.
+    """
+    src = _lire("events.html")
+    for phrase in ("ne s\\'ouvre pas", "Masqué aux clients", "jamais affiché aux clients",
+                   "Deux vignettes au plus"):
+        assert phrase in src, f"l'aperçu ne dit plus : {phrase}"
+
+
+def test_le_jour_de_semaine_de_l_apercu_est_en_utc():
+    """
+    ⚠️ MÊME RÈGLE QUE SUR LA PAGE CLIENT, ET ELLE DOIT RESTER LA MÊME. `new Date("2026-10-02")` est
+    minuit UTC : le lire en heure locale le ramène à la veille pour tout fuseau à l'ouest. Un aperçu
+    qui annonce « vendredi » quand la page client dira « samedi » est pire qu'aucun aperçu.
+    """
+    src = _lire("events.html")
+    i = src.index("function quandFr")
+    corps = src[i:src.index("\n}", i)]
+    assert "T12:00:00Z" in corps and "getUTCDay()" in corps
+    assert ".getDay()" not in corps
+
+
+def test_l_apercu_suit_chaque_champ_qu_il_montre():
+    """
+    ⚠️ UN APERÇU QUI NE BOUGE QU'À L'OUVERTURE EST PIRE QU'AUCUN APERÇU : il affirme quelque chose
+    de faux pendant qu'on tape, et c'est justement au moment où l'on tape qu'on le regarde.
+
+    ⚠️ ET `oninput` EN PROPRIÉTÉ, PAS `addEventListener`. Le formulaire est réinitialisé à chaque
+    ouverture de la fenêtre : un écouteur ajouté s'empilerait, et l'aperçu se recalculerait cinq
+    fois par frappe au cinquième événement ouvert.
+    """
+    src = _lire("events.html")
+    assert "$(id).oninput = majApercu;" in src, "l'aperçu ne suit plus les frappes"
+    for champ in ("m-title", "m-date", "m-start", "m-loc", "m-desc", "m-link"):
+        assert f"'{champ}'" in src, f"{champ} ne déclenche plus l'aperçu"
+    # Le statut et la visibilité changent ce que l'aperçu ANNONCE, pas seulement son contenu.
+    assert "$('m-status').onchange = majApercu;" in src
+    assert "$('m-oncard').onchange = majApercu;" in src
+
+
+def test_le_chevron_de_l_apercu_ne_promet_rien_de_faux():
+    """
+    ⚠️ C'EST LA RÈGLE EXACTE DE LA PAGE CLIENT. Sans description, sans photo et sans lien, la
+    vignette est INERTE : promettre « en savoir plus » pour ne rien apprendre de plus est la façon
+    la plus rapide de faire cesser d'y toucher. L'aperçu doit donc être inerte lui aussi — sinon il
+    affirme le contraire de ce que le client verra, ce qui est le seul défaut qu'un aperçu ne peut
+    pas se permettre.
+    """
+    src = _lire("events.html")
+    i = src.index("function majApercu")
+    corps = src[i:src.index("\n}", i)]
+    assert "const ouvrable = Boolean(desc || img || lien)" in corps, (
+        "le chevron de l'aperçu ne suit plus la règle d'ouverture de la page client"
+    )
+    assert "ouvrable ?" in corps, "le chevron s'affiche sans condition"

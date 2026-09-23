@@ -89,6 +89,29 @@
    c'est laisser croire à la couche suivante qu'elle peut revenir — et c'est la superposition des
    deux couches qui a produit les pannes dont ce fichier garde l'historique. */
 
+/* ── L'aperçu de la vignette client ────────────────────────────────────────────────────────
+   ⚠️ LES COULEURS SONT CELLES DU SITE, PAS CELLES DU BACKOFFICE. Cet encart montre ce que le
+   CLIENT verra : le peindre avec les jetons du tableau de bord — qui ont un mode sombre — en
+   ferait une jolie boîte qui ne ressemble à rien de ce qui est publié. Les trois valeurs sont
+   donc littérales, et c'est le seul endroit du produit où ça se justifie. */
+.apercu {
+  background: #6e2e33;
+  color: #fdfcf8;
+  border-radius: 14px;
+  padding: 13px 15px;
+  position: relative;
+  padding-right: 34px;
+  max-width: 340px;
+  font-family: system-ui, sans-serif;
+}
+.apercu .a-lbl { font-size: 10px; letter-spacing: .13em; text-transform: uppercase; opacity: .72; }
+.apercu .a-t { font-size: 17px; margin-top: 3px; font-weight: 600; overflow-wrap: anywhere; }
+.apercu .a-q { font-size: 12.5px; margin-top: 3px; opacity: .8; }
+.apercu .a-chev { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 22px; opacity: .85; }
+.apercu-vide { background: var(--bg-hover); color: var(--muted); }
+.apercu-note { font-size: 11.5px; margin-top: 7px; color: var(--muted); }
+.apercu-note .alerte { color: var(--red); }
+
 .modal h2 { font-size:17px; font-weight:600; margin:0 0 16px; }
 .f-row { margin-bottom:13px; }
 .f-row2 { display:flex; gap:10px; }
@@ -219,6 +242,23 @@
     <summary style="cursor:pointer;padding:8px 0;font-size:.9rem;opacity:.85">
       Page client — affiche, lien, visibilité
     </summary>
+    <!-- ⚠️ L'APERÇU EXISTE PARCE QUE DEUX DÉFAUTS ONT ÉTÉ DÉCOUVERTS PAR LE CLIENT, PAS ICI : une
+         vignette qui s'affichait verte au lieu de rouge, et une carte qui ne s'ouvrait pas faute de
+         description. Les deux se voyaient au premier coup d'œil — encore fallait-il qu'un œil les
+         regarde. C'est ce que cet aperçu rend possible : ce qui est publié se voit à l'endroit où on
+         le saisit.
+
+         ⚠️ IL RECOPIE LA VIGNETTE, IL NE L'IMPORTE PAS. Les deux applications sont séparées ; une
+         divergence de couleur ou de formulation est donc possible, et c'est le prix assumé de ne pas
+         faire dépendre le backoffice du déploiement de la page client. Ce qu'il garantit est ce qui
+         compte : le CONTENU, et le fait que la carte s'ouvre ou non. -->
+    <div class="f-row">
+      <label class="field-label">Aperçu</label>
+      <div>
+        <div id="m-apercu" class="apercu"></div>
+        <div id="m-apercu-note" class="apercu-note"></div>
+      </div>
+    </div>
   <div class="f-row">
     <label class="field-label">Affiche <span style="opacity:.6">(page client)</span></label>
     <div>
@@ -368,17 +408,90 @@ function signalerPanne(msg, fichier, ligne){
     + ' — toucher pour masquer';
 }
 
+/* ── L'APERÇU DE LA VIGNETTE CLIENT ───────────────────────────────────────────────────────
+ *
+ * ⚠️ IL DIT AUSSI CE QUI NE S'AFFICHERA PAS, et c'est la moitié de son intérêt. Trois règles
+ * décident de ce que le client voit, et aucune n'était écrite nulle part : sans description la
+ * vignette ne s'OUVRE pas, un événement `annulé` est masqué même s'il est actif, et seuls les
+ * événements des sept prochains jours sont montrés — deux au plus. On les a découvertes en les
+ * rencontrant ; elles sont maintenant dites à l'endroit où l'on saisit.
+ */
+const JOURS_FR = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+
+function quandFr(dateStr, heure){
+  if(!dateStr) return '';
+  /* ⚠️ MIDI EN UTC. `new Date("2026-10-02")` est minuit UTC : le lire en heure locale le ramène à
+     la veille pour tout fuseau à l'ouest, et annoncer « vendredi » pour un samedi est pire que ne
+     rien annoncer — on ne vérifie pas un jour de semaine, on le croit. C'est la même règle que sur
+     la page client, et elle doit rester la même : l'aperçu mentirait autrement. */
+  const d = new Date(dateStr.slice(0,10) + 'T12:00:00Z');
+  if(isNaN(d.getTime())) return '';
+  const jour = JOURS_FR[d.getUTCDay()];
+  const mois = MOIS_FR[d.getUTCMonth()];
+  return jour + ' ' + d.getUTCDate() + ' ' + mois + (heure ? ' · ' + heure.slice(0,5) : '');
+}
+
+function majApercu(){
+  const boite = document.getElementById('m-apercu');
+  const note  = document.getElementById('m-apercu-note');
+  if(!boite) return;
+  const titre  = ($('m-title').value || '').trim();
+  const date   = $('m-date').value;
+  const heure  = $('m-start').value;
+  const lieu   = ($('m-loc').value || '').trim();
+  const desc   = ($('m-desc').value || '').trim();
+  const img    = ($('m-img').value || '').trim();
+  const lien   = ($('m-link').value || '').trim();
+  const visible = $('m-oncard').checked;
+  const annule  = $('m-status').value === 'cancelled';
+
+  const quand = quandFr(date, heure) + (lieu ? ' · ' + lieu : '');
+  /* ⚠️ LE CHEVRON N'APPARAÎT QUE SI LA CARTE S'OUVRE VRAIMENT. C'est exactement la règle de la page
+     client : sans description, sans photo et sans lien, la vignette est inerte — promettre
+     « en savoir plus » pour ne rien apprendre de plus est la façon la plus rapide de faire cesser
+     d'y toucher. L'aperçu doit donc être inerte lui aussi, sinon il mentirait. */
+  const ouvrable = Boolean(desc || img || lien);
+
+  boite.className = 'apercu' + (visible && !annule && titre ? '' : ' apercu-vide');
+  if(!titre){
+    boite.innerHTML = '<div class="a-q">Donnez un titre pour voir l\'aperçu.</div>';
+  } else {
+    boite.innerHTML =
+      '<div class="a-lbl">Prochain événement</div>' +
+      '<div class="a-t">' + esc(titre) + '</div>' +
+      '<div class="a-q">' + esc(quand) + '</div>' +
+      (ouvrable ? '<div class="a-chev">&rsaquo;</div>' : '');
+  }
+
+  /* Ce qui empêcherait cet événement d'apparaître, ou de s'ouvrir. */
+  const avis = [];
+  if(!visible) avis.push('<span class="alerte">Masqué aux clients</span> (case décochée).');
+  if(annule)   avis.push('<span class="alerte">Annulé</span> : jamais affiché aux clients.');
+  if(!ouvrable) avis.push('Sans description, photo ni lien, la vignette ne s\'ouvre pas.');
+  if(date){
+    const j = Math.round((new Date(date.slice(0,10)+'T12:00:00Z') - new Date(new Date().toISOString().slice(0,10)+'T12:00:00Z')) / 86400000);
+    if(j < 0) avis.push('Date passée : plus affiché.');
+    else if(j > 7) avis.push('Dans ' + j + ' jours : affiché seulement s\'il n\'y a rien cette semaine.');
+  }
+  avis.push('Deux vignettes au plus sur la page client.');
+  note.innerHTML = avis.join('<br>');
+}
+
 /* ── L'affiche : aperçu et envoi ───────────────────────────────────────────────────────────
  *
  * ⚠️ L'APERÇU EXISTE POUR NE PAS ENREGISTRER UNE URL MORTE. Une adresse collée depuis ailleurs
  * peut être privée, expirée ou simplement fausse : on ne s'en apercevrait que sur la page d'un
  * client, sans savoir depuis quand.
  */
-function majApercu(){
+function majImage(){
   const u = (document.getElementById('m-img').value || '').trim();
   const img = document.getElementById('m-img-vue');
-  if(!u){ img.style.display='none'; img.removeAttribute('src'); return; }
-  img.src = u; img.style.display='block';
+  if(!u){ img.style.display='none'; img.removeAttribute('src'); }
+  else { img.src = u; img.style.display='block'; }
+  /* ⚠️ L'APERÇU SUIT L'IMAGE : ajouter une affiche rend la vignette ouvrable, donc fait apparaître
+     le chevron. Les deux doivent bouger ensemble, sinon l'aperçu affirme le contraire de la règle. */
+  majApercu();
 }
 async function envoyerAffiche(){
   const f = document.getElementById('m-img-file').files?.[0];
@@ -394,7 +507,7 @@ async function envoyerAffiche(){
     const j = await r.json();
     if(!j.ok) throw new Error(j.error || 'erro');
     document.getElementById('m-img').value = j.url;
-    majApercu();
+    majImage();
     /* ⚠️ L'URL EST POSÉE DANS LE CHAMP, PAS ENREGISTRÉE DIRECTEMENT. Rien n'est écrit en base
        avant que l'utilisateur ne valide le formulaire : un envoi annulé ne laisse qu'un fichier
        orphelin dans le bucket, jamais une fiche à moitié modifiée. */
@@ -562,7 +675,21 @@ function openModal(ev, prefillDate){
      `onchange` posé en propriété — et non en `addEventListener` — reste idempotent, ce qui évite
      un envoi en double après plusieurs ouvertures. */
   $('m-img-file').onchange = envoyerAffiche;
-  $('m-img').oninput = majApercu;
+  $('m-img').oninput = majImage;
+  /**
+   * ⚠️ L'APERÇU SUIT CHAQUE CHAMP QU'IL MONTRE. Un aperçu qui ne bouge qu'à l'ouverture est pire
+   * qu'aucun aperçu : il affirme quelque chose de faux pendant qu'on tape, et c'est justement au
+   * moment où l'on tape qu'on le regarde.
+   *
+   * ⚠️ `oninput` EN PROPRIÉTÉ, PAS `addEventListener`. Le formulaire est réinitialisé à chaque
+   * ouverture de la fenêtre : un écouteur ajouté s'empilerait, et l'aperçu se recalculerait cinq
+   * fois par frappe au cinquième événement ouvert.
+   */
+  for (const id of ['m-title','m-date','m-start','m-loc','m-desc','m-link']) {
+    $(id).oninput = majApercu;
+  }
+  $('m-status').onchange = majApercu;
+  $('m-oncard').onchange = majApercu;
   modalColor = ev?.color || COLORS[0];
   buildSwatches();
   $('m-delete').style.visibility = isEdit?'visible':'hidden';
