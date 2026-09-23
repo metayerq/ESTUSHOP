@@ -198,3 +198,55 @@ def test_les_pannes_javascript_sont_affichees_a_l_ecran():
     # ⚠️ LE JETON, PAS LA VALEUR : un rouge en dur reste vif en mode sombre, où la charte
     # l'éclaircit. Un bandeau d'erreur illisible est un bandeau qu'on ignore.
     assert "var(--red)" in s and "#B42318" not in s
+
+
+# ── La propagation aux occurrences d'une série ───────────────────────────────────────────────
+#
+# ⚠️ SANS ELLE, UN ÉVÉNEMENT HEBDOMADAIRE DEMANDE DE RETAPER SA DESCRIPTION DOUZE FOIS. Chaque
+# occurrence est une LIGNE distincte avec sa propre description : remplir celle du 12 ne change rien
+# pour celle du 19. Et c'est la page client qui le révèle — une vignette sans flèche, parce qu'elle
+# n'a rien à ouvrir. C'est arrivé au Run Club.
+
+
+def test_la_propagation_ne_touche_que_les_champs_publics():
+    """
+    ⚠️ LA DATE, L'HEURE ET LE STATUT RESTENT PROPRES À CHAQUE OCCURRENCE. Une séance déplacée ou
+    annulée ne doit pas emporter ses sœurs — et le titre non plus : renommer une seule occurrence
+    est un geste légitime.
+    """
+    s = _page_events()
+    i = s.index("if (id && $('m-serie').checked)")
+    bloc = s[i:s.index("showToast(", i)]
+    for public in ("description:", "image_url:", "link_url:", "link_label:", "show_on_card:"):
+        assert public in bloc, f"{public} ne se propage plus"
+    for prive in ("start_time", "end_time", "status", "color"):
+        assert prive not in bloc, f"{prive} se propage : une occurrence déplacée emporterait ses sœurs"
+
+
+def test_la_propagation_renvoie_la_date_de_chaque_soeur():
+    """
+    ⚠️ LA ROUTE EXIGE UN TITRE ET UNE DATE. Envoyer les MIENS réécrirait la date de chaque sœur avec
+    celle de l'occurrence ouverte — douze séances empilées le même jour, et la série détruite sans
+    un message d'erreur.
+    """
+    s = _page_events()
+    i = s.index("if (id && $('m-serie').checked)")
+    bloc = s[i:s.index("showToast(", i)]
+    assert "title: s2.title" in bloc and "date: s2.date" in bloc
+
+
+def test_la_case_de_serie_n_apparait_que_sur_une_serie():
+    """Une case « toute la série » sur un événement isolé ne veut rien dire — et une case qui ne
+    veut rien dire se coche par réflexe."""
+    s = _page_events()
+    assert "$('m-serie-wrap').style.display = seriesCount>1 ? 'flex' : 'none';" in s
+    # ⚠️ ET ELLE REPART DÉCOCHÉE, DANS LA BRANCHE OÙ ELLE EST VISIBLE. Le premier jet de ce contrôle
+    # cherchait la remise à zéro n'importe où dans le fichier — or elle existe AUSSI dans la branche
+    # « pas de série », là où la case est masquée et où elle ne sert donc à rien. La retirer de la
+    # branche qui compte laissait la case cochée d'un événement au suivant : on propage à douze
+    # occurrences sans l'avoir demandé.
+    i = s.index("$('m-serie-wrap').style.display = seriesCount>1")
+    branche = s[i:s.index("} else {", i)]
+    assert "$('m-serie').checked = false;" in branche, (
+        "la case reste cochée d'un événement à l'autre"
+    )

@@ -278,6 +278,20 @@
       <input class="field-input" id="m-link-label" placeholder="Texte du bouton" style="max-width:11rem">
     </div>
   </div>
+  <!-- ⚠️ SANS ÇA, UN ÉVÉNEMENT HEBDOMADAIRE DEMANDE DE RETAPER SA DESCRIPTION DOUZE FOIS. Chaque
+       occurrence d'une série est une LIGNE distincte, avec sa propre description : remplir celle du
+       12 ne change rien pour celle du 19, et c'est la page client qui le révèle — vignette sans
+       flèche, parce qu'elle n'a rien à ouvrir. C'est arrivé au Run Club le 23/09/2026.
+
+       ⚠️ ELLE NE TOUCHE QUE LES CHAMPS PUBLICS. La date, l'heure et le statut restent propres à
+       chaque occurrence : une séance déplacée ou annulée ne doit pas se propager à ses sœurs. -->
+  <div class="f-row" id="m-serie-wrap" style="display:none">
+    <label class="field-label">Toute la série</label>
+    <label style="display:flex;align-items:center;gap:.5rem;font-size:.9rem">
+      <input type="checkbox" id="m-serie">
+      <span id="m-serie-txt">Appliquer description, affiche, lien et visibilité à toutes les occurrences</span>
+    </label>
+  </div>
   <div class="f-row">
     <label class="field-label">Sur la page client</label>
     <label style="display:flex;align-items:center;gap:.5rem;font-size:.9rem">
@@ -711,8 +725,16 @@ function openModal(ev, prefillDate){
     const seriesCount = ev.series_id ? events.filter(x=>x.series_id===ev.series_id).length : 0;
     $('d-delete-series').style.display = seriesCount>1 ? 'inline-block' : 'none';
     $('d-delete-series').textContent = `Supprimer la série (${seriesCount})`;
+    /* ⚠️ PROPOSÉE SEULEMENT QUAND IL Y A UNE SÉRIE. Une case « toute la série » sur un événement
+       isolé ne veut rien dire, et une case qui ne veut rien dire se coche par réflexe. */
+    $('m-serie-wrap').style.display = seriesCount>1 ? 'flex' : 'none';
+    $('m-serie').checked = false;
+    $('m-serie-txt').textContent =
+      `Appliquer description, affiche, lien et visibilité aux ${seriesCount} occurrences`;
   } else {
     $('d-delete-series').style.display = 'none';
+    $('m-serie-wrap').style.display = 'none';
+    $('m-serie').checked = false;
   }
   /**
    * ⚠️ `selectedId` SUIT L'ÉVÉNEMENT OUVERT, et il servait au tiroir. Les tâches et les notes
@@ -836,7 +858,46 @@ async function saveEvent(){
       const r=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       if(r.ok){ const d=await r.json().catch(()=>({})); if(d.ok!==false) ok++; }
     }
-    showToast(dates.length>1 ? `${ok} occurrences créées` : (ok?'Event enregistré':'Échec de la création'));
+
+    /**
+     * ⚠️ LA PROPAGATION NE TOUCHE QUE LES CHAMPS PUBLICS, et c'est délibéré. La date, l'heure et le
+     * statut restent propres à chaque occurrence : une séance déplacée ou annulée ne doit pas
+     * emporter ses sœurs. Le titre non plus — renommer une occurrence est un geste légitime.
+     *
+     * ⚠️ ET ELLE PASSE PAR LA MÊME ROUTE, AVEC L'`id` DE CHAQUE SŒUR. `_build_event_row` n'écrit
+     * que les champs reçus : envoyer description, affiche, lien et visibilité ne touchera donc rien
+     * d'autre — c'est ce garde, écrit pour `series_id`, qui rend cette propagation sûre.
+     */
+    let propagees = 0;
+    if (id && $('m-serie').checked) {
+      const moi = events.find(x => x.id === id);
+      const sibs = (moi && moi.series_id)
+        ? events.filter(x => x.series_id === moi.series_id && x.id !== id)
+        : [];
+      for (const s2 of sibs) {
+        const r = await fetch('/api/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: s2.id,
+            /* ⚠️ Le titre et la date SONT exigés par la route : on renvoie les LEURS, pas les
+               miennes, sinon la propagation réécrirait la date de chaque sœur avec la mienne. */
+            title: s2.title,
+            date: s2.date,
+            description: base.description,
+            image_url: base.image_url,
+            link_url: base.link_url,
+            link_label: base.link_label,
+            show_on_card: base.show_on_card,
+          }),
+        });
+        if (r.ok) propagees++;
+      }
+    }
+    showToast(
+      dates.length>1 ? `${ok} occurrences créées`
+      : propagees ? `Enregistré + ${propagees} occurrence(s) de la série`
+      : (ok?'Event enregistré':'Échec de la création'));
   } finally {
     saving=false; btn.disabled=false; btn.textContent=oldTxt;
     await loadAll();
