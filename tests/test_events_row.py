@@ -143,3 +143,58 @@ def test_un_evenement_cree_est_visible_par_defaut():
     s'affichaient déjà sur la page client avant l'existence de cette case."""
     row = app._build_event_row({"title": "Fado", "date": "2026-10-03"}, "planned")
     assert row["show_on_card"] is True
+
+
+# ── Le silence d'un chargement raté ─────────────────────────────────────────────────────────
+#
+# ⚠️ UN CALENDRIER VIDE PARCE QU'IL N'Y A RIEN CE MOIS-CI ET UN CALENDRIER VIDE PARCE QUE LA BASE
+# N'A PAS RÉPONDU SE RESSEMBLENT TRAIT POUR TRAIT. Ils se corrigent de façons opposées, et l'un des
+# deux se décrit par « je ne peux pas cliquer sur mes événements » — ce qui envoie chercher dans le
+# clic, pas dans la lecture.
+
+
+def _page_events():
+    import pathlib
+    return pathlib.Path(__file__).resolve().parent.parent.joinpath("templates/events.html").read_text()
+
+
+def _page_events_sans_commentaires():
+    """⚠️ LES COMMENTAIRES CITENT CE QU'ILS EXPLIQUENT. Le pavé qui justifie l'emploi du JETON
+    plutôt que de la valeur écrit `#B42318` — et le contrôle qui cherchait cette valeur trouvait
+    donc sa propre justification. C'est la HUITIÈME fois que ce piège se referme dans ce produit :
+    un détecteur qui cite ce qu'il traque finit toujours par se reconnaître."""
+    import re
+    s = _page_events()
+    s = re.sub(r"/\*[\s\S]*?\*/", " ", s)        # commentaires CSS et JS en bloc
+    s = re.sub(r"<!--[\s\S]*?-->", " ", s)        # commentaires HTML
+    s = re.sub(r"(?m)^\s*//.*$", " ", s)           # commentaires JS de ligne
+    return s
+
+
+def test_un_chargement_rate_ne_se_tait_pas():
+    """⚠️ `events = er.ok ? … : []` AVALAIT TOUT : session expirée, erreur Supabase, 500. La page
+    s'affichait normalement, le mois se dessinait, et il n'y avait aucun événement dessus."""
+    s = _page_events()
+    assert "signalerPanne('Les événements n" in s, "une lecture ratée est redevenue silencieuse"
+    assert "session expirée" in s, "le cas le plus fréquent n'est plus nommé"
+
+
+def test_une_panne_de_taches_nemporte_pas_les_evenements():
+    """Les deux lectures étaient liées par un `catch` commun : une panne sur les tâches —
+    accessoires — vidait le calendrier entier."""
+    s = _page_events()
+    i = s.index("async function loadAll")
+    corps = s[i:s.index("\n}", i)]
+    # Les tâches ont leur propre branche d'échec, distincte de celle des événements.
+    assert corps.count("signalerPanne") >= 3, "les échecs ne sont plus distingués"
+    assert "le calendrier reste utilisable" in corps
+
+
+def test_les_pannes_javascript_sont_affichees_a_l_ecran():
+    """⚠️ « Regarde la console » ne veut rien dire sur un iPad, et ce backoffice s'y ouvre."""
+    s = _page_events_sans_commentaires()
+    assert "window.addEventListener('error'" in s
+    assert "unhandledrejection" in s, "une promesse rejetée resterait muette"
+    # ⚠️ LE JETON, PAS LA VALEUR : un rouge en dur reste vif en mode sombre, où la charte
+    # l'éclaircit. Un bandeau d'erreur illisible est un bandeau qu'on ignore.
+    assert "var(--red)" in s and "#B42318" not in s

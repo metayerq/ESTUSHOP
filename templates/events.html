@@ -414,16 +414,43 @@ function todayStr(){ return ymd(new Date()); }
 function fmtDate(s){ if(!s) return ''; const d=new Date(s+'T12:00:00'); return `${WD[(d.getDay()+6)%7]} ${d.getDate()} ${MONTHS[d.getMonth()]}`; }
 
 // ── Chargement ───────────────────────────────────────────────────────────────
+/**
+ * ⚠️ UN CHARGEMENT QUI ÉCHOUE RENDAIT UN CALENDRIER VIDE, SANS UN MOT. `events = er.ok ? … : []`
+ * et le `catch` avalaient tout : une session expirée, une erreur Supabase, un 500 — dans tous les
+ * cas la page s'affichait NORMALEMENT, le mois se dessinait, et il n'y avait simplement aucun
+ * événement dessus. Rien à cliquer, et rien qui dise pourquoi.
+ *
+ * ⚠️ C'EST EXACTEMENT CE QUI SE DÉCRIT PAR « je ne peux pas cliquer sur mes événements ». Le
+ * défaut n'est pas dans le clic : il est dans le silence de la lecture. Un calendrier vide parce
+ * qu'il n'y a rien ce mois-ci et un calendrier vide parce que la base n'a pas répondu se
+ * ressemblent trait pour trait, et se corrigent de façons opposées.
+ *
+ * ⚠️ ET LES TÂCHES NE DOIVENT PAS EMPORTER LES ÉVÉNEMENTS. Les deux lectures étaient liées par un
+ * `Promise.all` puis par un `catch` commun : une panne sur les tâches — accessoires — vidait le
+ * calendrier entier.
+ */
 async function loadAll(){
   if (window.uiLoadStart) uiLoadStart();
   try {
     const [er, tr] = await Promise.all([ fetch('/api/events'), fetch('/api/events/tasks') ]);
-    events = er.ok ? await er.json() : [];
-    const tasks = tr.ok ? await tr.json() : [];
+    if (er.ok) {
+      events = await er.json();
+    } else {
+      events = [];
+      signalerPanne('Les événements n\'ont pas pu être lus (HTTP ' + er.status + ')'
+        + (er.status === 401 ? ' — session expirée, reconnectez-vous.' : ''), '', 0);
+    }
     tasksByEvent = {};
-    tasks.forEach(t => (tasksByEvent[t.event_id] = tasksByEvent[t.event_id] || []).push(t));
+    if (tr.ok) {
+      const tasks = await tr.json();
+      tasks.forEach(t => (tasksByEvent[t.event_id] = tasksByEvent[t.event_id] || []).push(t));
+    } else {
+      /* Accessoire : le calendrier reste utilisable sans les tâches, mais on le dit. */
+      signalerPanne('Les tâches n\'ont pas pu être lues (HTTP ' + tr.status + ') — le calendrier reste utilisable.', '', 0);
+    }
   } catch(e) {
     events = []; tasksByEvent = {};
+    signalerPanne('Chargement impossible : ' + (e && e.message ? e.message : e), '', 0);
   } finally {
     if (window.uiLoadEnd) uiLoadEnd();
   }
