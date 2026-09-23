@@ -319,6 +319,38 @@
 
 <script src="/static/ui.js?v={{ v }}"></script>
 <script>
+/* ── FAIRE PARLER LES PANNES SILENCIEUSES ──────────────────────────────────────────────────
+ *
+ * ⚠️ SUR CETTE PAGE, UNE ERREUR JAVASCRIPT NE SE VOIT PAS : ELLE SE TRADUIT PAR « rien ne se
+ * passe ». Cliquer un événement ferme le tiroir AVANT d'ouvrir la fenêtre d'édition — si
+ * l'ouverture lève, le tiroir se referme et l'écran reste sur le calendrier, sans un mot. On ne
+ * peut alors ni savoir quoi corriger, ni même savoir qu'il y a quelque chose à corriger.
+ *
+ * ⚠️ ET LE MESSAGE EST À L'ÉCRAN, PAS DANS LA CONSOLE. Le backoffice s'ouvre depuis un téléphone
+ * ou un iPad aussi souvent que depuis un ordinateur ; « regarde la console » n'y veut rien dire.
+ */
+window.addEventListener('error', function(ev){ signalerPanne(ev.message, ev.filename, ev.lineno); });
+window.addEventListener('unhandledrejection', function(ev){
+  signalerPanne('Promesse rejetée : ' + ((ev.reason && ev.reason.message) || ev.reason), '', 0);
+});
+function signalerPanne(msg, fichier, ligne){
+  var d = document.getElementById('panne');
+  if(!d){
+    d = document.createElement('div');
+    d.id = 'panne';
+    d.style.cssText = 'position:fixed;z-index:999;left:0;right:0;bottom:0;padding:12px 16px;' +
+      /* ⚠️ LE JETON, PAS LA VALEUR. Un `#B42318` en dur reste rouge vif en mode sombre, où le
+         rouge de la charte s'éclaircit pour rester lisible — et un bandeau d'erreur illisible est
+         un bandeau qu'on ignore. `test_aucune_couleur_en_dur` l'a d'ailleurs refusé. */
+      'background:var(--red);color:var(--accent-ink,#fff);font:13px/1.4 system-ui;white-space:pre-wrap';
+    d.onclick = function(){ d.remove(); };
+    document.body.appendChild(d);
+  }
+  /* Le fichier et la ligne comptent autant que le message : ils disent QUEL bout de page a cassé. */
+  d.textContent = 'Erreur : ' + msg + (ligne ? ' (' + (fichier||'').split('/').pop() + ':' + ligne + ')' : '')
+    + ' — toucher pour masquer';
+}
+
 /* ── L'affiche : aperçu et envoi ───────────────────────────────────────────────────────────
  *
  * ⚠️ L'APERÇU EXISTE POUR NE PAS ENREGISTRER UNE URL MORTE. Une adresse collée depuis ailleurs
