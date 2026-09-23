@@ -207,9 +207,18 @@
     <label class="field-label">Description</label>
     <textarea class="field-area" id="m-desc" placeholder="De quoi il s'agit, invités, format…"></textarea>
   </div>
-  <!-- ⚠️ CE QUE LES CLIENTS VOIENT, ET C'EST LA DIFFÉRENCE AVEC TOUT LE RESTE DE CE FORMULAIRE.
-       La description, elle, était déjà publiée ; ces trois champs le sont aussi. Le libellé le dit
-       pour qu'on n'y écrive pas une note de service. -->
+  <!-- ⚠️ TROIS RANGÉES DE PLUS DANS UNE FENÊTRE DÉJÀ À `max-height: 90vh`, et c'est une
+       régression que j'ai causée : le formulaire comptait douze rangées, j'en ai ajouté trois —
+       25 % de hauteur en plus. Sur un écran d'iPad en paysage, la fenêtre se met à défiler et le
+       bouton « Enregistrer » sort du champ de vision. Elles rentrent donc dans un pli.
+
+       ⚠️ UN `<details>` NATIF, fermé par défaut : ce sont des champs qu'on remplit une fois par
+       événement, pas à chaque correction d'horaire. Et il n'a besoin d'aucun JavaScript — sur une
+       page dont le JavaScript est justement suspect, c'est ce qui compte. -->
+  <details class="f-row" style="display:block">
+    <summary style="cursor:pointer;padding:8px 0;font-size:.9rem;opacity:.85">
+      Page client — affiche, lien, visibilité
+    </summary>
   <div class="f-row">
     <label class="field-label">Affiche <span style="opacity:.6">(page client)</span></label>
     <div>
@@ -239,6 +248,7 @@
       <span>Afficher cet événement aux clients</span>
     </label>
   </div>
+  </details>
   <div class="f-row" id="m-recur-wrap">
     <label class="field-label">Répétition</label>
     <select class="field-input" id="m-recur">
