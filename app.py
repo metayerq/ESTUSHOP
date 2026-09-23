@@ -8,6 +8,7 @@ Usage:
 """
 
 import os
+import time as _time
 import json
 import re as _re
 import secrets as _secrets
@@ -3543,6 +3544,70 @@ def api_sop_log_delete(log_id):
 def events_page():
     return render_template("events.html")
 
+# ── L'affiche d'un événement ────────────────────────────────────────────────────────────────
+#
+# ⚠️ POURQUOI UN ENVOI DE FICHIER PLUTÔT QU'UN CHAMP URL SEUL. La colonne reste une simple URL —
+# on peut y coller le lien d'une image existante — mais demander au café de trouver un hébergeur
+# à chaque affiche est le genre de frottement qui fait qu'on ne remplit jamais le champ. Le bucket
+# est public : une affiche est destinée à être vue, et une URL signée qui expire casserait la page
+# du client le jour où elle expire.
+#
+# ⚠️ LE NOM DU FICHIER N'EST PAS CELUI QU'ON ENVOIE. Un nom d'origine porte des accents, des
+# espaces, parfois « ../ » : on le remplace par l'identifiant de l'événement et un horodatage.
+# L'extension seule est conservée, et seulement si elle fait partie des trois qu'on accepte.
+EVENT_IMG_EXT = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
+EVENT_IMG_BUCKET = "event-images"
+EVENT_IMG_MAX = 5 * 1024 * 1024
+
+
+@app.route("/api/events/image", methods=["POST"])
+def api_events_image():
+    """Envoie une affiche dans le bucket public, et rend son URL. Réservé admin."""
+    if not _is_admin():
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "error": "file required"}), 400
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in EVENT_IMG_EXT:
+        return jsonify({"ok": False, "error": "formato: jpg, png ou webp"}), 400
+
+    data = f.read()
+    # ⚠️ LA TAILLE SE VÉRIFIE APRÈS LECTURE, PAS SUR L'EN-TÊTE. `Content-Length` est déclaré par
+    # le client : s'y fier laisse passer un fichier de 50 Mo qui remplit le bucket.
+    if not data:
+        return jsonify({"ok": False, "error": "file required"}), 400
+    if len(data) > EVENT_IMG_MAX:
+        return jsonify({"ok": False, "error": "imagem demasiado grande (max 5 MB)"}), 400
+
+    eid = (request.form.get("event_id") or "novo").strip()[:40]
+    # ⚠️ RIEN DE CE QUI VIENT DU CLIENT NE COMPOSE UN CHEMIN. Seuls des caractères sûrs survivent :
+    # un « / » ou un « .. » dans cet identifiant écrirait ailleurs dans le bucket.
+    eid = "".join(c for c in eid if c.isalnum() or c in "-_") or "novo"
+    chemin = f"{eid}/{int(_time.time())}.{ext}"
+
+    r = requests.post(
+        f"{SUPA_URL}/storage/v1/object/{EVENT_IMG_BUCKET}/{chemin}",
+        headers={
+            "apikey": SUPA_KEY,
+            "Authorization": f"Bearer {SUPA_KEY}",
+            "Content-Type": EVENT_IMG_EXT[ext],
+            # ⚠️ Écraser une affiche du même chemin plutôt que refuser : le chemin porte un
+            # horodatage, donc une collision ne peut venir que d'un double envoi du même geste.
+            "x-upsert": "true",
+        },
+        data=data,
+        timeout=30,
+    )
+    if r.status_code >= 300:
+        # ⚠️ LE MESSAGE DE SUPABASE TRAVERSE. « Bucket not found » dit quoi faire ; « erreur
+        # d'envoi » envoie chercher dans le mauvais endroit pendant une heure.
+        return jsonify({"ok": False, "error": f"storage {r.status_code}: {r.text[:200]}"}), 502
+
+    url = f"{SUPA_URL}/storage/v1/object/public/{EVENT_IMG_BUCKET}/{chemin}"
+    return jsonify({"ok": True, "url": url})
+
+
 @app.route("/api/events", methods=["GET"])
 def api_events_get():
     rows = _supa_get("events", {"active": "eq.true", "order": "date.asc"})
@@ -3578,11 +3643,29 @@ def _build_event_row(data, status):
         "color":       (data.get("color") or "#2554C7").strip(),
         "updated_at":  _utc_iso(),
     }
+    # ── Ce que la page de fidélité des clients affiche ──────────────────────────────────────
+    #
+    # ⚠️ CES TROIS CHAMPS SORTENT DU BACKOFFICE. `image_url` finit dans un `src` d'image et
+    # `link_url` dans un `href`, sur une page publique : Mesa n'accepte que `https:` avant de les
+    # rendre (voir `lib/server/events.ts`). On ne valide pas deux fois ici — une validation
+    # dupliquée finit par diverger, et c'est celle du bord qui compte.
+    #
+    # ⚠️ ET ILS SUIVENT LA MÊME RÈGLE QUE `notes` : une mise à jour qui ne les envoie pas ne les
+    # efface pas. Sans ça, enregistrer une correction de titre depuis un écran qui n'a pas le
+    # champ photo supprimerait l'affiche — sans un mot.
+    for champ in ("image_url", "link_url", "link_label"):
+        if champ in data:
+            row[champ] = (data.get(champ) or "").strip() or None
     est_mise_a_jour = bool(data.get("id"))
-    for champ, defaut in (("series_id", None), ("active", True), ("notes", None)):
+    # ⚠️ `show_on_card` REJOINT CETTE LISTE, et pour la raison exacte qui l'a fait naître : un
+    # champ absent de la requête ne doit pas être inventé. Décoché une fois, il ne doit pas
+    # réapparaître à la prochaine correction d'horaire — sinon une privatisation retourne sur la
+    # page de tous les clients, et personne au café ne l'apprend.
+    for champ, defaut in (("series_id", None), ("active", True), ("notes", None),
+                          ("show_on_card", True)):
         if champ in data:
             row[champ] = data[champ]
-        elif not est_mise_a_jour and champ != "notes":
+        elif not est_mise_a_jour and champ not in ("notes",):
             row[champ] = defaut
     if est_mise_a_jour:
         row["id"] = data["id"]

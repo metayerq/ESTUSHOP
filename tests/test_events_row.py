@@ -87,3 +87,59 @@ def test_les_champs_du_formulaire_sont_ecrits_meme_vides():
     assert row["location"] == ""
     assert row["start_time"] is None
     assert row["id"] == "ev-1"
+
+
+# ── Ce que les clients voient ───────────────────────────────────────────────────────────────
+#
+# ⚠️ CES QUATRE CHAMPS SONT LES SEULS DE CE FORMULAIRE QUI SORTENT DU CAFÉ. Les trois premiers
+# atterrissent sur la page de points de chaque client ; le quatrième décide si l'événement y
+# atterrit du tout. Aucune de leurs pannes ne se voit depuis le backoffice.
+
+
+def test_les_champs_publics_ne_sont_pas_inventes_a_la_mise_a_jour():
+    """⚠️ MÊME GARDE QUE `notes`, ET POUR UNE RAISON PLUS COÛTEUSE ENCORE.
+
+    L'écriture est un upsert `merge-duplicates` : tout champ présent ÉCRASE la base. Un écran qui
+    corrige un horaire sans porter le champ photo effacerait donc l'affiche — silencieusement, et
+    sans que personne ne sache quand elle a disparu.
+    """
+    row = app._build_event_row({"id": "e1", "title": "Fado", "date": "2026-10-03"}, "planned")
+    for champ in ("image_url", "link_url", "link_label", "show_on_card"):
+        assert champ not in row, f"{champ} a été inventé sur une mise à jour"
+
+
+def test_les_champs_publics_traversent_quand_ils_sont_envoyes():
+    row = app._build_event_row(
+        {
+            "id": "e1",
+            "title": "Fado",
+            "date": "2026-10-03",
+            "image_url": "https://x.pt/a.jpg",
+            "link_url": "https://x.pt/bilhetes",
+            "link_label": "Reservar",
+            "show_on_card": False,
+        },
+        "planned",
+    )
+    assert row["image_url"] == "https://x.pt/a.jpg"
+    assert row["link_url"] == "https://x.pt/bilhetes"
+    assert row["link_label"] == "Reservar"
+    assert row["show_on_card"] is False
+
+
+def test_un_champ_public_vide_devient_nul_et_non_chaine_vide():
+    """Une chaîne vide dans `image_url` donnerait un `<img src="">` : le navigateur recharge la
+    page courante comme si c'était l'image, ce qui double la requête sans rien afficher."""
+    row = app._build_event_row(
+        {"id": "e1", "title": "x", "date": "2026-10-03", "image_url": "   ", "link_url": ""},
+        "planned",
+    )
+    assert row["image_url"] is None
+    assert row["link_url"] is None
+
+
+def test_un_evenement_cree_est_visible_par_defaut():
+    """⚠️ `True` À LA CRÉATION, pour ne rien changer à ce qui marchait : les événements
+    s'affichaient déjà sur la page client avant l'existence de cette case."""
+    row = app._build_event_row({"title": "Fado", "date": "2026-10-03"}, "planned")
+    assert row["show_on_card"] is True

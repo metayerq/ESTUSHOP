@@ -207,6 +207,38 @@
     <label class="field-label">Description</label>
     <textarea class="field-area" id="m-desc" placeholder="De quoi il s'agit, invités, format…"></textarea>
   </div>
+  <!-- ⚠️ CE QUE LES CLIENTS VOIENT, ET C'EST LA DIFFÉRENCE AVEC TOUT LE RESTE DE CE FORMULAIRE.
+       La description, elle, était déjà publiée ; ces trois champs le sont aussi. Le libellé le dit
+       pour qu'on n'y écrive pas une note de service. -->
+  <div class="f-row">
+    <label class="field-label">Affiche <span style="opacity:.6">(page client)</span></label>
+    <div>
+      <input class="field-input" id="m-img" placeholder="https://… ou envoyer un fichier">
+      <div style="display:flex;align-items:center;gap:.5rem;margin-top:.4rem">
+        <input type="file" id="m-img-file" accept="image/jpeg,image/png,image/webp">
+        <span id="m-img-etat" style="font-size:.85rem;opacity:.7"></span>
+      </div>
+      <!-- L'aperçu évite d'enregistrer une URL qui ne mène à rien : on le voit avant de valider. -->
+      <img id="m-img-vue" alt="" style="display:none;margin-top:.5rem;max-height:120px;border-radius:8px">
+    </div>
+  </div>
+  <div class="f-row">
+    <label class="field-label">Lien <span style="opacity:.6">(page client)</span></label>
+    <div style="display:flex;gap:.5rem">
+      <input class="field-input" id="m-link" placeholder="https://… (billetterie, inscription)">
+      <input class="field-input" id="m-link-label" placeholder="Texte du bouton" style="max-width:11rem">
+    </div>
+  </div>
+  <div class="f-row">
+    <label class="field-label">Sur la page client</label>
+    <label style="display:flex;align-items:center;gap:.5rem;font-size:.9rem">
+      <input type="checkbox" id="m-oncard" checked>
+      <!-- ⚠️ DÉCOCHÉ POUR CE QUI EST INTERNE. Le calendrier porte aussi des privatisations et des
+           rendez-vous fournisseurs : « Privatisation anniversaire Marta » sur la page de tous les
+           clients est le genre de fuite que personne ne découvre avant qu'un client n'en parle. -->
+      <span>Afficher cet événement aux clients</span>
+    </label>
+  </div>
   <div class="f-row" id="m-recur-wrap">
     <label class="field-label">Répétition</label>
     <select class="field-input" id="m-recur">
@@ -287,6 +319,41 @@
 
 <script src="/static/ui.js?v={{ v }}"></script>
 <script>
+/* ── L'affiche : aperçu et envoi ───────────────────────────────────────────────────────────
+ *
+ * ⚠️ L'APERÇU EXISTE POUR NE PAS ENREGISTRER UNE URL MORTE. Une adresse collée depuis ailleurs
+ * peut être privée, expirée ou simplement fausse : on ne s'en apercevrait que sur la page d'un
+ * client, sans savoir depuis quand.
+ */
+function majApercu(){
+  const u = (document.getElementById('m-img').value || '').trim();
+  const img = document.getElementById('m-img-vue');
+  if(!u){ img.style.display='none'; img.removeAttribute('src'); return; }
+  img.src = u; img.style.display='block';
+}
+async function envoyerAffiche(){
+  const f = document.getElementById('m-img-file').files?.[0];
+  if(!f) return;
+  const etat = document.getElementById('m-img-etat');
+  etat.textContent = 'Envoi…';
+  const fd = new FormData();
+  fd.append('file', f);
+  /* L'identifiant sert de dossier : les affiches d'un même événement restent ensemble. */
+  fd.append('event_id', document.getElementById('m-id').value || 'novo');
+  try{
+    const r = await fetch('/api/events/image', {method:'POST', body: fd});
+    const j = await r.json();
+    if(!j.ok) throw new Error(j.error || 'erro');
+    document.getElementById('m-img').value = j.url;
+    majApercu();
+    /* ⚠️ L'URL EST POSÉE DANS LE CHAMP, PAS ENREGISTRÉE DIRECTEMENT. Rien n'est écrit en base
+       avant que l'utilisateur ne valide le formulaire : un envoi annulé ne laisse qu'un fichier
+       orphelin dans le bucket, jamais une fiche à moitié modifiée. */
+    etat.textContent = 'Envoyé ✓';
+  }catch(e){
+    etat.textContent = 'Échec : ' + e.message;
+  }
+}
 const COLORS = ['var(--accent)','var(--green)','var(--amber)','var(--red)','var(--cat-3)','var(--cat-2)'];
 const STATUS = { planned:['Prévu','b-planned'], confirmed:['Confirmé','b-confirmed'], done:['Terminé','b-done'], cancelled:['Annulé','b-cancelled'] };
 const MONTHS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -406,6 +473,20 @@ function openModal(ev, prefillDate){
   $('m-loc').value     = ev?.location || '';
   $('m-status').value  = ev?.status || 'planned';
   $('m-desc').value    = ev?.description || '';
+  $('m-img').value     = ev?.image_url || '';
+  $('m-link').value    = ev?.link_url || '';
+  $('m-link-label').value = ev?.link_label || '';
+  // ⚠️ `!== false` ET NON `|| true` : un événement d'avant la colonne rend `undefined`, et c'est
+  // « affiché » par défaut — ce qui est le comportement qu'on avait déjà.
+  $('m-oncard').checked = ev?.show_on_card !== false;
+  $('m-img-etat').textContent = '';
+  majApercu();
+  /* ⚠️ BRANCHÉ ICI, PAS AU CHARGEMENT DE LA PAGE. Le formulaire est (ré)initialisé à chaque
+     ouverture de la fenêtre ; poser les écouteurs une seule fois au démarrage marcherait, mais
+     `onchange` posé en propriété — et non en `addEventListener` — reste idempotent, ce qui évite
+     un envoi en double après plusieurs ouvertures. */
+  $('m-img-file').onchange = envoyerAffiche;
+  $('m-img').oninput = majApercu;
   modalColor = ev?.color || COLORS[0];
   buildSwatches();
   $('m-delete').style.visibility = isEdit?'visible':'hidden';
@@ -503,6 +584,10 @@ async function saveEvent(){
     status: $('m-status').value,
     color: modalColor,
     description: $('m-desc').value.trim(),
+    image_url: $('m-img').value.trim(),
+    link_url: $('m-link').value.trim(),
+    link_label: $('m-link-label').value.trim(),
+    show_on_card: $('m-oncard').checked,
   };
 
   // Calcule les dates AVANT toute écriture
