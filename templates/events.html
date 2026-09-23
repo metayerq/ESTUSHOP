@@ -72,7 +72,7 @@
 .b-done { background:var(--green-soft); color:var(--green); }
 .b-cancelled { background:var(--red-soft); color:var(--red); }
 
-/* ── Overlay (modal + drawer) ── */
+/* ── Voile de la fenêtre ── */
 .overlay { position:fixed; inset:0; background:rgba(20,18,14,.34); z-index:100; opacity:0; pointer-events:none;
   transition:opacity .18s; }
 .overlay.show { opacity:1; pointer-events:auto; }
@@ -85,11 +85,11 @@
   max-height:90vh; overflow:auto; background:var(--bg-card); border:1px solid var(--border); border-radius:14px;
   padding:22px 24px; opacity:0; pointer-events:none; transition:all .18s; }
 .modal.show { opacity:1; pointer-events:auto; transform:translate(-50%,-50%); }
-.drawer { position:fixed; z-index:101; top:0; right:0; height:100%; width:min(440px,96vw); background:var(--bg-card);
-  border-left:1px solid var(--border); overflow:auto; transform:translateX(100%); transition:transform .2s; padding:22px 22px 40px; }
-.drawer.show { transform:translateX(0); }
+/* ⚠️ LE TIROIR EST PARTI, SON STYLE AVEC. Laisser une règle pour un élément qui n'existe plus,
+   c'est laisser croire à la couche suivante qu'elle peut revenir — et c'est la superposition des
+   deux couches qui a produit les pannes dont ce fichier garde l'historique. */
 
-.modal h2, .drawer h2 { font-size:17px; font-weight:600; margin:0 0 16px; }
+.modal h2 { font-size:17px; font-weight:600; margin:0 0 16px; }
 .f-row { margin-bottom:13px; }
 .f-row2 { display:flex; gap:10px; }
 .f-row2 > div { flex:1; }
@@ -278,8 +278,42 @@
       <div id="m-recur-preview" style="font-family:var(--mono); font-size:11px; color:var(--spec); margin-top:7px;"></div>
     </div>
   </div>
-  <div class="modal-actions">
-    <button class="btn btn-danger" id="m-delete" style="visibility:hidden;">Supprimer</button>
+
+  <!-- ⚠️ TÂCHES ET NOTES VIVAIENT DANS UN TIROIR SÉPARÉ, et c'est ce tiroir qui rendait un gel
+       possible : cliquer un événement l'ouvrait, « Éditer » le fermait PUIS ouvrait la fenêtre.
+       Entre les deux, le voile restait posé avec `pointer-events:auto` — si quoi que ce soit
+       échouait, la page devenait inerte sans un mot. Une seule couche ne peut pas faire ça.
+
+       ⚠️ ELLES NE S'AFFICHENT QUE SUR UN ÉVÉNEMENT EXISTANT. Une tâche ou une note se rattache à
+       un identifiant : avant l'enregistrement, il n'y a rien à quoi les accrocher, et une zone de
+       saisie qui perd ce qu'on y met est pire qu'une zone absente. -->
+  <div id="m-suivi" style="display:none;">
+    <div class="dr-sec">
+      <div class="dr-sec-h"><span>Tâches à faire</span><span class="progress" id="d-progress"></span></div>
+      <div id="d-tasks"></div>
+      <div class="addrow">
+        <input id="d-task-input" placeholder="Ajouter une tâche…">
+        <button id="d-task-add">+</button>
+      </div>
+    </div>
+    <div class="dr-sec">
+      <div class="dr-sec-h">Notes (au fil de l'eau)</div>
+      <div id="d-notes"></div>
+      <div class="addrow">
+        <input id="d-note-input" placeholder="Ajouter une note…">
+        <button id="d-note-add">+</button>
+      </div>
+    </div>
+  </div>
+  <!-- ⚠️ LES ACTIONS COLLENT AU BAS DE LA FENÊTRE. Elle a `max-height: 90vh; overflow: auto` et
+       porte maintenant le formulaire ET le suivi : sans `sticky`, « Enregistrer » descend hors du
+       champ de vision dès que la liste de tâches s'allonge. On remplit un formulaire pour
+       l'enregistrer ; le bouton qui le fait ne doit jamais demander à chercher. -->
+  <div class="modal-actions" style="position:sticky; bottom:-22px; background:var(--bg-card); padding-bottom:22px;">
+    <div style="display:flex; gap:10px;">
+      <button class="btn btn-danger" id="m-delete" style="visibility:hidden;">Supprimer</button>
+      <button class="btn btn-danger" id="d-delete-series" style="display:none;">Supprimer la série</button>
+    </div>
     <div style="display:flex; gap:10px;">
       <button class="btn" id="m-cancel">Annuler</button>
       <button class="btn-primary" id="m-save" style="margin:0;">Enregistrer</button>
@@ -287,43 +321,16 @@
   </div>
 </div>
 
-<!-- Drawer détail -->
-<div class="drawer" id="drawer">
-  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
-    <h2 id="d-title" style="flex:1;">—</h2>
-    <button class="btn" id="d-close" style="padding:5px 10px;">✕</button>
-  </div>
-  <div class="dr-meta" id="d-meta"></div>
-  <span class="badge" id="d-badge"></span>
-  <div style="margin-top:14px; display:flex; gap:10px;">
-    <button class="btn" id="d-edit">Éditer</button>
-    <button class="btn btn-danger" id="d-delete">Supprimer</button>
-    <button class="btn btn-danger" id="d-delete-series" style="display:none;">Supprimer la série</button>
-  </div>
+<!-- ⚠️ LE TIROIR DE DÉTAIL A ÉTÉ SUPPRIMÉ, ET C'EST UNE CORRECTION, PAS UN RANGEMENT.
+     Deux couches superposées (tiroir z-index 101, fenêtre 102, voile 100) ont produit plusieurs
+     pannes dont l'historique est écrit dans ce fichier. La dernière : cliquer un événement
+     ouvrait le tiroir, « Éditer » le fermait puis ouvrait la fenêtre — et le voile, lui, restait
+     posé avec `pointer-events:auto`. Un échec entre les deux rendait toute la page inerte, sans
+     erreur, sans message, sans rien. « Ça se bloque juste. »
 
-  <div class="dr-sec">
-    <div class="dr-sec-h">Description</div>
-    <div id="d-desc" style="font-size:13px; white-space:pre-wrap; color:var(--text);"></div>
-  </div>
-
-  <div class="dr-sec">
-    <div class="dr-sec-h"><span>Tâches à faire</span><span class="progress" id="d-progress"></span></div>
-    <div id="d-tasks"></div>
-    <div class="addrow">
-      <input id="d-task-input" placeholder="Ajouter une tâche…">
-      <button id="d-task-add">+</button>
-    </div>
-  </div>
-
-  <div class="dr-sec">
-    <div class="dr-sec-h">Notes (au fil de l'eau)</div>
-    <div id="d-notes"></div>
-    <div class="addrow">
-      <input id="d-note-input" placeholder="Ajouter une note…">
-      <button id="d-note-add">+</button>
-    </div>
-  </div>
-</div>
+     Cliquer un événement ouvre désormais DIRECTEMENT la fenêtre d'édition, qui porte aussi les
+     tâches et les notes. Une étape de moins pour l'usage courant — on clique un événement pour le
+     modifier — et une classe de pannes qui n'existe plus. -->
 
 <div class="toast" id="toast"></div>
 
@@ -566,9 +573,29 @@ function openModal(ev, prefillDate){
     document.querySelectorAll('#m-nth-wrap input:checked').forEach(c=>c.checked=false);
     currentRecurState(); updateRecurPreview();
   }
+  /**
+   * ⚠️ LE SUIVI N'EXISTE QUE POUR UN ÉVÉNEMENT DÉJÀ ENREGISTRÉ. Une tâche ou une note se rattache
+   * à un identifiant : avant l'enregistrement il n'y a rien à quoi les accrocher, et une zone de
+   * saisie qui perd ce qu'on y met est pire qu'une zone absente.
+   */
+  $('m-suivi').style.display = isEdit ? 'block' : 'none';
+  if (isEdit) {
+    renderTasks(ev); renderNotes(ev);
+    const seriesCount = ev.series_id ? events.filter(x=>x.series_id===ev.series_id).length : 0;
+    $('d-delete-series').style.display = seriesCount>1 ? 'inline-block' : 'none';
+    $('d-delete-series').textContent = `Supprimer la série (${seriesCount})`;
+  } else {
+    $('d-delete-series').style.display = 'none';
+  }
+  /**
+   * ⚠️ `selectedId` SUIT L'ÉVÉNEMENT OUVERT, et il servait au tiroir. Les tâches et les notes
+   * s'écrivent encore contre lui : le vider ici aurait fait échouer l'ajout d'une tâche sans
+   * qu'aucun message ne le dise.
+   */
+  selectedId = isEdit ? ev.id : null;
   overlayOn(); $('modal').classList.add('show');
 }
-function closeModal(){ $('modal').classList.remove('show'); overlayMaybeOff(); }
+function closeModal(){ $('modal').classList.remove('show'); overlayOff(); }
 
 // ── Récurrence : génère la liste des dates d'occurrences ─────────────────────
 const WD_FULL=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
@@ -703,28 +730,28 @@ async function deleteSeries(id){
 async function deleteIds(ids){
   let ok=0;
   for(const i of ids){ const r=await fetch('/api/events/'+i,{method:'DELETE'}); if(r.ok) ok++; }
-  closeModal(); closeDrawer();
+  closeModal();
   showToast(ids.length>1 ? `${ok}/${ids.length} supprimés` : (ok?'Event supprimé':'Échec suppression'));
   await loadAll();
 }
 
 // ── Drawer détail ────────────────────────────────────────────────────────────
+/**
+ * ⚠️ IL NE RESTE PLUS QU'UNE COUCHE. Cette fonction ouvrait un tiroir de LECTURE, depuis lequel
+ * « Éditer » fermait le tiroir puis ouvrait la fenêtre — et le voile restait posé entre les deux.
+ * On clique un événement pour le modifier : autant y aller directement.
+ */
 function openDrawer(id){
-  const e=events.find(x=>x.id===id); if(!e) return;
-  selectedId=id;
-  $('d-title').textContent=e.title;
-  const [lbl,cls]=STATUS[e.status]||STATUS.planned;
-  const time=e.start_time?` · ${e.start_time}${e.end_time?'–'+e.end_time:''}`:'';
-  $('d-meta').textContent = fmtDate(e.date)+(e.end_date&&e.end_date!==e.date?' → '+fmtDate(e.end_date):'')+time+(e.location?' · '+e.location:'');
-  const badge=$('d-badge'); badge.textContent=lbl; badge.className='badge '+cls;
-  $('d-desc').textContent = e.description || '—';
-  const seriesCount = e.series_id ? events.filter(x=>x.series_id===e.series_id).length : 0;
-  $('d-delete-series').style.display = seriesCount>1 ? 'inline-block' : 'none';
-  $('d-delete-series').textContent = `Supprimer la série (${seriesCount})`;
-  renderTasks(e); renderNotes(e);
-  overlayOn(); $('drawer').classList.add('show');
+  const e=events.find(x=>x.id===id);
+  if(!e){
+    /* ⚠️ UN ÉVÉNEMENT INTROUVABLE NE SE TAIT PAS. Le `return` muet d'avant laissait un clic sans
+       effet — indistinguable d'une page bloquée, ce qui est précisément la confusion qu'on répare. */
+    signalerPanne('Cet événement n\'est plus dans la liste chargée — rechargez la page.', '', 0);
+    return;
+  }
+  openModal(e);
 }
-function closeDrawer(){ $('drawer').classList.remove('show'); selectedId=null; overlayMaybeOff(); }
+
 
 function renderTasks(e){
   const t=(tasksByEvent[e.id]||[]).slice().sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
@@ -782,7 +809,13 @@ async function addNote(){
 
 // ── Overlay helpers ──────────────────────────────────────────────────────────
 function overlayOn(){ $('overlay').classList.add('show'); }
-function overlayMaybeOff(){ if(!$('modal').classList.contains('show') && !$('drawer').classList.contains('show')) $('overlay').classList.remove('show'); }
+/**
+ * ⚠️ « MAYBE » A DISPARU, ET C'ÉTAIT LE PIÈGE. L'ancienne version n'éteignait le voile que si NI le
+ * tiroir NI la fenêtre n'étaient ouverts — donc si l'un des deux gardait sa classe par accident, le
+ * voile restait posé avec `pointer-events:auto` et plus rien n'était cliquable. Avec une seule
+ * couche, il n'y a plus de condition : on ferme, donc on éteint.
+ */
+function overlayOff(){ $('overlay').classList.remove('show'); }
 
 // ── Écouteurs ────────────────────────────────────────────────────────────────
 $('prev').onclick = ()=>{ cur.setMonth(cur.getMonth()-1); render(); };
@@ -794,23 +827,17 @@ $('new-btn').onclick = ()=> openModal(null);
 $('m-cancel').onclick = closeModal;
 $('m-save').onclick = saveEvent;
 $('m-delete').onclick = ()=> deleteEvent($('m-id').value);
-$('d-close').onclick = closeDrawer;
-// L'événement est capturé AVANT closeDrawer() : celui-ci remet selectedId à null, donc
-// chercher après ne trouverait plus rien. Fermer le tiroir est nécessaire, pas cosmétique —
-// il recouvrait le modal (voir la note sur les z-index plus haut).
-$('d-edit').onclick = ()=>{
-  const e = events.find(x=>x.id===selectedId);
-  if(!e) return;
-  closeDrawer();
-  openModal(e);
-};
-$('d-delete').onclick = ()=>{ if(selectedId) deleteEvent(selectedId); };
+/* ⚠️ `d-close`, `d-edit` ET `d-delete` ONT DISPARU AVEC LE TIROIR. La croix est celle de la
+   fenêtre (`m-cancel`), l'édition est l'ouverture elle-même, et la suppression est `m-delete` —
+   qui existait déjà. Trois boutons en double, c'est trois occasions que l'un des deux cesse de
+   faire la même chose que l'autre. */
 $('d-delete-series').onclick = ()=>{ if(selectedId) deleteSeries(selectedId); };
 $('d-task-add').onclick = addTask;
 $('d-task-input').addEventListener('keydown',e=>{ if(e.key==='Enter') addTask(); });
 $('d-note-add').onclick = addNote;
 $('d-note-input').addEventListener('keydown',e=>{ if(e.key==='Enter') addNote(); });
-$('overlay').onclick = ()=>{ closeModal(); closeDrawer(); };
+/* ⚠️ Une seule couche à fermer : le voile n'a plus à deviner laquelle. */
+$('overlay').onclick = closeModal;
 
 $('m-swatches').addEventListener('click',e=>{
   const s=e.target.closest('.swatch'); if(!s) return;
@@ -839,7 +866,10 @@ $('d-tasks').addEventListener('change',e=>{
 $('d-tasks').addEventListener('click',e=>{
   const del=e.target.closest('[data-taskdel]'); if(del) delTask(del.dataset.taskdel);
 });
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeModal(); closeDrawer(); } });
+/* ⚠️ ÉCHAP FERMAIT LES DEUX COUCHES ; il n'en reste qu'une. Un appel à `closeDrawer` laissé ici
+   aurait levé à CHAQUE appui sur Échap — sur la touche dont on se sert précisément quand on veut
+   sortir d'un écran bloqué. */
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
 
 loadAll();
 </script>
