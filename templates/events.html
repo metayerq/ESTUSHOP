@@ -497,11 +497,21 @@ function quandFr(dateStr, heure){
      la veille pour tout fuseau à l'ouest, et annoncer « vendredi » pour un samedi est pire que ne
      rien annoncer — on ne vérifie pas un jour de semaine, on le croit. C'est la même règle que sur
      la page client, et elle doit rester la même : l'aperçu mentirait autrement. */
-  const d = new Date(dateStr.slice(0,10) + 'T12:00:00Z');
+  const j = dateStr.slice(0,10);
+  const d = new Date(j + 'T12:00:00Z');
   if(isNaN(d.getTime())) return '';
-  const jour = JOURS_FR[d.getUTCDay()];
+  /* ⚠️ UNE DATE HORS PLAGE NE LÈVE PAS, ELLE SE DÉCALE. `new Date("2026-02-30")` vaut le 2 mars :
+     on afficherait « lundi 30 février », un jour de semaine juste pour une date qui n'existe pas.
+     La comparaison aller-retour est le seul contrôle qui l'attrape. Même règle que la page client. */
+  if(d.toISOString().slice(0,10) !== j) return '';
+  /* ⚠️ « AUJOURD'HUI » REMPLACE LE JOUR, LA DATE RESTE — comme sur la page client. Le jour courant se
+     lit à LISBONNE : le navigateur du bureau peut être ailleurs, et l'aperçu doit dire ce que verra
+     un client, pas ce que voit la machine qui saisit. */
+  const aujourdHui = new Intl.DateTimeFormat('en-CA', {timeZone:'Europe/Lisbon',
+    year:'numeric', month:'2-digit', day:'2-digit'}).format(new Date());
+  const tete = (j === aujourdHui) ? "Aujourd'hui" : JOURS_FR[d.getUTCDay()];
   const mois = MOIS_FR[d.getUTCMonth()];
-  return jour + ' ' + d.getUTCDate() + ' ' + mois + (heure ? ' · ' + heure.slice(0,5) : '');
+  return tete + ' ' + d.getUTCDate() + ' ' + mois + (heure ? ' · ' + heure.slice(0,5) : '');
 }
 
 /**

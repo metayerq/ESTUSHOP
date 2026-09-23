@@ -319,3 +319,32 @@ def test_la_propagation_emporte_les_traductions():
     bloc = s[i:s.index("showToast(", i)]
     for champ in ("title_en", "description_en", "link_label_fr"):
         assert f"{champ}: base.{champ}" in bloc, f"{champ} ne se propage pas à la série"
+
+
+def test_l_apercu_dit_aujourd_hui_le_jour_meme():
+    """
+    ⚠️ MÊME RÈGLE QUE LA PAGE CLIENT, et le jour courant se lit À LISBONNE. Le navigateur du bureau
+    peut être dans un autre fuseau ; l'aperçu doit dire ce que verra un CLIENT, pas ce que voit la
+    machine qui saisit.
+    """
+    s = _page_events()
+    i = s.index("function quandFr")
+    corps = s[i:s.index("\n}", i)]
+    assert "Aujourd'hui" in corps, "l'aperçu n'annonce plus le jour même"
+    assert "Europe/Lisbon" in corps, "le jour courant est lu sur l'horloge du bureau"
+    assert "JOURS_FR[d.getUTCDay()]" in corps, "le jour de semaine a disparu des autres jours"
+
+
+def test_l_apercu_refuse_une_date_hors_plage():
+    """
+    ⚠️ `new Date("2026-02-30")` NE LÈVE PAS, ELLE SE DÉCALE au 2 mars : on afficherait « lundi
+    30 février », un jour de semaine juste pour une date qui n'existe pas. Un jour de semaine ne se
+    vérifie pas, on le croit — quelqu'un serait venu le lundi. La comparaison aller-retour est le
+    seul contrôle qui l'attrape.
+    """
+    s = _page_events()
+    i = s.index("function quandFr")
+    corps = s[i:s.index("\n}", i)]
+    assert "d.toISOString().slice(0,10) !== j" in corps, (
+        "une date hors plage produirait un jour de semaine faux mais plausible"
+    )
