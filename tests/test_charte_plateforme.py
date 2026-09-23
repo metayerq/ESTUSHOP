@@ -441,3 +441,53 @@ def test_une_categorie_nemprunte_ni_au_vert_ni_au_rouge():
                 if re.search(r"var\(--(db-)?(green|red)(-soft)?\)", regle):
                     fautives.append(f"{nom} .badge-{famille}")
     assert not fautives, fautives
+
+
+# ── La page de connexion ─────────────────────────────────────────────────────────────────────
+
+def _page_login():
+    """Le HTML de la page de connexion, telle qu'`app.py` la compose."""
+    src = open(os.path.join(RACINE, "app.py"), encoding="utf-8").read()
+    i = src.index("def _page_login(")
+    return src[i:src.index('\n@app.route("/logout")', i)]
+
+
+def test_la_page_de_connexion_suit_la_charte():
+    """
+    ⚠️ ELLE ÉTAIT RESTÉE AU BEIGE D'AVANT, et c'est le premier écran que qui que ce soit voit.
+    Aucun contrôle ne la regardait : elle n'est pas dans `templates/`, c'est une chaîne dans
+    `app.py`. Un balayage qui ne lit qu'un dossier rate ce qui vit ailleurs.
+
+    ⚠️ ET ELLE EST AUTONOME, DONC ELLE RECOPIE. Elle s'affiche avant toute session ; une feuille
+    externe qui tarderait la montrerait nue. Ses littéraux doivent donc être ceux de la charte,
+    et c'est ce qui est vérifié — comme pour /tpa.
+    """
+    page = _page_login()
+    css = open(os.path.join(RACINE, "static", "style.css"), encoding="utf-8").read()
+    i = css.index(":root {")
+    pal = dict(re.findall(r"(--[a-z0-9-]+):\s*(#[0-9A-Fa-f]{6})", css[i:css.index("\n}", i)]))
+    for local, jeton in (("--canvas", "--bg-page"), ("--ink", "--text"), ("--muted", "--muted"),
+                         ("--faint", "--faint"), ("--spec", "--accent"), ("--border", "--border")):
+        m = re.search(re.escape(local) + r":\s*(#[0-9A-Fa-f]{6})", page)
+        assert m, f"{local} n'est plus déclaré sur la page de connexion"
+        assert m.group(1).upper() == pal[jeton].upper(), (
+            f"{local} = {m.group(1)} mais la charte dit {jeton} = {pal[jeton]}")
+    m = re.search(r'theme-color" content="(#[0-9A-Fa-f]{6})"', page)
+    assert m and m.group(1).upper() == pal["--bg-page"].upper(), "la barre système a dérivé"
+
+
+def test_le_mot_de_passe_est_le_premier_champ():
+    """
+    ⚠️ L'ADRESSE ÉTAIT EN TÊTE, AVEC LE FOCUS, et présentée comme facultative. On la remplissait
+    par réflexe — et un e-mail sans compte fait échouer la connexion AVANT même de regarder le
+    mot de passe partagé, qui aurait marché. Un champ facultatif présenté en premier n'est pas
+    facultatif.
+    """
+    page = _page_login()
+    assert page.index('name="password"') < page.index('name="email"'), (
+        "l'adresse repasse devant le mot de passe")
+    assert 'name="password"' in page and "autofocus" in page
+    bloc = page[page.index('name="password"'):page.index('name="email"')]
+    assert "autofocus" in bloc, "le focus n'est pas sur le mot de passe"
+    # ⚠️ LES COMPTES NOMINATIFS RESTENT : ils portent le nom dans les actions journalisées.
+    assert 'name="email"' in page, "les comptes nominatifs ont disparu"

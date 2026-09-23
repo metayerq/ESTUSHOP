@@ -745,31 +745,33 @@ def _page_login(error=""):
 <html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Estudantina — Sign in</title>
-<meta name="theme-color" content="#EDEAE3">
+<meta name="theme-color" content="#F7FAFC">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root {{ --canvas:#EDEAE3; --ink:#26241E; --muted:#6E6A5E; --faint:#A29D8F;
-         --spec:#2554C7; --border:#DBD7CB; --card:#fff;
-         --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }}
+:root {{ --canvas:#F7FAFC; --ink:#1A1F36; --muted:#697386; --faint:#8792A2;
+         --spec:#635BFF; --border:#E3E8EE; --card:#FFFFFF; }}
+/* ⚠️ PAGE AUTONOME : elle ne charge pas `style.css` — elle s'affiche avant toute session, et
+   une feuille externe qui tarderait la montrerait nue. Les valeurs sont donc écrites en
+   toutes lettres, et ce sont celles de la charte. Elle était restée au beige d'avant. */
 * {{ box-sizing:border-box; }}
 body {{ font-family:'Inter',-apple-system,sans-serif; background:var(--canvas); color:var(--ink);
        margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
        padding:24px; -webkit-font-smoothing:antialiased; }}
 .wrap {{ width:100%; max-width:420px; }}
-.eyebrow {{ font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+.eyebrow {{ font-size:11px; letter-spacing:.14em; text-transform:uppercase;
             color:var(--muted); display:flex; align-items:center; gap:9px; margin-bottom:18px; }}
 .eyebrow b {{ color:var(--spec); font-weight:600; }}
 h1 {{ font-size:26px; font-weight:700; letter-spacing:-.02em; line-height:1.1; margin:0 0 8px; }}
 .sub {{ font-size:15px; color:var(--muted); margin:0 0 26px; line-height:1.5; }}
-label {{ font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+label {{ font-size:11px; letter-spacing:.1em; text-transform:uppercase;
          color:var(--muted); display:block; margin-bottom:7px; }}
 input {{ width:100%; padding:12px 14px; border:1px solid var(--border); border-radius:10px;
          font-family:inherit; font-size:15px; background:var(--card); color:var(--ink); }}
-input:focus {{ outline:none; border-color:var(--spec); box-shadow:0 0 0 3px rgba(37,84,199,.10); }}
+input:focus {{ outline:none; border-color:var(--spec); box-shadow:0 0 0 3px rgba(99,91,255,.14); }}
 button {{ width:100%; margin-top:12px; padding:13px; background:var(--spec); color:#fff; border:none;
           border-radius:10px; font-family:inherit; font-size:15px; font-weight:600; cursor:pointer; }}
 button:hover {{ opacity:.9; }}
-.err {{ color:#c4554d; font-size:13px; margin-bottom:12px; }}
+.err {{ color:#B42318; font-size:13px; margin-bottom:12px; }}
 .note {{ background:rgba(38,36,30,.05); border-radius:10px; padding:14px 16px; margin-top:20px;
          font-size:12.5px; color:var(--muted); line-height:1.5; }}
 .note b {{ color:var(--ink); }}
@@ -779,16 +781,27 @@ button:hover {{ opacity:.9; }}
   <h1>Your numbers, in clear.</h1>
   <p class="sub">Tableau de bord priv&eacute; d'Estudantina.</p>
   {f'<div class="err">{error}</div>' if error else ''}
+  <!--
+    ⚠️ LE MOT DE PASSE EST LE PREMIER CHAMP, ET LE SEUL VISIBLE. L'adresse était en tête, avec
+    le focus : on la remplissait par réflexe, et un e-mail sans compte fait échouer la
+    connexion AVANT même de regarder le mot de passe partagé — qui, lui, aurait marché.
+    Un champ facultatif présenté en premier n'est pas facultatif.
+
+    ⚠️ LES COMPTES NOMINATIFS RESTENT, REPLIÉS. Ils portent la dernière connexion et le nom
+    dans les actions journalisées : les retirer ferait perdre ce qui distingue « quelqu'un a
+    changé ce prix » de « Marta a changé ce prix ».
+  -->
   <form method="POST">
-    <label for="em">Adresse e-mail</label>
-    <input id="em" type="email" name="email" placeholder="vous@exemple.pt" autocomplete="username" autofocus>
     <label for="pw">Mot de passe</label>
-    <input id="pw" type="password" name="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="current-password">
+    <input id="pw" type="password" name="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="current-password" autofocus>
+    <details style="margin-top:14px">
+      <summary style="font-size:12.5px;color:var(--muted);cursor:pointer">J'ai un compte nominatif</summary>
+      <label for="em" style="margin-top:10px">Adresse e-mail</label>
+      <input id="em" type="email" name="email" placeholder="vous@exemple.pt" autocomplete="username">
+    </details>
     <button type="submit">Se connecter &rarr;</button>
   </form>
-  <div class="note"><b>L'adresse est facultative.</b> Laisse-la vide si tu utilises encore
-  l'ancien mot de passe partag&eacute; ; renseigne-la si un compte t'a &eacute;t&eacute;
-  cr&eacute;&eacute;. La session reste ouverte trente jours sur cet appareil.</div>
+  <div class="note">La session reste ouverte <b>trente jours</b> sur cet appareil.</div>
 </div>
 </body></html>"""
 
