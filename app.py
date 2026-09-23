@@ -3653,7 +3653,12 @@ def _build_event_row(data, status):
     # ⚠️ ET ILS SUIVENT LA MÊME RÈGLE QUE `notes` : une mise à jour qui ne les envoie pas ne les
     # efface pas. Sans ça, enregistrer une correction de titre depuis un écran qui n'a pas le
     # champ photo supprimerait l'affiche — sans un mot.
-    for champ in ("image_url", "link_url", "link_label"):
+    # ⚠️ LES TRADUCTIONS SUIVENT LA MÊME RÈGLE QUE LES TROIS AUTRES : un champ absent de la requête
+    # n'est pas effacé. Un écran qui n'a pas la ligne anglaise ne doit pas supprimer la traduction
+    # anglaise en enregistrant une correction d'horaire.
+    for champ in ("image_url", "link_url", "link_label",
+                  "title_en", "title_fr", "description_en", "description_fr",
+                  "link_label_en", "link_label_fr"):
         if champ in data:
             row[champ] = (data.get(champ) or "").strip() or None
     est_mise_a_jour = bool(data.get("id"))

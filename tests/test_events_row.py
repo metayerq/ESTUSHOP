@@ -250,3 +250,72 @@ def test_la_case_de_serie_n_apparait_que_sur_une_serie():
     assert "$('m-serie').checked = false;" in branche, (
         "la case reste cochée d'un événement à l'autre"
     )
+
+
+# ── Les traductions ─────────────────────────────────────────────────────────────────────────
+#
+# ⚠️ PAS DE COLONNE `_PT` : `title`, `description` et `link_label` SONT le portugais. En ajouter une
+# aurait obligé à recopier des centaines de lignes, et à trancher le jour où les deux diffèrent.
+
+
+def test_les_traductions_ne_sont_pas_inventees_a_la_mise_a_jour():
+    """⚠️ MÊME GARDE QUE LES AUTRES CHAMPS PUBLICS. Un écran qui n'a pas la ligne anglaise ne doit
+    pas supprimer la traduction anglaise en enregistrant une correction d'horaire — l'écriture est un
+    upsert `merge-duplicates`, donc tout champ présent écrase."""
+    row = app._build_event_row({"id": "e1", "title": "Fado", "date": "2026-10-03"}, "planned")
+    for champ in ("title_en", "title_fr", "description_en", "description_fr",
+                  "link_label_en", "link_label_fr"):
+        assert champ not in row, f"{champ} a été inventé sur une mise à jour"
+
+
+def test_une_traduction_vide_devient_nulle():
+    """Une chaîne vide se lirait comme « traduit en rien » : le repli ne se déclencherait pas et le
+    client verrait un titre vide là où le portugais existe."""
+    row = app._build_event_row(
+        {"id": "e1", "title": "x", "date": "2026-10-03", "title_en": "  ", "description_fr": ""},
+        "planned",
+    )
+    assert row["title_en"] is None and row["description_fr"] is None
+
+
+def test_l_apercu_replie_comme_la_page_client():
+    """
+    ⚠️ DEUX CASCADES DE REPLI ÉCRITES SÉPARÉMENT FINIRAIENT PAR DIVERGER, et l'aperçu affirmerait
+    quelque chose que le client ne verra pas — le seul défaut qu'un aperçu ne peut pas se permettre.
+    L'ordre est fixe : demandée, portugais, anglais, français ; une chaîne d'espaces ne compte pas.
+    """
+    s = _page_events()
+    i = s.index("function selonLangue(pt, en, fr, l)")
+    corps = s[i:s.index("\n}", i)]
+    assert "propre(pt) || propre(en) || propre(fr)" in corps, "l'ordre de repli a changé"
+    assert ".trim()" in corps, "une chaîne d'espaces compterait comme un texte"
+
+
+def test_l_apercu_annonce_les_traductions_manquantes():
+    """
+    ⚠️ SANS ÇA, ON CROIT AVOIR TRADUIT. L'aperçu montre un texte anglais parfaitement lisible… qui
+    est le portugais. C'est précisément l'illusion que le sélecteur de langue existe pour dissiper.
+    """
+    s = _page_events()
+    # ⚠️ ON VÉRIFIE LA CONDITION, PAS LA PHRASE. `if(false) avis.push('Pas de traduction …')` garde la
+    # phrase dans le fichier et ne l'affiche jamais : un contrôle qui cherche le texte passe au vert
+    # sur l'avertissement définitivement muet.
+    assert "if(manque.length) avis.push('Pas de traduction '" in s, (
+        "l'avertissement de repli ne dépend plus de ce qui manque"
+    )
+    assert "le portugais sera affiché" in s
+    # Et `manque` se remplit bien à partir des trois champs traduits.
+    i = s.index("const manque = []")
+    bloc = s[i:s.index("if(manque.length)", i)]
+    for champ in ("m-title-en", "m-desc-en", "m-link-label-en"):
+        assert champ in bloc, f"{champ} n'est plus surveillé par l'avertissement"
+
+
+def test_la_propagation_emporte_les_traductions():
+    """Les propager séparément — ou pas du tout — laisserait douze occurrences avec un portugais à
+    jour et un anglais périmé : le client anglophone lirait l'ancienne version sans un signal."""
+    s = _page_events()
+    i = s.index("if (id && $('m-serie').checked)")
+    bloc = s[i:s.index("showToast(", i)]
+    for champ in ("title_en", "description_en", "link_label_fr"):
+        assert f"{champ}: base.{champ}" in bloc, f"{champ} ne se propage pas à la série"

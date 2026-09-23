@@ -89,6 +89,32 @@
    c'est laisser croire à la couche suivante qu'elle peut revenir — et c'est la superposition des
    deux couches qui a produit les pannes dont ce fichier garde l'historique. */
 
+/* ── Les lignes de traduction ───────────────────────────────────────────────────────────────
+   ⚠️ PLUS PETITES ET PLUS PÂLES QUE LA LIGNE PRINCIPALE : ce sont des compléments, et la ligne
+   portugaise est celle qui doit être remplie. Une hiérarchie visuelle dit cela sans un mot
+   d'explication. */
+.trad { display: flex; align-items: flex-start; gap: 7px; margin-top: 6px; }
+.trad-l {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .08em;
+  color: var(--muted);
+  /* La pastille reste alignée sur la première ligne du champ, même si celui-ci grandit. */
+  padding-top: 9px;
+  min-width: 18px;
+}
+.trad .field-input, .trad .field-area { font-size: 12.5px; }
+.trad .field-area { min-height: 46px; }
+
+/* Le choix de langue de l'aperçu. */
+.apercu-langues { display: flex; gap: 5px; margin-bottom: 7px; }
+.ap-l {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .07em;
+  padding: 4px 9px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: transparent; color: var(--muted);
+}
+.ap-l.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
 /* ── L'aperçu de la vignette client ────────────────────────────────────────────────────────
    ⚠️ LES COULEURS SONT CELLES DU SITE, PAS CELLES DU BACKOFFICE. Cet encart montre ce que le
    CLIENT verra : le peindre avec les jetons du tableau de bord — qui ont un mode sombre — en
@@ -228,7 +254,17 @@
   </div>
   <div class="f-row">
     <label class="field-label">Description</label>
-    <textarea class="field-area" id="m-desc" placeholder="De quoi il s'agit, invités, format…"></textarea>
+    <div>
+      <textarea class="field-area" id="m-desc" placeholder="De quoi il s'agit, invités, format… (portugais)"></textarea>
+      <div class="trad">
+        <span class="trad-l">EN</span>
+        <textarea class="field-area" id="m-desc-en" placeholder="Traduction anglaise (optionnelle)"></textarea>
+      </div>
+      <div class="trad">
+        <span class="trad-l">FR</span>
+        <textarea class="field-area" id="m-desc-fr" placeholder="Traduction française (optionnelle)"></textarea>
+      </div>
+    </div>
   </div>
   <!-- ⚠️ TROIS RANGÉES DE PLUS DANS UNE FENÊTRE DÉJÀ À `max-height: 90vh`, et c'est une
        régression que j'ai causée : le formulaire comptait douze rangées, j'en ai ajouté trois —
@@ -255,6 +291,15 @@
     <div class="f-row">
       <label class="field-label">Aperçu</label>
       <div>
+        <!-- ⚠️ TROIS BOUTONS, PARCE QUE LE REPLI EST INVISIBLE AUTREMENT. Un aperçu qui ne montre que
+             le portugais ne dit pas ce que lira un anglophone : il lira le portugais, faute de
+             traduction, et c'est exactement ce qu'il faut pouvoir constater ici plutôt qu'en le
+             recevant. -->
+        <div class="apercu-langues" id="m-apercu-langues">
+          <button type="button" class="ap-l on" data-l="pt">PT</button>
+          <button type="button" class="ap-l" data-l="en">EN</button>
+          <button type="button" class="ap-l" data-l="fr">FR</button>
+        </div>
         <div id="m-apercu" class="apercu"></div>
         <div id="m-apercu-note" class="apercu-note"></div>
       </div>
@@ -275,7 +320,20 @@
     <label class="field-label">Lien <span style="opacity:.6">(page client)</span></label>
     <div style="display:flex;gap:.5rem">
       <input class="field-input" id="m-link" placeholder="https://… (billetterie, inscription)">
-      <input class="field-input" id="m-link-label" placeholder="Texte du bouton" style="max-width:11rem">
+      <input class="field-input" id="m-link-label" placeholder="Texte du bouton (pt)" style="max-width:11rem">
+    </div>
+  </div>
+  <div class="f-row">
+    <label class="field-label">Texte du bouton</label>
+    <div>
+      <div class="trad">
+        <span class="trad-l">EN</span>
+        <input class="field-input" id="m-link-label-en" placeholder="Traduction anglaise (optionnelle)">
+      </div>
+      <div class="trad">
+        <span class="trad-l">FR</span>
+        <input class="field-input" id="m-link-label-fr" placeholder="Traduction française (optionnelle)">
+      </div>
     </div>
   </div>
   <!-- ⚠️ SANS ÇA, UN ÉVÉNEMENT HEBDOMADAIRE DEMANDE DE RETAPER SA DESCRIPTION DOUZE FOIS. Chaque
@@ -446,15 +504,30 @@ function quandFr(dateStr, heure){
   return jour + ' ' + d.getUTCDate() + ' ' + mois + (heure ? ' · ' + heure.slice(0,5) : '');
 }
 
+/**
+ * ⚠️ LA MÊME CASCADE DE REPLI QUE LA PAGE CLIENT — demandée, puis portugais, anglais, français, et
+ * une chaîne d'espaces ne compte pas. Deux cascades écrites séparément finiraient par diverger, et
+ * l'aperçu affirmerait quelque chose que le client ne verra pas : c'est le seul défaut qu'un aperçu
+ * ne peut pas se permettre. Voir `apps/pontos/lib/multilingue.ts`.
+ */
+function selonLangue(pt, en, fr, l){
+  const propre = v => { const t = (v || '').trim(); return t === '' ? null : t; };
+  const demandee = l === 'en' ? en : l === 'fr' ? fr : pt;
+  return propre(demandee) || propre(pt) || propre(en) || propre(fr) || null;
+}
+
+let apercuLangue = 'pt';
+
 function majApercu(){
   const boite = document.getElementById('m-apercu');
   const note  = document.getElementById('m-apercu-note');
   if(!boite) return;
-  const titre  = ($('m-title').value || '').trim();
+  const l = apercuLangue;
+  const titre = selonLangue($('m-title').value, $('m-title-en').value, $('m-title-fr').value, l) || '';
   const date   = $('m-date').value;
   const heure  = $('m-start').value;
   const lieu   = ($('m-loc').value || '').trim();
-  const desc   = ($('m-desc').value || '').trim();
+  const desc = selonLangue($('m-desc').value, $('m-desc-en').value, $('m-desc-fr').value, l) || '';
   const img    = ($('m-img').value || '').trim();
   const lien   = ($('m-link').value || '').trim();
   const visible = $('m-oncard').checked;
@@ -487,6 +560,20 @@ function majApercu(){
     const j = Math.round((new Date(date.slice(0,10)+'T12:00:00Z') - new Date(new Date().toISOString().slice(0,10)+'T12:00:00Z')) / 86400000);
     if(j < 0) avis.push('Date passée : plus affiché.');
     else if(j > 7) avis.push('Dans ' + j + ' jours : affiché seulement s\'il n\'y a rien cette semaine.');
+  }
+  /**
+   * ⚠️ L'APERÇU DIT QUAND IL REPLIE. Sans ça, on croit avoir traduit : l'aperçu montre un texte
+   * anglais parfaitement lisible… qui est le portugais. C'est précisément l'illusion que ce
+   * sélecteur existe pour dissiper.
+   */
+  if(l !== 'pt'){
+    const propre = v => (v || '').trim();
+    const champ = l === 'en' ? 'en' : 'fr';
+    const manque = [];
+    if(!propre(l === 'en' ? $('m-title-en').value : $('m-title-fr').value)) manque.push('titre');
+    if(propre($('m-desc').value) && !propre(l === 'en' ? $('m-desc-en').value : $('m-desc-fr').value)) manque.push('description');
+    if(propre($('m-link-label').value) && !propre(l === 'en' ? $('m-link-label-en').value : $('m-link-label-fr').value)) manque.push('texte du bouton');
+    if(manque.length) avis.push('Pas de traduction ' + champ.toUpperCase() + ' pour : ' + manque.join(', ') + ' — le portugais sera affiché.');
   }
   avis.push('Deux vignettes au plus sur la page client.');
   note.innerHTML = avis.join('<br>');
@@ -676,6 +763,13 @@ function openModal(ev, prefillDate){
   $('m-loc').value     = ev?.location || '';
   $('m-status').value  = ev?.status || 'planned';
   $('m-desc').value    = ev?.description || '';
+  /* Les traductions : absentes, les champs restent vides et le repli s'occupera du reste. */
+  $('m-title-en').value = ev?.title_en || '';
+  $('m-title-fr').value = ev?.title_fr || '';
+  $('m-desc-en').value  = ev?.description_en || '';
+  $('m-desc-fr').value  = ev?.description_fr || '';
+  $('m-link-label-en').value = ev?.link_label_en || '';
+  $('m-link-label-fr').value = ev?.link_label_fr || '';
   $('m-img').value     = ev?.image_url || '';
   $('m-link').value    = ev?.link_url || '';
   $('m-link-label').value = ev?.link_label || '';
@@ -704,6 +798,22 @@ function openModal(ev, prefillDate){
   }
   $('m-status').onchange = majApercu;
   $('m-oncard').onchange = majApercu;
+  /* Les lignes de traduction rafraîchissent l'aperçu comme les autres. */
+  for (const id of ['m-title-en','m-title-fr','m-desc-en','m-desc-fr','m-link-label-en','m-link-label-fr']) {
+    $(id).oninput = majApercu;
+  }
+  /* ⚠️ DÉLÉGUÉ SUR LE CONTENEUR : trois écouteurs posés un par un s'oublieraient le jour où une
+     quatrième langue arrive, et la pastille resterait inerte sans que rien ne le dise. */
+  $('m-apercu-langues').onclick = ev => {
+    const b = ev.target.closest('.ap-l');
+    if(!b) return;
+    apercuLangue = b.dataset.l;
+    for(const x of document.querySelectorAll('#m-apercu-langues .ap-l')) x.classList.toggle('on', x === b);
+    majApercu();
+  };
+  /* Chaque ouverture repart du portugais : c'est la version qui doit être remplie. */
+  apercuLangue = 'pt';
+  for(const x of document.querySelectorAll('#m-apercu-langues .ap-l')) x.classList.toggle('on', x.dataset.l === 'pt');
   modalColor = ev?.color || COLORS[0];
   buildSwatches();
   $('m-delete').style.visibility = isEdit?'visible':'hidden';
@@ -833,6 +943,12 @@ async function saveEvent(){
     link_url: $('m-link').value.trim(),
     link_label: $('m-link-label').value.trim(),
     show_on_card: $('m-oncard').checked,
+    title_en: $('m-title-en').value.trim(),
+    title_fr: $('m-title-fr').value.trim(),
+    description_en: $('m-desc-en').value.trim(),
+    description_fr: $('m-desc-fr').value.trim(),
+    link_label_en: $('m-link-label-en').value.trim(),
+    link_label_fr: $('m-link-label-fr').value.trim(),
   };
 
   // Calcule les dates AVANT toute écriture
@@ -889,6 +1005,15 @@ async function saveEvent(){
             link_url: base.link_url,
             link_label: base.link_label,
             show_on_card: base.show_on_card,
+            /* ⚠️ LES TRADUCTIONS SUIVENT LA DESCRIPTION. Les propager séparément — ou pas du tout —
+               laisserait douze occurrences avec un texte portugais à jour et un anglais périmé :
+               le client anglophone lirait l'ancienne version sans que rien ne le signale. */
+            title_en: base.title_en,
+            title_fr: base.title_fr,
+            description_en: base.description_en,
+            description_fr: base.description_fr,
+            link_label_en: base.link_label_en,
+            link_label_fr: base.link_label_fr,
           }),
         });
         if (r.ok) propagees++;
