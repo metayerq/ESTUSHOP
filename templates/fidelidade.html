@@ -98,8 +98,20 @@
     tous les revenants depuis le début. 30 % → 33 % fait +3 points ; « +10 % » serait vrai
     arithmétiquement et faux de sens.
   -->
+  <!--
+    ⚠️ CETTE PAGE NE BOUGEAIT PAS D'UN JOUR À L'AUTRE, ET C'EST STRUCTUREL. Sa réponse — le taux de
+    rattachement — est CUMULATIVE : elle porte sur tous les revenants depuis le lancement, donc dix
+    inscriptions dans la journée la déplacent d'une fraction de point. La dernière colonne de la
+    frise EST bien la semaine en cours, mais elle est haute comme la précédente. Rien ne répondait à
+    « qu'est-ce qui s'est passé ce matin ».
+
+    ⚠️ ET « 0 PARRAINAGE » EST UNE INFORMATION, PAS UN VIDE. C'est le chiffre qui dira si le lien
+    WhatsApp sert à quelque chose — le seul moyen de le savoir, puisque le partage se fait dans
+    WhatsApp et que nous n'en voyons rien.
+  -->
   <div class="db-card db-mb">
     <div class="db-card-p">
+      <div class="jour" id="jour"></div>
       <div class="db-l">Le programme prend-il&nbsp;?</div>
       <div class="db-lead" id="fd-lead">&mdash;</div>
       <div class="db-hero">
@@ -127,9 +139,41 @@
         <div><div class="db-v" id="conv-semaine">&mdash;</div><div class="db-l">cette semaine</div></div>
       </div>
     </div>
+    <!-- ⚠️ DEUX RANGÉES, UN SEUL AXE DE TEMPS — et surtout PAS deux échelles superposées. Le
+         rythme des inscriptions et le NIVEAU du taux cumulé sont des mesures d'ordres différents :
+         posées sur un même axe vertical, elles fabriquent des croisements qui ne veulent rien dire.
+         Séparées, elles se lisent ensemble sans se contredire.
+
+         ⚠️ LE RYTHME EST CE QUI MANQUAIT. Les « +N » existaient déjà, écrits au-dessus des barres :
+         un chiffre ne montre pas un rythme. En barres, une semaine creuse se voit. -->
+    <div id="conv-rythme" class="conv-graph conv-rythme"></div>
+    <div class="conv-sep"><span>taux cumul&eacute;</span></div>
     <div id="conv-graph" class="conv-graph"></div>
     <p class="muted" id="conv-note" style="font-size:11.5px;margin:10px 0 0"></p>
   </section>
+
+  <!-- ── Le parrainage et les langues ──────────────────────────────────────────────────────
+       ⚠️ LE PARRAINAGE EST LA SEULE MÉCANIQUE DE CROISSANCE DU PROGRAMME. Tout le reste de cette
+       page mesure la conversion de gens DÉJÀ présents ; le parrainage est ce qui en fait venir. Il
+       n'était visible nulle part : impossible de savoir si un seul avait été payé.
+
+       ⚠️ ET L'ÉCART « inscrits / venus » EST LE CHIFFRE QUI COMPTE. Un numéro tapé sur un téléphone
+       ne vaut rien — les points ne se gagnent qu'à la carte. Cet écart dit si le dispositif amène
+       des CLIENTS ou des lignes en base. -->
+  <div class="db-grid db-g2 db-mb">
+    <section class="db-card db-card-p">
+      <h2 class="db-card-t">Parrainage</h2>
+      <div class="par-chiffres" id="par-chiffres"></div>
+      <div id="par-top"></div>
+      <p class="db-fine" id="par-note"></p>
+    </section>
+    <section class="db-card db-card-p">
+      <h2 class="db-card-t">Langues</h2>
+      <div class="lg-barre" id="lg-barre"></div>
+      <div class="lg-legende" id="lg-legende"></div>
+      <p class="db-fine" id="lg-note"></p>
+    </section>
+  </div>
 
   <!-- ── Les deux listes qui font agir ──────────────────────────────────────────────────── -->
   <div class="db-grid db-g2 db-mb">
@@ -346,6 +390,55 @@
 
    ⚠️ CE QUI RESTE EST DE LA COMPOSITION ET DES ÉTATS PROPRES AU PROGRAMME. Aucune
    couleur en dur : le mode sombre suit tout seul.                                    */
+
+/* ── La bande du jour ─────────────────────────────────────────────────────────
+   ⚠️ AU-DESSUS DE LA RÉPONSE CUMULÉE, pas à sa place. Elle répond à la seule question qui change
+   d'un jour à l'autre, et la réponse de fond reste le sujet de la carte. */
+.jour {
+  display: flex; flex-wrap: wrap; gap: 0 26px;
+  padding-bottom: 14px; margin-bottom: 14px;
+  border-bottom: 1px solid var(--db-line);
+}
+.jour > div { min-width: 74px; }
+.jour .n {
+  font-size: 22px; font-weight: 600; letter-spacing: -.02em;
+  /* Les chiffres s'alignent d'un jour à l'autre : c'est la même bande qu'on relit. */
+  font-variant-numeric: tabular-nums;
+}
+.jour .n.rien { color: var(--db-faint); }
+.jour .n.bon { color: var(--db-green); }
+.jour .l {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--db-faint);
+}
+
+/* ── Le rythme des inscriptions, au-dessus du taux ────────────────────────────
+   ⚠️ SA HAUTEUR EST PROPORTIONNELLE AU MAXIMUM DE LA SÉRIE, pas à 100. Un taux se lit sur une
+   échelle absolue ; un compte n'en a pas — six inscriptions sur une semaine calme et six sur une
+   semaine chargée ne disent pas la même chose, mais la barre doit rester lisible dans les deux. */
+.conv-rythme { --h: 46px; }
+.conv-sep {
+  display: flex; align-items: center; gap: 9px;
+  margin: 12px 0 8px; font-size: 10.5px; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--db-faint);
+}
+.conv-sep::after { content: ""; flex: 1; height: 1px; background: var(--db-line); }
+
+/* ── Parrainage ──────────────────────────────────────────────────────────────── */
+.par-chiffres { display: flex; flex-wrap: wrap; gap: 0 26px; margin: 12px 0 4px; }
+.par-chiffres .n { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.par-chiffres .l { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--db-faint); }
+.par-l { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 5px 0; border-top: 1px solid var(--db-line); }
+.par-l b { font-variant-numeric: tabular-nums; }
+
+/* ── Langues ─────────────────────────────────────────────────────────────────
+   ⚠️ UNE SEULE BARRE EMPILÉE, PAS QUATRE BARRES. La question est une RÉPARTITION : « quelle part
+   de mes inscrits lit l'anglais » se lit sur une barre unique, et pas en comparant des hauteurs. */
+.lg-barre { display: flex; height: 26px; border-radius: 6px; overflow: hidden; margin: 14px 0 10px; background: var(--db-line); }
+.lg-barre i { display: block; height: 100%; }
+.lg-legende { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; }
+.lg-legende span { display: inline-flex; align-items: center; gap: 6px; color: var(--db-muted); }
+.lg-legende b { color: var(--db-ink); font-variant-numeric: tabular-nums; }
+.lg-p { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
 
 /* ── Le suivi de conversion, semaine après semaine ──────────────────────────── */
 .conv-tete { display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; margin-bottom:18px; }
@@ -589,12 +682,117 @@
       ' semaines complètes — le taux est cumulé depuis le lancement, pas recalculé chaque semaine.';
   }
 
+  /**
+   * ⚠️ CETTE BANDE EXISTE PARCE QUE LA PAGE NE BOUGEAIT PAS D'UN JOUR À L'AUTRE. Sa réponse est
+   * cumulative : dix inscriptions dans la journée la déplacent d'une fraction de point. On ouvre
+   * pourtant cette page le matin pour savoir ce qui s'est passé.
+   */
+  function bandeDuJour(j){
+    /* ⚠️ PAS `jour()` : ce nom est DÉJÀ pris par le formateur de date, quelques lignes plus haut.
+     * Une seconde déclaration du même nom écrase la première en JavaScript, sans un mot — toutes
+     * les dates de la page auraient affiché « undefined » à partir du chargement suivant. */
+    if(!j){ E('jour').style.display = 'none'; return; }
+    var cases = [
+      {n: j.cards,     l: 'cartes aujourd\'hui'},
+      {n: j.customers, l: 'num\u00e9ros pris', bon: true},
+      {n: j.rewards,   l: 'boissons offertes'},
+      /* ⚠️ « 0 parrainage » EST UNE INFORMATION, PAS UN VIDE : c'est le seul chiffre qui dira si le
+       * lien WhatsApp sert — le partage se fait dans WhatsApp et nous n'en voyons rien. */
+      {n: j.referrals, l: 'parrainages'}
+    ];
+    /* ⚠️ PAS `c` COMME VARIABLE : sur cette page, `c.` désigne une FICHE client, et un test relit
+     * le gabarit pour vérifier qu'on ne lit que des champs de fiche existants. Une boucle nommée `c`
+     * lui fait croire qu'on lit `c.bon`, `c.n`, `c.l` sur un client. */
+    E('jour').innerHTML = cases.map(function(cel){
+      var cl = cel.n === 0 ? ' rien' : (cel.bon ? ' bon' : '');
+      return '<div><div class="n' + cl + '">' + (cel.bon && cel.n > 0 ? '+' : '') + cel.n + '</div>' +
+             '<div class="l">' + cel.l + '</div></div>';
+    }).join('');
+  }
+
+  /**
+   * ⚠️ LE RYTHME, EN BARRES, SUR SON PROPRE AXE. Les « +N » existaient déjà, écrits au-dessus des
+   * barres du taux : un chiffre ne montre pas un rythme, et une semaine creuse ne se voyait pas.
+   *
+   * ⚠️ L'ÉCHELLE EST RELATIVE AU MAXIMUM DE LA SÉRIE. Un taux se lit sur 100 ; un compte n'a pas
+   * d'échelle absolue — caler six inscriptions sur 100 % donnerait douze barres invisibles.
+   */
+  function rythme(cv){
+    var max = cv.weeks.reduce(function(m, w){ return Math.max(m, w.new_customers || 0); }, 0);
+    var dernier = cv.weeks.length - 1;
+    E('conv-rythme').innerHTML = cv.weeks.map(function(w, i){
+      var n = w.new_customers || 0;
+      /* `partiel` sur la semaine en cours : elle n'est pas finie, et sa barre basse ne veut pas
+       * dire un ralentissement. Même distinction que sur la rangée du taux. */
+      var classes = 'db-hbar' + (n ? '' : ' absent') + (i === dernier ? ' partiel' : '');
+      var jourEtq = w.start.slice(8) + '/' + w.start.slice(5,7);
+      return '<div class="' + classes + '" title="' + jourEtq + ' : ' + n + ' num\u00e9ro(s) pris">' +
+        '<span class="piste"><span class="f" style="height:' +
+          (max > 0 && n > 0 ? Math.max(6, Math.round(n * 100 / max)) : 0) + '%"></span></span>' +
+        '<span class="sous">' + (n ? '+' + n : '\u2014') + '</span>' +
+      '</div>';
+    }).join('');
+  }
+
+  /**
+   * ⚠️ L'ÉCART « inscrits / venus » EST LE CHIFFRE QUI COMPTE. Un numéro tapé sur un téléphone ne
+   * vaut rien — les points ne se gagnent qu'à la carte. Cet écart dit si le dispositif amène des
+   * CLIENTS ou des lignes en base, et c'est la seule lecture qui change une décision.
+   */
+  function parrainage(p){
+    if(!p){ return; }
+    E('par-chiffres').innerHTML =
+      '<div><div class="n">' + p.signed_up + '</div><div class="l">filleuls inscrits</div></div>' +
+      '<div><div class="n" style="color:var(--db-green)">' + p.came + '</div>' +
+        '<div class="l">venus au moins une fois</div></div>' +
+      '<div><div class="n">' + p.paid + '</div><div class="l">parrainages pay\u00e9s</div></div>';
+    E('par-top').innerHTML = (p.top || []).map(function(t){
+      return '<div class="par-l"><span>' + t.masked + '</span><b>' + t.n + '</b></div>';
+    }).join('');
+    /* ⚠️ CE QU'ON NE SAIT PAS SE DIT. Le partage se fait dans WhatsApp : on ne voit ni les liens
+     * envoyés ni les liens ouverts. Le taire laisserait lire « personne ne partage » là où il faut
+     * lire « nous ne le voyons pas » — deux décisions opposées. */
+    E('par-note').textContent = p.signed_up === 0
+      ? 'Aucun filleul inscrit. Les liens envoy\u00e9s ne sont pas mesurables : le partage se fait dans WhatsApp.'
+      : 'Les liens envoy\u00e9s ne sont pas mesurables : le partage se fait dans WhatsApp. ' +
+        'Un parrainage est pay\u00e9 au premier passage carte du filleul, pas \u00e0 son inscription.';
+  }
+
+  /**
+   * ⚠️ UNE FICHE SANS LANGUE N'EST PAS UNE FICHE EN PORTUGAIS. Elle n'a rien choisi, et sa page
+   * affichera la langue de son téléphone : la ranger en portugais gonflerait la part portugaise et
+   * ferait conclure qu'il est inutile de traduire — la décision exactement inverse.
+   */
+  function langues(lg){
+    if(!lg){ return; }
+    var parts = [
+      {k:'pt', l:'Portugais', c:'var(--db-iris)'},
+      {k:'en', l:'Anglais',   c:'var(--db-green)'},
+      {k:'fr', l:'Fran\u00e7ais',  c:'var(--db-amber)'},
+      {k:'inconnue', l:'Pas encore choisie', c:'var(--db-line)'}
+    ];
+    var total = parts.reduce(function(t, p){ return t + (lg[p.k] || 0); }, 0);
+    E('lg-barre').innerHTML = total === 0 ? '' : parts.map(function(p){
+      var n = lg[p.k] || 0;
+      return n === 0 ? '' : '<i style="width:' + (n * 100 / total) + '%;background:' + p.c + '"></i>';
+    }).join('');
+    E('lg-legende').innerHTML = parts.map(function(p){
+      return '<span><i class="lg-p" style="background:' + p.c + '"></i>' + p.l +
+             ' <b>' + (lg[p.k] || 0) + '</b></span>';
+    }).join('');
+    E('lg-note').textContent = lg.inconnue > 0
+      ? lg.inconnue + ' fiche(s) sans langue choisie : leur page suit la langue de leur t\u00e9l\u00e9phone, ' +
+        'et leurs SMS partent en portugais.'
+      : 'Toutes les fiches ont une langue choisie.';
+  }
+
   function conversion(cv){
     reponse(cv);
     E('conv-total').textContent   = cv.customers_total;
     E('conv-semaine').textContent = (cv.this_week_customers > 0 ? '+' : '') + cv.this_week_customers;
 
     var dernier = cv.weeks.length - 1;
+    rythme(cv);
     E('conv-graph').innerHTML = cv.weeks.map(function(w, i){
       // ⚠️ UN TAUX ABSENT N'EST PAS UN TAUX DE ZÉRO. Une semaine sans personne de revenu n'a
       // rien mesuré ; lui donner une barre à zéro raconterait un échec qui n'a pas eu lieu.
@@ -607,8 +805,9 @@
       var jour = w.start.slice(8) + '/' + w.start.slice(5,7);
       return '<div class="' + classes + '" title="' + jour + ' : ' + w.linked + ' rattachées sur ' +
                w.returning + ' revenues">' +
-        '<span class="v' + (w.new_customers ? ' fort' : '') + '">' +
-          (w.new_customers ? '+' + w.new_customers : '·') + '</span>' +
+        /* ⚠️ LES « +N » ONT QUITTÉ CETTE RANGÉE POUR LA LEUR. Les laisser ici mettrait la même
+         * mesure à deux endroits — et c'est comme ça que deux chiffres finissent par ne plus être
+         * d'accord, sans qu'on sache lequel croire. */
         '<span class="piste"><span class="f" style="height:' +
           (mesure ? Math.max(2, w.rate_pct) : 0) + '%"></span></span>' +
         '<span class="sous">' + (mesure ? w.rate_pct + '%' : '—') + '</span>' +
@@ -1174,7 +1373,13 @@
     if (d.error) throw new Error(d.error);
     S = d.summary; comptes = d.accounts;
     kpis(S);
+    /* ⚠️ LA BANDE DU JOUR AVANT LA RÉPONSE CUMULÉE, et le parrainage et les langues après : ce sont
+     * trois vues nouvelles, aucune ne remplace ce qui existait. Chacune tombe silencieusement si le
+     * serveur ne l'envoie pas — le temps d'un déploiement, la page reste celle d'avant. */
+    bandeDuJour(d.journee);
     conversion(d.conversion);
+    parrainage(d.parrainage);
+    langues(d.langues);
 
     /**
      * ⚠️ TANT QU'AUCUNE DATE DE LANCEMENT N'EST POSÉE, LE PROGRAMME COMPTE DEPUIS MAI. Les

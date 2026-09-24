@@ -432,3 +432,103 @@ def conversion_headline(lignes, recul=4):
         # première semaine du programme comparerait un régime à un démarrage.
         "reason": None if base else "not-enough-weeks",
     }
+
+
+def journee(visits, rewards, customers, credits, now):
+    """
+    CE QUI S'EST PASSÉ AUJOURD'HUI.
+
+    ⚠️ CETTE PAGE NE BOUGEAIT PAS D'UN JOUR À L'AUTRE, ET C'EST STRUCTUREL. Sa réponse — le taux
+    de rattachement — est CUMULATIVE : elle porte sur tous les revenants depuis le lancement, donc
+    dix inscriptions dans la journée la déplacent d'une fraction de point. La dernière colonne de
+    la frise est bien la semaine en cours, mais elle est haute comme la précédente. Rien, sur cette
+    page, ne répondait à « qu'est-ce qui s'est passé ce matin ».
+
+    ⚠️ ET LE JOUR EST CELUI DE LISBONNE. Les horodatages sont en UTC : à 00 h 30 à Lisbonne en
+    heure d'été, UTC est encore la veille — le café aurait servi des cafés qui compteraient pour
+    hier. On compare donc des dates converties, pas des préfixes de chaînes.
+    """
+    tz = now.tzinfo or timezone.utc
+    ce_jour = now.astimezone(tz).date()
+
+    def aujourd_hui(ts):
+        ms = parse_ts(ts)
+        if ms is None:
+            return False
+        return datetime.fromtimestamp(ms / 1000, tz).date() == ce_jour
+
+    # ⚠️ DES CARTES DISTINCTES, PAS DES PASSAGES. Quelqu'un qui paie deux fois dans la journée est
+    # un client, pas deux — et c'est « combien de clients » qu'on lit le matin.
+    cartes = {v.get("fp") for v in (visits or []) if v.get("fp") and aujourd_hui(v.get("ts"))}
+
+    return {
+        "date": ce_jour.isoformat(),
+        "cards": len(cartes),
+        "customers": sum(1 for c in (customers or []) if aujourd_hui(c.get("consent_at"))),
+        "rewards": sum(1 for r in (rewards or []) if aujourd_hui(r.get("ts"))),
+        # ⚠️ SEULEMENT LE CRÉDIT DU FILLEUL. Un parrainage pose DEUX lignes — une pour le filleul,
+        # une pour le parrain — et les compter toutes deux annoncerait deux parrainages pour un.
+        "referrals": sum(1 for k in (credits or [])
+                         if k.get("reason") == "referral" and aujourd_hui(k.get("ts"))),
+    }
+
+
+def parrainage(customers, credits, visits, links):
+    """
+    CE QUE LE PARRAINAGE A PRODUIT — la seule mécanique de CROISSANCE du programme.
+
+    ⚠️ RIEN NE LE MONTRAIT. Tout le reste de cette page mesure la conversion de gens déjà
+    présents ; le parrainage est ce qui en fait venir. Il était impossible de savoir si un seul
+    avait été payé.
+
+    ⚠️ ON COMPTE LES FILLEULS QUI SONT VENUS, PAS CEUX QUI SE SONT INSCRITS. Un numéro tapé sur un
+    téléphone ne vaut rien : les points ne se gagnent qu'à la carte. L'écart entre les deux est
+    précisément ce qui dit si le dispositif amène des CLIENTS ou des lignes en base.
+    """
+    payes = [k for k in (credits or []) if k.get("reason") == "referral"]
+    filleuls = {c.get("phone") for c in (customers or []) if c.get("referred_by")}
+
+    # ⚠️ UN FILLEUL EST VENU S'IL A UNE CARTE QUI A PAYÉ. Le chemin passe par `card_links` : son
+    # numéro n'apparaît nulle part dans les visites, seules les empreintes y sont. Court-circuiter
+    # ce saut compterait zéro venue quel que soit le nombre de passages.
+    vus = {v.get("fp") for v in (visits or []) if v.get("fp")}
+    cartes_par_tel = {}
+    for l in (links or []):
+        tel, fp = l.get("phone"), l.get("fp")
+        if tel and fp:
+            cartes_par_tel.setdefault(tel, set()).add(fp)
+    venus = sum(1 for tel in filleuls if cartes_par_tel.get(tel, set()) & vus)
+
+    # ⚠️ LE COMPTE DES PARRAINS SE FAIT SUR LEUR PROPRE NUMÉRO, pas sur celui du filleul : c'est
+    # `referred_by` qui le porte, et un parrain peut en amener plusieurs.
+    par_parrain = {}
+    for c in (customers or []):
+        h = c.get("referred_by")
+        if h:
+            par_parrain[h] = par_parrain.get(h, 0) + 1
+
+    return {
+        "paid": len(payes),
+        "signed_up": len(filleuls),
+        "came": venus,
+        # ⚠️ LE NUMÉRO DU PARRAIN NE SORT PAS : on rend un masque et un compte. Cette page est
+        # ouverte par plusieurs rôles, et « qui parraine le plus » n'a besoin d'aucun numéro entier.
+        "top": [{"masked": "••• " + (tel or "")[-4:], "n": n}
+                for tel, n in sorted(par_parrain.items(), key=lambda kv: -kv[1])[:3]],
+    }
+
+
+def langues(customers):
+    """
+    LA LANGUE DES INSCRITS.
+
+    ⚠️ UNE FICHE SANS LANGUE N'EST PAS UNE FICHE EN PORTUGAIS. Elle n'a rien choisi, et sa page
+    affichera la langue de son téléphone : la ranger d'office en portugais gonflerait la part
+    portugaise et ferait conclure qu'il est inutile de traduire — la décision exactement inverse
+    de celle que ce chiffre doit éclairer.
+    """
+    out = {"pt": 0, "en": 0, "fr": 0, "inconnue": 0}
+    for c in (customers or []):
+        v = (c.get("lang") or "").strip().lower()
+        out[v if v in ("pt", "en", "fr") else "inconnue"] += 1
+    return out

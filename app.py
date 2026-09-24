@@ -26,7 +26,8 @@ from config import today_lisbon, now_lisbon, TVA_MOYENNE_BLENDED
 # caisse ; `programme.py` regroupe les lignes brutes en clients. Ni l'un ni l'autre ne touche
 # à Supabase : c'est ce qui permet de tester la règle sans base de données.
 from phone import PHONE_MESSAGE, normalise_phone
-from programme import build_accounts, conversion_series, programme_summary
+from programme import (build_accounts, conversion_series, journee, langues,
+                       parrainage, programme_summary)
 from sms import campagne_apercu
 from campagnes import recap_depense
 import charges as _ch
@@ -1751,11 +1752,25 @@ def _fidelidade_tables():
     # leur numéro, mais pas si ça progresse — et c'est la seule question qui se pose quand on
     # commence à le demander au comptoir.
     liens, t3 = _supa_all("card_links", {"select": "fp,phone,linked_at"})
+    # `lang` et `referred_by` portent deux vues que la page n'avait pas : la langue des inscrits —
+    # qui décide s'il faut traduire les événements — et le parrainage, seule mécanique de CROISSANCE
+    # du programme, jusqu'ici invisible.
     fiches, t4 = _supa_all(
         "card_customers",
         {"select": "phone,name,token,consent_at,consent_source,consent_scope,opted_out_at,"
-                   "welcome_points"})
-    return visites, recompenses, liens, fiches, (t1 or t2 or t3 or t4)
+                   "welcome_points,lang,referred_by"})
+    # ⚠️ LES POINTS OFFERTS N'ENTRENT PAS DANS LE CALCUL DES SOLDES ICI, et c'est voulu : `points.py`
+    # les reçoit déjà par un autre chemin. On les lit pour COMPTER les parrainages payés, rien de
+    # plus — les mêler au calcul ferait deux sources pour un même solde.
+    # ⚠️ UNE LECTURE QUI PEUT ÉCHOUER SANS EMPORTER LA PAGE. Les crédits sont un ORNEMENT ici : ils
+    # comptent les parrainages, et aucun solde n'en dépend — `points.py` les reçoit par un autre
+    # chemin. Une table absente, un droit manquant, et c'est toute la page fidélité qui rendrait 0
+    # boisson due : le seul chiffre dont le comptoir se sert vraiment, faux à cause d'un compteur.
+    try:
+        credits, t5 = _supa_all("card_credits", {"select": "phone,ts,points,reason"})
+    except Exception:
+        credits, t5 = [], False
+    return visites, recompenses, liens, fiches, credits, (t1 or t2 or t3 or t4 or t5)
 
 
 def _options(reglages):
@@ -1769,7 +1784,7 @@ def _options(reglages):
 
 def _fidelidade_comptes(tables, reglages, now):
     """Les lignes brutes, regroupées en comptes selon les réglages donnés."""
-    visites, recompenses, liens, fiches, _ = tables
+    visites, recompenses, liens, fiches, _credits, _ = tables
     return build_accounts(
         [{"fp": v.get("fp"), "ts": v.get("ts"), "amount_cents": v.get("amount")} for v in visites],
         [{"fp": r.get("fp"), "ts": r.get("ts"), "points_spent": r.get("points_spent")}
@@ -1780,9 +1795,9 @@ def _fidelidade_comptes(tables, reglages, now):
 
 
 def _fidelidade_donnees(now, reglages):
-    visites, recompenses, liens, fiches, tronque = _fidelidade_tables()
+    visites, recompenses, liens, fiches, credits, tronque = _fidelidade_tables()
     comptes = _fidelidade_comptes(
-        (visites, recompenses, liens, fiches, tronque), reglages, now)
+        (visites, recompenses, liens, fiches, credits, tronque), reglages, now)
 
     # L'historique d'une fiche : passages et récompenses, du plus récent au plus ancien.
     par_fp_v, par_fp_r = {}, {}
@@ -1809,7 +1824,16 @@ def _fidelidade_donnees(now, reglages):
         [{"fp": v.get("fp"), "ts": v.get("ts")} for v in visites],
         liens, fiches, now, FIDELIDADE_WEEKS,
     )
-    return comptes, conversion, tronque
+    # ⚠️ TROIS VUES QUE LA PAGE N'AVAIT PAS, et aucune ne demande de migration : tout est déjà en
+    # base. La journée parce que cette page ne bougeait pas d'un jour à l'autre — sa réponse est
+    # cumulative ; le parrainage parce que rien ne le montrait ; les langues parce que la colonne
+    # était remplie et jamais lue.
+    vues = {
+        "journee": journee(visites, recompenses, fiches, credits, now),
+        "parrainage": parrainage(fiches, credits, visites, liens),
+        "langues": langues(fiches),
+    }
+    return comptes, conversion, vues, tronque
 
 
 @app.route("/api/loyalty/diag")
@@ -1929,7 +1953,7 @@ def api_fidelidade_resumo():
 
     try:
         reglages = _fidelidade_reglages()
-        comptes, conversion, tronque = _fidelidade_donnees(now_lisbon(), reglages)
+        comptes, conversion, vues, tronque = _fidelidade_donnees(now_lisbon(), reglages)
     except SupabaseSchemaError as e:
         # Une table absente est un déploiement incomplet, pas un programme vide.
         return jsonify({"error": str(e)}), 500
@@ -1998,6 +2022,10 @@ def api_fidelidade_resumo():
         "settings": reglages,
         "truncated": tronque,
         "conversion": conversion,
+        # Les trois vues ajoutées le 24/09/2026 : voir `_fidelidade_donnees`.
+        "journee": vues["journee"],
+        "parrainage": vues["parrainage"],
+        "langues": vues["langues"],
         "summary": {**resume,
                     "at_risk": [vue(c) for c in resume["at_risk"]],
                     "near_reward": [vue(c) for c in resume["near_reward"]]},
@@ -2176,7 +2204,11 @@ def api_fidelidade_simulation():
     return jsonify({"settings": reglages,
                     "before": _simulation(avant, base),
                     "after": _simulation(apres, reglages),
-                    "truncated": tables[4]})
+                    # ⚠️ INDEX NOMMÉ PLUTÔT QUE COMPTÉ. `tables[4]` désignait le drapeau de
+                    # troncature ; l'ajout de `card_credits` l'a décalé en 5e position, et un index
+                    # littéral ne proteste pas — il rend simplement la liste des crédits à la place
+                    # d'un booléen. Le dernier élément, lui, reste le dernier.
+                    "truncated": tables[-1]})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -4284,7 +4316,7 @@ def api_statut():
     # ── Les boissons dues ───────────────────────────────────────────────────────────────────
     try:
         reglages = _fidelidade_reglages()
-        comptes, _conv, _tr = _fidelidade_donnees(now_lisbon(), reglages)
+        comptes, _conv, _vues, _tr = _fidelidade_donnees(now_lisbon(), reglages)
         out["boissons_dues"] = sum(c["state"]["rewards_due"] for c in comptes)
     except Exception:
         pass

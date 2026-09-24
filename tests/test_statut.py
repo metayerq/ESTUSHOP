@@ -27,8 +27,12 @@ def poser(monkeypatch, docs=None, resume=None, terminal=None, comptes=None):
     monkeypatch.setattr(flask_app, "_fetch_summaries", lambda a, b: resume or [])
     monkeypatch.setattr(flask_app, "_supa_get", lambda t, p: terminal or [])
     monkeypatch.setattr(flask_app, "_fidelidade_reglages", lambda: {"threshold_points": 50})
+    # ⚠️ QUATRE ÉLÉMENTS DEPUIS LE 24/09/2026 : les comptes, la conversion, les VUES (journée,
+    # parrainage, langues) et le drapeau de troncature. Un stub qui en rend trois fait lever le
+    # dépaquetage — et `/api/statut` attrape l'exception, donc rendait « 0 boisson due » sans un
+    # mot. Le seul chiffre dont le comptoir se sert, faux à cause d'un tuple.
     monkeypatch.setattr(flask_app, "_fidelidade_donnees",
-                        lambda now, r: (comptes or [], None, False))
+                        lambda now, r: (comptes or [], None, {}, False))
 
 
 def test_le_chiffre_du_jour_vient_du_cache(client, monkeypatch):

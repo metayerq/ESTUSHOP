@@ -237,6 +237,13 @@ def test_le_gabarit_ne_lit_que_des_champs_qui_existent(client, monkeypatch):
     gabarit = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                 "templates", "fidelidade.html"), encoding="utf-8").read()
     js = gabarit[gabarit.index("<script>\n(function(){"):]
+    # ⚠️ LES COMMENTAIRES SONT ÉCARTÉS, et ce n'est pas une commodité. Un commentaire qui explique
+    # POURQUOI on n'écrit pas `c.bon` contient nécessairement `c.bon` — et ce contrôle le lisait
+    # comme une lecture de champ. C'est la dixième fois que ce piège se referme dans ce produit en
+    # une journée : un détecteur qui cite ce qu'il traque finit toujours par se reconnaître, et la
+    # seule parade est de ne lire que du CODE.
+    js = re.sub(r"/\*[\s\S]*?\*/", " ", js)
+    js = re.sub(r"(?m)^\s*//.*$", " ", js)
 
     # ⚠️ `e` DÉSIGNE AUSSI UN ÉVÉNEMENT DU NAVIGATEUR (`e.key`, `e.target`) : balayer tout le
     # script confondrait le DOM et les données. On ne lit que le bloc qui rend l'historique, et

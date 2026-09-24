@@ -414,3 +414,103 @@ def test_un_client_abonne_n_a_pas_de_date():
     ))
     assert cs["phone:+351911"]["opted_out"] is False
     assert cs["phone:+351911"]["opted_out_at"] is None
+
+
+# ── LA JOURNÉE, LE PARRAINAGE, LES LANGUES ──────────────────────────────────────────────────
+#
+# ⚠️ TROIS VUES AJOUTÉES LE 24/09/2026, ET AUCUNE NE CORRIGE UN CALCUL FAUX. Elles corrigent un
+# SILENCE : la page ne bougeait pas d'un jour à l'autre — sa réponse est cumulative — le parrainage
+# n'était visible nulle part, et la colonne des langues était remplie sans être lue.
+
+from datetime import datetime, timedelta, timezone
+
+from programme import journee, langues, parrainage
+
+_MIDI = datetime(2026, 9, 24, 12, 0, tzinfo=timezone.utc)
+
+
+def _iso(dt):
+    return dt.isoformat().replace("+00:00", "Z")
+
+
+def test_la_journee_ne_compte_que_le_jour_courant():
+    hier = _MIDI - timedelta(days=1)
+    j = journee(
+        visits=[{"fp": "a", "ts": _iso(_MIDI)}, {"fp": "b", "ts": _iso(hier)}],
+        rewards=[{"ts": _iso(_MIDI)}],
+        customers=[{"consent_at": _iso(_MIDI)}, {"consent_at": _iso(hier)}],
+        credits=[{"reason": "referral", "ts": _iso(_MIDI)}],
+        now=_MIDI,
+    )
+    assert j == {"date": "2026-09-24", "cards": 1, "customers": 1, "rewards": 1, "referrals": 1}
+
+
+def test_la_journee_compte_des_cartes_distinctes_pas_des_passages():
+    """⚠️ Quelqu'un qui paie deux fois dans la journée est UN client, pas deux — et c'est
+    « combien de clients » qu'on lit le matin."""
+    j = journee([{"fp": "a", "ts": _iso(_MIDI)}, {"fp": "a", "ts": _iso(_MIDI)}],
+                [], [], [], _MIDI)
+    assert j["cards"] == 1
+
+
+def test_la_journee_ne_compte_qu_un_cote_du_parrainage():
+    """⚠️ UN PARRAINAGE POSE DEUX LIGNES — une pour le filleul, une pour le parrain. Les compter
+    toutes deux annoncerait deux parrainages pour un, et le seul chiffre qui dit si le lien WhatsApp
+    sert serait faux du double."""
+    j = journee([], [], [], [{"reason": "referral", "ts": _iso(_MIDI)},
+                             {"reason": "referral-host", "ts": _iso(_MIDI)}], _MIDI)
+    assert j["referrals"] == 1
+
+
+def test_la_journee_survit_a_un_horodatage_illisible():
+    """Une ligne ancienne ou tronquée ne doit pas faire lever la page entière pour une bande."""
+    j = journee([{"fp": "a", "ts": None}, {"fp": "b", "ts": "pas une date"}], [], [], [], _MIDI)
+    assert j["cards"] == 0
+
+
+def test_le_parrainage_distingue_inscrits_et_venus():
+    """
+    ⚠️ C'EST L'ÉCART QUI COMPTE. Un numéro tapé sur un téléphone ne vaut rien : les points ne se
+    gagnent qu'à la carte. Cet écart dit si le dispositif amène des CLIENTS ou des lignes en base —
+    et confondre les deux ferait conclure que le parrainage marche alors que personne ne vient.
+    """
+    p = parrainage(
+        customers=[{"phone": "+1", "referred_by": "+9"}, {"phone": "+2", "referred_by": "+9"}],
+        credits=[{"reason": "referral"}, {"reason": "referral-host"}],
+        visits=[{"fp": "fa"}],
+        links=[{"phone": "+1", "fp": "fa"}, {"phone": "+2", "fp": "fb"}],
+    )
+    assert p["signed_up"] == 2
+    assert p["came"] == 1, "le filleul sans passage carte est compté comme venu"
+    assert p["paid"] == 1, "les deux côtés d'un parrainage sont comptés comme deux"
+
+
+def test_le_parrainage_passe_par_les_cartes_pour_savoir_qui_est_venu():
+    """⚠️ Le numéro d'un filleul n'apparaît nulle part dans les visites : seules les EMPREINTES y
+    sont. Court-circuiter `card_links` compterait zéro venue quel que soit le nombre de passages."""
+    p = parrainage([{"phone": "+1", "referred_by": "+9"}], [], [{"fp": "fa"}], [])
+    assert p["came"] == 0
+
+
+def test_le_parrainage_ne_sort_aucun_numero_entier():
+    """⚠️ Cette page est ouverte par plusieurs rôles, et « qui parraine le plus » n'a besoin
+    d'aucun numéro complet."""
+    p = parrainage([{"phone": "+1", "referred_by": "+351912345678"}], [], [], [])
+    assert p["top"] == [{"masked": "••• 5678", "n": 1}]
+    assert "912345678" not in str(p)
+
+
+def test_les_langues_ne_rangent_pas_les_fiches_vides_en_portugais():
+    """
+    ⚠️ UNE FICHE SANS LANGUE N'EST PAS UNE FICHE EN PORTUGAIS. Elle n'a rien choisi, et sa page
+    affichera la langue de son téléphone. La ranger d'office en portugais gonflerait la part
+    portugaise et ferait conclure qu'il est inutile de traduire — la décision exactement inverse de
+    celle que ce chiffre doit éclairer.
+    """
+    lg = langues([{"lang": "fr"}, {"lang": None}, {"lang": ""}, {"lang": "  "}, {"lang": "PT"}])
+    assert lg == {"pt": 1, "en": 0, "fr": 1, "inconnue": 3}
+
+
+def test_une_langue_inconnue_ne_fait_pas_lever():
+    """La colonne est du texte libre : un `fr-FR` ou un `de` arrivé par une autre porte."""
+    assert langues([{"lang": "de"}, {"lang": "fr-FR"}])["inconnue"] == 2

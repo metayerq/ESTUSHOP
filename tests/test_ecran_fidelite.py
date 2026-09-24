@@ -425,9 +425,18 @@ SEMAINES = {
 }
 
 
-def _colonnes():
-    r = _rendu("conversion", f"conversion({json.dumps(SEMAINES)});")
-    return r["conv-graph"]
+def _colonnes(cle="conv-graph"):
+    """
+    ⚠️ `conversion()` APPELLE `rythme()` DEPUIS LE 24/09/2026. Le harnais n'extrait que la fonction
+    nommée : sans fournir l'autre, l'appel lève une `ReferenceError` et `conv-graph` reste vide —
+    cinq contrôles rougissaient alors pour une raison qui n'avait rien à voir avec ce qu'ils
+    éprouvent.
+    """
+    js = _js()
+    i = js.index("  function rythme(")
+    rythme = js[i:js.index("\n  }", i) + 4]
+    r = _rendu("conversion", f"conversion({json.dumps(SEMAINES)});", socle_sup=rythme)
+    return r[cle]
 
 
 def test_une_semaine_sans_revenant_nest_pas_une_semaine_a_zero():
@@ -453,17 +462,34 @@ def test_la_semaine_en_cours_est_marquee_parce_quelle_nest_pas_finie():
     assert g.rindex("partiel") > g.rindex("db-hbar absent")
 
 
-def test_les_inscrits_de_la_semaine_sont_un_nombre_jamais_une_hauteur():
+def test_les_deux_mesures_ne_partagent_jamais_un_axe():
     """
-    ⚠️ DEUX ÉCHELLES SUR UN MÊME GRAPHIQUE NE SE COMPARENT PAS, ELLES SE CONFONDENT. Le taux
-    est une hauteur ; les inscrits de la semaine sont écrits. Leur donner une seconde barre
-    ferait lire deux mesures sur un seul axe.
+    ⚠️ DEUX ÉCHELLES SUR UN MÊME GRAPHIQUE NE SE COMPARENT PAS, ELLES SE CONFONDENT. Ce contrôle
+    interdisait donc toute seconde barre, et les inscrits de la semaine restaient un nombre écrit.
+    La règle est juste ; c'est sa portée qui était trop large.
+
+    ⚠️ CE QUI A CHANGÉ LE 24/09/2026 : les inscrits ont leur PROPRE RANGÉE, avec son propre axe et
+    sa propre échelle — relative au maximum de la série, puisqu'un compte n'a pas d'échelle absolue.
+    Deux rangées qui partagent le temps et rien d'autre ne se confondent pas ; c'était le fait de
+    poser un compte sur l'axe d'un pourcentage qui les confondait.
+
+    ⚠️ ET LE NOMBRE RESTE ÉCRIT SOUS SA BARRE. Une hauteur relative ne se lit pas en valeur : sans
+    le chiffre, « deux fois plus haut » ne dirait pas combien.
     """
-    g = _colonnes()
-    assert '<span class="v fort">+5</span>' in g
-    assert '<span class="v">\u00b7</span>' in g, "une semaine sans inscrit n'affiche pas son point"
-    # Une seule hauteur par colonne.
-    assert g.count("style=\"height:") == 4
+    taux = _colonnes()
+    rythme = _colonnes("conv-rythme")
+
+    # Une seule hauteur par colonne, DANS CHAQUE RANGÉE : c'est ça, ne pas partager un axe.
+    assert taux.count('style="height:') == 4, "la rangée du taux porte plus d'une hauteur"
+    assert rythme.count('style="height:') == 4, "la rangée du rythme porte plus d'une hauteur"
+
+    # Le rythme écrit ses nombres, et une semaine sans inscrit porte un tiret, pas un zéro.
+    assert "+5" in rythme and "+3" in rythme
+    assert '<span class="sous">\u2014</span>' in rythme, "une semaine sans inscrit affiche 0"
+
+    # ⚠️ ET LA RANGÉE DU TAUX NE PORTE PLUS LES « +N » : les y laisser aurait mis la même mesure à
+    # deux endroits, et c'est comme ça que deux chiffres finissent par ne plus être d'accord.
+    assert '<span class="v' not in taux, "les inscrits sont écrits deux fois"
 
 
 def test_les_colonnes_portent_le_composant_de_la_charte():
@@ -532,3 +558,51 @@ def test_les_cellules_de_contexte_sont_des_cartes_de_la_charte():
     assert k.count("db-card db-compact") == 3, k[:120]
     assert "368,00" in k, "la contrepartie en euros des points a disparu"
     assert "kpi-v" not in k and "kpi-l" not in k, "l'ancien vocabulaire est revenu"
+
+
+# ── LES TROIS VUES AJOUTÉES LE 24/09/2026 ───────────────────────────────────────────────────
+#
+# ⚠️ AUCUNE NE CORRIGE UN CALCUL, ELLES CORRIGENT UN SILENCE. La page ne bougeait pas d'un jour à
+# l'autre — sa réponse est cumulative ; le parrainage n'était visible nulle part ; la colonne des
+# langues était remplie et jamais lue. Retirer l'un de ces appels ne casse RIEN : la page s'affiche,
+# simplement un bloc reste vide. C'est pourquoi ces contrôles existent.
+
+
+def test_les_trois_vues_sont_appelees_au_rendu():
+    js = _js()
+    for appel in ("bandeDuJour(d.journee)", "parrainage(d.parrainage)", "langues(d.langues)"):
+        assert appel in js, f"{appel} ne se fait plus : le bloc resterait vide, sans erreur"
+
+
+def test_la_bande_du_jour_distingue_un_zero_d_un_chiffre():
+    """
+    ⚠️ « 0 PARRAINAGE » EST UNE INFORMATION, PAS UN VIDE. C'est le seul chiffre qui dira si le lien
+    WhatsApp sert — le partage se fait dans WhatsApp et nous n'en voyons rien. Le peindre comme les
+    autres le ferait lire comme un résultat ; l'effacer le ferait disparaître.
+    """
+    js = _js()
+    i = js.index("  function bandeDuJour(")
+    r = _node("""
+const champs = {};
+function E(id){ return champs[id] || (champs[id] = {textContent:'',innerHTML:'',style:{}}); }
+""" + js[i:js.index("\n  }", i) + 4] + """
+bandeDuJour({date:'2026-09-24', cards:7, customers:2, rewards:0, referrals:0});
+console.log(JSON.stringify({h: champs['jour'].innerHTML}));
+""")
+    h = r["h"]
+    assert 'class="n rien">0' in h, "un zéro se lit comme un résultat"
+    assert 'class="n bon">+2' in h, "les numéros pris ne ressortent plus"
+    assert "cartes aujourd'hui" in h
+
+
+def test_le_rythme_se_cale_sur_le_maximum_de_la_serie():
+    """
+    ⚠️ UN COMPTE N'A PAS D'ÉCHELLE ABSOLUE. Caler six inscriptions sur 100 % donnerait douze barres
+    de six pixels — un graphique plat qui raconterait qu'il ne se passe rien. L'échelle est donc
+    relative au maximum de la série, et le nombre reste écrit sous la barre parce qu'une hauteur
+    relative ne se lit pas en valeur.
+    """
+    g = _colonnes("conv-rythme")
+    # 5 est le maximum de SEMAINES : sa barre est pleine, celle de 3 vaut 60 %.
+    assert 'style="height:100%"' in g, "la plus grosse semaine n'est plus à fond"
+    assert 'style="height:60%"' in g, "l'échelle n'est plus relative au maximum"
