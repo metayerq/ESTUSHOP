@@ -227,7 +227,23 @@
   <input type="hidden" id="m-id">
   <div class="f-row">
     <label class="field-label">Titre</label>
-    <input class="field-input" id="m-title" placeholder="Ex. Pop-up torréfacteur invité">
+    <div>
+      <input class="field-input" id="m-title" placeholder="Ex. Pop-up torréfacteur invité (portugais)">
+      <!-- ⚠️ EMPILÉES, PAS EN ONGLETS. Des onglets CACHENT ce qui n'est pas rempli — or le défaut
+           qu'on veut éviter est précisément d'oublier une langue. Empilées, l'absence se voit.
+
+           ⚠️ ET LA PREMIÈRE LIGNE N'A PAS DE DRAPEAU « PT ». Elle n'est pas une traduction : c'est
+           LA colonne, celle qui sert de repli aux deux autres. Une étiquette de langue laisserait
+           croire qu'on peut la laisser vide. -->
+      <div class="trad">
+        <span class="trad-l">EN</span>
+        <input class="field-input" id="m-title-en" placeholder="Traduction anglaise (optionnelle)">
+      </div>
+      <div class="trad">
+        <span class="trad-l">FR</span>
+        <input class="field-input" id="m-title-fr" placeholder="Traduction française (optionnelle)">
+      </div>
+    </div>
   </div>
   <div class="f-row f-row2">
     <div><label class="field-label">Date</label><input type="date" class="field-input" id="m-date"></div>
@@ -358,6 +374,16 @@
            rendez-vous fournisseurs : « Privatisation anniversaire Marta » sur la page de tous les
            clients est le genre de fuite que personne ne découvre avant qu'un client n'en parle. -->
       <span>Afficher cet événement aux clients</span>
+    </label>
+  </div>
+  <!-- ⚠️ UN INTERRUPTEUR, PAS UNE AUTORISATION. Décoché, la vignette est inerte même avec une
+       description. Coché, elle ne s'ouvre que s'il y a QUELQUE CHOSE à montrer — une popup qui
+       répète le titre et la date de la carte est ce qu'on a déjà écarté. -->
+  <div class="f-row">
+    <label class="field-label">Vignette cliquable</label>
+    <label style="display:flex;align-items:center;gap:.5rem;font-size:.9rem">
+      <input type="checkbox" id="m-openable" checked>
+      <span>Le client peut ouvrir le détail (description, photo, lien)</span>
     </label>
   </div>
   </details>
@@ -541,6 +567,7 @@ function majApercu(){
   const img    = ($('m-img').value || '').trim();
   const lien   = ($('m-link').value || '').trim();
   const visible = $('m-oncard').checked;
+  const cliquable = $('m-openable').checked;
   const annule  = $('m-status').value === 'cancelled';
 
   const quand = quandFr(date, heure) + (lieu ? ' · ' + lieu : '');
@@ -548,7 +575,8 @@ function majApercu(){
      client : sans description, sans photo et sans lien, la vignette est inerte — promettre
      « en savoir plus » pour ne rien apprendre de plus est la façon la plus rapide de faire cesser
      d'y toucher. L'aperçu doit donc être inerte lui aussi, sinon il mentirait. */
-  const ouvrable = Boolean(desc || img || lien);
+  /* La MÊME règle que la page client : l'interrupteur coupe, il n'autorise pas. */
+  const ouvrable = cliquable && Boolean(desc || img || lien);
 
   boite.className = 'apercu' + (visible && !annule && titre ? '' : ' apercu-vide');
   if(!titre){
@@ -565,7 +593,8 @@ function majApercu(){
   const avis = [];
   if(!visible) avis.push('<span class="alerte">Masqué aux clients</span> (case décochée).');
   if(annule)   avis.push('<span class="alerte">Annulé</span> : jamais affiché aux clients.');
-  if(!ouvrable) avis.push('Sans description, photo ni lien, la vignette ne s\'ouvre pas.');
+  if(!cliquable) avis.push('<span class="alerte">Vignette non cliquable</span> (case décochée).');
+  else if(!ouvrable) avis.push('Sans description, photo ni lien, la vignette ne s\'ouvre pas.');
   if(date){
     const j = Math.round((new Date(date.slice(0,10)+'T12:00:00Z') - new Date(new Date().toISOString().slice(0,10)+'T12:00:00Z')) / 86400000);
     if(j < 0) avis.push('Date passée : plus affiché.');
@@ -786,6 +815,8 @@ function openModal(ev, prefillDate){
   // ⚠️ `!== false` ET NON `|| true` : un événement d'avant la colonne rend `undefined`, et c'est
   // « affiché » par défaut — ce qui est le comportement qu'on avait déjà.
   $('m-oncard').checked = ev?.show_on_card !== false;
+  /* ⚠️ `!== false` : une ligne d'avant la colonne rend `undefined`, et « inconnu » vaut « cliquable ». */
+  $('m-openable').checked = ev?.openable !== false;
   $('m-img-etat').textContent = '';
   majApercu();
   /* ⚠️ BRANCHÉ ICI, PAS AU CHARGEMENT DE LA PAGE. Le formulaire est (ré)initialisé à chaque
@@ -808,6 +839,7 @@ function openModal(ev, prefillDate){
   }
   $('m-status').onchange = majApercu;
   $('m-oncard').onchange = majApercu;
+  $('m-openable').onchange = majApercu;
   /* Les lignes de traduction rafraîchissent l'aperçu comme les autres. */
   for (const id of ['m-title-en','m-title-fr','m-desc-en','m-desc-fr','m-link-label-en','m-link-label-fr']) {
     $(id).oninput = majApercu;
@@ -953,6 +985,7 @@ async function saveEvent(){
     link_url: $('m-link').value.trim(),
     link_label: $('m-link-label').value.trim(),
     show_on_card: $('m-oncard').checked,
+    openable: $('m-openable').checked,
     title_en: $('m-title-en').value.trim(),
     title_fr: $('m-title-fr').value.trim(),
     description_en: $('m-desc-en').value.trim(),
@@ -1015,6 +1048,7 @@ async function saveEvent(){
             link_url: base.link_url,
             link_label: base.link_label,
             show_on_card: base.show_on_card,
+            openable: base.openable,
             /* ⚠️ LES TRADUCTIONS SUIVENT LA DESCRIPTION. Les propager séparément — ou pas du tout —
                laisserait douze occurrences avec un texte portugais à jour et un anglais périmé :
                le client anglophone lirait l'ancienne version sans que rien ne le signale. */

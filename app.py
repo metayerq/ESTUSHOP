@@ -3666,8 +3666,11 @@ def _build_event_row(data, status):
     # champ absent de la requête ne doit pas être inventé. Décoché une fois, il ne doit pas
     # réapparaître à la prochaine correction d'horaire — sinon une privatisation retourne sur la
     # page de tous les clients, et personne au café ne l'apprend.
+    # ⚠️ `openable` REJOINT CETTE LISTE POUR LA MÊME RAISON QUE `show_on_card` : un champ absent de
+    # la requête ne doit pas être inventé. Décoché une fois, il ne doit pas réapparaître à la
+    # prochaine correction d'horaire.
     for champ, defaut in (("series_id", None), ("active", True), ("notes", None),
-                          ("show_on_card", True)):
+                          ("show_on_card", True), ("openable", True)):
         if champ in data:
             row[champ] = data[champ]
         elif not est_mise_a_jour and champ not in ("notes",):

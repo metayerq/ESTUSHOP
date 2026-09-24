@@ -597,7 +597,38 @@ def test_le_chevron_de_l_apercu_ne_promet_rien_de_faux():
     src = _lire("events.html")
     i = src.index("function majApercu")
     corps = src[i:src.index("\n}", i)]
-    assert "const ouvrable = Boolean(desc || img || lien)" in corps, (
+    assert "const ouvrable = cliquable && Boolean(desc || img || lien)" in corps, (
         "le chevron de l'aperçu ne suit plus la règle d'ouverture de la page client"
     )
+    # ⚠️ L'INTERRUPTEUR COUPE, IL N'AUTORISE PAS : `cliquable` seul ne suffit jamais à ouvrir une
+    # vignette qui n'a rien à montrer, et une popup qui répète la carte est ce qu'on a écarté.
+    assert "$('m-openable').checked" in src, "l'aperçu ignore l'interrupteur"
     assert "ouvrable ?" in corps, "le chevron s'affiche sans condition"
+
+
+def _row(data, status="planned"):
+    """⚠️ IMPORTÉ ICI ET NON EN TÊTE DE FICHIER : ce module de tests éprouve des GABARITS, il ne
+    chargeait pas l'application. Un import global la ferait démarrer pour vérifier du CSS."""
+    import app
+
+    return app._build_event_row(data, status)
+
+
+def test_l_interrupteur_d_ouverture_n_est_pas_invente_a_la_mise_a_jour():
+    """⚠️ MÊME GARDE QUE `show_on_card` : décoché une fois, il ne doit pas réapparaître à la
+    prochaine correction d'horaire — sinon une vignette qu'on a voulue inerte redevient cliquable
+    sans que personne ne l'apprenne."""
+    row = _row({"id": "e1", "title": "x", "date": "2026-10-03"})
+    assert "openable" not in row
+
+
+def test_un_evenement_cree_est_cliquable_par_defaut():
+    """`True` à la création : ne rien changer à ce qui marche."""
+    row = _row({"title": "x", "date": "2026-10-03"})
+    assert row["openable"] is True
+
+
+def test_l_apercu_dit_quand_la_vignette_n_est_pas_cliquable():
+    """Sinon on décoche, l'aperçu montre un chevron en moins, et rien n'explique pourquoi."""
+    s = _lire("events.html")
+    assert "Vignette non cliquable" in s

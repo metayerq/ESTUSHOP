@@ -348,3 +348,36 @@ def test_l_apercu_refuse_une_date_hors_plage():
     assert "d.toISOString().slice(0,10) !== j" in corps, (
         "une date hors plage produirait un jour de semaine faux mais plausible"
     )
+
+
+def test_chaque_identifiant_lu_par_le_script_existe_dans_la_page():
+    """
+    ⚠️ CE CONTRÔLE EXISTE À CAUSE D'UNE PANNE QUI A BLOQUÉ LE BACKOFFICE. Les lignes de traduction du
+    TITRE n'avaient jamais été ajoutées — la substitution qui devait les insérer n'a pas trouvé son
+    motif et n'a rien fait, en silence. Le JavaScript, lui, lisait déjà `m-title-en` :
+    `$('m-title-en').value` lève une TypeError, `openModal` meurt, et la fenêtre d'édition ne s'ouvre
+    JAMAIS. Cliquer un événement ne faisait plus rien.
+
+    ⚠️ ET MES TESTS L'AVAIENT LAISSÉ PASSER pour une raison qu'il faut retenir : ils vérifiaient que
+    `'m-title-en'` figurait dans le FICHIER. Il y figurait — dans le script qui le lit. Vérifier
+    qu'un nom est écrit quelque part ne dit rien sur l'existence de ce qu'il désigne. C'est la même
+    erreur que d'avoir lu une règle CSS en production et conclu qu'elle s'appliquait.
+
+    ⚠️ IL EST GÉNÉRAL EXPRÈS. Cette page lit une soixantaine d'identifiants ; le prochain champ ajouté
+    au script sans son HTML tombera ici, et non chez le propriétaire un soir de service.
+    """
+    import re
+
+    s = _page_events()
+    html = s[: s.index("<script")]
+    ids = set(re.findall(r'id="([^"]+)"', html))
+    js = s[s.index("<script>") :]
+    # ⚠️ ON NE DÉPOUILLE PAS LES COMMENTAIRES ICI : un identifiant cité dans un commentaire mais
+    # jamais lu ne casse rien, alors qu'un identifiant lu et absent casse tout. Le faux positif est
+    # sans danger, le faux négatif bloque la page.
+    lus = set(re.findall(r"\$\('([^']+)'\)", js))
+    absents = sorted(lus - ids)
+    assert not absents, (
+        f"lus par le script mais absents du HTML — `openModal` lèvera et la fenêtre "
+        f"d'édition ne s'ouvrira plus : {absents}"
+    )
