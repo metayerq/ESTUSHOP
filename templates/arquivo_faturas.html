@@ -174,11 +174,26 @@
   box-sizing:border-box; }
 .fx-ed:focus { outline:2px solid var(--db-ink); outline-offset:-1px; }
 .fx-ed.fx-court { text-align:right; font-variant-numeric:tabular-nums; }
-/* La quantité et son unité partagent une colonne : `min-width:0` est ce qui les autorise à
-   rétrécir au lieu de déborder — sans lui, un enfant de flex garde sa largeur de contenu. */
-.fx-duo { display:flex; gap:6px; }
+/* ⚠️ DEUX CHAMPS CÔTE À CÔTE SE LISENT COMME DEUX COLONNES. Un nombre et une unité posés
+   avec un écart entre eux, sous un en-tête unique, donnaient l'impression de deux
+   informations sans rapport — « il y a deux champs, je ne sais pas lequel remplir ». Ils sont
+   désormais collés dans une seule boîte encadrée : une mesure, pas deux cases.
+
+   `min-width:0` est ce qui autorise les enfants à rétrécir au lieu de déborder — sans lui,
+   un enfant de flex garde la largeur de son contenu. */
+.fx-duo { display:flex; align-items:stretch; border:1px solid var(--db-line);
+  border-radius:7px; overflow:hidden; background:var(--db-card); }
 .fx-duo > * { min-width:0; }
-.fx-duo .fx-unite { flex:0 0 50px; text-align:left; }
+.fx-duo .fx-ed { border:0; border-radius:0; background:transparent; }
+.fx-duo .fx-ed:focus { outline-offset:-2px; }
+.fx-duo .fx-unite { flex:0 0 74px; text-align:left; border-left:1px solid var(--db-line);
+  padding-left:7px; padding-right:2px; color:var(--db-muted); }
+.fx-duo .fx-unite:invalid { color:var(--db-red); }
+
+/* La légende sous l'en-tête : le ⓘ ne se survole pas sur une tablette qu'on tient à deux
+   mains, et un écran qu'on n'utilise que trois fois par semaine s'oublie entre deux fois. */
+.fx-legende { font-size:12.5px; color:var(--db-muted); line-height:1.55; margin:0 0 14px; }
+.fx-legende b { color:var(--db-ink); font-weight:500; }
 /* ⚠️ UN CHAMP EN ATTENTE DOIT SE VOIR. Sans retour, on ne sait pas si la correction est
    partie : on la retape, ou pire, on part en croyant l'avoir enregistrée. */
 .fx-ed[data-etat="occupe"] { opacity:.55; }
@@ -496,6 +511,31 @@ function champ(cle, valeur, attrs) {
             : (valeur === null || valeur === undefined ? '' : valeur)) + '">';
 }
 
+/* ⚠️ LES UNITÉS QUE LA TABLE DE CONVERSION SAIT LIRE, ET RIEN D'AUTRE. Taper « Kgs » ou
+   « bte » à la main donne une ligne qui ne se convertira jamais, sans rien dire : c'est
+   précisément la fabrique d'« rattachée sans valeur ». Une liste ferme la porte.
+
+   ⚠️ MAIS ELLE NE JETTE PAS CE QUI EST DÉJÀ ÉCRIT. Les factures portent « Uni », « KG »,
+   « Lt » — le scan les recopie telles quelles, et le serveur sait les normaliser. Une liste
+   qui ne contiendrait que les formes canoniques REMPLACERAIT silencieusement la valeur lue
+   sur le papier par la première de la liste, à la première ouverture de l'écran. Ce qui
+   existe est donc toujours proposé, marqué comme venant de la facture. */
+const UNITES = [
+  ['', '—'], ['g', 'g · grammes'], ['kg', 'kg · kilos'],
+  ['ml', 'ml · millilitres'], ['cl', 'cl · centilitres'], ['l', 'l · litres'],
+  ['unit', 'unit · à la pièce'],
+];
+
+function unite(valeur) {
+  const v = valeur === null || valeur === undefined ? '' : String(valeur);
+  const connue = UNITES.some(u => u[0] === v);
+  return '<select class="fx-ed fx-unite" data-champ="unit" aria-label="' + esc(NOMS.unit) + '">'
+    + (connue ? '' : '<option value="' + esc(v) + '" selected>' + esc(v) + ' · lu sur la facture</option>')
+    + UNITES.map(u => '<option value="' + u[0] + '"' + (connue && u[0] === v ? ' selected' : '')
+        + '>' + u[1] + '</option>').join('')
+    + '</select>';
+}
+
 function centimes(cle, c) {
   /* ⚠️ ON SAISIT DES EUROS, ON STOCKE DES CENTIMES. Demander « 3213 » pour 32,13 € est une
      invitation permanente à la faute de frappe d'un facteur cent. */
@@ -533,11 +573,13 @@ function conversion(l) {
 }
 
 const BULLES = {
-  q: 'La quantité telle qu’elle est écrite sur la facture, dans l’unité du fournisseur — '
-   + '« 2 Uni », « 0,478 KG ». On ne la corrige que si le scan l’a mal lue.',
-  r: 'La même quantité, dans l’unité de l’ingrédient en stock — celle des recettes et du coût '
-   + 'de revient. C’est CE champ qui doit être rempli pour que la ligne compte dans les coûts. '
-   + 'Quand les deux unités se convertissent, il se remplit seul ; sinon, à vous de le dire.',
+  q: 'Ce qui est écrit sur le papier : un nombre et l’unité du fournisseur. « MIRTILO 500 G » '
+   + 'se saisit 500 et g. On ne la corrige que si le scan l’a mal lue — c’est la facture qui '
+   + 'fait foi, pas nous.',
+  r: 'La même quantité, dans l’unité de l’ingrédient en stock — celle des recettes. Le prix au '
+   + 'kilo se calcule à partir d’elle : 6,69 € pour 0,5 kg font 13,38 €/kg. Se remplit seul '
+   + 'quand les deux unités se convertissent ; sinon, à vous de le dire. Vide, la ligne ne '
+   + 'compte dans AUCUN coût.',
 };
 const info = c => '<span class="fx-info" tabindex="0" role="note" data-bulle="' + esc(BULLES[c])
   + '" aria-label="' + esc(BULLES[c]) + '">i</span>';
@@ -589,7 +631,7 @@ function dessiner(boite, d) {
             + ' dans « Qté en stock ».' : '') + '</div>'
       + '<div data-neuf></div></td>'
       + '<td class="fx-num"><div class="fx-duo">' + champ('qty', l.qty, 'fx-court')
-      + champ('unit', l.unit, 'fx-unite') + '</div></td>'
+      + unite(l.unit) + '</div></td>'
       + '<td class="fx-num">' + centimes('unit_price_cents', l.unit_price_cents) + '</td>'
       + '<td class="fx-num">' + champ('qty_ref', l.qty_ref, 'fx-court') + '</td>'
       + '<td class="fx-num">' + centimes('line_total_cents', l.line_total_cents) + '</td>'
@@ -613,6 +655,10 @@ function dessiner(boite, d) {
     /* Les en-têtes ne dimensionnent plus rien — le colgroup s'en charge — donc ils peuvent
        redevenir courts. L'unité monétaire passe dans le titre plutôt que dans chaque cellule. */
     + liste
+    + '<p class="fx-legende"><b>Qté facturée</b> : ce que le fournisseur a écrit sur le papier, '
+    + 'dans son unité à lui — « 500 g », « 2 Uni ». <b>Qté en stock</b> : la même chose dans '
+    + 'l’unité de l’ingrédient, celle des recettes. C’est elle qui donne le prix au kilo, donc '
+    + 'le coût de revient. Quand les deux unités se convertissent, elle se remplit seule.</p>'
     + '<div class="fx-cadre"><table class="fx-lignes">'
     + '<colgroup><col class="c-n"><col><col class="c-q"><col class="c-p">'
     + '<col class="c-r"><col class="c-t"><col class="c-x"></colgroup>'
@@ -704,24 +750,45 @@ $('fx-detail').addEventListener('change', async e => {
   }
   const d = await ecrire('/api/arquivo-faturas/linha/' + tr.dataset.linha, 'PATCH', corps, inp);
   if (!d) return;
-  const avis = tr.querySelector('[data-avis]');
-  /* ⚠️ L'AVERTISSEMENT EST LE CŒUR DE L'ÉCRAN. Un ingrédient rattaché dont la conversion a
-     échoué a l'air réparé et ne pèse toujours RIEN dans les coûts. Sans cette phrase, on
-     croirait la correction faite. */
-  if (avis) {
-    avis.textContent = d.aviso
-      ? d.aviso + ' — indiquez la quantité en ' + (d.unit_ref || 'unité de référence')
-        + ' pour que cette ligne compte dans les coûts.'
-      : '';
-  }
-  if (d.linha) {
-    const q = tr.querySelector('[data-champ="qty_ref"]');
-    if (q && document.activeElement !== q) {
-      q.value = nb(d.linha.qty_ref);
-    }
-  }
+  rafraichirLigne(tr, d);
   charger();
 });
+
+/* ⚠️ LA BASE ÉTAIT JUSTE ET L'ÉCRAN MENTAIT. Après avoir corrigé « 1 » en « 500 g », la ligne
+   valait bien 0,5 kg à 13,38 €/kg en base — et la page continuait d'afficher « 1 → 1 kg ·
+   6,69 €/kg », parce que seul le champ modifié était retouché. On relit donc TOUT ce qui se
+   DÉDUIT de la ligne : le badge, la conversion, l'avertissement, la quantité en stock.
+
+   ⚠️ ET ON NE REDESSINE PAS LE TABLEAU ENTIER. `ouvrir()` ferait l'affaire en une ligne, mais
+   il détruit les champs — donc le focus et ce qu'on est en train de taper dans la cellule
+   d'à côté. Une correction qui fait sauter le curseur n'est pas utilisable au comptoir. */
+function rafraichirLigne(tr, d) {
+  const l = d.linha;
+  if (!l) return;
+  if (FATURE && FATURE.linhas) {
+    const i = FATURE.linhas.findIndex(x => String(x.id) === tr.dataset.linha);
+    if (i >= 0) FATURE.linhas[i] = l;
+  }
+  const badge = tr.querySelector('.fx-puce');
+  if (badge) badge.outerHTML = badgeLigne(l);
+  const conv = tr.querySelector('.fx-conv');
+  const neuf = conversion(l);
+  if (conv) { if (neuf) conv.outerHTML = neuf; else conv.remove(); }
+  else if (neuf) tr.querySelector('.fx-lu').insertAdjacentHTML('afterend', neuf);
+
+  const avis = tr.querySelector('[data-avis]');
+  /* ⚠️ L'AVERTISSEMENT EST LE CŒUR DE L'ÉCRAN. Un ingrédient rattaché dont la conversion a
+     échoué a l'air réparé et ne pèse toujours RIEN dans les coûts. */
+  if (avis) {
+    avis.textContent = sansValeur(l)
+      ? 'Rattachée, mais sans quantité de référence : cette ligne ne compte dans aucun coût. '
+        + 'Indiquez la quantité en ' + (d.unit_ref || PAR_NOM.get(l.ingredient) || 'unité de référence')
+        + ' dans « Qté en stock ».'
+      : '';
+  }
+  const q = tr.querySelector('[data-champ="qty_ref"]');
+  if (q && document.activeElement !== q) q.value = nb(l.qty_ref);
+}
 
 $('fx-detail').addEventListener('click', async e => {
   if (!FATURE) return;

@@ -3565,17 +3565,32 @@ def _ligne_ecrite(corps, ligne_existante=None):
 
     base = dict(ligne_existante or {})
     base.update(row)
-    if "ingredient" in row:
-        if row["ingredient"] is None:
+
+    # ⚠️ LE RECALCUL NE SE DÉCLENCHAIT QU'AU CHANGEMENT D'INGRÉDIENT, ET C'ÉTAIT UN TROU. Une
+    # ligne lue « MIRTILO 500 G » arrivait en « 1 » sans unité, rattachée aux Myrtilles au
+    # kilo : le système croyait un kilo à 6,69 € alors que c'était une barquette de 500 g à
+    # 13,38 €/kg. On corrige la quantité à 500 et l'unité à « g » — la facture devient juste à
+    # l'écran, et `price_per_ref` reste à 6,69. Le prix au kilo, celui qui part dans le coût
+    # de CHAQUE recette portant des myrtilles, garde son facteur deux d'erreur, en silence.
+    #
+    # Toute donnée qui ENTRE dans le calcul doit donc le relancer : la quantité, l'unité, le
+    # montant de la ligne, l'ingrédient. Corriger une facture sans corriger son coût n'est pas
+    # une demi-correction, c'est une correction qui ment.
+    ENTREES = {"ingredient", "qty", "unit", "line_total_cents", "qty_ref"}
+    if ENTREES & set(row):
+        if not base.get("ingredient"):
             # ⚠️ DÉTACHER, C'EST AUSSI EFFACER LES RÉFÉRENCES. Les laisser en place garderait
             # une dépense rattachée à un ingrédient qui n'est plus nommé nulle part.
             row["qty_ref"] = None
             row["price_per_ref"] = None
             row["match_source"] = "unmatched"
         else:
-            unit_ref = _unite_ref_ingredient(row["ingredient"])
+            unit_ref = _unite_ref_ingredient(base["ingredient"])
             if "qty_ref" in row and row["qty_ref"] not in (None, ""):
-                # Quantité de référence donnée à la main : on la croit, et on en déduit le prix.
+                # ⚠️ LA VALEUR DONNÉE À LA MAIN L'EMPORTE, MAIS SEULEMENT QUAND C'EST ELLE
+                # QU'ON VIENT DE TAPER. Si l'on corrige la quantité facturée, c'est la
+                # conversion qui doit reprendre la main — sinon un `qty_ref` saisi la semaine
+                # dernière figerait le coût pendant qu'on rectifie la facture sous ses yeux.
                 try:
                     qref = float(row["qty_ref"])
                 except (TypeError, ValueError):

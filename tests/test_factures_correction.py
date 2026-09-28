@@ -86,3 +86,80 @@ def test_sans_unite_de_reference_on_ne_calcule_rien():
     qty_ref, prix, raison = _references_ligne(1, "kg", None, 900)
     assert (qty_ref, prix) == (None, None)
     assert raison
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# CORRIGER LA FACTURE DOIT CORRIGER LE COÛT
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+from app import _ligne_ecrite
+
+
+class _Ingr:
+    """Remplace la lecture Supabase de l'unité de référence — le calcul ne dépend que d'elle."""
+    def __init__(self, unit_ref):
+        self.unit_ref = unit_ref
+
+    def __call__(self, nom):
+        return self.unit_ref
+
+
+def _ecrire(monkeypatch, corps, existante, unit_ref="kg"):
+    import app as module
+    monkeypatch.setattr(module, "_unite_ref_ingredient", _Ingr(unit_ref))
+    row, err = _ligne_ecrite(corps, existante)
+    assert err is None, err
+    return row
+
+
+def test_corriger_la_quantite_recalcule_le_prix_de_reference(monkeypatch):
+    """
+    ⚠️ LE DÉFAUT QUE CE TEST FIGE A ÉTÉ VU EN VRAI, SUR UNE LIGNE DE LIDL. « MIRTILO 500 G »
+    est arrivé du scan en quantité « 1 » sans unité, rattaché aux Myrtilles qui se comptent au
+    kilo : le système a retenu un kilo à 6,69 €. C'est une barquette de 500 g — 13,38 €/kg,
+    le double.
+
+    On corrige la quantité et l'unité à l'écran, la facture devient juste… et `price_per_ref`
+    restait à 6,69, parce que le recalcul ne se déclenchait qu'au changement d'INGRÉDIENT. Le
+    prix au kilo, celui qui part dans le coût de chaque recette portant des myrtilles, gardait
+    son facteur deux d'erreur sans que rien ne le dise.
+    """
+    existante = {"ingredient": "Myrtilles", "qty": 1.0, "unit": None,
+                 "line_total_cents": 669, "qty_ref": 1.0, "price_per_ref": 6.69}
+    row = _ecrire(monkeypatch, {"qty": 500, "unit": "g"}, existante)
+    assert row["qty_ref"] == 0.5
+    assert abs(row["price_per_ref"] - 13.38) < 0.01
+
+
+def test_corriger_le_montant_seul_recalcule_aussi(monkeypatch):
+    # Le scan lit parfois un chiffre de travers : 6,69 € devient 66,90 €. Corriger le total
+    # sans corriger le prix au kilo laisserait le coût faux.
+    existante = {"ingredient": "Myrtilles", "qty": 500, "unit": "g",
+                 "line_total_cents": 669, "qty_ref": 0.5, "price_per_ref": 13.38}
+    row = _ecrire(monkeypatch, {"line_total_cents": 6690}, existante)
+    assert abs(row["price_per_ref"] - 133.8) < 0.01
+
+
+def test_la_quantite_en_stock_saisie_a_la_main_est_respectee(monkeypatch):
+    # « 2 Uni » ne se convertit pas en kilos : c'est l'humain qui sait que la barquette fait
+    # 478 g. Ce qu'il tape l'emporte.
+    existante = {"ingredient": "Paupiette", "qty": 2, "unit": "Uni", "line_total_cents": 900}
+    row = _ecrire(monkeypatch, {"qty_ref": 0.478}, existante)
+    assert row["qty_ref"] == 0.478
+    assert abs(row["price_per_ref"] - 9 / 0.478) < 0.01
+
+
+def test_detacher_efface_le_cout_meme_sans_toucher_a_l_ingredient(monkeypatch):
+    existante = {"ingredient": "Myrtilles", "qty": 500, "unit": "g",
+                 "line_total_cents": 669, "qty_ref": 0.5, "price_per_ref": 13.38}
+    row = _ecrire(monkeypatch, {"ingredient": ""}, existante)
+    assert row["qty_ref"] is None and row["price_per_ref"] is None
+    assert row["match_source"] == "unmatched"
+
+
+def test_changer_le_texte_lu_ne_touche_pas_au_cout(monkeypatch):
+    """Le texte OCR n'entre dans aucun calcul : le corriger ne doit RIEN recalculer."""
+    existante = {"ingredient": "Myrtilles", "qty": 500, "unit": "g",
+                 "line_total_cents": 669, "qty_ref": 0.5, "price_per_ref": 13.38}
+    row = _ecrire(monkeypatch, {"raw_text": "MIRTILO 500 G (relu)"}, existante)
+    assert "qty_ref" not in row and "price_per_ref" not in row
