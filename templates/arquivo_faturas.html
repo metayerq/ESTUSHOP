@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/static/icons/favicon-32.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Estudantina">
+<meta name="theme-color" content="#F7FAFC">
+<title>Estudantina · Factures scannées</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<link rel="stylesheet" href="/static/dashboard.css?v={{ v }}">
+<style>
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   CE QUE LE SCAN A COMPRIS, RELISIBLE.
+
+   ⚠️ LES CLASSES SONT PRÉFIXÉES `fx-`, ET C'EST UNE LEÇON PAYÉE. Sur `/marge`, une liste
+   nommée `.chaine` a hérité d'une grille à sept colonnes définie dans `style.css` : chaque
+   phrase s'est pliée en colonne d'un mot de large et la dernière débordait de la carte. La
+   page se chargeait sans une seule erreur — ça ne se voit qu'en REGARDANT.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+.fx-barre { display:flex; flex-wrap:wrap; gap:10px 14px; align-items:center; margin-bottom:16px; }
+.fx-barre label { font-size:12.5px; color:var(--db-muted); display:flex; align-items:center; gap:7px; }
+.fx-barre input, .fx-barre select { font:inherit; font-size:13.5px; padding:7px 10px;
+  border:1px solid var(--db-line); border-radius:8px; background:var(--db-card); color:inherit; }
+
+.fx-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(190px,100%), 1fr));
+  gap:12px; margin-bottom:16px; }
+.fx-kpi { background:var(--db-card); border:1px solid var(--db-line); border-radius:12px;
+  padding:16px 18px; }
+.fx-kpi b { display:block; font-size:25px; font-weight:600; letter-spacing:-.01em;
+  font-variant-numeric:tabular-nums; line-height:1.1; }
+.fx-kpi span { display:block; font-size:12.5px; color:var(--db-muted); margin-top:6px; line-height:1.45; }
+.fx-kpi.fx-chaud b { color:var(--db-red); }
+
+.fx-liste { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+.fx-liste th { text-align:left; font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--db-muted); font-weight:500; padding:0 12px 10px 0; white-space:nowrap; }
+.fx-liste td { padding:12px 12px 12px 0; border-top:1px solid var(--db-line); font-size:14px;
+  vertical-align:top; }
+.fx-liste tr[data-id] { cursor:pointer; }
+.fx-liste tr[data-id]:hover td { background:var(--db-hover, rgba(0,0,0,.025)); }
+.fx-liste tr[aria-selected="true"] td { background:var(--db-hover, rgba(0,0,0,.05)); }
+.fx-num { text-align:right; white-space:nowrap; }
+.fx-four { font-weight:500; }
+.fx-ref { font-size:12px; color:var(--db-muted); margin-top:3px; }
+
+/* Une pastille ne dit qu'une chose : faut-il aller relire cette facture. */
+.fx-puce { display:inline-block; font-size:11.5px; padding:3px 8px; border-radius:20px;
+  white-space:nowrap; border:1px solid transparent; }
+.fx-ok  { color:var(--db-green); border-color:currentColor; }
+.fx-mou { color:var(--db-amber); border-color:currentColor; }
+.fx-ko  { color:var(--db-red);   border-color:currentColor; }
+
+.fx-detail { margin-top:16px; }
+.fx-entete { display:flex; flex-wrap:wrap; gap:18px 40px; align-items:flex-end;
+  padding-bottom:18px; border-bottom:1px solid var(--db-line); margin-bottom:18px; }
+.fx-entete div span { display:block; font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--db-muted); margin-bottom:5px; }
+.fx-entete div b { font-size:17px; font-weight:600; font-variant-numeric:tabular-nums; }
+
+.fx-lignes { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+.fx-lignes th { text-align:left; font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--db-muted); font-weight:500; padding:0 10px 9px 0; }
+.fx-lignes td { padding:11px 10px 11px 0; border-top:1px solid var(--db-line); font-size:13.5px;
+  vertical-align:top; }
+/* ⚠️ LE TEXTE BRUT EST LA PIÈCE À CONVICTION. C'est lui qui montre qu'une ligne lue
+   « Fiambre » a été rattachée à « El Tambo » — un rattachement faux est indiscernable d'un bon
+   tant qu'on ne lit pas ce qui était écrit sur le papier. */
+.fx-brut { font-family:ui-monospace, "SF Mono", Menlo, monospace; font-size:12px;
+  color:var(--db-muted); line-height:1.5; margin-top:5px; word-break:break-word; }
+.fx-nul { color:var(--db-red); }
+
+.fx-vide { padding:40px 0; text-align:center; color:var(--db-muted); font-size:14px; line-height:1.6; }
+
+/* ⚠️ CE BLOC VA À LA FIN DE LA FEUILLE. Une media query de même spécificité placée AVANT les
+   règles de base est écrasée par elles : tout un bloc mobile est déjà mort en silence comme ça. */
+@media (max-width:760px) {
+  /* Sur un téléphone, un tableau à six colonnes devient illisible : on le fait défiler
+     lui-même plutôt que de pousser la page entière de côté. */
+  .fx-cadre { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .fx-liste, .fx-lignes { min-width:560px; }
+  .fx-liste td:first-child { white-space:nowrap; }
+  .fx-kpi b { font-size:21px; }
+  .fx-entete { gap:14px 26px; }
+}
+</style>
+</head>
+<body>
+{% include "_rail.html" %}
+<div class="page db">
+
+  <div class="db-head">
+    <h2 class="db-title">Factures scannées</h2>
+    <span class="db-id" id="fx-fenetre">—</span>
+  </div>
+
+  {#
+    ⚠️ LE FILTRE EST EN HAUT ET IL EST VIDE PAR DÉFAUT. Une page d'archive qui s'ouvre sur
+    « les 30 derniers jours » cache le reste sans le dire : on cherche une facture de mars, on
+    ne la trouve pas, et on conclut qu'elle n'a jamais été scannée.
+  #}
+  <div class="fx-barre">
+    <label>Du <input type="date" id="fx-de"></label>
+    <label>au <input type="date" id="fx-a"></label>
+    <label>Fournisseur
+      <select id="fx-four"><option value="">tous</option></select>
+    </label>
+    <button class="db-btn" id="fx-vider">Tout voir</button>
+  </div>
+
+  <div class="fx-kpis" id="fx-kpis"></div>
+
+  <div class="db-card" style="padding:20px 22px">
+    <div class="fx-cadre">
+      <table class="fx-liste">
+        <thead><tr>
+          <th>Date</th><th>Fournisseur</th><th class="fx-num">Total</th>
+          <th class="fx-num">Lignes</th><th>Rattachement</th><th>Lecture</th>
+        </tr></thead>
+        <tbody id="fx-corps"></tbody>
+      </table>
+    </div>
+    <div class="fx-vide" id="fx-vide" hidden></div>
+  </div>
+
+  <div class="db-card fx-detail" id="fx-detail" hidden style="padding:22px 24px"></div>
+
+</div>
+{% include "_pied.html" %}
+
+<script>
+/* ⚠️ LE FORMAT EST CELUI DU PAYS, PAS CELUI DE JAVASCRIPT. `3213` centimes affiché
+   « 32.13 € » se lit comme un prix anglais au milieu d'une page française. Un seul
+   formateur, pour toute la page. */
+const EUR = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
+const eur = c => (c === null || c === undefined) ? '—' : EUR.format(c / 100);
+const esc = s => String(s === null || s === undefined ? '' : s)
+  .replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+/* ⚠️ « 1 ligne(s) » EST UN AVEU, PAS UNE TRADUCTION. Le code sait accorder. */
+const plur = (n, sing, pl) => n + ' ' + (n > 1 ? (pl || sing + 's') : sing);
+
+const JOUR = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+function jour(d) {
+  if (!d) return '—';
+  const x = new Date(d + 'T12:00:00');
+  return isNaN(x) ? d : JOUR.format(x);
+}
+
+const $ = id => document.getElementById(id);
+let CHOISIE = null;
+
+/* ── La liste ──────────────────────────────────────────────────────────────────── */
+
+async function charger() {
+  const p = new URLSearchParams();
+  if ($('fx-de').value) p.set('de', $('fx-de').value);
+  if ($('fx-a').value)  p.set('a',  $('fx-a').value);
+  if ($('fx-four').value) p.set('fornecedor', $('fx-four').value);
+
+  let d;
+  try {
+    const r = await fetch('/api/arquivo-faturas?' + p.toString());
+    d = await r.json();
+    if (d.error) throw new Error(d.error);
+  } catch (e) {
+    /* ⚠️ UN ÉCRAN VIDE QUI EXPLIQUE VAUT MIEUX QU'UN ÉCRAN VIDE MUET. Sans ce message, une
+       table absente et « aucune facture scannée » se ressemblent exactement. */
+    $('fx-corps').innerHTML = '';
+    $('fx-vide').hidden = false;
+    $('fx-vide').textContent = 'Impossible de lire les factures : ' + e.message;
+    return;
+  }
+
+  remplirFournisseurs(d.fornecedores || []);
+  poserKpis(d.totais || {}, d.faturas || []);
+  poserListe(d.faturas || []);
+}
+
+function remplirFournisseurs(liste) {
+  const sel = $('fx-four'), courant = sel.value;
+  /* ⚠️ ON NE RECONSTRUIT LA LISTE QUE SI ELLE A CHANGÉ : sinon filtrer sur un fournisseur
+     effacerait les autres options — il ne resterait que celui-là, et on ne pourrait plus
+     revenir en arrière sans recharger la page. */
+  const dejaLa = [...sel.options].slice(1).map(o => o.value).join('');
+  if (dejaLa !== liste.join('') && !courant) {
+    sel.innerHTML = '<option value="">tous</option>' +
+      liste.map(f => '<option value="' + esc(f) + '">' + esc(f) + '</option>').join('');
+  }
+}
+
+function poserKpis(t, faturas) {
+  const manque = t.sem_ingrediente_cents || 0;
+  const cartes = [
+    ['<b>' + (t.faturas || 0) + '</b><span>' +
+      (t.faturas === 1 ? 'facture scannée' : 'factures scannées') + '</span>', ''],
+    ['<b>' + eur(t.total_cents || 0) + '</b><span>d’achats sur la période</span>', ''],
+    /* ⚠️ CE CHIFFRE EST LA RAISON D'ÊTRE DE L'ÉCRAN. Une ligne sans ingrédient est de l'argent
+       dépensé qui n'entre dans AUCUN coût de revient : elle ne fausse pas la marge d'un peu,
+       elle en est absente. Le total, lui, se lit sur le papier. */
+    ['<b>' + eur(manque) + '</b><span>non rattachés à un ingrédient — invisible dans la marge</span>',
+      manque > 0 ? ' fx-chaud' : ''],
+    ['<b>' + ((t.com_divergencia || 0) + (t.sem_linhas || 0)) + '</b><span>facture(s) à relire : total et lignes qui ne tombent pas juste</span>',
+      ((t.com_divergencia || 0) + (t.sem_linhas || 0)) > 0 ? ' fx-chaud' : ''],
+  ];
+  $('fx-kpis').innerHTML = cartes.map(c => '<div class="fx-kpi' + c[1] + '">' + c[0] + '</div>').join('');
+
+  const dates = faturas.map(f => f.data).filter(Boolean).sort();
+  $('fx-fenetre').textContent = dates.length
+    ? (dates.length === 1 ? jour(dates[0]) : 'du ' + jour(dates[0]) + ' au ' + jour(dates[dates.length - 1]))
+    : '—';
+}
+
+function etatLecture(f) {
+  if (!f.linhas) return ['fx-ko', 'aucune ligne lue'];
+  if (f.ecart_cents !== null && Math.abs(f.ecart_cents) > 1)
+    return ['fx-ko', 'écart de ' + eur(Math.abs(f.ecart_cents))];
+  return ['fx-ok', 'total retrouvé'];
+}
+
+function etatRattachement(f) {
+  if (!f.linhas) return ['fx-mou', '—'];
+  const n = f.linhas_sem_ingrediente;
+  if (!n) return ['fx-ok', 'tout rattaché'];
+  return ['fx-ko', n + '/' + f.linhas + ' sans ingrédient'];
+}
+
+function poserListe(faturas) {
+  if (!faturas.length) {
+    $('fx-corps').innerHTML = '';
+    $('fx-vide').hidden = false;
+    $('fx-vide').textContent = 'Aucune facture sur cette période. Les factures arrivent ici '
+      + 'une fois déposées dans « Upload facture ».';
+    $('fx-detail').hidden = true;
+    return;
+  }
+  $('fx-vide').hidden = true;
+  $('fx-corps').innerHTML = faturas.map(f => {
+    const [cl, txt] = etatLecture(f);
+    const [cr, txr] = etatRattachement(f);
+    return '<tr data-id="' + f.id + '"' + (CHOISIE === f.id ? ' aria-selected="true"' : '') + '>'
+      + '<td>' + esc(jour(f.data)) + '</td>'
+      + '<td><div class="fx-four">' + (esc(f.fornecedor) || '<span class="fx-nul">fournisseur non lu</span>')
+      + '</div><div class="fx-ref">' + esc(f.numero || '—') + '</div></td>'
+      + '<td class="fx-num">' + eur(f.total_cents) + '</td>'
+      + '<td class="fx-num">' + f.linhas + '</td>'
+      + '<td><span class="fx-puce ' + cr + '">' + esc(txr) + '</span></td>'
+      + '<td><span class="fx-puce ' + cl + '">' + esc(txt) + '</span></td>'
+      + '</tr>';
+  }).join('');
+}
+
+/* ⚠️ DÉLÉGATION, PAS D'`onclick` DANS LE GABARIT. Un `onclick="ouvrir('TALHO DO CAMPO')"`
+   casse au premier fournisseur contenant une apostrophe ou un guillemet — et il casse en
+   SILENCE : le navigateur ignore l'attribut invalide, la page s'affiche, et plus rien ne
+   répond au clic. C'est exactement ce qui a rendu `/inventario` inerte pendant des semaines. */
+$('fx-corps').addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-id]');
+  if (tr) ouvrir(Number(tr.dataset.id));
+});
+
+/* ── Le détail ─────────────────────────────────────────────────────────────────── */
+
+async function ouvrir(id) {
+  CHOISIE = id;
+  document.querySelectorAll('#fx-corps tr[data-id]').forEach(tr => {
+    tr.toggleAttribute('aria-selected', Number(tr.dataset.id) === id);
+  });
+  const boite = $('fx-detail');
+  boite.hidden = false;
+  boite.innerHTML = '<div class="fx-vide">Lecture de la facture…</div>';
+
+  let d;
+  try {
+    const r = await fetch('/api/arquivo-faturas/' + id);
+    d = await r.json();
+    if (d.error) throw new Error(d.error);
+  } catch (e) {
+    boite.innerHTML = '<div class="fx-vide">Impossible d’ouvrir cette facture : ' + esc(e.message) + '</div>';
+    return;
+  }
+
+  const f = d.fatura, r = d.resumo, lignes = d.linhas || [];
+  const [cl, txt] = etatLecture(r);
+
+  const entete = [
+    ['Fournisseur', esc(f.fornecedor) || '—'],
+    ['Numéro', esc(f.numero) || '—'],
+    ['Date', esc(jour(f.data))],
+    ['NIF', esc(f.nif) || '—'],
+    ['Hors taxe', eur(f.subtotal_cents)],
+    ['TVA', eur(f.vat_cents)],
+    ['Total', eur(f.total_cents)],
+  ].map(x => '<div><span>' + x[0] + '</span><b>' + x[1] + '</b></div>').join('');
+
+  const corps = lignes.length ? lignes.map(l => {
+    const rattache = l.ingredient
+      ? esc(l.ingredient)
+      : '<span class="fx-nul">non rattachée</span>';
+    /* Le prix rapporté à l'unité de référence est celui qui partira dans les coûts : c'est
+       lui qu'on vérifie, pas le prix imprimé sur la facture. */
+    const ref = (l.price_per_ref === null || l.price_per_ref === undefined)
+      ? '—'
+      : EUR.format(l.price_per_ref) + (l.qty_ref !== null && l.qty_ref !== undefined
+          ? ' × ' + l.qty_ref : '');
+    return '<tr>'
+      + '<td>' + (l.line_no === null ? '—' : l.line_no) + '</td>'
+      + '<td>' + rattache
+      + '<div class="fx-brut">' + esc(l.raw_text || 'texte non conservé') + '</div></td>'
+      + '<td class="fx-num">' + (l.qty === null || l.qty === undefined ? '—' : l.qty)
+      + ' ' + esc(l.unit || '') + '</td>'
+      + '<td class="fx-num">' + eur(l.unit_price_cents) + '</td>'
+      + '<td class="fx-num">' + ref + '</td>'
+      + '<td class="fx-num">' + eur(l.line_total_cents) + '</td>'
+      + '<td>' + esc(l.match_source || '—') + '</td>'
+      + '</tr>';
+  }).join('')
+    : '<tr><td colspan="7" class="fx-vide">Le scan n’a extrait aucune ligne de cette facture. '
+      + 'Son total est connu, mais rien de ce qu’elle contient n’alimente les coûts.</td></tr>';
+
+  boite.innerHTML = '<div class="fx-entete">' + entete + '</div>'
+    + '<div class="fx-barre" style="margin-bottom:14px">'
+    + '<span class="fx-puce ' + cl + '">' + esc(txt) + '</span>'
+    + '<span style="font-size:13px;color:var(--db-muted)">'
+    + esc(plur(lignes.length, 'ligne')) + ', dont '
+    + esc(plur(r.linhas_sem_ingrediente, 'sans ingrédient', 'sans ingrédient'))
+    + ' (' + eur(r.valor_sem_ingrediente_cents) + ')</span></div>'
+    + '<div class="fx-cadre"><table class="fx-lignes"><thead><tr>'
+    + '<th>#</th><th>Ingrédient rattaché, et ce qui était écrit</th><th class="fx-num">Quantité</th>'
+    + '<th class="fx-num">Prix unité</th><th class="fx-num">Prix de référence</th>'
+    + '<th class="fx-num">Total ligne</th><th>Origine</th>'
+    + '</tr></thead><tbody>' + corps + '</tbody></table></div>';
+
+  boite.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+/* ── Démarrage ─────────────────────────────────────────────────────────────────── */
+
+['fx-de', 'fx-a', 'fx-four'].forEach(id => $(id).addEventListener('change', charger));
+$('fx-vider').addEventListener('click', () => {
+  $('fx-de').value = ''; $('fx-a').value = ''; $('fx-four').value = '';
+  charger();
+});
+
+charger().then(() => {
+  /* ⚠️ UNE FACTURE DOIT POUVOIR SE PARTAGER PAR SON ADRESSE. « regarde la facture du Talho »
+     dans un message vaut un lien, pas une explication de comment la retrouver. */
+  const id = Number(new URLSearchParams(location.search).get('id'));
+  if (id) ouvrir(id);
+});
+</script>
+</body>
+</html>

@@ -360,9 +360,19 @@ def test_qui_charge_la_charte_en_porte_la_classe():
         assert "/static/dashboard.css?v=" in html, f"{chemin} : feuille chargée sans version"
         assert 'class="page db"' in html, (
             f"{chemin} charge la charte sans porter `db` — son fond et son encre manqueront")
-    assert porteuses == ["cashflow.html", "charges.html", "cogs.html", "expenses.html",
-                         "fidelidade.html", "index.html", "reconciliation.html",
-                         "stock.html", "transactions.html"], porteuses
+    assert porteuses == [
+                         # ⚠️ AJOUTÉE LE 28/09 : l'archive des factures scannées. `/faturas`
+                         # envoie déposer une photo ; rien ne permettait de RELIRE ce que le
+                         # scan en avait compris — donc une ligne rattachée au mauvais
+                         # ingrédient passait jusqu'à la marge sans qu'aucun écran la montre.
+                         "arquivo_faturas.html",
+                         "cashflow.html", "charges.html", "cogs.html", "expenses.html",
+                         "fidelidade.html", "index.html", "inventario.html",
+                         # ⚠️ AJOUTÉE LE 27/09 : la page qui répond à « combien je gagne
+                         # vraiment ». Le chiffre vivait dans un onglet de /cogs, derrière
+                         # deux inventaires clos qui n'avaient jamais eu lieu.
+                         "marge.html",
+                         "reconciliation.html", "stock.html", "transactions.html"], porteuses
 
 
 def _courbe(payload):

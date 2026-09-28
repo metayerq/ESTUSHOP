@@ -24,6 +24,25 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DOSSIER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "migrations")
 
 # `create table [if not exists] [public.]nom`
+def _sans_commentaires(sql):
+    """
+    Le SQL, sans sa prose.
+
+    ⚠️ CE TEST LISAIT LES COMMENTAIRES COMME DU CODE, ET ÇA L'A FAIT CRIER SUR RIEN. Une
+    migration expliquant dans un commentaire que « `create table if not exists` ne fait rien si
+    la table est là » déclenchait une correspondance : le groupe optionnel `if not exists` ne
+    trouvait pas d'identifiant derrière (un backtick), le moteur revenait en arrière, sautait le
+    groupe — et capturait « if » comme nom de table. Le test exigeait alors une politique RLS sur
+    une table nommée `if`.
+
+    ⚠️ ET C'EST LA MÊME LEÇON QU'AILLEURS DANS CE DÉPÔT : un garde-fou qui examine du texte doit
+    d'abord retirer ce qui est écrit pour les humains. Un commentaire cite précisément ce que le
+    test cherche — c'est sa raison d'être.
+    """
+    sql = re.sub(r"/\*[\s\S]*?\*/", " ", sql)
+    return re.sub(r"--.*$", "", sql, flags=re.M)
+
+
 CREATION = re.compile(r"create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?([a-z_][a-z0-9_]*)",
                       re.I)
 
@@ -69,7 +88,7 @@ def test_chaque_table_creee_tranche_sur_rls(fichier):
 
     chemin = os.path.join(DOSSIER, fichier)
     with open(chemin, encoding="utf-8") as f:
-        sql = f.read()
+        sql = _sans_commentaires(f.read())
 
     tables = CREATION.findall(sql)
     if not tables:

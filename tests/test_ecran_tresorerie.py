@@ -44,6 +44,15 @@ def _code_seul(src):
     en majuscules pour une constante. Un détecteur qui se trompe apprend à ne plus être lu.
     """
     out, i, n = [], 0, len(src)
+    # Voir la branche « littéral d'expression régulière » plus bas.
+    def _position_de_motif(deja):
+        for ch in reversed("".join(deja)):
+            if ch in " \t\r\n":
+                continue
+            # Après une valeur, `/` est une division. Après tout le reste, c'est un motif.
+            return not (ch.isalnum() or ch in "_$)]")
+        return True
+
     while i < n:
         c = src[i]
         if c == "/" and i + 1 < n and src[i + 1] == "*":
@@ -54,6 +63,37 @@ def _code_seul(src):
             j = src.find("\n", i)
             i = n if j == -1 else j
             out.append(" ")
+        elif c == "/" and _position_de_motif(out):
+            """
+            ⚠️ UN LITTÉRAL D'EXPRESSION RÉGULIÈRE N'EST NI UNE DIVISION NI UNE CHAÎNE, et
+            l'ignorer aveuglait ce détecteur sur des fichiers entiers. `String(s).replace(/[&<>"]/g, …)`
+            — l'échappeur HTML présent sur plusieurs pages — contient un GUILLEMET dans sa classe
+            de caractères. Le parcours y voyait le début d'une chaîne et se décalait pour tout le
+            reste du fichier : les commentaires n'étaient plus retirés, et le contrôle a fini par
+            crier sur de la prose française en capitales pendant qu'il ne regardait plus le code.
+
+            ⚠️ DISTINGUER `/` DIVISION DE `/` MOTIF DEMANDE LE CONTEXTE, et c'est l'heuristique
+            usuelle : après une valeur (identifiant, nombre, parenthèse ou crochet fermant) c'est
+            une division ; partout ailleurs c'est un motif. Elle n'est pas parfaite — rien ne
+            l'est sans analyseur complet — mais elle couvre tout ce qu'on écrit ici.
+            """
+            j = i + 1
+            classe = False
+            while j < n:
+                d = src[j]
+                if d == "\\":
+                    j += 2; continue
+                if d == "[":
+                    classe = True
+                elif d == "]":
+                    classe = False
+                elif d == "/" and not classe:
+                    break
+                elif d == "\n":
+                    break
+                j += 1
+            i = j + 1
+            out.append(' "" ')
         elif c in "\"'":
             j = i + 1
             while j < n and src[j] != c:

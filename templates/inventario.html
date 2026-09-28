@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/static/icons/favicon-32.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Estudantina">
+<meta name="theme-color" content="#F7FAFC">
+<title>Estudantina · Inventaire</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<link rel="stylesheet" href="/static/dashboard.css?v={{ v }}">
+<style>
+/* ── Une zone à la fois ───────────────────────────────────────────────────────
+     ⚠️ CENT LIGNES DÉROULÉES D'UN COUP NE SE COMPTENT PAS. On compte debout, une
+     étagère à la fois, avec une interruption toutes les deux minutes ; après
+     chacune il faut retrouver sa place. Un accordéon par zone garde la place. ── */
+.zone { border:1px solid var(--db-line); border-radius:var(--db-r); overflow:hidden;
+  background:var(--db-card); margin-bottom:10px; }
+.zone-tete { width:100%; display:flex; align-items:center; gap:12px; padding:13px 16px;
+  background:none; border:0; cursor:pointer; text-align:left; font-family:inherit; color:var(--db-ink); }
+.zone-nom { flex:1; font-size:14px; font-weight:600; text-transform:capitalize; }
+.zone-compte { font-size:12px; color:var(--db-muted); font-variant-numeric:tabular-nums; }
+.zone-corps { border-top:1px solid var(--db-line); padding:4px 16px 12px; }
+/* L'essentiel n'est pas pliable : c'est la liste qu'on vient faire, elle est ouverte. */
+.bloc-essentiel { border:1px solid var(--db-line); border-radius:var(--db-r); overflow:hidden;
+  background:var(--db-card); }
+.bloc-tete { padding:13px 16px; display:flex; flex-direction:column; gap:3px; }
+.bloc-nom { font-size:14px; font-weight:600; }
+.bloc-note { font-size:12px; color:var(--db-muted); line-height:1.5; }
+
+.inv-row { display:flex; align-items:center; gap:12px; padding:9px 0;
+  border-bottom:1px solid var(--db-line); }
+.inv-row:last-child { border-bottom:none; }
+.inv-nom { flex:1; font-size:14px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.inv-qty { width:96px; font-family:inherit; font-size:15px; padding:8px 10px; text-align:right;
+  border:1px solid var(--db-line); border-radius:var(--db-r-sm); background:var(--db-alt); color:var(--db-ink);
+  font-variant-numeric:tabular-nums; }
+.inv-qty:focus { border-color:var(--db-faint); background:var(--db-card); outline:none; }
+/* ⚠️ COMPTÉ ET NON COMPTÉ DOIVENT SE DISTINGUER D'UN COUP D'ŒIL, sans quoi on recompte. */
+.inv-qty.fait { border-color:var(--db-green); background:var(--db-green-soft); }
+.inv-unite { width:34px; font-size:11px; color:var(--db-muted); }
+
+.jauge-bar { height:5px; border-radius:3px; background:var(--db-line); overflow:hidden; margin:8px 0 6px; }
+.jauge-bar i { display:block; height:100%; background:var(--db-green); transition:width .25s; }
+.jauge-note { font-size:12px; color:var(--db-muted); line-height:1.45; }
+</style>
+</head>
+<body>
+{% include "_rail.html" %}
+<div class="page db">
+
+  <div class="db-head">
+    <h2 class="db-title">Inventaire</h2>
+    <span class="db-id" id="jour">—</span>
+    <span class="db-sp"></span>
+    <button class="db-icone" onclick="charger()" title="Recharger">&#8635;</button>
+    <a class="db-icone" href="/logout" title="Se d&eacute;connecter">&#9099;</a>
+  </div>
+
+  <div class="db-card" style="padding:14px 16px;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <strong id="progres" style="font-size:14px">—</strong>
+      <span id="etat-seance" class="db-id"></span>
+    </div>
+    <div class="jauge-bar"><i id="jauge" style="width:0"></i></div>
+    {#
+      ⚠️ ON DIT EXPLICITEMENT QUE LE PARTIEL EST UTILE. Sans ça un comptage à 60 % paraît raté,
+      personne ne le clôt, et la variance n'existe jamais — alors qu'elle serait déjà juste sur
+      les 60 % comptés.
+    #}
+    <p class="jauge-note">
+      Pas besoin de tout compter. Ce qui est compté deux fois sera comparé&nbsp;; ce qui est
+      sauté est simplement laissé de côté.
+    </p>
+  </div>
+
+  <div id="zones"></div>
+
+  <div style="margin-top:18px">
+    <button class="db-btn" id="clore" onclick="clore()" style="display:none">Clore cet inventaire</button>
+    <span id="dit" class="db-id" style="margin-left:10px"></span>
+  </div>
+
+</div>
+{% include "_pied.html" %}
+
+<script>
+let INGREDIENTS = [], COMPTES = {}, JOUR = "", SEANCE = null, OUVERTE = null;
+let SOURCE = "achats", FENETRE = 60, RESTE_OUVERT = false;
+
+/* Au-delà, le reste redevient trop long pour une liste plate et retrouve ses zones. */
+const SEUIL_ZONES = 25;
+/* La part des achats que « l'essentiel » doit couvrir, et ses bornes de bon sens. */
+const PART_ESSENTIEL = 0.8, MIN_ESSENTIEL = 5, MAX_ESSENTIEL = 15;
+
+/*
+  ⚠️ CE DÉCOUPAGE RÉPOND À « IL Y EN A TROP », ET PAS EN RANGEANT MIEUX. Dix catégories pour
+  dix-huit ingrédients donnaient des zones de deux lignes : on ouvrait, on comptait deux
+  choses, on refermait, dix fois. Le pliage coûtait plus qu'il ne rapportait.
+
+  ⚠️ ET À TROIS COMPTAGES PAR SEMAINE, LA VRAIE QUESTION EST « QUOI COMPTER ». Tout compter
+  trois fois par semaine ne tient pas quinze jours. Quelques ingrédients portent l'essentiel
+  du coût ; le reste se vérifie une fois par mois. Le partage se déduit des FACTURES — ce
+  qu'on a réellement dépensé par ingrédient — donc il se met à jour tout seul et ne demande
+  aucune classification à la main, qui serait fausse au bout d'un trimestre.
+*/
+function partage() {
+  const tries = [...INGREDIENTS].sort((a, b) => (b.valeur || 0) - (a.valeur || 0));
+  const total = tries.reduce((s, i) => s + (i.valeur || 0), 0);
+  if (!total) return { essentiel: tries.slice(0, MIN_ESSENTIEL), reste: tries.slice(MIN_ESSENTIEL) };
+  let cumul = 0, coupe = 0;
+  for (const i of tries) {
+    cumul += i.valeur || 0; coupe++;
+    if (cumul >= total * PART_ESSENTIEL) break;
+  }
+  coupe = Math.max(MIN_ESSENTIEL, Math.min(MAX_ESSENTIEL, coupe));
+  return { essentiel: tries.slice(0, coupe), reste: tries.slice(coupe) };
+}
+
+async function charger() {
+  const r = await fetch('/api/inventario');
+  const d = await r.json();
+  INGREDIENTS = d.ingredients || []; COMPTES = d.comptes || {};
+  JOUR = d.jour; SEANCE = d.seance;
+  SOURCE = d.valeur_source || "achats"; FENETRE = d.valeur_jours || 60;
+  document.getElementById('jour').textContent = JOUR;
+  document.getElementById('etat-seance').textContent = SEANCE && SEANCE.status === 'closed' ? 'clos' : '';
+  rendre();
+}
+
+function zones() {
+  const m = new Map();
+  for (const i of INGREDIENTS) {
+    const z = (i.category || '').trim() || 'Sans catégorie';
+    if (!m.has(z)) m.set(z, []);
+    m.get(z).push(i);
+  }
+  return [...m.entries()];
+}
+
+function ligne(i, clos) {
+  const fait = COMPTES[i.name] !== undefined;
+  return `<div class="inv-row">
+    <span class="inv-nom">${esc(i.name)}</span>
+    <input class="inv-qty ${fait ? 'fait' : ''}"
+           inputmode="decimal" placeholder="—" ${clos ? 'disabled' : ''}
+           value="${fait ? COMPTES[i.name] : ''}"
+           data-nom="${esc(i.name)}" data-unite="${esc(i.unit_ref || '')}">
+    <span class="inv-unite">${esc(i.unit_ref || '')}</span>
+  </div>`;
+}
+
+function zones(liste) {
+  const m = new Map();
+  for (const i of liste) {
+    const z = (i.category || '').trim() || 'Sans catégorie';
+    if (!m.has(z)) m.set(z, []);
+    m.get(z).push(i);
+  }
+  return [...m.entries()];
+}
+
+function blocZones(liste, clos) {
+  return zones(liste).map(([zone, items]) => {
+    const n = items.filter(i => COMPTES[i.name] !== undefined).length;
+    const ouvert = OUVERTE === zone;
+    return `<div class="zone">
+      <button class="zone-tete" type="button" data-zone="${esc(zone)}">
+        <span class="zone-nom">${esc(zone)}</span>
+        <span class="zone-compte">${n}/${items.length}</span>
+      </button>
+      ${ouvert ? `<div class="zone-corps">${items.map(i => ligne(i, clos)).join('')}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function rendre() {
+  const clos = SEANCE && SEANCE.status === 'closed';
+  const { essentiel, reste } = partage();
+  const faitsEss = essentiel.filter(i => COMPTES[i.name] !== undefined).length;
+  const faitsTot = Object.keys(COMPTES).length;
+
+  /* ⚠️ LA PROGRESSION PORTE SUR L'ESSENTIEL, PAS SUR LE CATALOGUE ENTIER. « 6 sur 60 » donne
+     l'impression d'un comptage raté et personne ne le clôt ; « 6 sur 8 essentiels » se termine.
+     C'est la même raison qui fait dire à l'écran que le partiel est utile. */
+  document.getElementById('progres').textContent =
+    `${faitsEss} sur ${essentiel.length} essentiels comptés` +
+    (faitsTot > faitsEss ? ` · ${faitsTot - faitsEss} en plus` : '');
+  document.getElementById('jauge').style.width =
+    (essentiel.length ? faitsEss / essentiel.length * 100 : 0) + '%';
+  document.getElementById('clore').style.display = (!clos && faitsTot > 0) ? '' : 'none';
+
+  const pourquoi = SOURCE === 'achats'
+    ? `Les ${essentiel.length} ingrédients qui portent l'essentiel de vos achats sur ${FENETRE} jours.`
+    : `Classés par prix unitaire — aucune facture sur ${FENETRE} jours, le classement se précisera dès la première.`;
+
+  document.getElementById('zones').innerHTML = `
+    <div class="bloc-essentiel">
+      <div class="bloc-tete"><span class="bloc-nom">L'essentiel</span>
+        <span class="bloc-note">${esc(pourquoi)}</span></div>
+      <div class="zone-corps">${essentiel.map(i => ligne(i, clos)).join('')}</div>
+    </div>
+    ${reste.length ? `<div class="zone" style="margin-top:12px">
+      <button class="zone-tete" type="button" data-reste="1">
+        <span class="zone-nom">Le reste</span>
+        <span class="zone-compte">${reste.filter(i => COMPTES[i.name] !== undefined).length}/${reste.length}</span>
+      </button>
+      ${RESTE_OUVERT ? `<div class="zone-corps">${
+        /* ⚠️ LES ZONES NE REVIENNENT QUE QUAND ELLES PAIENT LEUR PLACE. En dessous du seuil,
+           une liste plate se parcourt d'un coup d'œil ; au-dessus, le pliage redevient utile. */
+        reste.length > SEUIL_ZONES ? blocZones(reste, clos) : reste.map(i => ligne(i, clos)).join('')
+      }</div>` : ''}
+    </div>` : ''}`;
+}
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/*
+  ⚠️ PLUS AUCUN GESTIONNAIRE DANS UN ATTRIBUT, ET C'EST UNE CORRECTION DE PANNE, PAS DE STYLE.
+  La version d'avant écrivait `onclick="basculer(${JSON.stringify(zone)})"`. `JSON.stringify`
+  rend TOUJOURS des guillemets doubles — dans un attribut lui-même délimité par des guillemets
+  doubles. L'attribut se fermait donc au premier, le gestionnaire devenait `basculer(`, une
+  expression invalide, et le navigateur l'ignorait en silence. Les catégories ne s'ouvraient
+  pas ; les champs de quantité, câblés pareil, n'enregistraient rien non plus.
+
+  ⚠️ CETTE PAGE N'A DONC JAMAIS FONCTIONNÉ, et rien ne pouvait le dire : le JavaScript du
+  fichier se parse parfaitement — c'est le HTML *produit à l'exécution* qui est cassé. Aucun
+  contrôle de syntaxe ne regarde ça.
+
+  La parade n'est pas de mieux échapper, c'est de ne plus concaténer de code : la donnée voyage
+  en `data-*`, échappée pour un attribut, et un seul écouteur posé sur le conteneur la relit.
+*/
+document.getElementById('zones').addEventListener('click', (e) => {
+  const tete = e.target.closest('.zone-tete');
+  if (!tete) return;
+  if (tete.dataset.reste) { RESTE_OUVERT = !RESTE_OUVERT; rendre(); return; }
+  const z = tete.dataset.zone;
+  OUVERTE = OUVERTE === z ? null : z;
+  rendre();
+});
+
+document.getElementById('zones').addEventListener('change', (e) => {
+  const champ = e.target.closest('.inv-qty');
+  if (!champ) return;
+  void saisir(champ.dataset.nom, champ.dataset.unite || '', champ.value);
+});
+
+async function saisir(nom, unite, valeur) {
+  const brut = (valeur || '').trim().replace(',', '.');
+  // ⚠️ VIDE N'EST PAS ZÉRO : on supprime la ligne, on ne la met pas à zéro.
+  if (brut === '') delete COMPTES[nom]; else COMPTES[nom] = Number(brut);
+  rendre();
+  const r = await fetch('/api/inventario', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({data: JOUR, ingredient: nom, unit_ref: unite, qty: brut === '' ? null : brut}),
+  });
+  const d = await r.json();
+  document.getElementById('dit').textContent = d.ok ? '' : 'non enregistré — vérifie la connexion';
+}
+
+async function clore() {
+  const faits = Object.keys(COMPTES).length;
+  if (!confirm(`Clore l'inventaire du ${JOUR} ? ${faits} ingrédients sur ${INGREDIENTS.length} comptés.`)) return;
+  const r = await fetch('/api/inventario', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({data: JOUR, action: 'clore'}),
+  });
+  if ((await r.json()).ok) { SEANCE = {...(SEANCE || {}), status: 'closed'}; charger(); }
+}
+
+charger();
+</script>
+</body>
+</html>

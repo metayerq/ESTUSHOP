@@ -505,9 +505,35 @@
     <button role="tab" id="tab-ingredients" aria-selected="false" onclick="switchTab('ingredients')">
       Ingredients <span class="n" id="tab-badge-ingredients">&mdash;</span>
     </button>
+    <button role="tab" id="tab-variance" aria-selected="false" onclick="switchTab('variance')">
+      Variance <span class="n" id="tab-badge-variance">&mdash;</span>
+    </button>
   </nav>
 
   <!-- Vue produits -->
+  {#
+    ⚠️ LA VARIANCE EST UN ONGLET, PAS UNE COLONNE DE PLUS. Elle ne parle pas de produits vendus
+    mais d'INGRÉDIENTS consommés : l'ajouter au tableau des marges mélangerait deux unités de
+    lecture — le plat d'un côté, le kilo de farine de l'autre.
+  #}
+  <div id="view-variance" style="display:none">
+    {# ⚠️ LA PÉRIODE SE CHOISIT. À trois comptages par semaine, « est-ce que ça s'améliore ? »
+       est la seule question qui compte, et elle reste sans réponse tant qu'on ne peut regarder
+       qu'un seul intervalle. Rien n'est stocké en plus : tout se recalcule depuis les comptages,
+       les factures et les ventes, qui sont déjà là. #}
+    <div id="variance-bornes" class="db-card"
+         style="padding:12px 16px;margin-bottom:12px;display:none;gap:10px;align-items:center;flex-wrap:wrap">
+      <span class="db-id">Période</span>
+      <select id="variance-ouv" class="db-champ" style="max-width:170px"></select>
+      <span class="db-id">→</span>
+      <select id="variance-clo" class="db-champ" style="max-width:170px"></select>
+      <button class="db-btn" onclick="chargerVariance(true)">Recalculer</button>
+    </div>
+    <div id="variance-synthese" style="display:none;margin-bottom:14px"></div>
+    <div id="variance-etat" class="db-card" style="padding:14px 16px;margin-bottom:14px;font-size:13.5px"></div>
+    <div id="variance-corps"></div>
+  </div>
+
   <div id="view-products">
 
   <!-- Summary -->
@@ -1002,11 +1028,143 @@ let sortDir       = 1;           // 1=asc, -1=desc
 // ONGLETS
 // ══════════════════════════════════════════════════════════
 function switchTab(tab) {
-  ['products','preparations','ingredients'].forEach(t => {
+  ['products','preparations','ingredients','variance'].forEach(t => {
     document.getElementById(`view-${t}`).style.display = tab === t ? '' : 'none';
     document.getElementById(`tab-${t}`).setAttribute('aria-selected', String(tab === t));
   });
+  // ⚠️ CHARGÉE À L'OUVERTURE DE L'ONGLET, PAS AU CHARGEMENT DE LA PAGE. Le calcul relit tous
+  // les documents Vendus de la période — plusieurs secondes. L'imposer à chaque visite de la
+  // page des marges punirait ceux qui ne viennent que pour elles.
+  if (tab === 'variance' && !varianceChargee) chargerVariance();
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+let varianceChargee = false;
+
+/* ⚠️ ÉCHAPPEMENT LOCAL, PARCE QU'IL N'Y EN A PAS DE GLOBAL DANS CETTE PAGE. Les noms
+   d'ingrédients viennent de la base et passent par un nom de fournisseur lu sur une facture :
+   ce n'est pas du contenu de confiance. */
+const echapper = (v) => String(v ?? '').replace(/[&<>"]/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+const eur = (v) => v === null || v === undefined
+  ? '—'
+  : (v < 0 ? '−' : '') + Math.abs(v).toFixed(2).replace('.', ',') + ' €';
+const pct = (v) => v === null || v === undefined ? '—' : (v > 0 ? '+' : '') + v + ' %';
+
+async function chargerVariance(force) {
+  const etat = document.getElementById('variance-etat');
+  const corps = document.getElementById('variance-corps');
+  const synth = document.getElementById('variance-synthese');
+  const bornes = document.getElementById('variance-bornes');
+  etat.textContent = 'Calcul en cours — lecture des ventes de la période…';
+  corps.innerHTML = ''; synth.style.display = 'none';
+
+  const q = [];
+  if (force) {
+    const o = document.getElementById('variance-ouv').value;
+    const c = document.getElementById('variance-clo').value;
+    if (o && c) q.push('ouv=' + encodeURIComponent(o), 'clo=' + encodeURIComponent(c));
+  }
+
+  try {
+    const d = await (await fetch('/api/variance' + (q.length ? '?' + q.join('&') : ''))).json();
+    if (d.etat === 'insuffisant') {
+      etat.innerHTML = `<strong>Pas encore mesurable.</strong> ${echapper(d.raison)}
+        — <a href="/inventario">faire un inventaire</a>.`;
+      return;
+    }
+    if (d.etat !== 'ok') { etat.textContent = d.raison || 'Calcul impossible.'; return; }
+    varianceChargee = true;
+
+    // Le sélecteur de bornes, rempli une fois que les séances sont connues.
+    if (d.seances && d.seances.length >= 2) {
+      const options = (sel, choisi) => {
+        sel.innerHTML = d.seances.map(x =>
+          `<option value="${x.id}" ${String(x.id) === String(choisi) ? 'selected' : ''}>${x.data}</option>`).join('');
+      };
+      options(document.getElementById('variance-ouv'), d.bornes.ouv);
+      options(document.getElementById('variance-clo'), d.bornes.clo);
+      bornes.style.display = 'flex';
+    }
+
+    const n = d.lignes.length;
+    document.getElementById('tab-badge-variance').textContent = n || '—';
+
+    /* ⚠️ LA SYNTHÈSE EST EN EUROS, PARCE QU'UN POURCENTAGE SUR DEUX JOURS ment. Les quantités
+       sont petites quand on compte souvent : +12 % sur le persil, c'est 40 centimes ; +3 % sur
+       le café, c'est 15 €. C'est l'euro qui dit où est l'argent. */
+    /* ⚠️ LA COUVERTURE S'AFFICHE TOUJOURS À CÔTÉ DU chiffre. Le COGS réel est un PLANCHER :
+       l'écart n'existe que sur ce qui a été compté deux fois. Sans ce pourcentage, on lirait un
+       chiffre mesuré là où il n'y a qu'une partie mesurée.
+
+       ⚠️ ET CE COMMENTAIRE reste dehors, pour une raison QUI A FAILLI COÛTER LA PAGE entière.
+       Je l'avais d'abord glissé dans le gabarit de chaîne ci-dessous, sous la forme d'une
+       expression-commentaire. Un bloc de commentaire se termine à sa première séquence de
+       fermeture : en citant cette séquence à l'intérieur du commentaire, je le refermais en
+       avance, et TOUT le script de cette page devenait du JavaScript invalide — donc muet.
+       Deux règles en sont sorties : un commentaire n'a rien à faire dans une chaîne, et il ne
+       cite jamais une fermeture de commentaire. */
+    const t = d.totaux, m = d.marge;
+    const couleurEcart = t.cout_ecart > 0 ? 'var(--db-red)' : t.cout_ecart < 0 ? 'var(--db-amber)' : 'var(--db-muted)';
+    synth.innerHTML = `<div class="db-card" style="padding:16px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px">
+        <div><div class="db-id">Chiffre d'affaires HT</div>
+             <div style="font-size:22px;font-weight:600">${eur(m.ca_ht)}</div></div>
+        <div><div class="db-id">COGS théorique</div>
+             <div style="font-size:22px;font-weight:600">${eur(t.cogs_theorique)}</div></div>
+        <div><div class="db-id">Coût de l'écart</div>
+             <div style="font-size:22px;font-weight:600;color:${couleurEcart}">${eur(t.cout_ecart)}</div></div>
+        <div><div class="db-id">COGS réel</div>
+             <div style="font-size:22px;font-weight:600">${eur(t.cogs_reel)}</div></div>
+        <div><div class="db-id">Marge théorique</div>
+             <div style="font-size:22px;font-weight:600">${pct(m.marge_theorique_pct)}</div></div>
+        <div><div class="db-id">Marge réelle</div>
+             <div style="font-size:22px;font-weight:600;color:${couleurEcart}">${pct(m.marge_reelle_pct)}</div></div>
+      </div>
+      <p class="db-id" style="margin:14px 0 0;line-height:1.6">
+        La casse représente <strong>${m.perte_pct_ca === null ? '—' : m.perte_pct_ca + ' %'}</strong>
+        du chiffre d'affaires.
+        Mesuré sur <strong>${t.couverture_pct === null ? '—' : t.couverture_pct + ' %'}</strong>
+        du COGS théorique (${d.comptes.communs} ingrédients comptés aux deux bornes) —
+        le COGS réel est donc un plancher.
+        ${t.sans_prix.length ? `<br><span style="color:var(--db-amber)">${t.sans_prix.length} ingrédient(s) comptés sans prix connu, non valorisés : ${t.sans_prix.slice(0,4).map(echapper).join(' · ')}</span>` : ''}
+        ${d.nb_recettes_avec_waste_pct ? `<br><span style="color:var(--db-amber)">${d.nb_recettes_avec_waste_pct} recette(s) portent un <code>waste_pct</code> : cette perte SUPPOSÉE s'ajoute au COGS affiché ailleurs, alors que l'écart ci-dessus la MESURE. À trancher — sinon la casse est comptée deux fois.</span>` : ''}
+      </p></div>`;
+    synth.style.display = 'block';
+
+    etat.innerHTML = `Du <strong>${d.periode.de}</strong> au <strong>${d.periode.a}</strong>
+      (ventes jusqu'au ${d.periode.ventes_jusqu_au} inclus — on compte le matin, avant l'ouverture)
+      ${d.sans_recette.length ? `· <span style="color:var(--db-amber)">${d.sans_recette.length} produits vendus sans recette, exclus du théorique</span>` : ''}`;
+
+    if (!n) { corps.innerHTML = '<p class="db-id">Aucun ingrédient compté deux fois sur la période.</p>'; return; }
+
+    corps.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>Ingrédient</th><th style="text-align:right">Réel</th><th style="text-align:right">Théorique</th>
+      <th style="text-align:right">Écart</th><th style="text-align:right">%</th>
+      <th style="text-align:right">Prix réf.</th><th style="text-align:right">Coût de l'écart</th></tr></thead><tbody>
+      ${d.lignes.map(l => {
+        /* ⚠️ LE SIGNE PORTE LE SENS. Un écart POSITIF veut dire qu'on a consommé plus que les
+           recettes ne l'expliquent — casse, offerts, vol, ou recette fausse. Un écart NÉGATIF
+           est une alerte d'une autre nature : il n'est pas possible de consommer moins que rien,
+           donc c'est un comptage ou une réception qui est faux. */
+        const c = l.ecart > 0 ? 'var(--db-red)' : l.ecart < 0 ? 'var(--db-amber)' : 'var(--db-muted)';
+        return `<tr>
+          <td>${echapper(l.ingredient)}</td>
+          <td style="text-align:right">${l.reelle}</td>
+          <td style="text-align:right">${l.theorique}</td>
+          <td style="text-align:right;color:${c};font-weight:600">${l.ecart > 0 ? '+' : ''}${l.ecart}</td>
+          <td style="text-align:right;color:${c}">${l.ecart_pct === null ? '—' : (l.ecart_pct > 0 ? '+' : '') + l.ecart_pct + '%'}</td>
+          <td style="text-align:right;color:var(--db-muted)">${l.prix_ref === null ? '—' : eur(l.prix_ref)}</td>
+          <td style="text-align:right;color:${c};font-weight:600">${eur(l.cout_ecart)}</td>
+        </tr>`;
+      }).join('')}</tbody></table></div>
+      ${d.avertissements.length ? `<p class="db-id" style="margin-top:10px">
+        ${d.avertissements.length} ligne(s) de recette non converties, donc absentes du théorique :
+        ${d.avertissements.slice(0,3).map(echapper).join(' · ')}</p>` : ''}`;
+  } catch (e) {
+    etat.textContent = 'Calcul impossible — ' + e;
+  }
 }
 
 function updateTabBadges() {

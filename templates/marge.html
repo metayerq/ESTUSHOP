@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/static/icons/favicon-32.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Estudantina">
+<meta name="theme-color" content="#F7FAFC">
+<title>Estudantina · Marge réelle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<link rel="stylesheet" href="/static/dashboard.css?v={{ v }}">
+<style>
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   UNE PAGE, UNE QUESTION : COMBIEN JE GAGNE VRAIMENT.
+
+   ⚠️ LES NOMS DE CLASSE SONT PRÉFIXÉS `mg-`, ET CE N'EST PAS DU ZÈLE. La première version
+   appelait sa liste `.chaine` — un nom déjà pris par `style.css`, où il désigne une GRILLE à
+   sept colonnes. La règle partagée l'emportait : les quatre lignes de fiabilité se sont
+   rangées côte à côte, chaque phrase pliée en colonne d'un mot de large, la dernière débordant
+   hors de la carte. La page se chargeait sans une erreur ; c'est en la REGARDANT qu'on le voit.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+.mg-hero { display:flex; flex-wrap:wrap; align-items:flex-end; gap:28px 48px; }
+.mg-chiffre { font-size:52px; font-weight:600; line-height:1; letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums; }
+.mg-sous { font-size:13.5px; color:var(--db-muted); margin-top:9px; line-height:1.5; }
+.mg-contre { font-size:22px; font-weight:600; font-variant-numeric:tabular-nums; }
+
+/* La décomposition : des libellés à gauche, des montants alignés à droite. Rien d'autre. */
+.mg-calcul { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+.mg-calcul td { padding:11px 0; border-bottom:1px solid var(--db-line); font-size:14px; }
+.mg-calcul tr:last-child td { border-bottom:none; }
+.mg-calcul td:last-child { text-align:right; font-weight:600; white-space:nowrap; }
+.mg-calcul .mg-somme td { border-top:2px solid var(--db-ink); font-weight:600; padding-top:13px; }
+.mg-signe { color:var(--db-muted); width:22px; }
+
+.mg-fiab { list-style:none; margin:0; padding:0; display:block; }
+.mg-fiab li { display:flex; gap:11px; align-items:flex-start; padding:11px 0;
+  border-bottom:1px solid var(--db-line); font-size:13.5px; line-height:1.55; }
+.mg-fiab li:last-child { border-bottom:none; padding-bottom:0; }
+.mg-pastille { flex:none; width:8px; height:8px; border-radius:50%; margin-top:7px; }
+.mg-ok { background:var(--db-green); } .mg-mou { background:var(--db-amber); } .mg-ko { background:var(--db-red); }
+
+.mg-onglets { display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+.mg-onglets button.on { background:var(--db-ink); color:var(--db-card); border-color:var(--db-ink); }
+.mg-titre { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--db-muted);
+  margin-bottom:14px; }
+
+@media (max-width:640px) {
+  .mg-chiffre { font-size:40px; }
+  .mg-hero { gap:20px; }
+}
+</style>
+</head>
+<body>
+{% include "_rail.html" %}
+<div class="page db">
+
+  <div class="db-head">
+    <h2 class="db-title">Marge réelle</h2>
+    <span class="db-id" id="fenetre">—</span>
+  </div>
+
+  <div class="mg-onglets">
+    <button class="db-btn on" data-jours="7">7 jours</button>
+    <button class="db-btn" data-jours="30">30 jours</button>
+    <button class="db-btn" data-jours="90">90 jours</button>
+  </div>
+
+  {#
+    ⚠️ LA RÉPONSE D'ABORD, LE CALCUL ENSUITE, LA FIABILITÉ TOUT DE SUITE APRÈS. La version
+    d'avant mettait le THÉORIQUE en grand et la marge RÉELLE en bas, dans la même taille : la
+    page s'appelait « Marge réelle » et ce n'était pas son premier chiffre.
+
+    ⚠️ ET LES DEUX PÉRIODES RESTENT DISTINCTES. Le théorique court sur la fenêtre choisie ; la
+    mesure n'existe qu'entre deux comptages. Chacune porte la sienne, écrite à côté d'elle —
+    les confondre fabriquerait un chiffre faux et confiant.
+  #}
+  <div class="db-card" style="padding:26px 24px;margin-bottom:16px">
+    <div id="mg-reponse"></div>
+  </div>
+
+  <div class="db-card" style="padding:22px 24px;margin-bottom:16px">
+    <div class="mg-titre">Le calcul</div>
+    <table class="mg-calcul"><tbody id="mg-calcul"></tbody></table>
+  </div>
+
+  <div class="db-card" style="padding:22px 24px">
+    <div class="mg-titre">Ce sur quoi ce chiffre repose</div>
+    <ul class="mg-fiab" id="mg-fiab"></ul>
+  </div>
+
+</div>
+{% include "_pied.html" %}
+
+<script>
+/* ⚠️ LE FORMAT EST CELUI DU PAYS, PAS CELUI DE JAVASCRIPT. `4210.55` s'affichait « 4210,55 € »
+   — sans séparateur de milliers, illisible d'un coup d'œil dès qu'on passe le millier. Et les
+   pourcentages venaient parfois de l'API avec un point décimal (« 61.5 % ») à côté de virgules
+   françaises. Un seul formateur, pour tout. */
+const EUR = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
+const eur = v => (v === null || v === undefined) ? '—' : EUR.format(v);
+const pc = (v, d = 1) => (v === null || v === undefined) ? '—'
+  : new Intl.NumberFormat('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d })
+      .format(v).replace('-', '\u2212') + ' %';
+/* ⚠️ « 1 ingrédient(s) » EST UN AVEU, PAS UNE TRADUCTION. Ça se lit comme un formulaire
+   administratif, et le code sait accorder. Même remarque que celle faite à la caisse. */
+const plur = (n, sing, pl) => `${n} ${n > 1 ? (pl || sing + 's') : sing}`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ⚠️ « du 2026-09-20 au 2026-09-26 » N'EST PAS UNE DATE POUR UN HUMAIN. On écrit le mois en
+   toutes lettres, et on ne répète ni le mois ni l'année quand ils sont les mêmes. */
+const MOIS = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+function periode(de, a) {
+  const d = new Date(de + 'T12:00:00'), f = new Date(a + 'T12:00:00');
+  if (isNaN(d) || isNaN(f)) return `du ${de} au ${a}`;
+  const memeMois = d.getMonth() === f.getMonth() && d.getFullYear() === f.getFullYear();
+  return memeMois
+    ? `du ${d.getDate()} au ${MOIS.format(f)}`
+    : `du ${MOIS.format(d)} au ${MOIS.format(f)}`;
+}
+
+let JOURS = 7;
+
+async function charger() {
+  document.getElementById('mg-reponse').innerHTML = '<div class="db-id">Lecture des ventes…</div>';
+  const [t, v] = await Promise.all([
+    fetch('/api/marge?jours=' + JOURS).then(r => r.json()),
+    fetch('/api/variance').then(r => r.json()).catch(() => ({ etat: 'erreur' })),
+  ]);
+  document.getElementById('fenetre').textContent = periode(t.periode.de, t.periode.a);
+  reponse(t, v);
+  calcul(t, v);
+  fiabilite(t, v);
+}
+
+/* ⚠️ LA MARGE MESURÉE PREND LA PREMIÈRE PLACE DÈS QU'ELLE EXISTE — c'est le nom de la page.
+   Sinon c'est la théorique, DITE COMME TELLE, avec le chemin pour la rendre réelle. */
+function reponse(t, v) {
+  const z = document.getElementById('mg-reponse');
+  const mesuree = v.etat === 'ok' && v.marge && v.marge_reelle_pct !== null;
+  const m = v.marge || {};
+
+  if (v.etat === 'ok' && m.marge_reelle_pct !== null && m.marge_reelle_pct !== undefined) {
+    const ecart = (m.marge_reelle_pct - m.marge_theorique_pct);
+    const col = ecart < 0 ? 'var(--db-red)' : 'var(--db-green)';
+    z.innerHTML = `<div class="mg-hero">
+      <div>
+        <div class="db-id">Marge réelle · mesurée</div>
+        <div class="mg-chiffre">${pc(m.marge_reelle_pct)}</div>
+        <div class="mg-sous">${periode(v.periode.de, v.periode.a)} — la seule période bornée
+          par deux inventaires.</div>
+      </div>
+      <div>
+        <div class="db-id">Contre la théorie</div>
+        <div class="mg-contre" style="color:${col}">${ecart > 0 ? '+' : ''}${pc(ecart)}</div>
+        <div class="mg-sous">${eur(v.totaux.cout_ecart)} de casse mesurée.</div>
+      </div>
+    </div>`;
+    return;
+  }
+
+  z.innerHTML = `<div class="mg-hero">
+    <div>
+      <div class="db-id">Marge théorique</div>
+      <div class="mg-chiffre">${pc(t.marge_theorique_pct)}</div>
+      <div class="mg-sous">${periode(t.periode.de, t.periode.a)} — ce que les recettes et tes
+        prix d'achat prévoient. La casse n'est pas encore mesurée.</div>
+    </div>
+    <div>
+      <div class="db-id">Pour la rendre réelle</div>
+      <div class="mg-sous" style="margin:6px 0 12px;max-width:34ch">
+        Deux inventaires clos suffisent. Compte le matin, avant l'ouverture&nbsp;;
+        les essentiels suffisent.</div>
+      <a class="db-btn" href="/inventario">Faire un inventaire</a>
+    </div>
+  </div>`;
+}
+
+/* La décomposition, en une colonne de libellés et une de montants. */
+function calcul(t, v) {
+  const l = (signe, quoi, combien, cls) =>
+    `<tr class="${cls || ''}"><td class="mg-signe">${signe}</td><td>${quoi}</td><td>${combien}</td></tr>`;
+  const mesure = v.etat === 'ok';
+  const rows = [
+    l('', `Ventes HT <span class="db-id">· ${periode(t.periode.de, t.periode.a)}</span>`, eur(t.ca_ht)),
+    l('−', 'Matières, selon les recettes et tes prix d\'achat', eur(t.cogs_theorique)),
+  ];
+  if (mesure) {
+    rows.push(l('−', `Casse mesurée <span class="db-id">· ${periode(v.periode.de, v.periode.a)}</span>`,
+                eur(v.totaux.cout_ecart)));
+    rows.push(l('=', 'Marge réelle', `${eur(t.ca_ht - t.cogs_theorique - v.totaux.cout_ecart)} · ${pc(v.marge.marge_reelle_pct)}`, 'mg-somme'));
+  } else {
+    rows.push(l('=', 'Marge théorique', `${eur(t.marge_theorique_eur)} · ${pc(t.marge_theorique_pct)}`, 'mg-somme'));
+  }
+  document.getElementById('mg-calcul').innerHTML = rows.join('');
+}
+
+function fiabilite(t, v) {
+  const li = (etat, texte) => `<li><span class="mg-pastille mg-${etat}"></span><span>${texte}</span></li>`;
+  const c = t.couverture_ca_pct;
+  const f = [];
+  f.push(li(t.documents ? 'ok' : 'ko',
+    `<b>${t.documents}</b> documents Vendus sur la période.`));
+  f.push(li(c === null ? 'ko' : c >= 95 ? 'ok' : c >= 80 ? 'mou' : 'ko',
+    `Recettes&nbsp;: <b>${pc(c)}</b> du chiffre d'affaires est couvert.` +
+    (t.sans_recette.length
+      ? ` ${eur(t.ca_sans_recette)} vendus sans recette — <a href="/cogs">${t.sans_recette.slice(0, 3).map(esc).join(', ')}${t.sans_recette.length > 3 ? '…' : ''}</a>`
+      : '')));
+  f.push(li(t.achats_factures ? 'ok' : 'mou',
+    `Prix d'achat&nbsp;: <b>${eur(t.achats_factures)}</b> de factures scannées sur la période.` +
+    (t.achats_factures ? '' : ' Sans facture, les prix sont ceux saisis à la main — <a href="/faturas">scanner</a>.')));
+  f.push(v.etat === 'ok'
+    ? li(v.totaux.couverture_pct >= 70 ? 'ok' : 'mou',
+        `Inventaires&nbsp;: la casse est mesurée sur <b>${pc(v.totaux.couverture_pct)}</b> du COGS
+         (${plur(v.comptes.communs, 'ingrédient')} compté${v.comptes.communs > 1 ? 's' : ''} aux deux bornes) — le coût réel est un plancher.`)
+    : li('ko', `Inventaires&nbsp;: <b>${v.comptages === 1 ? 'un seul' : 'aucun'}</b> comptage clos.
+         La casse n'est pas mesurée — <a href="/inventario">en faire un</a>.`));
+  if (t.ingredients_sans_prix.length)
+    f.push(li('mou', `<b>${plur(t.ingredients_sans_prix.length, 'ingrédient')}</b> sans prix, absent${t.ingredients_sans_prix.length > 1 ? 's' : ''} du COGS&nbsp;: ${t.ingredients_sans_prix.map(esc).join(', ')}`));
+  if (t.avertissements.length)
+    f.push(li('mou', `<b>${plur(t.avertissements.length, 'ligne')}</b> de recette non converti${t.avertissements.length > 1 ? 'es' : 'e'}&nbsp;: ${t.avertissements.slice(0, 2).map(esc).join(' · ')}`));
+  document.getElementById('mg-fiab').innerHTML = f.join('');
+}
+
+document.querySelector('.mg-onglets').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-jours]');
+  if (!b) return;
+  document.querySelectorAll('.mg-onglets .db-btn').forEach(x => x.classList.toggle('on', x === b));
+  JOURS = Number(b.dataset.jours);
+  charger();
+});
+
+charger();
+</script>
+</body>
+</html>

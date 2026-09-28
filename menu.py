@@ -35,9 +35,17 @@ CATALOGUE = [
 
     # Ce que l'affaire dépense. ⚠️ « ACHATS » N'EST PAS DE LA CAISSE : ce sont des dépenses
     # datées — fournitures, petit matériel, travaux — qui pèsent sur le mois, pas sur le tiroir.
+    # ⚠️ EN TÊTE DU GROUPE, ET C'EST DÉLIBÉRÉ. Le chiffre qu'on vient chercher — « combien je
+    # gagne vraiment » — vivait dans un onglet de `/cogs`, derrière une condition jamais
+    # remplie. Les autres pages de ce groupe sont l'ATELIER : recettes, factures, comptages.
+    # Celle-ci est le RÉSULTAT, et un résultat ne se cherche pas.
+    {"chemin": "/marge",          "libelle": "Marge réelle",     "groupe": "Coûts"},
     {"chemin": "/cogs",           "libelle": "COGS & recettes",  "groupe": "Coûts"},
     {"chemin": "/expenses",       "libelle": "Achats",           "groupe": "Coûts"},
     {"chemin": "/charges",        "libelle": "Charges fixes",    "groupe": "Coûts"},
+    {"chemin": "/inventario",     "libelle": "Inventaire",       "groupe": "Coûts"},
+    {"chemin": "/faturas",        "libelle": "Upload facture",   "groupe": "Coûts"},
+    {"chemin": "/arquivo-faturas", "libelle": "Factures scannées", "groupe": "Coûts"},
     {"chemin": "/stock",          "libelle": "Stock",            "groupe": "Coûts"},
 
     # Qui vient, et à qui l'on parle.

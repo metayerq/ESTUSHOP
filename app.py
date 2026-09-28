@@ -2917,6 +2917,484 @@ def _is_admin():
     """Admin réel (ou dev local sans mot de passe)."""
     return not DASHBOARD_PASSWORD or _current_role() == "admin"
 
+# ── Factures & inventaire — l'outil du comptoir ──────────────────────────────
+#
+# ⚠️ UNE REDIRECTION, PAS UN LIEN EXTERNE DANS LE CATALOGUE. `tests/test_menu.py` vérifie que
+# chaque entrée du menu est une VRAIE route de cette application — un chemin mort étant une
+# entrée qui mène à un 404. Plutôt que d'assouplir cette garantie pour une seule page, on lui
+# donne une route réelle qui redirige. Le menu reste vérifiable, et l'adresse de l'outil peut
+# changer sans toucher au catalogue.
+FATURAS_URL = os.environ.get("FATURAS_URL", "https://faturas.estudantina.com")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# INVENTAIRE ET VARIANCE
+#
+# ⚠️ LE COMPTAGE VIT ICI, PAS DANS L'APP DE SCAN. Il partage la charte, le rail et la session du
+# backoffice ; l'app de scan garde l'appareil photo, qui est son seul motif d'exister à part.
+#
+# ⚠️ ET LE CALCUL AUSSI VIT ICI, PARCE QUE LES RECETTES Y VIVENT. Écrire la moitié théorique
+# ailleurs demanderait de réécrire l'explosion des préparations et la table de conversions — un
+# second moteur qui divergerait du premier au premier correctif appliqué d'un seul côté.
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/inventario")
+def inventario_page():
+    role = _current_role() or "admin"
+    return render_template("inventario.html", role=role)
+
+
+# Sur quelle profondeur on juge de l'importance d'un ingrédient. Deux mois lissent les
+# livraisons irrégulières sans remonter à une saison qui n'a plus cours.
+FENETRE_VALEUR_JOURS = 60
+
+
+def _valeur_achetee(depuis):
+    """
+    CE QUE CHAQUE INGRÉDIENT A RÉELLEMENT COÛTÉ SUR LA FENÊTRE — pour savoir quoi compter.
+
+    ⚠️ À TROIS COMPTAGES PAR SEMAINE, LA QUESTION N'EST PAS « COMMENT RANGER » MAIS « QUOI
+    COMPTER ». Tout compter trois fois par semaine ne tient pas quinze jours ; et ça n'a aucun
+    intérêt — quelques ingrédients portent l'essentiel du coût, le reste est du bruit qu'on
+    vérifie une fois par mois.
+
+    ⚠️ ET LE CLASSEMENT SE DÉDUIT DES FACTURES, IL NE SE DEVINE PAS. `qty_ref × price_per_ref`
+    est ce qu'on a DÉPENSÉ, ingrédient par ingrédient : c'est une requête, aucune saisie, et ça
+    se met à jour tout seul à chaque facture scannée. Une classification à la main serait fausse
+    au bout d'un trimestre et personne ne la reprendrait.
+    """
+    rows = _supa_get("fatura_lines", {
+        "select": "ingredient,qty_ref,price_per_ref,fatura_invoices!inner(data)",
+        "fatura_invoices.data": f"gte.{depuis}",
+        "ingredient": "not.is.null",
+    })
+    par_nom = {}
+    for r in rows:
+        q, p = r.get("qty_ref"), r.get("price_per_ref")
+        if q is None or p is None:
+            continue
+        par_nom[r["ingredient"]] = par_nom.get(r["ingredient"], 0.0) + float(q) * float(p)
+    return {k: round(v, 2) for k, v in par_nom.items()}
+
+
+@app.route("/api/inventario", methods=["GET"])
+def api_inventario_get():
+    from datetime import timedelta
+    jour = (request.args.get("data") or today_lisbon().isoformat())[:10]
+    ingredients = _supa_get("ingredients",
+                            {"select": "name,unit_ref,category,price",
+                             "order": "category.asc,name.asc"})
+
+    depuis = (today_lisbon() - timedelta(days=FENETRE_VALEUR_JOURS)).isoformat()
+    valeurs = _valeur_achetee(depuis)
+    """
+    ⚠️ SANS FACTURE, ON NE REND PAS UNE LISTE VIDE — ON RETOMBE SUR LE PRIX UNITAIRE, ET ON LE
+    DIT. Le classement est alors grossier (cher ≠ coûteux : on achète peu de matcha et beaucoup
+    de lait), mais il vaut mieux qu'un ordre alphabétique. Le drapeau `source` permet à l'écran
+    d'annoncer sur quoi il se fonde plutôt que de laisser croire à une mesure.
+    """
+    source = "achats" if valeurs else "prix"
+    for i in ingredients:
+        if source == "achats":
+            i["valeur"] = valeurs.get(i["name"], 0.0)
+        else:
+            try:
+                i["valeur"] = round(float(i.get("price") or 0), 2)
+            except (TypeError, ValueError):
+                i["valeur"] = 0.0
+    seances = _supa_get("inventory_counts",
+                        {"select": "id,data,status,closed_at", "data": f"eq.{jour}"})
+    seance = seances[0] if seances else None
+    lignes = (_supa_get("inventory_lines",
+                        {"select": "ingredient,qty", "count_id": f"eq.{seance['id']}"})
+              if seance else [])
+    return jsonify({
+        "jour": jour,
+        "seance": seance,
+        "ingredients": ingredients,
+        "valeur_source": source,
+        "valeur_jours": FENETRE_VALEUR_JOURS,
+        "comptes": {l["ingredient"]: float(l["qty"]) for l in lignes},
+    })
+
+
+@app.route("/api/inventario", methods=["POST"])
+def api_inventario_post():
+    data = request.get_json(silent=True) or {}
+    jour = (data.get("data") or today_lisbon().isoformat())[:10]
+
+    # La séance naît à la première quantité saisie — ouvrir l'écran n'en commence pas une.
+    ok, err = _supa_upsert("inventory_counts", {"data": jour})
+    if not ok:
+        return jsonify({"ok": False, "error": err}), 500
+    seances = _supa_get("inventory_counts", {"select": "id,status", "data": f"eq.{jour}"})
+    if not seances:
+        return jsonify({"ok": False, "error": "séance introuvable"}), 500
+    seance = seances[0]
+
+    if data.get("action") == "clore":
+        ok, err = _supa_upsert("inventory_counts",
+                               {"data": jour, "status": "closed", "closed_at": _utc_iso()})
+        return jsonify({"ok": ok, "error": err})
+
+    ingredient = (data.get("ingredient") or "").strip()
+    if not ingredient:
+        return jsonify({"ok": False, "error": "ingredient required"}), 400
+
+    # ⚠️ EFFACER UNE QUANTITÉ SUPPRIME LA LIGNE, ELLE NE LA MET PAS À ZÉRO. « Je n'ai pas compté »
+    # et « il n'en reste rien » sont deux faits opposés ; les confondre ferait apparaître tout le
+    # stock comme consommé, et la variance exploserait sur ce qu'on n'a pas regardé.
+    if data.get("qty") in (None, ""):
+        _req.delete(f"{SUPA_URL}/rest/v1/inventory_lines", headers=_supa_headers(),
+                    params={"count_id": f"eq.{seance['id']}", "ingredient": f"eq.{ingredient}"})
+        return jsonify({"ok": True})
+
+    try:
+        qty = float(str(data["qty"]).replace(",", "."))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "quantité invalide"}), 400
+    if qty < 0:
+        return jsonify({"ok": False, "error": "quantité négative"}), 400
+
+    ok, err = _supa_upsert("inventory_lines", {
+        "count_id": seance["id"], "ingredient": ingredient, "qty": round(qty, 4),
+        "unit_ref": data.get("unit_ref"),
+    })
+    return jsonify({"ok": ok, "error": err})
+
+
+@app.route("/marge")
+def marge_page():
+    return render_template("marge.html", role=_current_role() or "admin")
+
+
+@app.route("/api/marge")
+def api_marge():
+    """
+    LA MARGE, SUR UNE FENÊTRE CHOISIE — ET SANS ATTENDRE UN INVENTAIRE.
+
+    ⚠️ CETTE ROUTE EXISTE PARCE QUE LE CHIFFRE QUI COMPTE ÉTAIT ENTERRÉ. Il vivait dans un
+    onglet de `/cogs`, derrière une condition — deux inventaires clos — qui n'avait jamais été
+    remplie : la page répondait « pas encore mesurable » et s'arrêtait là. Or la marge
+    THÉORIQUE, elle, est calculable dès aujourd'hui, avec les VRAIS prix d'achat que les
+    factures scannées ont portés dans `ingredients`. Refuser de l'afficher parce que la mesure
+    de la casse manque revient à ne rien dire alors qu'on sait presque tout.
+
+    ⚠️ ET LES DEUX NE SE MÉLANGENT JAMAIS. Ici, le théorique sur une fenêtre glissante. La
+    variance mesurée, elle, ne vaut que sur la période bornée par deux comptages, et reste dans
+    `/api/variance`. Les additionner sur des périodes différentes fabriquerait un chiffre faux
+    et confiant.
+    """
+    from datetime import timedelta
+    from variance import consommation_theorique, valoriser, marge_reelle
+    from vendus import get_documents_with_items, product_stats_from_docs
+
+    try:
+        jours = max(1, min(365, int(request.args.get("jours") or 30)))
+    except (TypeError, ValueError):
+        jours = 30
+
+    # ⚠️ DES JOURNÉES ENTIÈRES, JAMAIS CELLE EN COURS. Une journée à moitié servie écrase le
+    # ratio : le chiffre d'affaires manque mais le café du matin est déjà consommé.
+    fin = today_lisbon() - timedelta(days=1)
+    debut = fin - timedelta(days=jours - 1)
+
+    docs = get_documents_with_items(debut.isoformat(), fin.isoformat())
+    stats = product_stats_from_docs(docs, {})
+    ventes = {p["name"]: p["qty"] for p in stats}
+    ca_ht = sum(float(p.get("rev_ht") or 0) for p in stats)
+
+    ingr_lib = _load_ingredients()
+    theorique, sans_recette, avertissements = consommation_theorique(
+        ventes, _load_recipes(), ingr_lib, _load_preparations())
+
+    # `valoriser` sans ligne d'écart rend quand même le coût du besoin théorique : c'est le COGS.
+    _, totaux = valoriser([], theorique, ingr_lib)
+    marge = marge_reelle(ca_ht, totaux)
+
+    # ⚠️ LA COUVERTURE SE MESURE EN CHIFFRE D'AFFAIRES, PAS EN NOMBRE DE PRODUITS. Dix produits
+    # de niche sans recette pèsent moins qu'un seul café qui fait le quart des ventes.
+    manquants = set(sans_recette)
+    ca_sans_recette = sum(float(p.get("rev_ht") or 0) for p in stats if p["name"] in manquants)
+
+    achats = _valeur_achetee(debut.isoformat())
+    achats_total = round(sum(v for v in achats.values()), 2)
+
+    return jsonify({
+        "periode": {"de": debut.isoformat(), "a": fin.isoformat(), "jours": jours},
+        "ca_ht": round(ca_ht, 2),
+        "cogs_theorique": totaux["cogs_theorique"],
+        "marge_theorique_pct": marge["marge_theorique_pct"],
+        "marge_theorique_eur": round(ca_ht - totaux["cogs_theorique"], 2) if ca_ht else None,
+        "documents": len(docs),
+        "couverture_ca_pct": (round((ca_ht - ca_sans_recette) / ca_ht * 100, 1) if ca_ht else None),
+        "sans_recette": sorted(manquants)[:12],
+        "ca_sans_recette": round(ca_sans_recette, 2),
+        "achats_factures": achats_total,
+        "ingredients_sans_prix": totaux["theorique_sans_prix"][:12],
+        "avertissements": avertissements[:8],
+    })
+
+
+@app.route("/api/variance")
+def api_variance():
+    """
+    L'écart entre consommation réelle et consommation théorique, en quantités ET EN EUROS.
+
+    ⚠️ DEUX COMPTAGES CLOS SONT NÉCESSAIRES, ET ON LE DIT. Sans les deux bornes il n'y a pas de
+    période ; répondre « aucune donnée » laisserait chercher une panne là où il n'y a qu'un
+    inventaire à faire.
+
+    ⚠️ LA PÉRIODE SE CHOISIT (`?ouv=<id>&clo=<id>`), ELLE N'EST PLUS FIGÉE SUR LES DEUX DERNIERS.
+    À trois comptages par semaine, « est-ce que ça s'améliore ? » est la seule question qui
+    compte — et elle était sans réponse tant qu'on ne pouvait regarder qu'une seule période. Tout
+    est déjà stocké : comptages, factures, ventes. L'historique se recalcule, il ne se stocke pas.
+    """
+    from datetime import date, timedelta
+    from variance import (consommation_theorique, variance as calc_variance,
+                          valoriser, marge_reelle)
+    from vendus import get_documents_with_items, product_stats_from_docs
+
+    seances = _supa_get("inventory_counts",
+                        {"select": "id,data", "status": "eq.closed", "order": "data.asc"})
+    if len(seances) < 2:
+        return jsonify({"etat": "insuffisant", "comptages": len(seances),
+                        "raison": "deux inventaires clos sont nécessaires pour délimiter une période"})
+
+    par_id = {str(x["id"]): x for x in seances}
+    ouv = par_id.get(str(request.args.get("ouv") or "")) or seances[-2]
+    clo = par_id.get(str(request.args.get("clo") or "")) or seances[-1]
+    if ouv["data"] >= clo["data"]:
+        return jsonify({"etat": "erreur",
+                        "raison": "le comptage d'ouverture doit précéder celui de clôture"}), 400
+
+    lignes_ouv = _supa_get("inventory_lines", {"select": "ingredient,qty", "count_id": f"eq.{ouv['id']}"})
+    lignes_clo = _supa_get("inventory_lines", {"select": "ingredient,qty", "count_id": f"eq.{clo['id']}"})
+    stock_ouv = {l["ingredient"]: float(l["qty"]) for l in lignes_ouv}
+    stock_clo = {l["ingredient"]: float(l["qty"]) for l in lignes_clo}
+
+    """
+    ⚠️ LA FENÊTRE EST FERMÉE À GAUCHE ET OUVERTE À DROITE : [ouverture, clôture[.
+
+    ON COMPTE LE MATIN, AVANT L'OUVERTURE. Une marchandise datée du lundi arrive PENDANT le
+    lundi, donc APRÈS le comptage de lundi matin : elle appartient à la période qui commence
+    lundi. Et celle datée du jeudi arrive après le comptage de jeudi matin : elle appartient à
+    la période SUIVANTE.
+
+    ⚠️ LA VERSION D'AVANT PRENAIT L'INVERSE — `> ouverture` et `<= clôture` — ce qui décalait
+    toutes les réceptions d'une période. Sur un mois, quelques pourcents de bruit. Sur deux
+    jours, une seule livraison mal placée EST la totalité des achats : l'écart n'est plus
+    bruité, il est inversé, et l'écran accuse le comptage d'être faux.
+    """
+    veille_clo = (date.fromisoformat(clo["data"]) - timedelta(days=1)).isoformat()
+
+    achats_rows = _supa_get("fatura_lines", {
+        "select": "ingredient,qty_ref,fatura_invoices!inner(data)",
+        "fatura_invoices.data": f"gte.{ouv['data']}",
+        "ingredient": "not.is.null",
+    })
+    achats = {}
+    for r in achats_rows:
+        d = (r.get("fatura_invoices") or {}).get("data", "")
+        if not d or d >= clo["data"]:
+            continue
+        if r.get("qty_ref") is None:
+            continue
+        achats[r["ingredient"]] = achats.get(r["ingredient"], 0.0) + float(r["qty_ref"])
+
+    reelle = {
+        nom: round(ouvert + achats.get(nom, 0.0) - stock_clo[nom], 4)
+        for nom, ouvert in stock_ouv.items() if nom in stock_clo
+    }
+
+    # ⚠️ LES VENTES SUIVENT LA MÊME BORNE QUE LES ACHATS. Vendus borne de façon INCLUSIVE aux
+    # deux bouts : passer `clo` prendrait la journée du comptage de clôture, qui n'a pas encore
+    # été servie quand on compte le matin. Le théorique couvrirait alors un jour de plus que le
+    # réel, et l'écart porterait une journée entière de ventes.
+    docs = get_documents_with_items(ouv["data"], veille_clo)
+    stats = product_stats_from_docs(docs, {})
+    ventes = {p["name"]: p["qty"] for p in stats}
+    ca_ht = sum(float(p.get("rev_ht") or 0) for p in stats)
+
+    ingr_lib = _load_ingredients()
+    recipes = _load_recipes()
+    theorique, sans_recette, avertissements = consommation_theorique(
+        ventes, recipes, ingr_lib, _load_preparations())
+
+    lignes = calc_variance(reelle, theorique)
+    lignes, totaux = valoriser(lignes, theorique, ingr_lib)
+    marge = marge_reelle(ca_ht, totaux)
+
+    """
+    ⚠️ MESURER LA CASSE REND LE `waste_pct` DES RECETTES REDONDANT. Il pose une perte SUPPOSÉE
+    sur le coût matière ; l'écart mesure la perte RÉELLE. Les additionner la compterait deux
+    fois. On ne touche à rien — c'est une décision de gestion, pas une correction — mais on le
+    dit, parce que personne ne fera le rapprochement tout seul six mois plus tard.
+    """
+    avec_waste = sorted(t for t, r in (recipes or {}).items() if float(r.get("waste_pct") or 0) > 0)
+
+    return jsonify({
+        "etat": "ok",
+        "periode": {"de": ouv["data"], "a": clo["data"], "ventes_jusqu_au": veille_clo},
+        "bornes": {"ouv": ouv["id"], "clo": clo["id"]},
+        "seances": seances,
+        "comptes": {"ouverture": len(stock_ouv), "cloture": len(stock_clo), "communs": len(reelle)},
+        "lignes": lignes,
+        "totaux": totaux,
+        "marge": marge,
+        "sans_recette": sans_recette[:20],
+        "avertissements": avertissements[:20],
+        "recettes_avec_waste_pct": avec_waste[:20],
+        "nb_recettes_avec_waste_pct": len(avec_waste),
+    })
+
+
+@app.route("/faturas")
+def faturas_page():
+    return redirect(FATURAS_URL)
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# L'ARCHIVE DES FACTURES SCANNÉES
+#
+# ⚠️ `/faturas` ENVOIE AILLEURS, ET C'EST TOUT CE QU'ELLE FAIT. C'est la porte d'entrée : on y
+# dépose une photo, l'application de scan la lit, et le résultat atterrit dans `fatura_invoices`
+# et `fatura_lines`. Rien, ensuite, ne permettait de RELIRE ce qui avait été compris. Une facture
+# mal lue — une ligne oubliée, un ingrédient rattaché au mauvais nom — devenait un prix d'achat
+# faux qui se propageait jusqu'à la marge, sans qu'aucun écran ne la montre jamais.
+#
+# ⚠️ ET LE CHIFFRE QUI COMPTE N'EST PAS LE TOTAL : c'est ce qui n'est RATTACHÉ À RIEN. Une ligne
+# sans ingrédient est de l'argent dépensé qui n'entre dans aucun coût de revient. Le total, lui,
+# se lit sur la facture papier ; le montant qui manque au COGS ne se lit nulle part ailleurs.
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+
+@app.route("/arquivo-faturas")
+def arquivo_faturas_page():
+    return render_template("arquivo_faturas.html", role=_current_role() or "admin")
+
+
+def _lignes_par_facture(ids):
+    """Les lignes des factures demandées, groupées par facture et dans l'ordre lu."""
+    if not ids:
+        return {}
+    # ⚠️ UNE SEULE REQUÊTE POUR TOUTES LES FACTURES. Une par facture, c'est cent appels sur une
+    # page de cent lignes — la page mettait huit secondes avant que ce filtre existe.
+    lignes = _supa_get_all("fatura_lines", {
+        "select": "id,invoice_id,line_no,raw_text,qty,unit,vat_rate,unit_price_cents,"
+                  "line_total_cents,ingredient,price_per_ref,qty_ref,match_source,supplier_ref",
+        "invoice_id": "in.(%s)" % ",".join(str(int(i)) for i in ids),
+        "order": "invoice_id.asc,line_no.asc",
+    })
+    par = {}
+    for l in lignes:
+        par.setdefault(l["invoice_id"], []).append(l)
+    return par
+
+
+def _resume_facture(inv, lignes):
+    """
+    Ce qu'on peut dire d'une facture sans l'ouvrir.
+
+    ⚠️ LA SOMME DES LIGNES SE COMPARE AU TOTAL TTC, PAS AU SOUS-TOTAL. `line_total_cents` porte
+    la TVA — vérifié sur les factures réelles : trois lignes à 6,40 + 16,73 + 9,00 font 32,13 €,
+    qui est le TOTAL, pas les 28,30 € hors taxe. Comparer au sous-total ferait apparaître un
+    écart égal à la TVA sur CHAQUE facture, et l'alerte, toujours allumée, ne dirait plus rien.
+    """
+    somme = sum(l.get("line_total_cents") or 0 for l in lignes)
+    total = inv.get("total_cents") or 0
+    sans = [l for l in lignes if not l.get("ingredient")]
+    return {
+        "id": inv["id"],
+        "data": inv.get("data"),
+        "fornecedor": inv.get("fornecedor"),
+        "nif": inv.get("nif"),
+        "numero": inv.get("numero"),
+        "total_cents": total,
+        "subtotal_cents": inv.get("subtotal_cents"),
+        "vat_cents": inv.get("vat_cents"),
+        "posted_at": inv.get("posted_at"),
+        "linhas": len(lignes),
+        "linhas_sem_ingrediente": len(sans),
+        "valor_sem_ingrediente_cents": sum(l.get("line_total_cents") or 0 for l in sans),
+        # ⚠️ `None` QUAND IL N'Y A PAS DE LIGNE, JAMAIS 0. Une facture dont le scan n'a rien
+        # extrait n'a pas « un écart de zéro » : elle n'a pas d'écart mesurable, et la nuance
+        # décide si l'on doit aller la relire.
+        "ecart_cents": (somme - total) if lignes else None,
+    }
+
+
+@app.route("/api/arquivo-faturas")
+def api_arquivo_faturas():
+    """La liste, sur une fenêtre choisie. Le détail de chaque facture a sa propre route."""
+    de = (request.args.get("de") or "")[:10]
+    a = (request.args.get("a") or "")[:10]
+    fournisseur = (request.args.get("fornecedor") or "").strip()
+
+    params = {"select": "id,data,fornecedor,nif,numero,total_cents,subtotal_cents,vat_cents,"
+                        "posted_at",
+              "order": "data.desc,id.desc"}
+    if de:
+        params["data"] = f"gte.{de}"
+    if a:
+        # ⚠️ PostgREST N'ACCEPTE QU'UNE CONTRAINTE PAR COLONNE DANS UN DICTIONNAIRE. Deux bornes
+        # sur `data` s'écrasaient l'une l'autre — la borne haute gagnait, la borne basse était
+        # perdue, et la fenêtre choisie ne servait à rien. La forme `and=(…)` les porte ensemble.
+        params.pop("data", None)
+        params["and"] = f"(data.gte.{de or '1970-01-01'},data.lte.{a})"
+    if fournisseur:
+        params["fornecedor"] = f"eq.{fournisseur}"
+
+    try:
+        factures = _supa_get_all("fatura_invoices", params)
+    except SupabaseSchemaError as e:
+        return jsonify({"error": str(e)}), 503
+
+    par = _lignes_par_facture([f["id"] for f in factures])
+    resumes = [_resume_facture(f, par.get(f["id"], [])) for f in factures]
+
+    # Les fournisseurs connus, pour le filtre — tirés de la base, jamais saisis.
+    fournisseurs = sorted({(f.get("fornecedor") or "").strip()
+                           for f in factures if (f.get("fornecedor") or "").strip()})
+
+    return jsonify({
+        "periodo": {"de": de or None, "a": a or None},
+        "faturas": resumes,
+        "fornecedores": fournisseurs,
+        "totais": {
+            "faturas": len(resumes),
+            "total_cents": sum(r["total_cents"] for r in resumes),
+            "sem_ingrediente_cents": sum(r["valor_sem_ingrediente_cents"] for r in resumes),
+            "com_divergencia": sum(1 for r in resumes
+                                   if r["ecart_cents"] is not None and abs(r["ecart_cents"]) > 1),
+            "sem_linhas": sum(1 for r in resumes if r["linhas"] == 0),
+        },
+    })
+
+
+@app.route("/api/arquivo-faturas/<int:fatura_id>")
+def api_arquivo_fatura(fatura_id):
+    """Une facture, telle que le scan l'a comprise — en-tête et lignes, sans la photo."""
+    try:
+        trouve = _supa_get("fatura_invoices", {"select": "*", "id": f"eq.{fatura_id}", "limit": 1})
+    except SupabaseSchemaError as e:
+        return jsonify({"error": str(e)}), 503
+    if not trouve:
+        return jsonify({"error": "fatura não encontrada"}), 404
+    inv = trouve[0]
+    lignes = _lignes_par_facture([fatura_id]).get(fatura_id, [])
+
+    # ⚠️ ON REND LE TEXTE BRUT DE CHAQUE LIGNE, ET C'EST TOUT L'INTÉRÊT DE L'ÉCRAN. Sans lui on
+    # voit « El Tambo, 6,40 € » sans pouvoir savoir que la ligne lue disait « Fiambre » — un
+    # rattachement faux est indiscernable d'un bon tant qu'on ne lit pas ce qui était écrit.
+    return jsonify({
+        "fatura": {k: inv.get(k) for k in
+                   ("id", "data", "fornecedor", "nif", "numero", "subtotal_cents",
+                    "vat_cents", "total_cents", "posted_at", "scanned_by")},
+        "linhas": lignes,
+        "resumo": _resume_facture(inv, lignes),
+    })
+
+
 @app.route("/stock")
 def stock_page():
     role = _current_role() or "admin"
