@@ -3303,6 +3303,16 @@ def _resume_facture(inv, lignes):
     somme = sum(l.get("line_total_cents") or 0 for l in lignes)
     total = inv.get("total_cents") or 0
     sans = [l for l in lignes if not l.get("ingredient")]
+    # ⚠️ UN TROISIÈME ÉTAT EXISTE, ET IL EST LE PLUS TRAÎTRE. Une ligne PEUT porter un
+    # ingrédient et ne compter dans aucun coût : il suffit que la conversion d'unité ait
+    # échoué, et `qty_ref` reste vide. Vu en vrai sur la facture du Talho — « Fiambre » a été
+    # rattaché à « Jambon artisanal », ce qui est juste, et la ligne est passée de 6,40 € de
+    # dépense à zéro, parce que « Uni » ne se convertit pas en kilos.
+    #
+    # L'écran disait alors « tout rattaché » sur une facture qui ne pesait plus rien. C'est
+    # exactement le genre de correction qui a l'air d'en être une.
+    muettes = [l for l in lignes
+               if l.get("qty_ref") in (None, "") or l.get("price_per_ref") in (None, "")]
     return {
         "id": inv["id"],
         "data": inv.get("data"),
@@ -3316,6 +3326,9 @@ def _resume_facture(inv, lignes):
         "linhas": len(lignes),
         "linhas_sem_ingrediente": len(sans),
         "valor_sem_ingrediente_cents": sum(l.get("line_total_cents") or 0 for l in sans),
+        # Rattachée, mais sans valeur : le rattachement est fait, la dépense ne compte pas.
+        "linhas_sem_valor": len(muettes) - len(sans),
+        "valor_hors_couts_cents": sum(l.get("line_total_cents") or 0 for l in muettes),
         # ⚠️ `None` QUAND IL N'Y A PAS DE LIGNE, JAMAIS 0. Une facture dont le scan n'a rien
         # extrait n'a pas « un écart de zéro » : elle n'a pas d'écart mesurable, et la nuance
         # décide si l'on doit aller la relire.
@@ -3364,6 +3377,8 @@ def api_arquivo_faturas():
             "faturas": len(resumes),
             "total_cents": sum(r["total_cents"] for r in resumes),
             "sem_ingrediente_cents": sum(r["valor_sem_ingrediente_cents"] for r in resumes),
+            "hors_custos_cents": sum(r["valor_hors_couts_cents"] for r in resumes),
+            "linhas_sem_valor": sum(r["linhas_sem_valor"] for r in resumes),
             "com_divergencia": sum(1 for r in resumes
                                    if r["ecart_cents"] is not None and abs(r["ecart_cents"]) > 1),
             "sem_linhas": sum(1 for r in resumes if r["linhas"] == 0),

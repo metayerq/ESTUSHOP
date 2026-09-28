@@ -26,8 +26,12 @@
 
 .fx-barre { display:flex; flex-wrap:wrap; gap:10px 14px; align-items:center; margin-bottom:16px; }
 .fx-barre label { font-size:12.5px; color:var(--db-muted); display:flex; align-items:center; gap:7px; }
-.fx-barre input, .fx-barre select { font:inherit; font-size:13.5px; padding:7px 10px;
-  border:1px solid var(--db-line); border-radius:8px; background:var(--db-card); color:inherit; }
+.fx-barre input, .fx-barre select { font:inherit; font-size:13.5px; padding:8px 10px;
+  border:1px solid var(--db-line); border-radius:8px; background:var(--db-card); color:inherit;
+  min-height:38px; box-sizing:border-box; }
+/* Les boutons de la charte font 29 px de haut : assez à la souris, pas au doigt. On les
+   relève ICI seulement — les remonter dans `dashboard.css` toucherait onze autres écrans. */
+.page .db-btn { min-height:38px; }
 
 .fx-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(190px,100%), 1fr));
   gap:12px; margin-bottom:16px; }
@@ -39,14 +43,27 @@
 .fx-kpi.fx-chaud b { color:var(--db-red); }
 
 .fx-liste { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+/* ⚠️ MESURÉ À 4,21:1, SOUS LE SEUIL DE 4,5. Du 11,5 px en capitales espacées et en gris
+   atténué : c'est la plus petite typographie de la page, dans sa couleur la plus pâle. On
+   reprend l'encre du corps à graisse moyenne — l'en-tête reste subordonné par sa taille et
+   ses capitales, pas par un contraste qui le rend illisible de biais ou en plein soleil.
+   (Le même calcul échoue sur les libellés d'autres écrans : c'est la charte, pas cette page.) */
+.fx-liste th, .fx-lignes th, .fx-cli-titre { color:var(--db-ink); font-weight:500; opacity:.78; }
 .fx-liste th { text-align:left; font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
-  color:var(--db-muted); font-weight:500; padding:0 12px 10px 0; white-space:nowrap; }
+  padding:0 12px 10px 0; white-space:nowrap; }
 .fx-liste td { padding:12px 12px 12px 0; border-top:1px solid var(--db-line); font-size:14px;
   vertical-align:top; }
 .fx-liste tr[data-id] { cursor:pointer; }
 .fx-liste tr[data-id]:hover td { background:var(--db-hover, rgba(0,0,0,.025)); }
 .fx-liste tr[aria-selected="true"] td { background:var(--db-hover, rgba(0,0,0,.05)); }
-.fx-num { text-align:right; white-space:nowrap; }
+/* ⚠️ `.db td` DE dashboard.css GAGNAIT CONTRE `.fx-num`, ET TOUT ÉTAIT À GAUCHE. La règle
+   partagée `.db th, .db td { text-align:left }` pèse (0,1,1) ; une classe seule pèse (0,1,0).
+   Résultat : chaque montant, chaque quantité, chaque total s'affichait collé à gauche de sa
+   colonne, en-têtes compris. Rien ne protestait — c'est la même panne que `.chaine` sur
+   `/marge`, et c'est pour ça que les classes d'ici sont préfixées. Le préfixe protège des
+   COLLISIONS de nom ; il ne protège pas d'une règle partagée plus spécifique. Il faut monter
+   au-dessus d'elle, explicitement. */
+.db td.fx-num, .db th.fx-num { text-align:right; white-space:nowrap; }
 .fx-four { font-weight:500; }
 .fx-ref { font-size:12px; color:var(--db-muted); margin-top:3px; }
 
@@ -58,15 +75,30 @@
 .fx-ko  { color:var(--db-red);   border-color:currentColor; }
 
 .fx-detail { margin-top:16px; }
-.fx-entete { display:flex; flex-wrap:wrap; gap:18px 40px; align-items:flex-end;
-  padding-bottom:18px; border-bottom:1px solid var(--db-line); margin-bottom:18px; }
-.fx-entete div span { display:block; font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
-  color:var(--db-muted); margin-bottom:5px; }
-.fx-entete div b { font-size:17px; font-weight:600; font-variant-numeric:tabular-nums; }
+/* ⚠️ EN `flex-wrap`, LES SEPT CHAMPS S'ÉTALAIENT SUR TROIS À CINQ RANGS IRRÉGULIERS, chacun
+   d'une largeur différente selon son contenu. Une grille leur donne des colonnes égales : on
+   lit « fournisseur / numéro / date » au même endroit d'un écran à l'autre. */
+.fx-entete { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(168px,100%), 1fr));
+  gap:14px 20px; padding-bottom:18px; border-bottom:1px solid var(--db-line); margin-bottom:18px; }
+.fx-entete label { display:block; }
+.fx-entete label span { display:block; font-size:11.5px; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--db-muted); margin-bottom:6px; }
 
-.fx-lignes { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+/* ⚠️ `table-layout:fixed` ET DES LARGEURS ÉCRITES. En automatique, c'est la LONGUEUR DU
+   TITRE qui décidait : « Qté de référence » s'octroyait 132 px pendant que « Quantité » —
+   qui porte DEUX champs — tombait à 77 px, et ses champs sortaient de la cellule de 65 px.
+   Une colonne de saisie ne se dimensionne pas d'après son en-tête. */
+.fx-lignes { width:100%; min-width:720px; border-collapse:collapse; table-layout:fixed;
+  font-variant-numeric:tabular-nums; }
+.fx-lignes col.c-n { width:34px; }
+.fx-lignes col.c-q { width:136px; }
+.fx-lignes col.c-p { width:104px; }
+.fx-lignes col.c-r { width:104px; }
+.fx-lignes col.c-t { width:104px; }
+.fx-lignes col.c-x { width:44px; }
+.fx-liste { min-width:620px; }
 .fx-lignes th { text-align:left; font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
-  color:var(--db-muted); font-weight:500; padding:0 10px 9px 0; }
+  padding:0 10px 9px 0; }
 .fx-lignes td { padding:11px 10px 11px 0; border-top:1px solid var(--db-line); font-size:13.5px;
   vertical-align:top; }
 /* ⚠️ LE TEXTE BRUT EST LA PIÈCE À CONVICTION. C'est lui qui montre qu'une ligne lue
@@ -76,11 +108,19 @@
   color:var(--db-muted); line-height:1.5; margin-top:5px; word-break:break-word; }
 .fx-nul { color:var(--db-red); }
 
-.fx-ed { font:inherit; font-size:13.5px; padding:6px 8px; border:1px solid var(--db-line);
-  border-radius:7px; background:var(--db-card); color:inherit; width:100%; max-width:220px; }
+/* ⚠️ LA HAUTEUR EST UN MINIMUM, PAS UNE COÏNCIDENCE. Le `<select>` retombait à 32 px —
+   sous la cible tactile, et d'une hauteur différente des `<input>` voisins, ce qui suffisait
+   à faire onduler la rangée. */
+.fx-ed { font:inherit; font-size:13.5px; padding:7px 9px; border:1px solid var(--db-line);
+  border-radius:7px; background:var(--db-card); color:inherit; width:100%; min-height:38px;
+  box-sizing:border-box; }
 .fx-ed:focus { outline:2px solid var(--db-ink); outline-offset:-1px; }
-.fx-ed.fx-court { max-width:92px; text-align:right; font-variant-numeric:tabular-nums; }
-.fx-ed.fx-large { max-width:100%; }
+.fx-ed.fx-court { text-align:right; font-variant-numeric:tabular-nums; }
+/* La quantité et son unité partagent une colonne : `min-width:0` est ce qui les autorise à
+   rétrécir au lieu de déborder — sans lui, un enfant de flex garde sa largeur de contenu. */
+.fx-duo { display:flex; gap:6px; }
+.fx-duo > * { min-width:0; }
+.fx-duo .fx-unite { flex:0 0 50px; text-align:left; }
 /* ⚠️ UN CHAMP EN ATTENTE DOIT SE VOIR. Sans retour, on ne sait pas si la correction est
    partie : on la retape, ou pire, on part en croyant l'avoir enregistrée. */
 .fx-ed[data-etat="occupe"] { opacity:.55; }
@@ -91,23 +131,28 @@
 .fx-actes { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:18px;
   padding-top:16px; border-top:1px solid var(--db-line); }
 .fx-danger { color:var(--db-red); border-color:currentColor; }
+/* ⚠️ 23×25 px MESURÉS : on vise ça au doigt sur un iPad, dans un tableau qui défile, avec
+   une suppression au bout. La croix reste discrète, sa zone de clic ne l'est pas. */
 .fx-lig-sup { background:none; border:0; color:var(--db-muted); cursor:pointer; font:inherit;
-  font-size:17px; line-height:1; padding:4px 6px; border-radius:6px; }
+  font-size:19px; line-height:1; padding:0; border-radius:8px; width:38px; height:38px;
+  display:inline-flex; align-items:center; justify-content:center; }
 .fx-lig-sup:hover { color:var(--db-red); background:var(--db-hover, rgba(0,0,0,.05)); }
 .fx-avis { font-size:12.5px; color:var(--db-amber); margin-top:6px; line-height:1.45; }
+
+/* ⚠️ CETTE RÈGLE VIVAIT DANS LA MEDIA QUERY MOBILE, ET LA PAGE DÉBORDAIT À 768 px. Entre la
+   largeur où le tableau cesse de tenir et celle où le bloc mobile s'allume, personne ne
+   clippait rien : le tableau poussait la page de 13 px sur le côté. Un tableau large défile
+   dans SA boîte, à toutes les largeurs — ce n'est pas une adaptation mobile, c'est la règle. */
+.fx-cadre { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 
 .fx-vide { padding:40px 0; text-align:center; color:var(--db-muted); font-size:14px; line-height:1.6; }
 
 /* ⚠️ CE BLOC VA À LA FIN DE LA FEUILLE. Une media query de même spécificité placée AVANT les
    règles de base est écrasée par elles : tout un bloc mobile est déjà mort en silence comme ça. */
 @media (max-width:760px) {
-  /* Sur un téléphone, un tableau à six colonnes devient illisible : on le fait défiler
-     lui-même plutôt que de pousser la page entière de côté. */
-  .fx-cadre { overflow-x:auto; -webkit-overflow-scrolling:touch; }
-  .fx-liste, .fx-lignes { min-width:560px; }
   .fx-liste td:first-child { white-space:nowrap; }
   .fx-kpi b { font-size:21px; }
-  .fx-entete { gap:14px 26px; }
+  .fx-barre label { flex:1 1 140px; }
 }
 </style>
 </head>
@@ -215,15 +260,19 @@ function remplirFournisseurs(liste) {
 }
 
 function poserKpis(t, faturas) {
-  const manque = t.sem_ingrediente_cents || 0;
+  const manque = t.hors_custos_cents || 0;
   const cartes = [
     ['<b>' + (t.faturas || 0) + '</b><span>' +
       (t.faturas === 1 ? 'facture scannée' : 'factures scannées') + '</span>', ''],
     ['<b>' + eur(t.total_cents || 0) + '</b><span>d’achats sur la période</span>', ''],
-    /* ⚠️ CE CHIFFRE EST LA RAISON D'ÊTRE DE L'ÉCRAN. Une ligne sans ingrédient est de l'argent
-       dépensé qui n'entre dans AUCUN coût de revient : elle ne fausse pas la marge d'un peu,
-       elle en est absente. Le total, lui, se lit sur le papier. */
-    ['<b>' + eur(manque) + '</b><span>non rattachés à un ingrédient — invisible dans la marge</span>',
+    /* ⚠️ CE CHIFFRE EST LA RAISON D'ÊTRE DE L'ÉCRAN, ET IL COMPTE DEUX PANNES, PAS UNE. Une
+       ligne sans ingrédient n'entre dans aucun coût — c'est la panne évidente. Mais une ligne
+       RATTACHÉE dont l'unité n'a pas su se convertir n'y entre pas davantage, et celle-là a
+       l'air réparée. Les additionner est la seule façon honnête de répondre à « combien de mes
+       achats sont invisibles dans ma marge ». */
+    ['<b>' + eur(manque) + '</b><span>n’entrent dans aucun coût de revient'
+      + (t.linhas_sem_valor ? ' — dont ' + plur(t.linhas_sem_valor, 'ligne')
+          + ' rattachée(s) sans quantité de référence' : '') + '</span>',
       manque > 0 ? ' fx-chaud' : ''],
     ['<b>' + ((t.com_divergencia || 0) + (t.sem_linhas || 0)) + '</b><span>facture(s) à relire : total et lignes qui ne tombent pas juste</span>',
       ((t.com_divergencia || 0) + (t.sem_linhas || 0)) > 0 ? ' fx-chaud' : ''],
@@ -246,8 +295,13 @@ function etatLecture(f) {
 function etatRattachement(f) {
   if (!f.linhas) return ['fx-mou', '—'];
   const n = f.linhas_sem_ingrediente;
-  if (!n) return ['fx-ok', 'tout rattaché'];
-  return ['fx-ko', n + '/' + f.linhas + ' sans ingrédient'];
+  /* ⚠️ « TOUT RATTACHÉ » ÉTAIT UN MENSONGE POSSIBLE. La facture du Talho l'affichait en vert
+     alors qu'aucune de ses lignes ne pesait dans les coûts : le rattachement était fait, la
+     conversion d'unité, non. Une pastille verte sur une facture invisible dans la marge est
+     pire que pas de pastille du tout. */
+  if (n) return ['fx-ko', n + '/' + f.linhas + ' sans ingrédient'];
+  if (f.linhas_sem_valor) return ['fx-mou', plur(f.linhas_sem_valor, 'ligne') + ' sans valeur'];
+  return ['fx-ok', 'tout rattaché'];
 }
 
 function poserListe(faturas) {
@@ -362,8 +416,18 @@ async function ouvrir(id) {
    avant `parseFloat`, qui ne connaît que lui. */
 const nb = v => (v === null || v === undefined || v === '') ? '' : String(v).replace('.', ',');
 
+/* ⚠️ UNE CASE VIDE DANS UN TABLEAU N'A PAS DE NOM. L'en-tête de colonne donne le sens à
+   l'œil, jamais au lecteur d'écran — ni à la personne qui revient sur la ligne 7 et ne sait
+   plus si la troisième case est le prix unitaire ou le total. */
+const NOMS = { qty: 'Quantité', unit: 'Unité', unit_price_cents: 'Prix unitaire en euros',
+  qty_ref: 'Quantité en unité de référence', line_total_cents: 'Total de la ligne en euros',
+  fornecedor: 'Fournisseur', numero: 'Numéro de facture', nif: 'NIF', data: 'Date',
+  subtotal_cents: 'Montant hors taxe en euros', vat_cents: 'TVA en euros',
+  total_cents: 'Total en euros', ingredient: 'Ingrédient rattaché' };
+
 function champ(cle, valeur, attrs) {
-  return '<input class="fx-ed ' + (attrs || '') + '" data-champ="' + cle + '" value="'
+  return '<input class="fx-ed ' + (attrs || '') + '" data-champ="' + cle
+    + '" aria-label="' + esc(NOMS[cle] || cle) + '" value="'
     + esc(typeof valeur === 'number' ? nb(valeur)
             : (valeur === null || valeur === undefined ? '' : valeur)) + '">';
 }
@@ -371,7 +435,8 @@ function champ(cle, valeur, attrs) {
 function centimes(cle, c) {
   /* ⚠️ ON SAISIT DES EUROS, ON STOCKE DES CENTIMES. Demander « 3213 » pour 32,13 € est une
      invitation permanente à la faute de frappe d'un facteur cent. */
-  return '<input class="fx-ed fx-court" data-champ="' + cle + '" data-centimes="1" value="'
+  return '<input class="fx-ed fx-court" data-champ="' + cle + '" data-centimes="1"'
+    + ' aria-label="' + esc(NOMS[cle] || cle) + '" value="'
     + (c === null || c === undefined ? '' : nb((c / 100).toFixed(2))) + '">';
 }
 
@@ -384,10 +449,10 @@ function dessiner(boite, d) {
     ['Numéro', champ('numero', f.numero)],
     ['Date', '<input class="fx-ed" type="date" data-champ="data" value="' + esc(f.data || '') + '">'],
     ['NIF', champ('nif', f.nif)],
-    ['Hors taxe', centimes('subtotal_cents', f.subtotal_cents)],
-    ['TVA', centimes('vat_cents', f.vat_cents)],
-    ['Total', centimes('total_cents', f.total_cents)],
-  ].map(x => '<div><span>' + x[0] + '</span>' + x[1] + '</div>').join('');
+    ['Hors taxe €', centimes('subtotal_cents', f.subtotal_cents)],
+    ['TVA €', centimes('vat_cents', f.vat_cents)],
+    ['Total €', centimes('total_cents', f.total_cents)],
+  ].map(x => '<label><span>' + x[0] + '</span>' + x[1] + '</label>').join('');
 
   const options = ing => '<option value="">— non rattachée —</option>'
     + INGREDIENTS.map(i => '<option value="' + esc(i.name) + '"'
@@ -396,11 +461,18 @@ function dessiner(boite, d) {
 
   const corps = lignes.length ? lignes.map(l => '<tr data-linha="' + l.id + '">'
       + '<td>' + (l.line_no === null ? '—' : l.line_no) + '</td>'
-      + '<td><select class="fx-ed fx-large" data-champ="ingredient">' + options(l.ingredient) + '</select>'
+      + '<td><select class="fx-ed" data-champ="ingredient" aria-label="' + esc(NOMS.ingredient)
+      + ', ligne ' + (l.line_no || '') + '">' + options(l.ingredient) + '</select>'
       + '<div class="fx-brut">' + esc(l.raw_text || 'texte non conservé') + '</div>'
-      + '<div class="fx-avis" data-avis></div></td>'
-      + '<td class="fx-num">' + champ('qty', l.qty, 'fx-court') + ' '
-      + champ('unit', l.unit, 'fx-court') + '</td>'
+      /* ⚠️ L'AVERTISSEMENT NE VIVAIT QUE LE TEMPS D'UN CLIC. Il s'affichait après une
+         modification et disparaissait au rechargement : on revenait le lendemain sur une ligne
+         rattachée, sans quantité de référence, et rien ne disait qu'elle ne comptait pas. Il
+         se déduit désormais de l'état, pas de l'événement. */
+      + '<div class="fx-avis" data-avis>' + (l.ingredient && (l.qty_ref === null || l.qty_ref === undefined)
+          ? 'Rattachée, mais sans quantité de référence : cette ligne ne compte dans aucun coût. '
+            + 'Indiquez la quantité dans l’unité de l’ingrédient.' : '') + '</div></td>'
+      + '<td class="fx-num"><div class="fx-duo">' + champ('qty', l.qty, 'fx-court')
+      + champ('unit', l.unit, 'fx-unite') + '</div></td>'
       + '<td class="fx-num">' + centimes('unit_price_cents', l.unit_price_cents) + '</td>'
       + '<td class="fx-num">' + champ('qty_ref', l.qty_ref, 'fx-court') + '</td>'
       + '<td class="fx-num">' + centimes('line_total_cents', l.line_total_cents) + '</td>'
@@ -414,13 +486,22 @@ function dessiner(boite, d) {
     + '<div class="fx-barre" style="margin-bottom:14px">'
     + '<span class="fx-puce ' + cl + '">' + esc(txt) + '</span>'
     + '<span style="font-size:13px;color:var(--db-muted)">'
-    + esc(plur(lignes.length, 'ligne')) + ', dont '
-    + esc(plur(r.linhas_sem_ingrediente, 'sans ingrédient', 'sans ingrédient'))
-    + ' (' + eur(r.valor_sem_ingrediente_cents) + ')</span></div>'
-    + '<div class="fx-cadre"><table class="fx-lignes"><thead><tr>'
-    + '<th>#</th><th>Ingrédient rattaché, et ce qui était écrit</th><th class="fx-num">Quantité</th>'
-    + '<th class="fx-num">Prix unité</th><th class="fx-num">Qté de référence</th>'
-    + '<th class="fx-num">Total ligne</th><th></th>'
+    + esc(plur(lignes.length, 'ligne')) + ' · '
+    + eur(r.valor_hors_couts_cents) + ' n’entrent dans aucun coût'
+    + (r.linhas_sem_ingrediente ? ' (' + esc(plur(r.linhas_sem_ingrediente, 'sans ingrédient', 'sans ingrédient')) : '')
+    + (r.linhas_sem_valor ? (r.linhas_sem_ingrediente ? ', ' : ' (')
+        + esc(plur(r.linhas_sem_valor, 'sans quantité de référence', 'sans quantité de référence')) : '')
+    + ((r.linhas_sem_ingrediente || r.linhas_sem_valor) ? ')' : '')
+    + '</span></div>'
+    /* Les en-têtes ne dimensionnent plus rien — le colgroup s'en charge — donc ils peuvent
+       redevenir courts. L'unité monétaire passe dans le titre plutôt que dans chaque cellule. */
+    + '<div class="fx-cadre"><table class="fx-lignes">'
+    + '<colgroup><col class="c-n"><col><col class="c-q"><col class="c-p">'
+    + '<col class="c-r"><col class="c-t"><col class="c-x"></colgroup>'
+    + '<thead><tr>'
+    + '<th>#</th><th>Ingrédient rattaché, et ce qui était écrit</th>'
+    + '<th class="fx-num">Quantité</th><th class="fx-num">Prix unité €</th>'
+    + '<th class="fx-num">Qté réf.</th><th class="fx-num">Total ligne €</th><th class="fx-num"></th>'
     + '</tr></thead><tbody id="fx-lignes">' + corps + '</tbody></table></div>'
     + '<div class="fx-actes">'
     + '<button class="db-btn" id="fx-ajout">Ajouter une ligne</button>'

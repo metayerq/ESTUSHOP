@@ -102,8 +102,8 @@ CAS = {
                 "linhas": [
                     {"id": 12, "line_no": 1, "raw_text": ",32 Uni Fiambre 23% 6,40 Preco: 20,00/Uni",
                      "qty": 0.32, "unit": "Uni", "unit_price_cents": 2000,
-                     "line_total_cents": 640, "ingredient": "El Tambo",
-                     "price_per_ref": 20.0, "qty_ref": 0.32, "match_source": "asked"},
+                     "line_total_cents": 640, "ingredient": "Jambon artisanal",
+                     "price_per_ref": None, "qty_ref": None, "match_source": "asked"},
                     {"id": 13, "line_no": 2, "raw_text": ",478 Uni Paupiette KG 6% 16,73",
                      "qty": 0.478, "unit": "KG", "unit_price_cents": 3500,
                      "line_total_cents": 1673, "ingredient": None,
@@ -111,7 +111,8 @@ CAS = {
                 ],
                 "resumo": {"id": 6, "linhas": 2, "linhas_sem_ingrediente": 1,
                            "valor_sem_ingrediente_cents": 1673, "ecart_cents": 0,
-                           "total_cents": 3213},
+                           "total_cents": 3213, "linhas_sem_valor": 1,
+                           "valor_hors_couts_cents": 2313},
             },
             # ⚠️ Le détail charge aussi la liste des ingrédients : sans bouchon, `fetch`
             # rend `{}` et le `<select>` de rattachement reste vide — l'écran d'édition
@@ -137,17 +138,23 @@ CAS = {
                      "valor_sem_ingrediente_cents": 0, "ecart_cents": None},
                 ],
                 "totais": {"faturas": 2, "total_cents": 3882, "sem_ingrediente_cents": 2573,
+                           "hors_custos_cents": 3213, "linhas_sem_valor": 1,
                            "com_divergencia": 0, "sem_linhas": 1},
             },
         },
         # ⚠️ ON EXIGE LE MONTANT NON RATTACHÉ ET « aucune ligne lue » : ce sont les deux
         # signaux pour lesquels l'écran existe. Un tableau qui s'affiche sans eux est un
         # tableau qui ne sert à rien.
-        "attendu": ["TALHO DO CAMPO", "25,73", "2/3 sans ingrédient", "aucune ligne lue",
+        "attendu": ["TALHO DO CAMPO", "2/3 sans ingrédient", "aucune ligne lue",
                     "38,82", "23 sept. 2026",
                     # ⚠️ ON EXIGE LES COMMANDES D'ÉCRITURE : un écran d'archive qui ne se
                     # corrige plus se dégraderait sans que rien ne rougisse.
-                    "Supprimer cette facture", "Ajouter une ligne", "Café Gardelli"],
+                    "Supprimer cette facture", "Ajouter une ligne", "Café Gardelli",
+                    # ⚠️ ET SURTOUT L'ÉTAT QUI A L'AIR RÉPARÉ : une ligne rattachée dont la
+                    # conversion d'unité a échoué ne pèse RIEN dans les coûts. L'avertissement
+                    # ne vivait que le temps d'un clic ; il doit survivre au rechargement.
+                    "32,13", "sans quantité de référence",
+                    "Rattachée, mais sans quantité de référence"],
         "interdit": ["NaN", "undefined", "ligne(s)", "32.13", "[object Object]"],
         # Ouvre directement la facture 6 : c'est aussi ce que fait un lien partagé.
         "suffixe": "?id=6",
