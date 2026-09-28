@@ -556,3 +556,56 @@ def test_le_selecteur_marque_la_periode_active():
     i = html.index('id="period-pills"')
     barre = html[i:html.index("</div>", i)]
     assert barre.count('aria-pressed="true"') == 1, barre.count('aria-pressed="true"')
+
+def _vise_une_cellule(selecteur):
+    """Le sélecteur STYLE-t-il une cellule, ou seulement quelque chose qui vit dedans ?"""
+    import re
+    dernier = re.split(r"[\s>+~]+", selecteur.strip())[-1]
+    # On retire classes, id, pseudo-classes et attributs : reste le nom d'élément, s'il y en a.
+    element = re.split(r"[.#:\[]", dernier)[0].strip().lower()
+    return element in ("th", "td", "tr", "thead", "tbody")
+
+
+def test_aucune_cellule_de_tableau_ne_sort_du_contexte_tabulaire():
+    """
+    ⚠️ CE CONTRÔLE EXISTE PARCE QUE `display:flex` SUR UN `<th>` A DÉTRUIT UNE RANGÉE ENTIÈRE.
+    Le libellé « Qté en stock » et sa pastille ⓘ débordaient de leur colonne ; la boîte flex
+    semblait le correctif évident — elle enferme ses enfants et sait passer à la ligne.
+
+    Sauf qu'un `display:flex` SORT l'élément du contexte de formatage tabulaire : ce n'est plus
+    une cellule. Mesuré dans le navigateur, les cinq en-têtes numériques se sont empilés sur la
+    même boîte (903→1039 px) pendant que les cellules du corps restaient à leur place — la
+    rangée d'en-tête entièrement désalignée du tableau qu'elle coiffe.
+
+    ⚠️ ET RIEN NE LE DIT. Le HTML reste valide, le CSS aussi, la page se charge sans un
+    avertissement. C'est en MESURANT les rectangles qu'on le voit — jamais en relisant la règle,
+    qui a l'air parfaitement raisonnable.
+
+    `display:grid` a exactement le même effet, et `inline-flex` aussi.
+    """
+    import glob
+    import re
+
+    FAUTIFS = ("flex", "inline-flex", "grid", "inline-grid", "block", "inline-block")
+    coupables = []
+    for chemin in sorted(glob.glob(os.path.join(RACINE, "templates", "*.html"))):
+        html = open(chemin, encoding="utf-8").read()
+        for style in re.findall(r"<style[^>]*>(.*?)</style>", html, re.S):
+            # On enlève les commentaires : une règle citée en exemple n'est pas une règle.
+            style = re.sub(r"/\*.*?\*/", " ", style, flags=re.S)
+            for bloc in re.finditer(r"([^{}]+)\{([^{}]*)\}", style):
+                selecteur, corps = bloc.group(1), bloc.group(2)
+                # ⚠️ SEUL LE DERNIER ÉLÉMENT DU SÉLECTEUR EST CELUI QU'ON STYLE. La première
+                # version cherchait « th » n'importe où et accusait `.db thead th button`,
+                # qui vise un BOUTON dans un en-tête — parfaitement légitime. Un garde qui
+                # crie au loup sur du code correct finit désactivé, et ne garde plus rien.
+                if not any(_vise_une_cellule(part) for part in selecteur.split(",")):
+                    continue
+                m = re.search(r"display\s*:\s*([a-z-]+)", corps)
+                if m and m.group(1) in FAUTIFS:
+                    coupables.append(
+                        f"{os.path.basename(chemin)} : `{selecteur.strip()[:60]}` "
+                        f"pose display:{m.group(1)}")
+    assert not coupables, (
+        "une cellule de tableau quitte le contexte tabulaire — la colonne se désaligne "
+        "silencieusement :\n  " + "\n  ".join(coupables))

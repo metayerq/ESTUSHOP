@@ -3476,7 +3476,18 @@ def _unite_ref_ingredient(nom):
 
 @app.route("/api/arquivo-faturas/ingredientes")
 def api_arquivo_ingredientes():
-    """Les ingrédients rattachables, pour la liste déroulante — jamais une saisie libre."""
+    """
+    Les ingrédients rattachables.
+
+    ⚠️ MÊME TABLE QUE « COGS & recettes » ET « Inventaire », ET C'EST LA SEULE CHOSE QUI COMPTE
+    ICI. Un écran de rattachement qui proposerait sa propre liste finirait par nommer des
+    ingrédients que les recettes ne connaissent pas : la ligne de facture serait « rattachée »
+    à quelque chose que le calcul de coût ignore, ce qui est pire que non rattachée — l'écran
+    dirait vert et la marge ne bougerait pas.
+
+    Pour la même raison, la création à la volée passe par `POST /api/ingredients`, celle de
+    COGS, et non par une route d'ici : un seul écrivain, une seule forme de ligne.
+    """
     rows = _supa_get_all("ingredients", {"select": "name,unit_ref,category", "order": "name.asc"})
     return jsonify({"ingredientes": rows})
 
