@@ -100,11 +100,11 @@ CAS = {
                            "subtotal_cents": 2830, "vat_cents": 383, "total_cents": 3213,
                            "posted_at": None, "scanned_by": None},
                 "linhas": [
-                    {"line_no": 1, "raw_text": ",32 Uni Fiambre 23% 6,40 Preco: 20,00/Uni",
+                    {"id": 12, "line_no": 1, "raw_text": ",32 Uni Fiambre 23% 6,40 Preco: 20,00/Uni",
                      "qty": 0.32, "unit": "Uni", "unit_price_cents": 2000,
                      "line_total_cents": 640, "ingredient": "El Tambo",
                      "price_per_ref": 20.0, "qty_ref": 0.32, "match_source": "asked"},
-                    {"line_no": 2, "raw_text": ",478 Uni Paupiette KG 6% 16,73",
+                    {"id": 13, "line_no": 2, "raw_text": ",478 Uni Paupiette KG 6% 16,73",
                      "qty": 0.478, "unit": "KG", "unit_price_cents": 3500,
                      "line_total_cents": 1673, "ingredient": None,
                      "price_per_ref": None, "qty_ref": None, "match_source": "unmatched"},
@@ -112,6 +112,13 @@ CAS = {
                 "resumo": {"id": 6, "linhas": 2, "linhas_sem_ingrediente": 1,
                            "valor_sem_ingrediente_cents": 1673, "ecart_cents": 0,
                            "total_cents": 3213},
+            },
+            # ⚠️ Le détail charge aussi la liste des ingrédients : sans bouchon, `fetch`
+            # rend `{}` et le `<select>` de rattachement reste vide — l'écran d'édition
+            # s'afficherait sans sa seule fonction.
+            "/api/arquivo-faturas/ingredientes": {
+                "ingredientes": [{"name": "Café Gardelli", "unit_ref": "kg"},
+                                 {"name": "El Tambo", "unit_ref": "kg"}],
             },
             # ⚠️ LE BOUCHON COMPARE PAR PRÉFIXE : la liste doit venir APRÈS le détail, sinon
             # « /api/arquivo-faturas » attrape aussi « /api/arquivo-faturas/6 » et l'écran de
@@ -137,8 +144,13 @@ CAS = {
         # signaux pour lesquels l'écran existe. Un tableau qui s'affiche sans eux est un
         # tableau qui ne sert à rien.
         "attendu": ["TALHO DO CAMPO", "25,73", "2/3 sans ingrédient", "aucune ligne lue",
-                    "38,82", "23 sept. 2026"],
+                    "38,82", "23 sept. 2026",
+                    # ⚠️ ON EXIGE LES COMMANDES D'ÉCRITURE : un écran d'archive qui ne se
+                    # corrige plus se dégraderait sans que rien ne rougisse.
+                    "Supprimer cette facture", "Ajouter une ligne", "Café Gardelli"],
         "interdit": ["NaN", "undefined", "ligne(s)", "32.13", "[object Object]"],
+        # Ouvre directement la facture 6 : c'est aussi ce que fait un lien partagé.
+        "suffixe": "?id=6",
     },
     "inventario.html": {
         "reponses": {
@@ -194,7 +206,7 @@ def test_la_page_s_affiche_vraiment(nom, tmp_path):
 
     r = subprocess.run(
         [binaire, "--headless", "--no-sandbox", "--disable-gpu", "--dump-dom",
-         "--virtual-time-budget=4000", "file://" + str(chemin)],
+         "--virtual-time-budget=4000", "file://" + str(chemin) + cas.get("suffixe", "")],
         capture_output=True, text=True, timeout=90, env=env)
     dom = r.stdout
 

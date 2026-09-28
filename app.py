@@ -3395,6 +3395,240 @@ def api_arquivo_fatura(fatura_id):
     })
 
 
+# ── Corriger ce que le scan a mal lu ─────────────────────────────────────────────────────────
+#
+# ⚠️ CES ROUTES ÉCRIVENT DANS LES ACHATS, DONC DANS LA MARGE. Rattacher une ligne à un
+# ingrédient n'est pas un geste d'affichage : `_valeur_achetee` multiplie `qty_ref` par
+# `price_per_ref` pour établir ce qu'on a dépensé par ingrédient, et ce chiffre nourrit le coût
+# de revient. Une correction faite ici change le prix d'achat retenu demain.
+#
+# ⚠️ ET C'EST LE PIÈGE DE L'ÉCRAN : rattacher un ingrédient SANS recalculer `qty_ref` et
+# `price_per_ref` donne une ligne qui a l'air réparée et ne pèse toujours rien. Les deux
+# champs sont donc recalculés à chaque rattachement, jamais laissés au hasard.
+
+# Les unités telles qu'elles sont IMPRIMÉES sur les factures — « Uni », « KG », « L ». La table
+# de conversion, elle, parle en minuscules et en « unit ». On normalise ici plutôt que d'ajouter
+# douze entrées qui se périmeraient à la première facture d'un nouveau fournisseur.
+_UNITES_FACTURE = {
+    "uni": "unit", "un": "unit", "und": "unit", "pc": "unit", "pcs": "unit", "u": "unit",
+    "kgs": "kg", "grs": "g", "gr": "g", "lt": "l", "lts": "l",
+}
+
+
+def _unite_normale(u):
+    u = (u or "").strip().lower()
+    return _UNITES_FACTURE.get(u, u)
+
+
+def _references_ligne(qty, unit, unit_ref, line_total_cents):
+    """
+    Ce que vaut une ligne dans l'unité de référence de son ingrédient.
+
+    Renvoie `(qty_ref, price_per_ref, raison)`. `raison` est non nulle quand on n'a PAS su
+    convertir — auquel cas les deux valeurs sont `None`.
+
+    ⚠️ ON NE DEVINE PAS UNE CONVERSION. « Uni » face à un ingrédient au kilo peut vouloir dire
+    n'importe quoi : une pièce de 200 g comme un sac de 5 kg. Écrire un chiffre plausible
+    fabriquerait un prix d'achat faux et confiant, qui se propagerait jusqu'à la marge sans que
+    personne puisse remonter à sa source. Un trou déclaré se voit ; un chiffre inventé, non.
+
+    ⚠️ ET LE PRIX DE RÉFÉRENCE SE DÉDUIT DE CE QUI A ÉTÉ PAYÉ, pas du catalogue. C'est le but
+    même de scanner les factures : apprendre le prix réel. Reprendre `ingredients.price`
+    reviendrait à confirmer ce qu'on croyait déjà savoir.
+    """
+    if qty in (None, "") or not unit_ref:
+        return None, None, "quantité ou unité de référence manquante"
+    try:
+        q = float(qty)
+    except (TypeError, ValueError):
+        return None, None, "quantité illisible"
+    facteur = UNIT_CONVERSIONS.get((_unite_normale(unit), _unite_normale(unit_ref)))
+    if facteur is None:
+        return None, None, (f"conversion {unit or '?'} → {unit_ref} inconnue")
+    qty_ref = round(q * facteur, 6)
+    if not qty_ref:
+        return qty_ref, None, "quantité nulle : aucun prix unitaire déductible"
+    prix = round((line_total_cents or 0) / 100.0 / qty_ref, 6)
+    return qty_ref, prix, None
+
+
+def _unite_ref_ingredient(nom):
+    if not nom:
+        return None
+    rows = _supa_get("ingredients", {"select": "name,unit_ref", "name": f"eq.{nom}", "limit": 1})
+    return (rows[0].get("unit_ref") if rows else None)
+
+
+@app.route("/api/arquivo-faturas/ingredientes")
+def api_arquivo_ingredientes():
+    """Les ingrédients rattachables, pour la liste déroulante — jamais une saisie libre."""
+    rows = _supa_get_all("ingredients", {"select": "name,unit_ref,category", "order": "name.asc"})
+    return jsonify({"ingredientes": rows})
+
+
+@app.route("/api/arquivo-faturas/<int:fatura_id>", methods=["PATCH"])
+def api_arquivo_fatura_patch(fatura_id):
+    if not _is_admin():
+        return jsonify({"error": "réservé à l'administrateur"}), 403
+    corps = request.get_json(silent=True) or {}
+    # ⚠️ UNE LISTE BLANCHE, PAS LE CORPS TEL QUEL. Laisser passer `id` ou `created_at` permet de
+    # réécrire l'identité d'une facture depuis le navigateur ; la liste dit ce qui se corrige.
+    permis = ("fornecedor", "nif", "numero", "data",
+              "subtotal_cents", "vat_cents", "total_cents")
+    patch = {k: corps[k] for k in permis if k in corps}
+    if not patch:
+        return jsonify({"error": "rien à modifier"}), 400
+    for k in ("subtotal_cents", "vat_cents", "total_cents"):
+        if k in patch and patch[k] is not None:
+            try:
+                patch[k] = int(round(float(patch[k])))
+            except (TypeError, ValueError):
+                return jsonify({"error": f"{k} doit être un nombre de centimes"}), 400
+    ok, err = _supa_patch("fatura_invoices", {"id": f"eq.{fatura_id}"}, patch)
+    return (jsonify({"ok": True}) if ok else (jsonify({"error": err or "échec"}), 502))
+
+
+@app.route("/api/arquivo-faturas/<int:fatura_id>", methods=["DELETE"])
+def api_arquivo_fatura_delete(fatura_id):
+    """
+    Supprime la facture ET ses lignes.
+
+    ⚠️ LA CASCADE A ÉTÉ VÉRIFIÉE EN BASE, PAS SUPPOSÉE : une facture jetable créée puis
+    supprimée a bien emporté sa ligne. Si la contrainte changeait un jour, on retomberait sur
+    des lignes orphelines — invisibles dans cet écran, qui liste par facture, et toujours
+    présentes dans les achats. On efface donc les lignes AVANT, explicitement : c'est
+    redondant avec la cascade, et c'est la redondance qui protège du jour où elle disparaît.
+    """
+    if not _is_admin():
+        return jsonify({"error": "réservé à l'administrateur"}), 403
+    _supa_delete("fatura_lines", "invoice_id", fatura_id)
+    ok = _supa_delete("fatura_invoices", "id", fatura_id)
+    if not ok:
+        return jsonify({"error": "la suppression a échoué"}), 502
+    restantes = _supa_get("fatura_lines", {"select": "id", "invoice_id": f"eq.{fatura_id}",
+                                           "limit": 1})
+    return jsonify({"ok": True, "lignes_orphelines": len(restantes)})
+
+
+def _ligne_ecrite(corps, ligne_existante=None):
+    """Le corps d'une ligne, nettoyé — et ses références recalculées si un ingrédient est posé."""
+    permis = ("line_no", "raw_text", "qty", "unit", "vat_rate",
+              "unit_price_cents", "line_total_cents", "ingredient", "supplier_ref",
+              # ⚠️ `qty_ref` EST LA SORTIE DE SECOURS, ET ELLE EST INDISPENSABLE. La plupart des
+              # lignes de facture sont libellées « Uni » : deux pièces de charcuterie face à un
+              # ingrédient au kilo ne se convertissent pas, et le refus de deviner bloquerait
+              # alors le rattachement de la majorité des lignes. Quand la conversion est
+              # impossible, l'écran demande la quantité en unité de référence — un humain sait
+              # que la barquette fait 478 g, la table de conversion non.
+              "qty_ref")
+    row = {k: corps[k] for k in permis if k in corps}
+    for k in ("unit_price_cents", "line_total_cents"):
+        if k in row and row[k] is not None:
+            try:
+                row[k] = int(round(float(row[k])))
+            except (TypeError, ValueError):
+                return None, f"{k} doit être un nombre de centimes"
+    for k in ("qty", "vat_rate"):
+        if k in row and row[k] not in (None, ""):
+            try:
+                row[k] = float(row[k])
+            except (TypeError, ValueError):
+                return None, f"{k} doit être un nombre"
+    if row.get("ingredient") == "":
+        row["ingredient"] = None
+
+    base = dict(ligne_existante or {})
+    base.update(row)
+    if "ingredient" in row:
+        if row["ingredient"] is None:
+            # ⚠️ DÉTACHER, C'EST AUSSI EFFACER LES RÉFÉRENCES. Les laisser en place garderait
+            # une dépense rattachée à un ingrédient qui n'est plus nommé nulle part.
+            row["qty_ref"] = None
+            row["price_per_ref"] = None
+            row["match_source"] = "unmatched"
+        else:
+            unit_ref = _unite_ref_ingredient(row["ingredient"])
+            if "qty_ref" in row and row["qty_ref"] not in (None, ""):
+                # Quantité de référence donnée à la main : on la croit, et on en déduit le prix.
+                try:
+                    qref = float(row["qty_ref"])
+                except (TypeError, ValueError):
+                    return None, "qty_ref doit être un nombre"
+                total = base.get("line_total_cents") or 0
+                prix = round(total / 100.0 / qref, 6) if qref else None
+                raison = None if qref else "quantité de référence nulle"
+            else:
+                qref, prix, raison = _references_ligne(
+                    base.get("qty"), base.get("unit"), unit_ref, base.get("line_total_cents"))
+            row["qty_ref"] = qref
+            row["price_per_ref"] = prix
+            row["_unit_ref"] = unit_ref
+            # ⚠️ `asked`, ET PAS UNE VALEUR À NOUS. Une contrainte CHECK sur la table
+            # n'autorise que `asked`, `unmatched` et `auto` — vérifié en essayant, la base
+            # refuse tout le reste et refuse aussi NULL. J'ai d'abord écrit `manual` pour
+            # distinguer la correction humaine de la proposition du scanner : la table est
+            # celle de l'application de scan, l'élargir casserait son contrat. `asked`
+            # signifie déjà « un humain a répondu », ce qui est exactement le cas ici.
+            row["match_source"] = "asked"
+            if raison:
+                row["_avertissement"] = raison
+    return row, None
+
+
+@app.route("/api/arquivo-faturas/<int:fatura_id>/linhas", methods=["POST"])
+def api_arquivo_ligne_creer(fatura_id):
+    """Une ligne que le scan a oubliée — c'est elle qui comble l'écart avec le total."""
+    if not _is_admin():
+        return jsonify({"error": "réservé à l'administrateur"}), 403
+    row, err = _ligne_ecrite(request.get_json(silent=True) or {})
+    if err:
+        return jsonify({"error": err}), 400
+    avert = row.pop("_avertissement", None)
+    row.pop("_unit_ref", None)
+    row["invoice_id"] = fatura_id
+    if row.get("line_no") in (None, ""):
+        deja = _supa_get("fatura_lines", {"select": "line_no", "invoice_id": f"eq.{fatura_id}",
+                                          "order": "line_no.desc", "limit": 1})
+        row["line_no"] = ((deja[0].get("line_no") or 0) + 1) if deja else 1
+    row.setdefault("match_source", "unmatched")
+    r = _req.post(f"{SUPA_URL}/rest/v1/fatura_lines", json=row,
+                  headers=_supa_headers("return=representation"))
+    if not r.ok:
+        return jsonify({"error": r.text[:200]}), 502
+    cree = r.json()
+    return jsonify({"ok": True, "linha": cree[0] if cree else None, "aviso": avert})
+
+
+@app.route("/api/arquivo-faturas/linha/<int:linha_id>", methods=["PATCH"])
+def api_arquivo_ligne_patch(linha_id):
+    if not _is_admin():
+        return jsonify({"error": "réservé à l'administrateur"}), 403
+    trouve = _supa_get("fatura_lines", {"select": "*", "id": f"eq.{linha_id}", "limit": 1})
+    if not trouve:
+        return jsonify({"error": "ligne introuvable"}), 404
+    row, err = _ligne_ecrite(request.get_json(silent=True) or {}, trouve[0])
+    if err:
+        return jsonify({"error": err}), 400
+    avert = row.pop("_avertissement", None)
+    unit_ref = row.pop("_unit_ref", None)
+    if not row:
+        return jsonify({"error": "rien à modifier"}), 400
+    ok, msg = _supa_patch("fatura_lines", {"id": f"eq.{linha_id}"}, row)
+    if not ok:
+        return jsonify({"error": msg or "échec"}), 502
+    apres = _supa_get("fatura_lines", {"select": "*", "id": f"eq.{linha_id}", "limit": 1})
+    return jsonify({"ok": True, "linha": apres[0] if apres else None,
+                    "aviso": avert, "unit_ref": unit_ref})
+
+
+@app.route("/api/arquivo-faturas/linha/<int:linha_id>", methods=["DELETE"])
+def api_arquivo_ligne_delete(linha_id):
+    if not _is_admin():
+        return jsonify({"error": "réservé à l'administrateur"}), 403
+    ok = _supa_delete("fatura_lines", "id", linha_id)
+    return (jsonify({"ok": True}) if ok else (jsonify({"error": "échec"}), 502))
+
+
 @app.route("/stock")
 def stock_page():
     role = _current_role() or "admin"

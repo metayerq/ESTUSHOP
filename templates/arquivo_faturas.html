@@ -76,6 +76,26 @@
   color:var(--db-muted); line-height:1.5; margin-top:5px; word-break:break-word; }
 .fx-nul { color:var(--db-red); }
 
+.fx-ed { font:inherit; font-size:13.5px; padding:6px 8px; border:1px solid var(--db-line);
+  border-radius:7px; background:var(--db-card); color:inherit; width:100%; max-width:220px; }
+.fx-ed:focus { outline:2px solid var(--db-ink); outline-offset:-1px; }
+.fx-ed.fx-court { max-width:92px; text-align:right; font-variant-numeric:tabular-nums; }
+.fx-ed.fx-large { max-width:100%; }
+/* ⚠️ UN CHAMP EN ATTENTE DOIT SE VOIR. Sans retour, on ne sait pas si la correction est
+   partie : on la retape, ou pire, on part en croyant l'avoir enregistrée. */
+.fx-ed[data-etat="occupe"] { opacity:.55; }
+.fx-ed[data-etat="ko"] { border-color:var(--db-red); }
+.fx-etat { font-size:12px; color:var(--db-muted); margin-left:10px; white-space:nowrap; }
+.fx-etat.ok { color:var(--db-green); } .fx-etat.ko { color:var(--db-red); }
+
+.fx-actes { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:18px;
+  padding-top:16px; border-top:1px solid var(--db-line); }
+.fx-danger { color:var(--db-red); border-color:currentColor; }
+.fx-lig-sup { background:none; border:0; color:var(--db-muted); cursor:pointer; font:inherit;
+  font-size:17px; line-height:1; padding:4px 6px; border-radius:6px; }
+.fx-lig-sup:hover { color:var(--db-red); background:var(--db-hover, rgba(0,0,0,.05)); }
+.fx-avis { font-size:12.5px; color:var(--db-amber); margin-top:6px; line-height:1.45; }
+
 .fx-vide { padding:40px 0; text-align:center; color:var(--db-muted); font-size:14px; line-height:1.6; }
 
 /* ⚠️ CE BLOC VA À LA FIN DE LA FEUILLE. Une media query de même spécificité placée AVANT les
@@ -264,7 +284,54 @@ $('fx-corps').addEventListener('click', e => {
   if (tr) ouvrir(Number(tr.dataset.id));
 });
 
-/* ── Le détail ─────────────────────────────────────────────────────────────────── */
+/* ── Le détail, et sa correction ───────────────────────────────────────────────
+
+   ⚠️ CORRIGER ICI CHANGE LA MARGE, PAS L'AFFICHAGE. `qty_ref × price_per_ref` est ce que le
+   backoffice retient comme dépense par ingrédient, et ce chiffre nourrit le coût de revient.
+   Rattacher une ligne au bon ingrédient est donc une écriture comptable, pas une étiquette. */
+
+let INGREDIENTS = [];
+let FATURE = null;
+
+async function ingredients() {
+  if (INGREDIENTS.length) return INGREDIENTS;
+  try {
+    const r = await fetch('/api/arquivo-faturas/ingredientes');
+    INGREDIENTS = (await r.json()).ingredientes || [];
+  } catch (e) { INGREDIENTS = []; }
+  return INGREDIENTS;
+}
+
+function dire(el, texte, classe) {
+  const e = el.parentElement.querySelector('.fx-etat')
+    || el.parentElement.appendChild(Object.assign(document.createElement('span'),
+         { className: 'fx-etat' }));
+  e.className = 'fx-etat ' + (classe || '');
+  e.textContent = texte;
+  if (classe === 'ok') setTimeout(() => { if (e.textContent === texte) e.textContent = ''; }, 2500);
+}
+
+/* ⚠️ UNE SEULE FONCTION D'ÉCRITURE, ET ELLE DIT TOUJOURS CE QUI S'EST PASSÉ. Trois appels
+   séparés qui gèrent chacun leurs erreurs finissent par en oublier un — et une correction
+   perdue en silence est pire que pas de correction du tout : on croit l'avoir faite. */
+async function ecrire(url, methode, corps, champ) {
+  if (champ) { champ.dataset.etat = 'occupe'; dire(champ, 'enregistrement…'); }
+  try {
+    const r = await fetch(url, {
+      method: methode,
+      headers: { 'Content-Type': 'application/json' },
+      body: corps === undefined ? undefined : JSON.stringify(corps),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) throw new Error(d.error || ('erreur ' + r.status));
+    if (champ) { champ.dataset.etat = ''; dire(champ, 'enregistré', 'ok'); }
+    return d;
+  } catch (e) {
+    if (champ) { champ.dataset.etat = 'ko'; dire(champ, e.message, 'ko'); }
+    else alert(e.message);
+    return null;
+  }
+}
 
 async function ouvrir(id) {
   CHOISIE = id;
@@ -281,45 +348,65 @@ async function ouvrir(id) {
     d = await r.json();
     if (d.error) throw new Error(d.error);
   } catch (e) {
-    boite.innerHTML = '<div class="fx-vide">Impossible d’ouvrir cette facture : ' + esc(e.message) + '</div>';
+    boite.innerHTML = '<div class="fx-vide">Impossible d’ouvrir cette facture : ' + esc(e.message) + '</div>';
     return;
   }
+  FATURE = d;
+  await ingredients();
+  dessiner(boite, d);
+}
 
+/* ⚠️ UN CHAMP DE SAISIE RESTE DANS LA LANGUE DE LA PAGE. « 32.13 » au milieu d'un écran où
+   tout le reste dit « 32,13 € » se lit comme une valeur qui vient d'ailleurs — et on finit par
+   douter de laquelle est la bonne. La lecture accepte les deux : `valeurChamp` remet le point
+   avant `parseFloat`, qui ne connaît que lui. */
+const nb = v => (v === null || v === undefined || v === '') ? '' : String(v).replace('.', ',');
+
+function champ(cle, valeur, attrs) {
+  return '<input class="fx-ed ' + (attrs || '') + '" data-champ="' + cle + '" value="'
+    + esc(typeof valeur === 'number' ? nb(valeur)
+            : (valeur === null || valeur === undefined ? '' : valeur)) + '">';
+}
+
+function centimes(cle, c) {
+  /* ⚠️ ON SAISIT DES EUROS, ON STOCKE DES CENTIMES. Demander « 3213 » pour 32,13 € est une
+     invitation permanente à la faute de frappe d'un facteur cent. */
+  return '<input class="fx-ed fx-court" data-champ="' + cle + '" data-centimes="1" value="'
+    + (c === null || c === undefined ? '' : nb((c / 100).toFixed(2))) + '">';
+}
+
+function dessiner(boite, d) {
   const f = d.fatura, r = d.resumo, lignes = d.linhas || [];
   const [cl, txt] = etatLecture(r);
 
   const entete = [
-    ['Fournisseur', esc(f.fornecedor) || '—'],
-    ['Numéro', esc(f.numero) || '—'],
-    ['Date', esc(jour(f.data))],
-    ['NIF', esc(f.nif) || '—'],
-    ['Hors taxe', eur(f.subtotal_cents)],
-    ['TVA', eur(f.vat_cents)],
-    ['Total', eur(f.total_cents)],
-  ].map(x => '<div><span>' + x[0] + '</span><b>' + x[1] + '</b></div>').join('');
+    ['Fournisseur', champ('fornecedor', f.fornecedor)],
+    ['Numéro', champ('numero', f.numero)],
+    ['Date', '<input class="fx-ed" type="date" data-champ="data" value="' + esc(f.data || '') + '">'],
+    ['NIF', champ('nif', f.nif)],
+    ['Hors taxe', centimes('subtotal_cents', f.subtotal_cents)],
+    ['TVA', centimes('vat_cents', f.vat_cents)],
+    ['Total', centimes('total_cents', f.total_cents)],
+  ].map(x => '<div><span>' + x[0] + '</span>' + x[1] + '</div>').join('');
 
-  const corps = lignes.length ? lignes.map(l => {
-    const rattache = l.ingredient
-      ? esc(l.ingredient)
-      : '<span class="fx-nul">non rattachée</span>';
-    /* Le prix rapporté à l'unité de référence est celui qui partira dans les coûts : c'est
-       lui qu'on vérifie, pas le prix imprimé sur la facture. */
-    const ref = (l.price_per_ref === null || l.price_per_ref === undefined)
-      ? '—'
-      : EUR.format(l.price_per_ref) + (l.qty_ref !== null && l.qty_ref !== undefined
-          ? ' × ' + l.qty_ref : '');
-    return '<tr>'
+  const options = ing => '<option value="">— non rattachée —</option>'
+    + INGREDIENTS.map(i => '<option value="' + esc(i.name) + '"'
+        + (i.name === ing ? ' selected' : '') + '>' + esc(i.name)
+        + (i.unit_ref ? ' (' + esc(i.unit_ref) + ')' : '') + '</option>').join('');
+
+  const corps = lignes.length ? lignes.map(l => '<tr data-linha="' + l.id + '">'
       + '<td>' + (l.line_no === null ? '—' : l.line_no) + '</td>'
-      + '<td>' + rattache
-      + '<div class="fx-brut">' + esc(l.raw_text || 'texte non conservé') + '</div></td>'
-      + '<td class="fx-num">' + (l.qty === null || l.qty === undefined ? '—' : l.qty)
-      + ' ' + esc(l.unit || '') + '</td>'
-      + '<td class="fx-num">' + eur(l.unit_price_cents) + '</td>'
-      + '<td class="fx-num">' + ref + '</td>'
-      + '<td class="fx-num">' + eur(l.line_total_cents) + '</td>'
-      + '<td>' + esc(l.match_source || '—') + '</td>'
-      + '</tr>';
-  }).join('')
+      + '<td><select class="fx-ed fx-large" data-champ="ingredient">' + options(l.ingredient) + '</select>'
+      + '<div class="fx-brut">' + esc(l.raw_text || 'texte non conservé') + '</div>'
+      + '<div class="fx-avis" data-avis></div></td>'
+      + '<td class="fx-num">' + champ('qty', l.qty, 'fx-court') + ' '
+      + champ('unit', l.unit, 'fx-court') + '</td>'
+      + '<td class="fx-num">' + centimes('unit_price_cents', l.unit_price_cents) + '</td>'
+      + '<td class="fx-num">' + champ('qty_ref', l.qty_ref, 'fx-court') + '</td>'
+      + '<td class="fx-num">' + centimes('line_total_cents', l.line_total_cents) + '</td>'
+      + '<td class="fx-num"><button class="fx-lig-sup" data-sup-linha="' + l.id
+      + '" title="Supprimer cette ligne" aria-label="Supprimer la ligne">&times;</button></td>'
+      + '</tr>').join('')
     : '<tr><td colspan="7" class="fx-vide">Le scan n’a extrait aucune ligne de cette facture. '
       + 'Son total est connu, mais rien de ce qu’elle contient n’alimente les coûts.</td></tr>';
 
@@ -332,12 +419,99 @@ async function ouvrir(id) {
     + ' (' + eur(r.valor_sem_ingrediente_cents) + ')</span></div>'
     + '<div class="fx-cadre"><table class="fx-lignes"><thead><tr>'
     + '<th>#</th><th>Ingrédient rattaché, et ce qui était écrit</th><th class="fx-num">Quantité</th>'
-    + '<th class="fx-num">Prix unité</th><th class="fx-num">Prix de référence</th>'
-    + '<th class="fx-num">Total ligne</th><th>Origine</th>'
-    + '</tr></thead><tbody>' + corps + '</tbody></table></div>';
+    + '<th class="fx-num">Prix unité</th><th class="fx-num">Qté de référence</th>'
+    + '<th class="fx-num">Total ligne</th><th></th>'
+    + '</tr></thead><tbody id="fx-lignes">' + corps + '</tbody></table></div>'
+    + '<div class="fx-actes">'
+    + '<button class="db-btn" id="fx-ajout">Ajouter une ligne</button>'
+    + '<button class="db-btn fx-danger" id="fx-sup">Supprimer cette facture</button>'
+    + '<span class="fx-etat" id="fx-sup-etat"></span>'
+    + '</div>';
 
   boite.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
+
+function valeurChamp(inp) {
+  const v = inp.value.trim();
+  if (inp.dataset.centimes) return v === '' ? null : Math.round(parseFloat(v.replace(',', '.')) * 100);
+  if (v === '') return inp.dataset.champ === 'ingredient' ? '' : null;
+  if (['qty', 'qty_ref', 'vat_rate'].indexOf(inp.dataset.champ) >= 0) return parseFloat(v.replace(',', '.'));
+  return v;
+}
+
+/* ⚠️ DÉLÉGATION SUR LE CONTENEUR, PAS UN ÉCOUTEUR PAR CHAMP. Le détail se redessine à chaque
+   ouverture : des écouteurs posés à la main s'accumuleraient à chaque clic, et la même
+   correction partirait deux fois, puis trois. */
+$('fx-detail').addEventListener('change', async e => {
+  const inp = e.target.closest('.fx-ed');
+  if (!inp || !FATURE) return;
+  const tr = inp.closest('tr[data-linha]');
+  const corps = {}; corps[inp.dataset.champ] = valeurChamp(inp);
+
+  if (!tr) {
+    await ecrire('/api/arquivo-faturas/' + FATURE.fatura.id, 'PATCH', corps, inp);
+    charger();
+    return;
+  }
+  /* Une quantité de référence saisie à la main n'a de sens qu'avec son ingrédient : on renvoie
+     les deux ensemble, sinon le serveur recalcule depuis les unités et l'écrase. */
+  if (inp.dataset.champ === 'qty_ref') {
+    const sel = tr.querySelector('[data-champ="ingredient"]');
+    if (sel && sel.value) corps.ingredient = sel.value;
+  }
+  const d = await ecrire('/api/arquivo-faturas/linha/' + tr.dataset.linha, 'PATCH', corps, inp);
+  if (!d) return;
+  const avis = tr.querySelector('[data-avis]');
+  /* ⚠️ L'AVERTISSEMENT EST LE CŒUR DE L'ÉCRAN. Un ingrédient rattaché dont la conversion a
+     échoué a l'air réparé et ne pèse toujours RIEN dans les coûts. Sans cette phrase, on
+     croirait la correction faite. */
+  if (avis) {
+    avis.textContent = d.aviso
+      ? d.aviso + ' — indiquez la quantité en ' + (d.unit_ref || 'unité de référence')
+        + ' pour que cette ligne compte dans les coûts.'
+      : '';
+  }
+  if (d.linha) {
+    const q = tr.querySelector('[data-champ="qty_ref"]');
+    if (q && document.activeElement !== q) {
+      q.value = nb(d.linha.qty_ref);
+    }
+  }
+  charger();
+});
+
+$('fx-detail').addEventListener('click', async e => {
+  if (!FATURE) return;
+  const sup = e.target.closest('[data-sup-linha]');
+  if (sup) {
+    if (!confirm('Supprimer cette ligne ? Son montant ne comptera plus dans les achats.')) return;
+    if (await ecrire('/api/arquivo-faturas/linha/' + sup.dataset.supLinha, 'DELETE')) {
+      await ouvrir(FATURE.fatura.id); charger();
+    }
+    return;
+  }
+  if (e.target.id === 'fx-ajout') {
+    const d = await ecrire('/api/arquivo-faturas/' + FATURE.fatura.id + '/linhas', 'POST',
+      { raw_text: 'ligne ajoutée à la main', qty: null, unit: '', line_total_cents: 0 });
+    if (d) { await ouvrir(FATURE.fatura.id); charger(); }
+    return;
+  }
+  if (e.target.id === 'fx-sup') {
+    /* ⚠️ DEUX GESTES, ET LE SECOND DIT CE QU'ON PERD. Un `confirm()` seul se clique par
+       réflexe ; nommer la facture et compter ses lignes force à lire avant de valider. */
+    const f = FATURE.fatura, n = (FATURE.linhas || []).length;
+    const quoi = (f.fornecedor || 'sans fournisseur') + ' · ' + (f.numero || 'sans numéro')
+      + ' · ' + eur(f.total_cents);
+    if (!confirm('Supprimer définitivement cette facture ?\n\n' + quoi + '\n'
+      + plur(n, 'ligne') + ' seront effacées avec elle. Cette action est irréversible.')) return;
+    const d = await ecrire('/api/arquivo-faturas/' + f.id, 'DELETE');
+    if (d) {
+      FATURE = null; CHOISIE = null;
+      $('fx-detail').hidden = true;
+      charger();
+    }
+  }
+});
 
 /* ── Démarrage ─────────────────────────────────────────────────────────────────── */
 
