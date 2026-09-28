@@ -84,44 +84,86 @@
 .fx-entete label span { display:block; font-size:11.5px; letter-spacing:.06em;
   text-transform:uppercase; color:var(--db-muted); margin-bottom:6px; }
 
-/* ⚠️ `table-layout:fixed` ET DES LARGEURS ÉCRITES. En automatique, c'est la LONGUEUR DU
-   TITRE qui décidait : « Qté de référence » s'octroyait 132 px pendant que « Quantité » —
-   qui porte DEUX champs — tombait à 77 px, et ses champs sortaient de la cellule de 65 px.
-   Une colonne de saisie ne se dimensionne pas d'après son en-tête. */
-.fx-lignes { width:100%; min-width:744px; border-collapse:collapse; table-layout:fixed;
-  font-variant-numeric:tabular-nums; }
-.fx-lignes col.c-n { width:34px; }
-.fx-lignes col.c-q { width:136px; }
-.fx-lignes col.c-p { width:104px; }
-.fx-lignes col.c-r { width:128px; }
-.fx-lignes col.c-t { width:104px; }
-.fx-lignes col.c-x { width:44px; }
-.fx-liste { min-width:620px; }
-.fx-lignes th { text-align:left; font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
-  padding:0 10px 9px 0; }
-.fx-lignes td { padding:11px 10px 11px 0; border-top:1px solid var(--db-line); font-size:13.5px;
-  vertical-align:top; }
-/* ⚠️ LE TEXTE BRUT EST LA PIÈCE À CONVICTION. C'est lui qui montre qu'une ligne lue
-   « Fiambre » a été rattachée à « El Tambo » — un rattachement faux est indiscernable d'un bon
-   tant qu'on ne lit pas ce qui était écrit sur le papier. */
-/* ⚠️ LE NOM RATTACHÉ ET LE TEXTE LU DOIVENT SE DISTINGUER AU PREMIER COUP D'ŒIL. Empilés
-   dans la même cellule sans séparation, on finissait par les lire comme une seule information
-   — alors que tout l'intérêt de l'écran est de pouvoir constater qu'ils ne concordent PAS :
-   « Fiambre » lu, « El Tambo » rattaché. Le filet et l'étiquette disent « ceci vient du
-   papier, pas de vous ». */
-.fx-lu { display:flex; gap:8px; margin-top:8px; padding-left:10px;
-  border-left:2px solid var(--db-line); }
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   LE DÉTAIL D'UNE FACTURE : DES FICHES, PLUS UN TABLEAU.
+
+   ⚠️ LE TABLEAU ÉTAIT LA MAUVAISE FORME, ET AUCUN RÉGLAGE DE LARGEUR NE POUVAIT LE SAUVER.
+   Sept colonnes dont cinq éditables, sur un écran qui sert aussi sur iPad : la colonne de
+   quantité recevait 136 px pour DEUX champs. « 500 » n'y tenait pas, « g · grammes » non plus.
+   On a élargi, réduit les libellés, collé les champs — en déplaçant la gêne d'une colonne à
+   l'autre à chaque fois. Un tableau range des données qu'on LIT ; corriger une ligne de
+   facture, c'est remplir un petit formulaire, et un formulaire a besoin de place.
+
+   ⚠️ ET LA FORME PORTE LE SENS. En colonnes, « Qté facturée » et « Qté en stock » étaient
+   deux cases éloignées, sans rien qui dise qu'elles parlent de la même chose. En fiche, elles
+   sont dans deux encadrés — « sur la facture » et « en stock » — séparés par une flèche. La
+   conversion se voit avant d'être lue.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+.fx-fiche { border:1px solid var(--db-line); border-radius:13px; padding:16px 18px 18px;
+  margin-bottom:14px; background:var(--db-card); }
+.fx-fiche:last-of-type { margin-bottom:0; }
+/* Le liseré gauche dit l'état avant qu'on ait lu le badge. */
+.fx-fiche.e-ko  { border-left:3px solid var(--db-red); }
+.fx-fiche.e-mou { border-left:3px solid var(--db-amber); }
+.fx-fiche.e-ok  { border-left:3px solid var(--db-green); }
+
+.fx-tete { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.fx-rang { font-family:ui-monospace, "SF Mono", Menlo, monospace; font-size:12.5px;
+  color:var(--db-muted); flex:none; }
+.fx-tete .fx-puce { flex:none; }
+.fx-tete .fx-lig-sup { margin-left:auto; }
+
+/* ⚠️ LE TEXTE LU EST LA PIÈCE À CONVICTION : c'est lui qui montre qu'une ligne lue
+   « Fiambre » a été rattachée à « El Tambo ». Il reste distinct du nom rattaché — filet,
+   étiquette, chasse fixe — parce que tout l'intérêt est de constater qu'ils divergent. */
+.fx-lu { display:flex; gap:9px; align-items:baseline; padding-left:11px;
+  border-left:2px solid var(--db-line); margin-bottom:14px; }
 .fx-lu-et { flex:none; font-size:10.5px; letter-spacing:.07em; text-transform:uppercase;
-  color:var(--db-muted); padding-top:2px; }
-.fx-brut { font-family:ui-monospace, "SF Mono", Menlo, monospace; font-size:12px;
+  color:var(--db-muted); }
+.fx-brut { font-family:ui-monospace, "SF Mono", Menlo, monospace; font-size:12.5px;
   color:var(--db-muted); line-height:1.5; word-break:break-word; }
 
-/* La conversion, écrite comme une conversion : « 0,32 Uni → 0,3 kg ». Deux nombres dans deux
-   colonnes éloignées ne disent pas qu'ils parlent de la même chose. */
-.fx-conv { margin-top:7px; font-size:12px; font-variant-numeric:tabular-nums;
-  color:var(--db-muted); }
+.fx-champ { display:block; margin-bottom:12px; }
+.fx-champ > span { display:block; font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--db-ink); opacity:.78; font-weight:500; margin-bottom:6px; }
+
+/* Les deux moitiés, et la flèche entre elles. Sous 700 px la flèche pivote et les encadrés
+   s'empilent — la lecture reste « ceci devient cela ». */
+.fx-deux { display:grid; grid-template-columns:1fr 30px 1fr; align-items:center; gap:0; }
+.fx-bloc { border:1px solid var(--db-line); border-radius:11px; padding:13px 14px 4px; }
+.fx-bloc > .fx-titre { font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--db-muted); margin-bottom:11px; display:flex; align-items:center; gap:5px; }
+.fx-fleche { text-align:center; font-size:19px; color:var(--db-muted); line-height:1; }
+
+/* ⚠️ LE PLANCHER EST CELUI DE LA MESURE, PAS UNE VALEUR RONDE. La boîte quantité porte un
+   nombre ET une unité de 84 px : sous 156 px, c'est le nombre qui paie, et « 1234,56 » se
+   rognait à 834 px de fenêtre — mesuré, pas supposé. Une colonne de formulaire se dimensionne
+   sur le plus large de ses champs. */
+.fx-grille { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(156px,100%), 1fr));
+  gap:0 12px; }
+
+/* ⚠️ LA MESURE EST UNE SEULE BOÎTE, ET ELLE A LA PLACE. Le nombre prend ce qui reste, l'unité
+   68 px — assez pour « unit » sans rogner sur les chiffres. C'est la contrainte de colonne qui
+   les étranglait, pas leur nature. */
+.fx-duo { display:flex; align-items:stretch; border:1px solid var(--db-line);
+  border-radius:8px; overflow:hidden; background:var(--db-card); }
+.fx-duo > * { min-width:0; }
+.fx-duo .fx-ed { border:0; border-radius:0; background:transparent; }
+.fx-duo .fx-ed:focus { outline-offset:-2px; }
+.fx-duo .fx-nombre { flex:1 1 auto; text-align:left; }
+.fx-duo .fx-unite { flex:0 0 84px; border-left:1px solid var(--db-line);
+  color:var(--db-ink); padding-left:9px; padding-right:2px; }
+
+/* Ce que le calcul rend : un résultat, pas un champ. On ne le tape pas, on le lit. */
+.fx-issu { font-size:15px; font-variant-numeric:tabular-nums; padding:8px 0 9px;
+  border-bottom:1px solid var(--db-line); }
+.fx-issu b { font-weight:600; }
+.fx-issu.fx-trou { color:var(--db-amber); }
+
+.fx-conv { font-size:12.5px; color:var(--db-muted); margin-top:11px;
+  font-variant-numeric:tabular-nums; }
 .fx-conv b { font-weight:500; color:var(--db-ink); }
-.fx-conv.fx-trou b { color:var(--db-amber); }
 
 /* ⓘ : `title` ne s'affiche pas au doigt. Le `:focus` si — une tape donne le focus. */
 .fx-info { display:inline-flex; align-items:center; justify-content:center; width:16px;
@@ -129,71 +171,39 @@
   font-size:10.5px; line-height:1; cursor:help; opacity:.7; position:relative;
   vertical-align:middle; text-transform:none; letter-spacing:0; }
 .fx-info:hover, .fx-info:focus { opacity:1; outline:none; }
-.fx-info::after { content:attr(data-bulle); position:absolute; top:calc(100% + 8px); right:0;
-  width:min(280px, 60vw); padding:10px 12px; border-radius:9px; background:var(--db-ink);
+/* ⚠️ `opacity:0` NE RETIRE RIEN DE LA MISE EN PAGE, ET LA PAGE DÉBORDAIT DE 138 px. Une
+   bulle de 290 px posée en absolu sur le bloc de droite continue de compter dans la zone
+   défilable même invisible : la page gagnait une barre horizontale, à certaines largeurs
+   seulement — 90 px à 834, 123 à 768, rien à 600, 138 à 390. Un défaut qui apparaît et
+   disparaît selon la largeur ressemble à un mystère ; c'est juste une boîte cachée qui
+   occupe toujours sa place.
+
+   `display:none` est le seul état qui ne compte pas. On perd le fondu — un fondu qu'on ne
+   voit pas valait moins qu'une page qui ne glisse pas de côté. */
+.fx-info::after { content:attr(data-bulle); position:absolute; top:calc(100% + 8px); left:0;
+  width:min(290px, 70vw); padding:11px 13px; border-radius:9px; background:var(--db-ink);
   color:var(--db-card); font-size:12px; font-weight:400; line-height:1.5; text-align:left;
-  letter-spacing:0; text-transform:none; white-space:normal; z-index:20; opacity:0;
-  pointer-events:none; transition:opacity .12s; }
-.fx-info:hover::after, .fx-info:focus::after { opacity:1; }
-/* ⚠️ LE ⓘ DÉBORDAIT SOUS LA COLONNE SUIVANTE, ET DEVENAIT INCLIQUABLE. « Qté en stock ⓘ »
-   ne tient pas sur une ligne dans 104 px : le pastille sortait de la cellule, et la cellule
-   voisine — peinte après, donc au-dessus — interceptait le pointeur. Mesuré : Playwright
-   refusait le survol en signalant « Total ligne € intercepts pointer events ». Même famille
-   que le bouton KEEP du POS, qui passait sous la table du dessous.
+  letter-spacing:0; text-transform:none; white-space:normal; z-index:20;
+  pointer-events:none; display:none; }
+.fx-info:hover::after, .fx-info:focus::after { display:block; }
+.fx-bloc { position:relative; }
+.fx-bloc:hover, .fx-bloc:focus-within { z-index:5; }
 
-   L'en-tête se plie donc sur deux lignes plutôt que de déborder, et il est positionné pour
-   que sa bulle passe au-dessus des voisines au lieu de dessous. */
-.fx-lignes thead th { white-space:normal; position:relative; }
-/* ⚠️ « Qté en stockⓘ » ÉTAIT UN SEUL MOT INSÉCABLE. Le libellé et la pastille étaient
-   concaténés sans espace : aucune occasion de retour à la ligne, donc 116 px de contenu dans
-   une colonne de 104 px, et 11 px qui dépassaient sous la colonne voisine — laquelle,
-   peinte après, interceptait le pointeur. Le ⓘ devenait incliquable.
-
-   ⚠️ ET LE PREMIER CORRECTIF A ÉTÉ PIRE QUE LE DÉFAUT. `display:flex` sur un `<th>` le SORT
-   du contexte de formatage tabulaire : mesuré, les cinq en-têtes numériques se sont empilés
-   sur la même boîte (903→1039 px) pendant que les cellules du corps restaient à leur place.
-   Une rangée d'en-tête entièrement détruite, par une règle qui avait l'air anodine. On reste
-   donc en ligne : une ESPACE réelle donne l'occasion de retour, et `inline-block` laisse la
-   pastille participer au pliage.
-   Voir tests/test_dashboard_ancrages.py : un garde interdit désormais `display:flex` sur
-   une cellule de tableau. */
-.fx-lignes thead th:hover, .fx-lignes thead th:focus-within { z-index:5; }
-
-.fx-neuf { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:9px;
-  padding:10px 12px; border:1px dashed var(--db-amber); border-radius:9px; font-size:12.5px; }
-.fx-neuf select, .fx-neuf button { font:inherit; font-size:12.5px; min-height:34px;
-  border-radius:7px; border:1px solid var(--db-line); background:var(--db-card); color:inherit;
-  padding:4px 9px; }
+.fx-neuf { display:flex; flex-wrap:wrap; gap:9px; align-items:center; margin:-4px 0 12px;
+  padding:11px 13px; border:1px dashed var(--db-amber); border-radius:10px; font-size:13px; }
+.fx-neuf select, .fx-neuf button { font:inherit; font-size:13px; min-height:38px;
+  border-radius:8px; border:1px solid var(--db-line); background:var(--db-card); color:inherit;
+  padding:4px 10px; }
 .fx-nul { color:var(--db-red); }
 
 /* ⚠️ LA HAUTEUR EST UN MINIMUM, PAS UNE COÏNCIDENCE. Le `<select>` retombait à 32 px —
    sous la cible tactile, et d'une hauteur différente des `<input>` voisins, ce qui suffisait
    à faire onduler la rangée. */
-.fx-ed { font:inherit; font-size:13.5px; padding:7px 9px; border:1px solid var(--db-line);
-  border-radius:7px; background:var(--db-card); color:inherit; width:100%; min-height:38px;
+.fx-ed { font:inherit; font-size:14px; padding:8px 10px; border:1px solid var(--db-line);
+  border-radius:8px; background:var(--db-card); color:inherit; width:100%; min-height:40px;
   box-sizing:border-box; }
 .fx-ed:focus { outline:2px solid var(--db-ink); outline-offset:-1px; }
-.fx-ed.fx-court { text-align:right; font-variant-numeric:tabular-nums; }
-/* ⚠️ DEUX CHAMPS CÔTE À CÔTE SE LISENT COMME DEUX COLONNES. Un nombre et une unité posés
-   avec un écart entre eux, sous un en-tête unique, donnaient l'impression de deux
-   informations sans rapport — « il y a deux champs, je ne sais pas lequel remplir ». Ils sont
-   désormais collés dans une seule boîte encadrée : une mesure, pas deux cases.
-
-   `min-width:0` est ce qui autorise les enfants à rétrécir au lieu de déborder — sans lui,
-   un enfant de flex garde la largeur de son contenu. */
-.fx-duo { display:flex; align-items:stretch; border:1px solid var(--db-line);
-  border-radius:7px; overflow:hidden; background:var(--db-card); }
-.fx-duo > * { min-width:0; }
-.fx-duo .fx-ed { border:0; border-radius:0; background:transparent; }
-.fx-duo .fx-ed:focus { outline-offset:-2px; }
-.fx-duo .fx-unite { flex:0 0 74px; text-align:left; border-left:1px solid var(--db-line);
-  padding-left:7px; padding-right:2px; color:var(--db-muted); }
-.fx-duo .fx-unite:invalid { color:var(--db-red); }
-
-/* La légende sous l'en-tête : le ⓘ ne se survole pas sur une tablette qu'on tient à deux
-   mains, et un écran qu'on n'utilise que trois fois par semaine s'oublie entre deux fois. */
-.fx-legende { font-size:12.5px; color:var(--db-muted); line-height:1.55; margin:0 0 14px; }
-.fx-legende b { color:var(--db-ink); font-weight:500; }
+.fx-ed.fx-court { text-align:left; font-variant-numeric:tabular-nums; }
 /* ⚠️ UN CHAMP EN ATTENTE DOIT SE VOIR. Sans retour, on ne sait pas si la correction est
    partie : on la retape, ou pire, on part en croyant l'avoir enregistrée. */
 .fx-ed[data-etat="occupe"] { opacity:.55; }
@@ -204,31 +214,35 @@
 .fx-actes { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:18px;
   padding-top:16px; border-top:1px solid var(--db-line); }
 .fx-danger { color:var(--db-red); border-color:currentColor; }
-/* ⚠️ 23×25 px MESURÉS : on vise ça au doigt sur un iPad, dans un tableau qui défile, avec
-   une suppression au bout. La croix reste discrète, sa zone de clic ne l'est pas. */
+/* ⚠️ 23×25 px MESURÉS À L'ORIGINE : on vise ça au doigt, avec une suppression au bout. */
 .fx-lig-sup { background:none; border:0; color:var(--db-muted); cursor:pointer; font:inherit;
   font-size:19px; line-height:1; padding:0; border-radius:8px; width:38px; height:38px;
   display:inline-flex; align-items:center; justify-content:center; }
 .fx-lig-sup:hover { color:var(--db-red); background:var(--db-hover, rgba(0,0,0,.05)); }
-.fx-avis { font-size:12.5px; color:var(--db-amber); margin-top:7px; line-height:1.45; }
-.fx-lig-tete { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-.fx-lig-tete .fx-ed { flex:1 1 180px; }
-.fx-lig-tete .fx-puce { flex:none; }
+.fx-avis { font-size:12.5px; color:var(--db-amber); margin-top:12px; line-height:1.5; }
 
-/* ⚠️ CETTE RÈGLE VIVAIT DANS LA MEDIA QUERY MOBILE, ET LA PAGE DÉBORDAIT À 768 px. Entre la
-   largeur où le tableau cesse de tenir et celle où le bloc mobile s'allume, personne ne
-   clippait rien : le tableau poussait la page de 13 px sur le côté. Un tableau large défile
-   dans SA boîte, à toutes les largeurs — ce n'est pas une adaptation mobile, c'est la règle. */
+.fx-legende { font-size:13px; color:var(--db-muted); line-height:1.6; margin:0 0 16px; }
+.fx-legende b { color:var(--db-ink); font-weight:500; }
+
+/* ⚠️ CETTE RÈGLE NE VIT PLUS DANS LA MEDIA QUERY MOBILE : la page débordait de 13 px à 768 px,
+   entre la largeur où le tableau cesse de tenir et celle où le bloc mobile s'allume. */
 .fx-cadre { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 
 .fx-vide { padding:40px 0; text-align:center; color:var(--db-muted); font-size:14px; line-height:1.6; }
 
 /* ⚠️ CE BLOC VA À LA FIN DE LA FEUILLE. Une media query de même spécificité placée AVANT les
    règles de base est écrasée par elles : tout un bloc mobile est déjà mort en silence comme ça. */
+/* ⚠️ CE BLOC VA À LA FIN DE LA FEUILLE. Une media query de même spécificité placée AVANT
+   les règles de base est écrasée par elles — tout un bloc mobile est déjà mort en silence
+   comme ça. */
 @media (max-width:760px) {
   .fx-liste td:first-child { white-space:nowrap; }
   .fx-kpi b { font-size:21px; }
   .fx-barre label { flex:1 1 140px; }
+  /* La flèche pivote : « ceci devient cela » se lit de haut en bas quand la place manque. */
+  .fx-deux { grid-template-columns:1fr; }
+  .fx-fleche { transform:rotate(90deg); padding:10px 0; }
+  .fx-fiche { padding:14px 14px 16px; }
 }
 </style>
 </head>
@@ -521,16 +535,15 @@ function champ(cle, valeur, attrs) {
    sur le papier par la première de la liste, à la première ouverture de l'écran. Ce qui
    existe est donc toujours proposé, marqué comme venant de la facture. */
 const UNITES = [
-  ['', '—'], ['g', 'g · grammes'], ['kg', 'kg · kilos'],
-  ['ml', 'ml · millilitres'], ['cl', 'cl · centilitres'], ['l', 'l · litres'],
-  ['unit', 'unit · à la pièce'],
+  ['', '—'], ['g', 'g'], ['kg', 'kg'],
+  ['ml', 'ml'], ['cl', 'cl'], ['l', 'l'], ['unit', 'unité'],
 ];
 
 function unite(valeur) {
   const v = valeur === null || valeur === undefined ? '' : String(valeur);
   const connue = UNITES.some(u => u[0] === v);
   return '<select class="fx-ed fx-unite" data-champ="unit" aria-label="' + esc(NOMS.unit) + '">'
-    + (connue ? '' : '<option value="' + esc(v) + '" selected>' + esc(v) + ' · lu sur la facture</option>')
+    + (connue ? '' : '<option value="' + esc(v) + '" selected>' + esc(v) + '</option>')
     + UNITES.map(u => '<option value="' + u[0] + '"' + (connue && u[0] === v ? ' selected' : '')
         + '>' + u[1] + '</option>').join('')
     + '</select>';
@@ -558,31 +571,101 @@ function badgeLigne(l) {
    la table de conversion Python : la réécrire en JavaScript ferait deux moteurs, qui
    divergeraient au premier correctif appliqué d'un seul côté. On ne fait que la mettre en
    phrase — et quand elle manque, on dit qu'elle manque. */
-function conversion(l) {
+function texteConversion(l) {
   if (!l.ingredient) return '';
   const uref = PAR_NOM.get(l.ingredient) || '?';
   const gauche = ((l.qty === null || l.qty === undefined) ? '?' : nb(l.qty)) + ' ' + (l.unit || '');
   if (sansValeur(l)) {
-    return '<div class="fx-conv fx-trou">' + esc(gauche.trim()) + ' → <b>rien en '
-      + esc(uref) + '</b> · conversion inconnue</div>';
+    return esc(gauche.trim()) + ' → <b>?</b> ' + esc(uref) + ' · conversion inconnue';
   }
-  return '<div class="fx-conv">' + esc(gauche.trim()) + ' → <b>' + esc(nb(l.qty_ref))
-    + ' ' + esc(uref) + '</b>'
-    + (l.price_per_ref ? ' · ' + esc(nb(Number(l.price_per_ref).toFixed(2))) + ' €/' + esc(uref) : '')
-    + '</div>';
+  return esc(gauche.trim()) + ' → <b>' + esc(nb(l.qty_ref)) + ' ' + esc(uref) + '</b>';
 }
 
 const BULLES = {
-  q: 'Ce qui est écrit sur le papier : un nombre et l’unité du fournisseur. « MIRTILO 500 G » '
-   + 'se saisit 500 et g. On ne la corrige que si le scan l’a mal lue — c’est la facture qui '
-   + 'fait foi, pas nous.',
-  r: 'La même quantité, dans l’unité de l’ingrédient en stock — celle des recettes. Le prix au '
-   + 'kilo se calcule à partir d’elle : 6,69 € pour 0,5 kg font 13,38 €/kg. Se remplit seul '
+  q: 'Ce qui est écrit sur le papier, dans l’unité du fournisseur. « MIRTILO 500 G » se '
+   + 'saisit 500 et g. On ne corrige que si le scan a mal lu : c’est la facture qui fait foi.',
+  r: 'La même chose dans l’unité de l’ingrédient — celle des recettes. 6,69 € pour 0,5 kg '
+   + 'font 13,38 €/kg, et c’est ce prix-là qui part dans le coût de revient. Se remplit seul '
    + 'quand les deux unités se convertissent ; sinon, à vous de le dire. Vide, la ligne ne '
    + 'compte dans AUCUN coût.',
 };
 const info = c => '<span class="fx-info" tabindex="0" role="note" data-bulle="' + esc(BULLES[c])
   + '" aria-label="' + esc(BULLES[c]) + '">i</span>';
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   UNE LIGNE DE FACTURE, EN FICHE.
+
+   L'ordre suit le geste : on lit ce qui était écrit, on dit à quel ingrédient ça correspond,
+   on vérifie ce que la facture disait, on regarde ce que ça donne en stock.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+function etatFiche(l) {
+  if (!l.ingredient) return 'e-ko';
+  return sansValeur(l) ? 'e-mou' : 'e-ok';
+}
+
+function fiche(l) {
+  const uref = PAR_NOM.get(l.ingredient) || null;
+  const manque = sansValeur(l);
+  return '<div class="fx-fiche ' + etatFiche(l) + '" data-linha="' + l.id + '">'
+
+    + '<div class="fx-tete">'
+    + '<span class="fx-rang">Ligne ' + (l.line_no === null || l.line_no === undefined ? '—' : l.line_no) + '</span>'
+    + badgeLigne(l)
+    + '<button class="fx-lig-sup" data-sup-linha="' + l.id
+    + '" title="Supprimer cette ligne" aria-label="Supprimer la ligne ' + (l.line_no || '') + '">&times;</button>'
+    + '</div>'
+
+    + '<div class="fx-lu"><span class="fx-lu-et">Lu</span>'
+    + '<span class="fx-brut">' + esc(l.raw_text || 'texte non conservé') + '</span></div>'
+
+    + '<label class="fx-champ"><span>Ingrédient rattaché</span>'
+    + '<input class="fx-ed" list="fx-ingr" data-champ="ingredient" autocomplete="off"'
+    + ' placeholder="chercher un ingrédient…" aria-label="' + esc(NOMS.ingredient)
+    + ', ligne ' + (l.line_no || '') + '" value="' + esc(l.ingredient || '') + '"></label>'
+    + '<div data-neuf></div>'
+
+    + '<div class="fx-deux">'
+
+    /* ── ce que dit le papier ── */
+    + '<div class="fx-bloc"><div class="fx-titre">Sur la facture' + info('q') + '</div>'
+    + '<div class="fx-grille">'
+    + '<label class="fx-champ"><span>Quantité</span><div class="fx-duo">'
+    + champ('qty', l.qty, 'fx-court fx-nombre') + unite(l.unit) + '</div></label>'
+    + '<label class="fx-champ"><span>Total de la ligne</span>'
+    + centimes('line_total_cents', l.line_total_cents) + '</label>'
+    + '<label class="fx-champ"><span>Prix unitaire imprimé</span>'
+    + centimes('unit_price_cents', l.unit_price_cents) + '</label>'
+    + '</div></div>'
+
+    + '<div class="fx-fleche" aria-hidden="true">&rarr;</div>'
+
+    /* ── ce que ça devient dans les coûts ── */
+    + '<div class="fx-bloc"><div class="fx-titre">En stock, pour les coûts' + info('r') + '</div>'
+    + '<div class="fx-grille">'
+    + '<label class="fx-champ"><span>Quantité' + (uref ? ' en ' + esc(uref) : '') + '</span>'
+    + champ('qty_ref', l.qty_ref, 'fx-court') + '</label>'
+    /* ⚠️ LE PRIX DE REVIENT N'EST PAS UN CHAMP. Il se DÉDUIT du total payé et de la quantité
+       en stock : le rendre saisissable inviterait à taper un chiffre qui contredirait la
+       facture posée juste à côté, sans que rien ne tranche entre les deux. */
+    + '<div class="fx-champ"><span>Prix de revient</span>'
+    + '<div class="fx-issu' + (manque ? ' fx-trou' : '') + '" data-prix>'
+    + (manque ? 'non calculable'
+        : (l.price_per_ref ? '<b>' + esc(nb(Number(l.price_per_ref).toFixed(2))) + ' €</b>/'
+            + esc(uref || 'unité') : '—'))
+    + '</div></div>'
+    + '</div>'
+    + '<div class="fx-conv" data-conv>' + texteConversion(l) + '</div>'
+    + '</div>'
+
+    + '</div>'
+
+    + '<div class="fx-avis" data-avis>' + (manque
+        ? 'Sans quantité en stock, cette ligne ne compte dans AUCUN coût de revient. '
+          + 'Indiquez combien ça fait en ' + esc(uref || 'unité de l’ingrédient') + '.' : '')
+    + '</div>'
+    + '</div>';
+}
 
 function dessiner(boite, d) {
   const f = d.fatura, r = d.resumo, lignes = d.linhas || [];
@@ -601,45 +684,15 @@ function dessiner(boite, d) {
   /* ⚠️ UN `<select>` DE CENT ENTRÉES NE SE CHERCHE PAS, IL SE FAIT DÉFILER. Avec un
      `<input list>`, taper « jam » suffit — et le champ accepte un nom absent de la liste,
      ce qui est précisément le cas qu'on veut traiter : l'ingrédient qui n'existe pas encore.
-     Le `<datalist>` est écrit UNE fois pour tout le tableau, pas une par ligne : cent options
-     répétées sur vingt lignes, ce sont deux mille nœuds pour la même information. */
+     Le `<datalist>` est écrit UNE fois pour toute la facture, pas une par ligne. */
   const liste = '<datalist id="fx-ingr">'
     + INGREDIENTS.map(i => '<option value="' + esc(i.name) + '">'
         + (i.unit_ref ? esc(i.unit_ref) : '') + '</option>').join('')
     + '</datalist>';
 
-  const corps = lignes.length ? lignes.map(l => '<tr data-linha="' + l.id + '">'
-      + '<td>' + (l.line_no === null ? '—' : l.line_no) + '</td>'
-      + '<td><div class="fx-lig-tete">'
-      + '<input class="fx-ed" list="fx-ingr" data-champ="ingredient" autocomplete="off"'
-      + ' placeholder="chercher un ingrédient…" aria-label="' + esc(NOMS.ingredient)
-      + ', ligne ' + (l.line_no || '') + '" value="' + esc(l.ingredient || '') + '">'
-      /* ⚠️ LE MÊME BADGE QUE DANS LA LISTE, SUR LA LIGNE. Le KPI de tête dit combien d'euros
-         n'entrent dans aucun coût ; il ne dit pas LAQUELLE des huit lignes est en cause. */
-      + badgeLigne(l)
-      + '</div>'
-      + '<div class="fx-lu"><span class="fx-lu-et">Lu</span>'
-      + '<span class="fx-brut">' + esc(l.raw_text || 'texte non conservé') + '</span></div>'
-      + conversion(l)
-      /* ⚠️ L'AVERTISSEMENT NE VIVAIT QUE LE TEMPS D'UN CLIC. Il s'affichait après une
-         modification et disparaissait au rechargement : on revenait le lendemain sur une ligne
-         rattachée, sans quantité de référence, et rien ne disait qu'elle ne comptait pas. Il
-         se déduit désormais de l'état, pas de l'événement. */
-      + '<div class="fx-avis" data-avis>' + (sansValeur(l)
-          ? 'Rattachée, mais sans quantité de référence : cette ligne ne compte dans aucun coût. '
-            + 'Indiquez la quantité en ' + esc(PAR_NOM.get(l.ingredient) || 'unité de référence')
-            + ' dans « Qté en stock ».' : '') + '</div>'
-      + '<div data-neuf></div></td>'
-      + '<td class="fx-num"><div class="fx-duo">' + champ('qty', l.qty, 'fx-court')
-      + unite(l.unit) + '</div></td>'
-      + '<td class="fx-num">' + centimes('unit_price_cents', l.unit_price_cents) + '</td>'
-      + '<td class="fx-num">' + champ('qty_ref', l.qty_ref, 'fx-court') + '</td>'
-      + '<td class="fx-num">' + centimes('line_total_cents', l.line_total_cents) + '</td>'
-      + '<td class="fx-num"><button class="fx-lig-sup" data-sup-linha="' + l.id
-      + '" title="Supprimer cette ligne" aria-label="Supprimer la ligne">&times;</button></td>'
-      + '</tr>').join('')
-    : '<tr><td colspan="7" class="fx-vide">Le scan n’a extrait aucune ligne de cette facture. '
-      + 'Son total est connu, mais rien de ce qu’elle contient n’alimente les coûts.</td></tr>';
+  const fiches = lignes.length ? lignes.map(l => fiche(l)).join('')
+    : '<div class="fx-vide">Le scan n’a extrait aucune ligne de cette facture. '
+      + 'Son total est connu, mais rien de ce qu’elle contient n’alimente les coûts.</div>';
 
   boite.innerHTML = '<div class="fx-entete">' + entete + '</div>'
     + '<div class="fx-barre" style="margin-bottom:14px">'
@@ -652,23 +705,12 @@ function dessiner(boite, d) {
         + esc(plur(r.linhas_sem_valor, 'sans quantité de référence', 'sans quantité de référence')) : '')
     + ((r.linhas_sem_ingrediente || r.linhas_sem_valor) ? ')' : '')
     + '</span></div>'
-    /* Les en-têtes ne dimensionnent plus rien — le colgroup s'en charge — donc ils peuvent
-       redevenir courts. L'unité monétaire passe dans le titre plutôt que dans chaque cellule. */
     + liste
-    + '<p class="fx-legende"><b>Qté facturée</b> : ce que le fournisseur a écrit sur le papier, '
-    + 'dans son unité à lui — « 500 g », « 2 Uni ». <b>Qté en stock</b> : la même chose dans '
-    + 'l’unité de l’ingrédient, celle des recettes. C’est elle qui donne le prix au kilo, donc '
-    + 'le coût de revient. Quand les deux unités se convertissent, elle se remplit seule.</p>'
-    + '<div class="fx-cadre"><table class="fx-lignes">'
-    + '<colgroup><col class="c-n"><col><col class="c-q"><col class="c-p">'
-    + '<col class="c-r"><col class="c-t"><col class="c-x"></colgroup>'
-    + '<thead><tr>'
-    + '<th>#</th><th>Ingrédient rattaché</th>'
-    + '<th class="fx-num">Qté facturée ' + info('q') + '</th>'
-    + '<th class="fx-num">Prix unité €</th>'
-    + '<th class="fx-num">Qté en stock ' + info('r') + '</th>'
-    + '<th class="fx-num">Total ligne €</th><th class="fx-num"></th>'
-    + '</tr></thead><tbody id="fx-lignes">' + corps + '</tbody></table></div>'
+    + '<p class="fx-legende">Chaque ligne se lit en deux temps : <b>ce que le fournisseur a '
+    + 'écrit</b> à gauche, dans son unité à lui — puis <b>ce que ça fait en stock</b> à droite, '
+    + 'dans l’unité de l’ingrédient. C’est la seconde qui donne le prix de revient. Quand les '
+    + 'deux unités se convertissent, elle se remplit seule.</p>'
+    + '<div id="fx-lignes">' + fiches + '</div>'
     + '<div class="fx-actes">'
     + '<button class="db-btn" id="fx-ajout">Ajouter une ligne</button>'
     + '<button class="db-btn fx-danger" id="fx-sup">Supprimer cette facture</button>'
@@ -725,7 +767,7 @@ async function creerIngredient(tr, nom, unite) {
 $('fx-detail').addEventListener('change', async e => {
   const inp = e.target.closest('.fx-ed');
   if (!inp || !FATURE) return;
-  const tr = inp.closest('tr[data-linha]');
+  const tr = inp.closest('[data-linha]');
 
   /* Un ingrédient inconnu ouvre la proposition de création au lieu de partir au serveur —
      qui l'accepterait sans broncher et écrirait un nom que les recettes ignorent. */
@@ -769,21 +811,31 @@ function rafraichirLigne(tr, d) {
     const i = FATURE.linhas.findIndex(x => String(x.id) === tr.dataset.linha);
     if (i >= 0) FATURE.linhas[i] = l;
   }
+  const uref = d.unit_ref || PAR_NOM.get(l.ingredient) || null;
+  const manque = sansValeur(l);
+
+  tr.className = 'fx-fiche ' + etatFiche(l);
   const badge = tr.querySelector('.fx-puce');
   if (badge) badge.outerHTML = badgeLigne(l);
-  const conv = tr.querySelector('.fx-conv');
-  const neuf = conversion(l);
-  if (conv) { if (neuf) conv.outerHTML = neuf; else conv.remove(); }
-  else if (neuf) tr.querySelector('.fx-lu').insertAdjacentHTML('afterend', neuf);
+
+  const conv = tr.querySelector('[data-conv]');
+  if (conv) conv.innerHTML = texteConversion(l);
+
+  const prix = tr.querySelector('[data-prix]');
+  if (prix) {
+    prix.className = 'fx-issu' + (manque ? ' fx-trou' : '');
+    prix.innerHTML = manque ? 'non calculable'
+      : (l.price_per_ref ? '<b>' + esc(nb(Number(l.price_per_ref).toFixed(2))) + ' €</b>/'
+          + esc(uref || 'unité') : '—');
+  }
 
   const avis = tr.querySelector('[data-avis]');
   /* ⚠️ L'AVERTISSEMENT EST LE CŒUR DE L'ÉCRAN. Un ingrédient rattaché dont la conversion a
      échoué a l'air réparé et ne pèse toujours RIEN dans les coûts. */
   if (avis) {
-    avis.textContent = sansValeur(l)
-      ? 'Rattachée, mais sans quantité de référence : cette ligne ne compte dans aucun coût. '
-        + 'Indiquez la quantité en ' + (d.unit_ref || PAR_NOM.get(l.ingredient) || 'unité de référence')
-        + ' dans « Qté en stock ».'
+    avis.textContent = manque
+      ? 'Sans quantité en stock, cette ligne ne compte dans AUCUN coût de revient. '
+        + 'Indiquez combien ça fait en ' + (uref || 'unité de l’ingrédient') + '.'
       : '';
   }
   const q = tr.querySelector('[data-champ="qty_ref"]');
@@ -794,13 +846,13 @@ $('fx-detail').addEventListener('click', async e => {
   if (!FATURE) return;
   const creer = e.target.closest('[data-neuf-creer]');
   if (creer) {
-    const tr = creer.closest('tr[data-linha]');
+    const tr = creer.closest('[data-linha]');
     const u = tr.querySelector('[data-neuf-unite]');
     await creerIngredient(tr, creer.dataset.neufCreer, u ? u.value : 'unit');
     return;
   }
   if (e.target.closest('[data-neuf-annuler]')) {
-    const tr = e.target.closest('tr[data-linha]');
+    const tr = e.target.closest('[data-linha]');
     tr.querySelector('[data-neuf]').innerHTML = '';
     const inp = tr.querySelector('[data-champ="ingredient"]');
     const l = (FATURE.linhas || []).find(x => String(x.id) === tr.dataset.linha);

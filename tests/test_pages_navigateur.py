@@ -154,7 +154,9 @@ CAS = {
                     # conversion d'unité a échoué ne pèse RIEN dans les coûts. L'avertissement
                     # ne vivait que le temps d'un clic ; il doit survivre au rechargement.
                     "32,13", "sans quantité de référence",
-                    "Rattachée, mais sans quantité de référence"],
+                    "ne compte dans AUCUN coût de revient",
+                    # La fiche remplace le tableau : ses deux moitiés portent le sens.
+                    "Sur la facture", "En stock, pour les coûts", "Ligne 1"],
         "interdit": ["NaN", "undefined", "ligne(s)", "32.13", "[object Object]"],
         # Ouvre directement la facture 6 : c'est aussi ce que fait un lien partagé.
         "suffixe": "?id=6",
