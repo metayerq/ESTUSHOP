@@ -60,6 +60,11 @@ code{font-family:var(--mono);font-size:11.5px;background:var(--bg);padding:1px 5
 footer{margin-top:36px;font-size:11px;color:var(--faint);display:flex;justify-content:space-between}
 footer a{color:var(--faint)}
 @media(max-width:640px){.page{padding:22px 12px 60px}}
+  /* ⚠️ PAS DE COULEUR EN DUR : une page comptable se lit aussi en mode sombre, et un fond
+     ambre fixe y devient un rectangle blanc sur lequel plus rien ne se lit. */
+  .anom{background:var(--amber-soft);color:var(--amber);font-size:12px;line-height:1.5;padding:8px 12px}
+  .anom-marca{color:var(--amber);cursor:help}
+  .anom-cel{color:var(--amber);font-weight:600}
 </style>
 </head>
 <body>
@@ -75,8 +80,7 @@ footer a{color:var(--faint)}
     Enquanto a fatura do mês não é emitida, mostra-se o acumulado provisório.<br>
     <b>Gorjetas</b> — cobradas no terminal, <b>não constituem faturação</b>: estão incluídas no TPA bruto
     e no líquido creditado, mas não nas vendas.<br>
-    <b>Devoluções</b> — reembolsos feitos no terminal, na data de <b>liquidação</b> (o ficheiro Revolut não lhes dá data de captura), pelo que podem cair num mês diferente do da venda que anulam.<br>
-    <b>Vendas por cartão</b> — <code>TPA bruto − Gorjetas − Devoluções</code>: o que o terminal cobrou realmente e ficou
+    <b>Vendas por cartão</b> — <code>TPA bruto − Gorjetas</code>: o que o terminal cobrou realmente
     a título de vendas. Não usamos o meio de pagamento registado no Vendus (pouco fiável no arranque).<br>
     <b>Maio–Junho 2026</b> — apresentados numa só linha. Até ao início de junho as vendas passavam
     pelo POS Revolut (não certificado AT) e foram lançadas no Vendus já em junho; separados,
@@ -94,13 +98,13 @@ footer a{color:var(--faint)}
     <table>
       <thead><tr>
         <th>Mês</th><th>Vendas faturadas</th><th>Vendas por cartão</th>
-        <th>TPA bruto</th><th>Gorjetas</th><th>Devoluções</th><th>Comissões</th><th>Líquido creditado</th><th>Tx</th>
+        <th>TPA bruto</th><th>Gorjetas</th><th>Comissões</th><th>Líquido creditado</th><th>Tx</th>
       </tr></thead>
-      <tbody id="tb"><tr><td colspan="9" class="loading">A carregar…</td></tr></tbody>
+      <tbody id="tb"><tr><td colspan="8" class="loading">A carregar…</td></tr></tbody>
     </table>
   </div>
   <div style="font-size:11.5px;color:var(--faint);margin-top:9px;">
-    Clique num mês para ver o detalhe diário. Vendas por cartão = TPA bruto − Gorjetas − Devoluções.
+    Clique num mês para ver o detalhe diário. Vendas por cartão = TPA bruto − Gorjetas.
   </div>
 
   <footer>
@@ -121,7 +125,7 @@ async function load(){
     render();
   }catch(e){
     document.getElementById('tb').innerHTML =
-      '<tr><td colspan="9" class="loading">Erro ao carregar — recarregue a página.</td></tr>';
+      '<tr><td colspan="8" class="loading">Erro ao carregar — recarregue a página.</td></tr>';
   }
 }
 
@@ -132,8 +136,7 @@ function render(){
   if (ms.length) sel.value = ms[ms.length-1].month;
   syncBtn();
 
-  const g = {vendas:0,cartao:0,tpa:0,gorjetas:0,devolucoes:0,comissoes:0,liquido:0,tx:0};
-  const dev = v => v ? `<td style="color:var(--red)">−${fmt(v)}</td>` : `<td style="color:var(--faint)">—</td>`;
+  const g = {vendas:0,cartao:0,tpa:0,gorjetas:0,comissoes:0,liquido:0,tx:0};
   let html='';
   for(const m of ms){
     for(const k in g) g[k]+=m[k]||0;
@@ -141,17 +144,30 @@ function render(){
     html += `<tr class="mrow" data-m="${m.month}" onclick="toggle('${m.month}')">
       <td>${m.label}</td><td>${fmt(m.vendas)}</td><td>${fmt(m.cartao)}</td>
       <td>${fmt(m.tpa)}</td>
-      <td class="gorj">${fmt(m.gorjetas)}</td>${dev(m.devolucoes)}<td>${fmt(m.comissoes)}${prov}</td>
+      <td class="gorj">${fmt(m.gorjetas)}</td><td>${fmt(m.comissoes)}${prov}</td>
       <td>${fmt(m.liquido)}</td><td>${m.tx}</td></tr>`;
-    html += `<tr class="drow" data-m="${m.month}" style="display:none"><td colspan="9" style="padding:0">
+    /* ⚠️ ON LE DIT, PLUTÔT QUE DE LAISSER INTERPRÉTER. Les ventes par carte sont une PARTIE
+       des ventes : les voir dépasser le total signale que le terminal a encaissé quelque chose
+       qui n'est pas une vente du jour — en pratique, des essais remboursés. Vendus les annule
+       (facture puis avoir), Revolut ne les déduit pas de son brut. Sans cette ligne, la page
+       montrait 0,00 € de ventes face à 76,50 € de TPA sans une explication. */
+    if (m.anomalias > 0) {
+      html += `<tr class="drow-note" data-m="${m.month}"><td colspan="8" class="anom">
+        ⚠ ${m.anomalias} dia(s) em que as vendas por cartão excedem as vendas faturadas,
+        no total de ${fmt(m.excesso)}. Os dois valores estão certos: o Vendus anula os
+        pagamentos devolvidos (fatura + nota de crédito), mas o bruto do terminal não os
+        deduz. Não são vendas não declaradas.</td></tr>`;
+    }
+    html += `<tr class="drow" data-m="${m.month}" style="display:none"><td colspan="8" style="padding:0">
       <table class="daytable">${m.days.map(d=>`<tr>
-        <td style="padding-left:32px">${d.day}</td><td>${fmt(d.vendas)}</td><td>${fmt(d.cartao)}</td>
-        <td>${fmt(d.tpa)}</td><td>${fmt(d.gorjetas)}</td>${dev(d.devolucoes)}
+        <td style="padding-left:32px">${d.day}${d.anomalia?' <span class="anom-marca" title="Cartão excede as vendas faturadas — pagamentos devolvidos">⚠</span>':''}</td>
+        <td>${fmt(d.vendas)}</td><td class="${d.anomalia?'anom-cel':''}">${fmt(d.cartao)}</td>
+        <td>${fmt(d.tpa)}</td><td>${fmt(d.gorjetas)}</td>
         <td>${fmt(d.comissoes)}</td><td>${fmt(d.liquido)}</td><td>${d.tx||''}</td>
       </tr>`).join('')}</table></td></tr>`;
   }
   html += `<tr class="total"><td>TOTAL</td><td>${fmt(g.vendas)}</td><td>${fmt(g.cartao)}</td>
-    <td>${fmt(g.tpa)}</td><td>${fmt(g.gorjetas)}</td>${dev(g.devolucoes)}
+    <td>${fmt(g.tpa)}</td><td>${fmt(g.gorjetas)}</td>
     <td>${fmt(g.comissoes)}</td><td>${fmt(g.liquido)}</td><td>${g.tx}</td></tr>`;
   document.getElementById('tb').innerHTML = html;
 }
