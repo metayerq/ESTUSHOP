@@ -5720,8 +5720,7 @@ def _contabilidade_months():
         r = rev.get(day) or {}
         e = months.setdefault(m, {"days": [], "vendas": 0.0, "tpa": 0.0,
                                   "gorjetas": 0.0, "devolucoes": 0.0, "cartao": 0.0,
-                                  "comissoes": 0.0, "liquido": 0.0, "tx": 0,
-                                  "anomalias": 0, "excesso": 0.0})
+                                  "comissoes": 0.0, "liquido": 0.0, "tx": 0})
         vendas = round(vendus_day.get(day, 0.0), 2)
         tpa    = round(float(r.get("gross") or 0), 2)
         gorj   = round(float(r.get("tips") or 0), 2)
@@ -5732,29 +5731,6 @@ def _contabilidade_months():
         # rendues. Le numerário reste à la comptable : on lui donne les bases
         # justes, pas la conclusion.
         cartao = round(tpa - gorj - devol, 2)
-        """
-        ⚠️ UN INVARIANT QUI NE PEUT PAS ÊTRE FAUX SANS QU'IL Y AIT QUELQUE CHOSE À DIRE. Les
-        ventes par carte sont une PARTIE des ventes : `cartao` ne peut pas dépasser `vendas`.
-
-        Les devoluções expliquaient l'essentiel des dépassements et sont désormais déduites —
-        mais pas tous. Mesuré sur septembre 2026, APRÈS cette correction : cinq jours dépassent
-        encore, pour 146,20 €. Le 23/09 est le plus parlant — Revolut n'enregistre aucun
-        remboursement quand Vendus porte 48,50 € d'avoirs.
-
-        On ne corrige rien ici : les deux chiffres viennent de sources différentes et sont
-        exacts chacun de leur côté. On NOMME l'écart, parce qu'une comptable qui voit des
-        encaissements carte supérieurs aux ventes conclut à des ventes non déclarées — ou
-        s'alarme pour rien, ce qui est aussi coûteux.
-
-        ⚠️ ET L'INVARIANT PORTE SUR `cartao`, JAMAIS SUR LE TPA BRUT : un pourboire fait
-        légitimement dépasser le TPA, il transite par le terminal sans être de la faturação.
-
-        ⚠️ ON ARRONDIT AVANT DE COMPARER. `100.01 - 100.00` vaut 0.010000000000005 en flottant :
-        sans cet arrondi, un cent d'écart entre deux sources qui arrondissent chacune de leur
-        côté déclencherait une alerte par jour — et une alerte quotidienne cesse d'être lue.
-        """
-        ecart_cv = round(cartao - vendas, 2)
-        anomalia = ecart_cv > 0.01
         row = {"day": day,
                "vendas":     vendas,
                "tpa":        tpa,
@@ -5765,16 +5741,11 @@ def _contabilidade_months():
                # Ce qui a vraiment atterri sur le compte : le net des règlements
                # moins les remboursements sortis le même jour.
                "liquido":    round(float(r.get("net") or 0) - devol, 2),
-               "tx":         int(r.get("tx") or 0),
-               "anomalia":   anomalia,
-               "excesso":    ecart_cv if anomalia else 0.0}
+               "tx":         int(r.get("tx") or 0)}
         e["days"].append(row)
         for k in ("vendas", "tpa", "gorjetas", "devolucoes", "cartao",
                   "comissoes", "liquido", "tx"):
             e[k] += row[k]
-        if anomalia:
-            e["anomalias"] += 1
-            e["excesso"] += row["excesso"]
 
     out = []
     for m in sorted(months):
@@ -5793,10 +5764,6 @@ def _contabilidade_months():
             "gorjetas":   round(e["gorjetas"], 2),
             "devolucoes": round(e["devolucoes"], 2),
             "cartao":     round(e["cartao"], 2),
-            # Combien de jours la carte dépasse les ventes, et de combien. Zéro la plupart du
-            # temps : la page ne parle que quand il y a quelque chose à dire.
-            "anomalias": e["anomalias"],
-            "excesso":   round(e["excesso"], 2),
             # Comissões : la facture fait foi ; sinon cumul par capture (provisoire)
             "comissoes": round(sum(float(i["fees"]) for i in invs)
                                if inv else e["comissoes"], 2),
