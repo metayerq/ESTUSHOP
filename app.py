@@ -1415,6 +1415,117 @@ def api_data():
     return jsonify(result)
 
 
+SEUIL_ALERTE_EUR = 10.0
+"""
+Au-dessous, on se tait.
+
+⚠️ SANS SEUIL, L'ALERTE PART PRESQUE TOUS LES JOURS. Mesuré sur septembre 2026 : cinq jours
+dépassent, mais trois de quelques euros seulement — des essais de terminal un mardi. Avec ce
+seuil, deux alertes dans le mois, toutes deux méritées. Une alerte quotidienne cesse d'être lue,
+et c'est celle du jour qui compte qu'on rate alors.
+"""
+
+
+def _alerte_du_jour(day_iso):
+    """
+    Ce qu'il y a à dire sur cette journée, ou `None`.
+
+    ⚠️ LA RÈGLE NE DEMANDE AUCUN RAPPROCHEMENT. Les ventes par carte sont une PARTIE des
+    ventes : `cartao` ne peut pas dépasser `vendas`. C'est de l'arithmétique sur deux totaux,
+    pas un appariement paiement par paiement — et c'est délibéré. Le POS sait rapprocher ; lui
+    refaire ce travail ici créerait une seconde vérité à côté de la sienne, avec sa propre
+    fenêtre et ses propres bornes de pourboire. L'alerte dit « va voir », le POS dit quoi.
+
+    ⚠️ ET ELLE RÉUTILISE `_contabilidade_months`, jamais une copie de la formule. `cartao` a
+    changé le 29/09/2026 en devenant net des devoluções : une formule recopiée ici serait déjà
+    fausse aujourd'hui.
+    """
+    for m in _contabilidade_months():
+        for d in m["days"]:
+            if d["day"] != day_iso:
+                continue
+            ecart = round(d["cartao"] - d["vendas"], 2)
+            if ecart <= SEUIL_ALERTE_EUR:
+                return None
+            return (
+                f"⚠️ Estudantina — {day_iso[8:10]}/{day_iso[5:7]}\n"
+                f"Cartão {d['cartao']:.2f} € > vendas {d['vendas']:.2f} €"
+                f" (+{ecart:.2f} €)\n"
+                f"TPA {d['tpa']:.2f} € · gorjetas {d['gorjetas']:.2f} €"
+                f" · devoluções {d.get('devolucoes', 0.0):.2f} €\n"
+                f"Os dois valores vêm de fontes diferentes. Ver a reconciliação do dia."
+            )
+    return None
+
+
+def _alerte_deja_envoyee(day_iso, marquer=False):
+    """
+    ⚠️ UNE ALERTE NE SE RÉPÈTE PAS. Le cron peut être rejoué — GitHub Actions retente, et un
+    déploiement peut le déclencher deux fois. Recevoir deux fois le même avertissement apprend
+    à les ignorer.
+
+    ⚠️ MAIS UN CACHE EN PANNE NE DOIT PAS FAIRE TAIRE L'ALERTE. En cas de doute on envoie :
+    un doublon se supprime, une alerte jamais partie ne se rattrape pas.
+    """
+    cle = f"alerte-cartao:{day_iso}"
+    if marquer:
+        try:
+            _supa_upsert("kv_cache", {"key": cle, "value": {"envoye": True},
+                                      "updated_at": _utc_iso()})
+        except Exception:
+            pass
+        return False
+    try:
+        rows = _supa_get("kv_cache", {"key": f"eq.{cle}", "limit": "1"})
+        return bool(rows)
+    except Exception:
+        return False
+
+
+def _envoyer_alerte(texte):
+    """Poste l'alerte à la caisse, qui détient les identifiants Twilio."""
+    base = (os.environ.get("MESA_URL") or "").rstrip("/")
+    secret = os.environ.get("MESA_CAMPAIGN_SECRET") or ""
+    if not base or not secret:
+        return False, "MESA_URL / MESA_CAMPAIGN_SECRET absents"
+    try:
+        r = _req.post(f"{base}/api/alerte", json={"texte": texte},
+                      headers={"Authorization": f"Bearer {secret}"}, timeout=20)
+        if not r.ok:
+            return False, f"caisse http {r.status_code}"
+        return bool((r.json() or {}).get("envoye")), (r.json() or {}).get("raison", "")
+    except Exception as e:
+        return False, str(e)[:120]
+
+
+@app.route("/api/cron/alerte")
+def api_cron_alerte():
+    """
+    L'alerte quotidienne — envoyée SEULEMENT s'il y a quelque chose à dire.
+
+    Appelée par le cron externe après la fermeture. `?day=` pour rejouer une journée, sinon la
+    veille : à l'heure où le cron tourne, la journée écoulée est close et son cache écrit.
+    """
+    secret = os.environ.get("CRON_SECRET", "")
+    if secret:
+        given = request.args.get("key") or ""
+        auth = request.headers.get("Authorization", "")
+        if given != secret and auth != f"Bearer {secret}":
+            return jsonify({"error": "unauthorized"}), 401
+
+    day = request.args.get("day") or (today_lisbon() - timedelta(1)).isoformat()
+    texte = _alerte_du_jour(day)
+    if not texte:
+        return jsonify({"day": day, "alerte": False, "raison": "rien a signaler"})
+    if _alerte_deja_envoyee(day):
+        return jsonify({"day": day, "alerte": False, "raison": "deja envoyee"})
+
+    envoye, raison = _envoyer_alerte(texte)
+    if envoye:
+        _alerte_deja_envoyee(day, marquer=True)
+    return jsonify({"day": day, "alerte": True, "envoye": envoye, "raison": raison})
+
+
 @app.route("/api/cron/refresh")
 def api_cron_refresh():
     """Rafraîchit le cache serverside des docs du jour. Appelé toutes les 5 min

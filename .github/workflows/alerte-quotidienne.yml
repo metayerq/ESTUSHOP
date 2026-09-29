@@ -1,0 +1,26 @@
+name: Alerte quotidienne
+
+# ⚠️ APRÈS LA FERMETURE, PAS PENDANT. 21 h 30 UTC — 22 h 30 à Lisbonne l'été, 21 h 30 l'hiver.
+# Le cache Vendus du jour est écrit entre 21 h et minuit : lancer plus tôt lirait une journée
+# incomplète et alerterait sur un écart qui se serait comblé tout seul.
+#
+# ⚠️ ET ELLE PORTE SUR LA VEILLE. À cette heure la journée écoulée est close et son résumé
+# écrit ; celle du jour ne l'est pas encore.
+on:
+  schedule:
+    - cron: "30 21 * * *"
+  workflow_dispatch:
+    inputs:
+      day:
+        description: "Jour à rejouer (AAAA-MM-JJ). Vide = la veille."
+        required: false
+
+jobs:
+  alerte:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Appeler l'endpoint d'alerte
+        run: |
+          curl -sS -f -m 60 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://estushop.vercel.app/api/cron/alerte${{ github.event.inputs.day && format('?day={0}', github.event.inputs.day) || '' }}"
