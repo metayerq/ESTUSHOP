@@ -74,14 +74,17 @@ footer{margin-top:40px;font-size:11px;color:var(--faint)}
   <div class="twrap">
     <table id="tbl">
       <thead><tr>
-        <th>Mês</th><th>Faturado Vendus</th><th>TPA bruto</th><th>Gorjetas</th>
+        <th>Mês</th><th>Faturado Vendus</th><th>TPA bruto</th><th>Gorjetas</th><th>Devoluções</th>
         <th>Vendas cartão</th><th>Comissões</th><th>Líquido creditado</th><th>Numerário</th><th>Tx</th>
       </tr></thead>
-      <tbody id="tbody"><tr><td colspan="9" class="loading">A carregar…</td></tr></tbody>
+      <tbody id="tbody"><tr><td colspan="10" class="loading">A carregar…</td></tr></tbody>
     </table>
   </div>
   <div style="font-size:11.5px;color:var(--faint);margin-bottom:18px;">
-    Clique num mês para ver o detalhe diário (indicativo). Vendas cartão = TPA bruto − gorjetas.
+    Clique num mês para ver o detalhe diário (indicativo).
+    Vendas cartão = TPA bruto − gorjetas − devoluções.
+    Devoluções na data de <b>liquidação</b> (o ficheiro Revolut não lhes dá data de captura),
+    pelo que podem cair num mês diferente do da venda que anulam.
   </div>
 
   <button class="btn" onclick="exportCsv()">⇩ Exportar CSV</button>
@@ -123,21 +126,27 @@ async function load(){
 function render(){
   const tb = document.getElementById('tbody');
   let html = '';
-  const g = {vendus:0,gross:0,tips:0,card_sales:0,fees:0,net:0,cash:0,tx:0};
+  const g = {vendus:0,gross:0,tips:0,refunds:0,card_sales:0,fees:0,net:0,cash:0,tx:0};
+  // Líquido creditado = o que realmente entrou : o net das liquidações menos as
+  // devoluções que saíram. É o total da última linha do extrato Revolut.
+  const cred = o => (o.net||0) - (o.refunds||0);
+  const dev  = v => v ? `<td style="color:var(--red)">−${fmt(v)}</td>` : `<td style="color:var(--faint)">—</td>`;
   for(const m of DATA.months){
     const t = m.totals;
     for(const k in g) g[k] += (t[k]||0);
     const label = `${MESES[m.month.slice(5)]||m.month} ${m.month.slice(0,4)}`;
     html += `<tr class="month-row" data-m="${m.month}" onclick="toggleMonth('${m.month}')">
       <td>${label}</td><td>${fmt(t.vendus)}</td><td>${fmt(t.gross)}</td><td>${fmt(t.tips)}</td>
-      <td><b>${fmt(t.card_sales)}</b></td><td>${fmt(t.fees)}</td><td>${fmt(t.net)}</td>
+      ${dev(t.refunds)}
+      <td><b>${fmt(t.card_sales)}</b></td><td>${fmt(t.fees)}</td><td>${fmt(cred(t))}</td>
       <td class="cash" ${t.cash<0?'style="color:var(--red)" title="Vendas cobradas no terminal antes da faturação no Vendus (ver notas)"':''}>${fmt(t.cash)}</td><td class="chev">${t.tx}</td>
     </tr>`;
-    html += `<tr class="dayrows" data-m="${m.month}" style="display:none;"><td colspan="9" style="padding:0;">
+    html += `<tr class="dayrows" data-m="${m.month}" style="display:none;"><td colspan="10" style="padding:0;">
       <table class="daytable" style="width:100%;">
         ${m.days.map(d=>`<tr>
           <td style="padding-left:34px;">${d.day}</td><td>${fmt(d.vendus)}</td><td>${fmt(d.gross)}</td>
-          <td>${fmt(d.tips)}</td><td>${fmt(d.gross-d.tips)}</td><td>${fmt(d.fees)}</td><td>${fmt(d.net)}</td>
+          <td>${fmt(d.tips)}</td>${dev(d.refunds)}
+          <td>${fmt(d.gross-d.tips-(d.refunds||0))}</td><td>${fmt(d.fees)}</td><td>${fmt(cred(d))}</td>
           <td style="color:var(--faint)">—</td><td>${d.tx||''}</td>
         </tr>`).join('')}
       </table>
@@ -145,7 +154,8 @@ function render(){
   }
   html += `<tr class="total">
     <td>TOTAL</td><td>${fmt(g.vendus)}</td><td>${fmt(g.gross)}</td><td>${fmt(g.tips)}</td>
-    <td>${fmt(g.card_sales)}</td><td>${fmt(g.fees)}</td><td>${fmt(g.net)}</td>
+    ${dev(g.refunds)}
+    <td>${fmt(g.card_sales)}</td><td>${fmt(g.fees)}</td><td>${fmt(cred(g))}</td>
     <td class="cash">${fmt(g.cash)}</td><td>${g.tx}</td>
   </tr>`;
   tb.innerHTML = html;
@@ -161,12 +171,15 @@ function toggleMonth(m){
 
 function exportCsv(){
   if(!DATA) return;
-  const rows = [['Data','Faturado Vendus','TPA bruto','Gorjetas','Vendas cartao','Comissoes','Liquido creditado','Transacoes']];
+  const rows = [['Data','Faturado Vendus','TPA bruto','Gorjetas','Devolucoes','Vendas cartao','Comissoes','Liquido creditado','Transacoes']];
   for(const m of DATA.months){
     for(const d of m.days)
-      rows.push([d.day,d.vendus,d.gross,d.tips,(d.gross-d.tips).toFixed(2),d.fees,d.net,d.tx]);
+      rows.push([d.day,d.vendus,d.gross,d.tips,(d.refunds||0),
+                 (d.gross-d.tips-(d.refunds||0)).toFixed(2),d.fees,
+                 ((d.net||0)-(d.refunds||0)).toFixed(2),d.tx]);
     const t=m.totals;
-    rows.push([`TOTAL ${m.month}`,t.vendus,t.gross,t.tips,t.card_sales,t.fees,t.net,t.tx]);
+    rows.push([`TOTAL ${m.month}`,t.vendus,t.gross,t.tips,(t.refunds||0),t.card_sales,t.fees,
+               ((t.net||0)-(t.refunds||0)).toFixed(2),t.tx]);
   }
   const csv = rows.map(r=>r.join(';')).join('\n');
   const a = document.createElement('a');
@@ -184,7 +197,10 @@ async function doUpload(){
     const fd = new FormData(); fd.append('file', f);
     const r = await fetch('/api/tpa/upload',{method:'POST',body:fd});
     const d = await r.json();
-    st.textContent = d.ok ? `✓ ${d.days} dias (${d.from} → ${d.to}), ${d.transactions} transações` : ('Erro: '+(d.error||''));
+    st.textContent = d.ok
+      ? `✓ ${d.days} dias (${d.from} → ${d.to}), ${d.transactions} transações` +
+        (d.refunds ? `, ${d.refunds} devoluções` : '')
+      : ('Erro: '+(d.error||''));
     if(d.ok) load();
   }catch(e){ st.textContent='Erro de rede.'; }
   finally{ btn.disabled=false; }

@@ -5522,7 +5522,7 @@ def _load_revolut_days():
         rows = None
     if isinstance(rows, list) and rows:
         return {r["day"]: {k: float(r.get(k) or 0) if k != "tx" else int(r.get(k) or 0)
-                           for k in ("gross", "tips", "fees", "net", "tx")}
+                           for k in ("gross", "tips", "fees", "net", "refunds", "tx")}
                 for r in rows}
     try:
         with open(os.path.join(os.path.dirname(__file__), "revolut_data.json")) as f:
@@ -5578,15 +5578,20 @@ def api_tpa_data(token):
             "tips":    round(float(r.get("tips") or 0), 2),
             "fees":    round(float(r.get("fees") or 0), 2),
             "net":     round(float(r.get("net") or 0), 2),
+            "refunds": round(float(r.get("refunds") or 0), 2),
             "tx":      int(r.get("tx") or 0),
         })
     out = []
     for m in sorted(months):
         days = months[m]
         tot = {k: round(sum(d[k] for d in days), 2)
-               for k in ("vendus", "gross", "tips", "fees", "net")}
+               for k in ("vendus", "gross", "tips", "fees", "net", "refunds")}
         tot["tx"] = sum(d["tx"] for d in days)
-        tot["card_sales"] = round(tot["gross"] - tot["tips"], 2)
+        # Ventes carte = ce que le client a payé POUR DES VENTES et qui est resté :
+        # le brut, moins les gorjetas (qui transitent sans être de la faturação),
+        # moins les devoluções (rendues). C'est la seule base comparable au ca_ttc
+        # de Vendus, qui est lui aussi net de ses notes de crédit.
+        tot["card_sales"] = round(tot["gross"] - tot["tips"] - tot["refunds"], 2)
         tot["cash"] = round(tot["vendus"] - tot["card_sales"], 2)
         out.append({"month": m, "days": days, "totals": tot})
     return jsonify({"months": out, "warning": warning,
@@ -5608,21 +5613,37 @@ def api_tpa_upload():
         text = f.read().decode("utf-8-sig")
         reader = _csv.DictReader(io.StringIO(text))
         agg = {}
-        n_settle = 0
+        n_settle = n_refund = 0
+        def _day(day):
+            return agg.setdefault(day, {"gross": 0.0, "tips": 0.0, "fees": 0.0,
+                                        "net": 0.0, "refunds": 0.0, "tx": 0})
         for r in reader:
-            if (r.get("Type") or "") != "Settlement":
-                continue
-            day = (r.get("Payment Capture Date & Time (UTC)") or "")[:10]
-            if not day:
-                continue
-            n_settle += 1
-            a = agg.setdefault(day, {"gross": 0.0, "tips": 0.0, "fees": 0.0,
-                                     "net": 0.0, "tx": 0})
-            a["gross"] += float(r.get("Original amount") or 0)
-            a["net"]   += float(r.get("Settlement amount") or 0)
-            a["fees"]  += abs(float(r.get("Processing fee") or 0))
-            a["tips"]  += float(r.get("Tip amount") or 0)
-            a["tx"]    += 1
+            typ = (r.get("Type") or "")
+            if typ == "Settlement":
+                day = (r.get("Payment Capture Date & Time (UTC)") or "")[:10]
+                if not day:
+                    continue
+                n_settle += 1
+                a = _day(day)
+                a["gross"] += float(r.get("Original amount") or 0)
+                a["net"]   += float(r.get("Settlement amount") or 0)
+                a["fees"]  += abs(float(r.get("Processing fee") or 0))
+                a["tips"]  += float(r.get("Tip amount") or 0)
+                a["tx"]    += 1
+            elif typ == "Refund":
+                # ⚠️ DATE DE RÈGLEMENT, PAS DE CAPTURE. Un remboursement n'a pas de date de
+                # capture dans le fichier Revolut — vérifié sur septembre 2026 : 0 sur 41
+                # lignes. C'est pour ça qu'ils étaient tombés à côté de l'import, qui indexe
+                # tout sur la capture. Et c'est aussi la bonne date comptablement : un
+                # remboursement est un événement de son propre jour, pas de celui de la vente
+                # qu'il annule — laquelle peut être d'un autre mois.
+                day = (r.get("Date & Time Completed (UTC)") or "")[:10]
+                if not day:
+                    continue
+                n_refund += 1
+                _day(day)["refunds"] += abs(float(r.get("Original amount") or 0))
+            # `Transfer` = les virements vers ton compte. Ce n'est pas du chiffre, c'est
+            # l'argent qui sort de Revolut — on ne les compte nulle part, volontairement.
         if not agg:
             return jsonify({"ok": False,
                             "error": "nenhuma linha Settlement encontrada — é o Merchant reconciliation statement?"}), 400
@@ -5631,9 +5652,11 @@ def api_tpa_upload():
                 "day": day,
                 "gross": round(a["gross"], 2), "tips": round(a["tips"], 2),
                 "fees": round(a["fees"], 2),   "net": round(a["net"], 2),
+                "refunds": round(a["refunds"], 2),
                 "tx": a["tx"],
             })
         return jsonify({"ok": True, "days": len(agg), "transactions": n_settle,
+                        "refunds": n_refund,
                         "from": min(agg), "to": max(agg)})
     except Exception as e:
         return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 400
@@ -5696,26 +5719,31 @@ def _contabilidade_months():
         m = MESES_FUNDIDOS.get(day[:7], day[:7])
         r = rev.get(day) or {}
         e = months.setdefault(m, {"days": [], "vendas": 0.0, "tpa": 0.0,
-                                  "gorjetas": 0.0, "cartao": 0.0,
+                                  "gorjetas": 0.0, "devolucoes": 0.0, "cartao": 0.0,
                                   "comissoes": 0.0, "liquido": 0.0, "tx": 0})
         vendas = round(vendus_day.get(day, 0.0), 2)
         tpa    = round(float(r.get("gross") or 0), 2)
         gorj   = round(float(r.get("tips") or 0), 2)
-        # Vendas por cartão = ce que le client a payé pour des VENTES : le TPA
-        # brut moins les gorjetas, qui transitent par le terminal sans être de
-        # la faturação. Le numerário reste à la comptable — on lui donne les
-        # bases justes, pas la conclusion.
-        cartao = round(tpa - gorj, 2)
+        devol  = round(float(r.get("refunds") or 0), 2)
+        # Vendas por cartão = ce que le client a payé pour des VENTES et qui est
+        # resté : le TPA brut, moins les gorjetas — qui transitent par le terminal
+        # sans être de la faturação — et moins les devoluções, qui lui ont été
+        # rendues. Le numerário reste à la comptable : on lui donne les bases
+        # justes, pas la conclusion.
+        cartao = round(tpa - gorj - devol, 2)
         row = {"day": day,
-               "vendas":    vendas,
-               "tpa":       tpa,
-               "gorjetas":  gorj,
-               "cartao":    cartao,
-               "comissoes": round(float(r.get("fees") or 0), 2),
-               "liquido":   round(float(r.get("net") or 0), 2),
-               "tx":        int(r.get("tx") or 0)}
+               "vendas":     vendas,
+               "tpa":        tpa,
+               "gorjetas":   gorj,
+               "devolucoes": devol,
+               "cartao":     cartao,
+               "comissoes":  round(float(r.get("fees") or 0), 2),
+               # Ce qui a vraiment atterri sur le compte : le net des règlements
+               # moins les remboursements sortis le même jour.
+               "liquido":    round(float(r.get("net") or 0) - devol, 2),
+               "tx":         int(r.get("tx") or 0)}
         e["days"].append(row)
-        for k in ("vendas", "tpa", "gorjetas", "cartao",
+        for k in ("vendas", "tpa", "gorjetas", "devolucoes", "cartao",
                   "comissoes", "liquido", "tx"):
             e[k] += row[k]
 
@@ -5732,9 +5760,10 @@ def _contabilidade_months():
             "month": m,
             "label": LABELS_FUNDIDOS.get(m) or f"{MESES_PT[mm]} {y}",
             "vendas":    round(e["vendas"], 2),
-            "tpa":       round(e["tpa"], 2),
-            "gorjetas":  round(e["gorjetas"], 2),
-            "cartao":    round(e["cartao"], 2),
+            "tpa":        round(e["tpa"], 2),
+            "gorjetas":   round(e["gorjetas"], 2),
+            "devolucoes": round(e["devolucoes"], 2),
+            "cartao":     round(e["cartao"], 2),
             # Comissões : la facture fait foi ; sinon cumul par capture (provisoire)
             "comissoes": round(sum(float(i["fees"]) for i in invs)
                                if inv else e["comissoes"], 2),
@@ -5800,40 +5829,44 @@ def api_contabilidade_excel():
     wb = Workbook()
     ws = wb.active; ws.title = "Resumo"
     _head(ws, ["Mês", "Vendas faturadas", "Vendas por cartão",
-               "TPA bruto", "Gorjetas", "Comissões Revolut", "Origem comissões",
+               "TPA bruto", "Gorjetas", "Devoluções",
+               "Comissões Revolut", "Origem comissões",
                "Líquido creditado", "Transações"],
-          [16, 18, 18, 14, 12, 18, 17, 18, 12])
+          [16, 18, 18, 14, 12, 13, 18, 17, 18, 12])
     for m in months:
         ws.append([m["label"], m["vendas"], m["cartao"],
-                   m["tpa"], m["gorjetas"], m["comissoes"],
+                   m["tpa"], m["gorjetas"], m["devolucoes"], m["comissoes"],
                    "Fatura " + m["fatura_num"] if m["comissoes_fonte"] == "fatura" else "Provisório",
                    m["liquido"], m["tx"]])
     tot_row = ws.max_row + 1
     S = lambda k: sum(m[k] for m in months)
     ws.append(["TOTAL", S("vendas"), S("cartao"), S("tpa"),
-               S("gorjetas"), S("comissoes"), "", S("liquido"), S("tx")])
+               S("gorjetas"), S("devolucoes"), S("comissoes"), "",
+               S("liquido"), S("tx")])
     for c in ws[tot_row]:
         c.font = bold
-    for row in ws.iter_rows(min_row=2, min_col=2, max_col=6):
+    for row in ws.iter_rows(min_row=2, min_col=2, max_col=7):
         for c in row: c.number_format = EUR
-    for row in ws.iter_rows(min_row=2, min_col=8, max_col=8):
+    for row in ws.iter_rows(min_row=2, min_col=9, max_col=9):
         for c in row: c.number_format = EUR
 
     for m in months:
         s = wb.create_sheet(m["label"][:31])
         _head(s, ["Data", "Vendas faturadas", "Vendas por cartão",
-                  "TPA bruto", "Gorjetas", "Comissões (captura)",
+                  "TPA bruto", "Gorjetas", "Devoluções", "Comissões (captura)",
                   "Líquido creditado", "Transações"],
-              [14, 18, 18, 14, 12, 19, 18, 12])
+              [14, 18, 18, 14, 12, 13, 19, 18, 12])
         for d in m["days"]:
-            s.append([d["day"], d["vendas"], d["cartao"],
-                      d["tpa"], d["gorjetas"], d["comissoes"], d["liquido"], d["tx"]])
+            s.append([d["day"], d["vendas"], d["cartao"], d["tpa"],
+                      d["gorjetas"], d["devolucoes"], d["comissoes"],
+                      d["liquido"], d["tx"]])
         r = s.max_row + 1
         s.append(["TOTAL", m["vendas"], m["cartao"], m["tpa"],
-                  m["gorjetas"], sum(d["comissoes"] for d in m["days"]),
+                  m["gorjetas"], m["devolucoes"],
+                  sum(d["comissoes"] for d in m["days"]),
                   m["liquido"], m["tx"]])
         for c in s[r]: c.font = bold
-        for row in s.iter_rows(min_row=2, min_col=2, max_col=7):
+        for row in s.iter_rows(min_row=2, min_col=2, max_col=8):
             for c in row: c.number_format = EUR
 
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
