@@ -28,16 +28,8 @@
   z-index:60; }
 .fa-lisere.reel { background:var(--red); }
 
-/* ⚠️ PAS DE `--faint` POUR DU TEXTE ICI. Le jeton mesure 3,15:1 sur carte claire et 3,68:1 sur
-   carte sombre : sous le 4,5:1 de l'AA, à 11 et 12 px, sur des montants et des taux. `--muted`
-   passe (4,78:1 et 5,66:1). Le jeton global reste tel quel — il habille 21 autres gabarits, et
-   le changer est une décision à prendre à part. `--faint` reste bon pour un trait, pas pour un mot. */
-/* Fond OPAQUE, pas `--bg-hover` : le translucide éclaircissait la carte sous le texte et le
-   badge retombait à 4,38:1. Ce badge dit quel mode fiscal est armé — il se lit ou il ne sert
-   à rien. */
 .fa-badge { font-family:var(--mono); font-size:11px; padding:3px 8px; border-radius:var(--r-sm);
-  background:var(--bg-page); border:1px solid var(--border); color:var(--muted);
-  white-space:nowrap; }
+  background:var(--bg-hover); color:var(--faint); white-space:nowrap; }
 .fa-badge.reel { background:var(--red-soft); color:var(--red); font-weight:600; }
 
 /* ── Le fil des étapes ───────────────────────────────────────────────────── */
@@ -65,7 +57,12 @@
 
 /* ── Champs ──────────────────────────────────────────────────────────────── */
 .fa-grille { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr)); gap:12px; }
+/* ⚠️ `[hidden]` NE PEUT RIEN CONTRE UN `display` DE CLASSE. La règle du navigateur a la
+   specificité d'un attribut : `.fa-champ { display:flex }` la bat, et l'élément « caché »
+   restait affiché. « Échéance (jours) » s'affichait donc sur une facture-reçu déjà payée, et
+   « Réglée par » sur une facture à trente jours. Même piège que `.fa-cb-liste[hidden]`. */
 .fa-champ { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.fa-champ[hidden] { display:none; }
 /* ⚠️ LABELS EN SANS-SERIF. Le monospace espacé donnait à chaque étiquette le poids
    d'un titre : douze titres sur un écran, et plus aucune hiérarchie. */
 .fa-champ label, .fa-l { font-size:13px; font-weight:500; color:var(--muted); }
@@ -76,7 +73,7 @@
 .fa-seg button:focus-visible, .fa-aide:focus-visible, .fa-cb-input:focus { outline:2px solid var(--accent);
   outline-offset:1px; }
 .fa-refus { font-size:12px; color:var(--amber); margin-top:3px; }
-.fa-deduit { font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:3px; }
+.fa-deduit { font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:3px; }
 .fa-ecart { color:var(--amber); }
 
 /* ⚠️ AUCUN CONTRÔLE NATIF VISIBLE. Un `<select>` système au milieu de champs
@@ -117,8 +114,8 @@
 .fa-cb-liste[hidden] { display:none; }
 .fa-cb-liste li { padding:7px 9px; border-radius:var(--r-sm); font-size:14px; cursor:pointer; }
 .fa-cb-liste li.vise { background:var(--bg-hover); }
-.fa-cb-liste li .sous { font-size:12px; color:var(--muted); }
-.fa-cb-vide { padding:7px 9px; font-size:13px; color:var(--muted); }
+.fa-cb-liste li .sous { font-size:12px; color:var(--faint); }
+.fa-cb-vide { padding:7px 9px; font-size:13px; color:var(--faint); }
 
 /* ── Carte client ────────────────────────────────────────────────────────── */
 .fa-fiche { display:flex; justify-content:space-between; gap:14px; align-items:flex-start;
@@ -129,7 +126,7 @@
 
 /* ── Lignes ──────────────────────────────────────────────────────────────── */
 .fa-lignes { width:100%; border-collapse:collapse; font-size:14px; }
-.fa-lignes th { font-size:12px; font-weight:500; color:var(--muted); text-align:left;
+.fa-lignes th { font-size:12px; font-weight:500; color:var(--faint); text-align:left;
   padding:0 8px 8px 0; }
 .fa-lignes td { padding:5px 8px 5px 0; border-bottom:1px solid var(--border);
   vertical-align:top; }
@@ -150,13 +147,13 @@
     margin-bottom:10px; }
   .fa-lignes td { border:none; padding:6px 0; }
   .fa-lignes td::before { content:attr(data-libelle); display:block; font-size:12px;
-    font-weight:500; color:var(--muted); margin-bottom:3px; }
+    font-weight:500; color:var(--faint); margin-bottom:3px; }
   .fa-lignes .fa-num { text-align:left; }
 }
 
 /* ── Aperçu / relecture ──────────────────────────────────────────────────── */
 .fa-pdf { width:100%; border-collapse:collapse; font-size:13px; margin-top:10px; }
-.fa-pdf th { font-size:11px; font-weight:500; color:var(--muted); text-align:right;
+.fa-pdf th { font-size:11px; font-weight:500; color:var(--faint); text-align:right;
   padding:0 0 6px 12px; }
 .fa-pdf th:first-child { text-align:left; padding-left:0; }
 .fa-pdf td { padding:4px 0 4px 12px; text-align:right; border-top:1px solid var(--border);
@@ -164,7 +161,7 @@
 .fa-pdf td:first-child { text-align:left; padding-left:0; }
 .fa-pdf tr.somme td { font-weight:600; }
 .fa-dl { display:grid; grid-template-columns:auto 1fr; gap:5px 16px; margin:0; font-size:13px; }
-.fa-dl dt { font-size:12px; font-weight:500; color:var(--muted); }
+.fa-dl dt { font-size:12px; font-weight:500; color:var(--faint); }
 .fa-dl dd { margin:0; }
 
 /* ── La barre du bas : le seul endroit qui dit ce qui manque ──────────────── */
@@ -195,15 +192,15 @@
 .fa-echec { background:var(--amber-soft); color:var(--amber); border:1px solid var(--amber);
   border-radius:var(--r-sm); padding:14px 16px; font-size:14px; line-height:1.6; }
 .fa-emis code, .fa-echec code { font-family:var(--mono); font-size:12px; }
-.fa-aide { font-size:12px; color:var(--muted); cursor:pointer; background:none; padding:0;
-  border:0; border-bottom:1px dotted var(--muted); font-family:inherit; }
+.fa-aide { font-size:12px; color:var(--faint); cursor:pointer; background:none; padding:0;
+  border:0; border-bottom:1px dotted var(--faint); font-family:inherit; }
 .fa-aide-texte { font-size:13px; color:var(--muted); line-height:1.55; max-width:62ch;
   margin:-6px 0 14px; }
 .fa-reprendre { display:flex; align-items:center; gap:14px; flex-wrap:wrap;
   background:var(--bg-hover); border:1px solid var(--border); border-radius:var(--r);
   padding:12px 16px; margin-bottom:16px; }
 .fa-reprendre .quoi { font-size:14px; flex:1; min-width:200px; }
-.fa-reprendre .quand { font-size:12px; color:var(--muted); }
+.fa-reprendre .quand { font-size:12px; color:var(--faint); }
 </style>
 </head>
 <body>
@@ -220,7 +217,7 @@
     <div style="display:flex;gap:8px;align-items:center;">
       <span class="fa-badge" id="fa-mode">…</span>
       <button class="fa-btn" onclick="charger()" title="Recharger">↻</button>
-      <a href="/logout" title="Log out" style="font-size:12px;color:var(--muted);text-decoration:none;padding:5px 8px;">⎋</a>
+      <a href="/logout" title="Log out" style="font-size:12px;color:var(--faint);text-decoration:none;padding:5px 8px;">⎋</a>
     </div>
   </div>
 
@@ -485,7 +482,7 @@ async function charger(){
   E('f-paiement').innerHTML = d.pagamentos.map(p=>
     `<option value="${p.id}">${echap(p.titre)}</option>`).join('');
   dessinerClient(); dessinerReprise(); poserTtc(true); poserType(TYPE);
-  if(LIGNES.length === 0) ajouterLigne(); else dessinerLignes();
+  if(LIGNES.length === 0) ajouterLigne(false); else dessinerLignes();
   rendre();
 }
 
@@ -569,7 +566,7 @@ function dessinerClient(){
       <button class="fa-btn" onclick="basculerIncomplets()">${INCOMPLETS
         ? 'Masquer les fiches incomplètes' : 'Afficher les fiches incomplètes'}</button>
     </div>
-    <div class="fa-l" style="margin-top:8px;font-weight:400;color:var(--muted)">
+    <div class="fa-l" style="margin-top:8px;font-weight:400;color:var(--faint)">
       ${plur(vus.length, 'fiche proposée', 'fiches proposées')}${INCOMPLETS ? '' : ' — les fiches sans nom sont masquées'}
     </div>`;
   CB['cbc'] = {options:[], surChoix:choisirClient, vise:-1, peupler:function(){
@@ -621,9 +618,14 @@ function poserType(t){
   E('f-box-delai').hidden = t !== 'FT';
   rendre();
 }
-function ajouterLigne(){
+/* ⚠️ LA LIGNE D'OUVERTURE NE PREND PAS LE FOCUS. Elle le prenait, et la liste d'articles
+   s'ouvrait toute seule par-dessus l'écran — avant même qu'un client soit choisi, alors que
+   l'étape 1 est justement le client. On ne focalise que pour un geste de l'utilisateur :
+   « + Ligne », ou Entrée dans la dernière ligne. */
+function ajouterLigne(focaliser = true){
   LIGNES.push({service_id:0, libelle:'', montant:'', taux:23, qty:1});
   dessinerLignes(); rendre();
+  if(!focaliser) return;
   const champs = document.querySelectorAll('#fa-corps .fa-cb-input');
   if(champs.length) champs[champs.length-1].focus();
 }

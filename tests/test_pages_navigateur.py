@@ -139,7 +139,7 @@ CAS = {
             "Descrição", "Taxa", "Sumário",
             # ⚠️ AUCUN ✗ AVANT D'AVOIR TOUCHÉ : un écran neuf tout en rouge apprend à ignorer
             # le rouge, et c'est celui qui compte qu'on rate ensuite.
-            "CHECK-VIERGE oui",
+            "CHECK-VIERGE oui", "OUVERTURE-CALME",
             # ⚠️ LE CRITÈRE DU POINT 1 : reprendre suffit, article compris.
             "REPRISE-COMPLETE",
             # ⚠️ ET L'ACCENT TRAVERSE : « Comissão », pas « Comissao ».
@@ -151,6 +151,7 @@ CAS = {
             "BASCULE-UNIQUE", "HT-VERS-TTC-OK", "RETOUR-TTC-OK",
             # ⚠️ TOUT DOIT SE FAIRE AU CLAVIER, liste d'articles comprise.
             "CLAVIER-OK", "AIDE-OUVRABLE", "ACCORD-FICHES-OK",
+            "FR-SANS-ECHEANCE", "FT-SANS-REGLEMENT", "ENTREE-NOUVELLE-LIGNE",
             "ECART-SIGNALE", "EMAIL-EXPLICITE",
             "PRET-OUI", "CONFIRM-OK",
             # ⚠️ LE VERROU POST-ÉMISSION, la correction la plus importante de cet écran.
@@ -164,6 +165,8 @@ CAS = {
             "SAISIE-PERDUE", "DEDUIT-MUET", "TOTALLIGNE-MUET", "ECART-MUET", "EMAIL-IMPLICITE",
             "BASCULE-PAR-LIGNE", "HT-VERS-TTC-MUET", "RETOUR-TTC-MUET",
             "CLAVIER-MUET", "AIDE-MUETTE", "ACCORD-FICHES-MUET",
+            "FR-AVEC-ECHEANCE", "FT-AVEC-REGLEMENT", "OUVERTURE-ENCOMBREE",
+            "ENTREE-MUETTE",
             "REPRISE-TROUEE", "REPRISE-ABSENTE", "CATALOGUE-FILTRE", "PRET-NON",
             "CONFIRM-ABSENT", "VERROU-ROMPU", "NUMERO-MUET", "PDF-ABSENT", "CHECK-VIERGE non",
             "ETAPE-NEUVE-MUETTE", "ETAPE-FIGEE",
@@ -182,6 +185,12 @@ CAS = {
     return setTimeout(function(){ attendre(n+1); }, 20);
   var trace = function(t){ var d = document.createElement('div'); d.textContent = t;
                            document.body.appendChild(d); };
+
+  /* ⚠️ L'ÉCRAN S'OUVRE CALME. La ligne vide prenait le focus au chargement : la liste
+     d'articles se dépliait toute seule par-dessus le reste, avant même qu'un client soit
+     choisi — alors que l'étape 1 est le client. */
+  trace((E('cba0-liste').hidden && document.activeElement !== E('cba0-input'))
+        ? 'OUVERTURE-CALME' : 'OUVERTURE-ENCOMBREE');
 
   var vierge = E('fa-check').textContent.replace(/\s+/g,' ').trim();
   trace('CHECK-VIERGE ' + (vierge.indexOf('\u2717') < 0 ? 'oui' : 'non ' + vierge));
@@ -273,6 +282,35 @@ CAS = {
   var apres = E('fa-relire').textContent.indexOf('tomoko@exemple.pt') >= 0;
   trace((avant && apres) ? 'EMAIL-EXPLICITE' : 'EMAIL-IMPLICITE');
   coche.checked = false; coche.dispatchEvent(new Event('change', {bubbles:true}));
+
+  /* ⚠️ LE TYPE DÉCIDE DU CHAMP AFFICHÉ, ET `hidden` NE SUFFIT PAS À LE CACHER. Une FR est
+     déjà payée : lui demander une échéance à trente jours est une question sans réponse.
+     On regarde ce qui est VISIBLE, pas ce qui porte l'attribut. */
+  /* ⚠️ ENTRÉE AJOUTE UNE LIGNE **ET** Y POSE LE FOCUS. Sans le focus, le geste n'a servi à
+     rien : il faut retourner à la souris, ce qu'il était censé éviter. Une facture de trois
+     prestations demandait d'aller chercher « + Ligne » entre chaque. */
+  var compteChamps = function(){
+    return document.querySelectorAll('#fa-corps .fa-cb-input').length; };
+  var avantN = compteChamps();
+  var mont = document.querySelector('#fa-corps input[inputmode=decimal]');
+  mont.focus();
+  mont.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true}));
+  var apresN = compteChamps();
+  trace((apresN === avantN + 1 && document.activeElement === E('cba' + (apresN - 1) + '-input'))
+        ? 'ENTREE-NOUVELLE-LIGNE'
+        : 'ENTREE-MUETTE ' + avantN + '->' + apresN + ' focus='
+          + (document.activeElement && document.activeElement.id));
+  /* On retire la ligne vide : la suite du scénario émet, et une ligne sans montant bloquerait. */
+  var poubelles = document.querySelectorAll('#fa-corps .fa-btn.icone');
+  poubelles[poubelles.length - 1].click();
+
+  var visible = function(id){ var e = E(id); return !!(e && e.offsetParent !== null); };
+  trace((visible('f-box-paiement') && !visible('f-box-delai'))
+        ? 'FR-SANS-ECHEANCE' : 'FR-AVEC-ECHEANCE');
+  E('fa-seg-type').children[1].click();
+  trace((!visible('f-box-paiement') && visible('f-box-delai'))
+        ? 'FT-SANS-REGLEMENT' : 'FT-AVEC-REGLEMENT');
+  E('fa-seg-type').children[0].click();
 
   var bouton = E('fa-emettre');
   if(bouton.disabled){ trace('PRET-NON ' + E('fa-check').textContent.replace(/\s+/g,' ')); return; }

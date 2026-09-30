@@ -751,7 +751,7 @@ def _page_login(error=""):
 <meta name="theme-color" content="#F7FAFC">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root {{ --canvas:#F7FAFC; --ink:#1A1F36; --muted:#697386; --faint:#8792A2;
+:root {{ --canvas:#F7FAFC; --ink:#1A1F36; --muted:#4D5664; --faint:#626E7F;
          --spec:#635BFF; --border:#E3E8EE; --card:#FFFFFF; }}
 /* ⚠️ PAGE AUTONOME : elle ne charge pas `style.css` — elle s'affiche avant toute session, et
    une feuille externe qui tarderait la montrerait nue. Les valeurs sont donc écrites en

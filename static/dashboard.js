@@ -211,7 +211,7 @@ function jetons() {
     iris: v('--db-iris') || '#635BFF',
     slate: v('--db-slate') || '#A3ACBA',
     line: v('--db-line-soft') || '#EDF1F6',
-    faint: v('--db-faint') || '#8792A2',
+    faint: v('--db-faint') || '#626E7F',
     ink: v('--db-ink') || '#1A1F36',
     green: v('--db-green') || '#067647',
     /* ⚠️ CINQ JETONS MANQUAIENT ICI, et c'est pourquoi les graphiques peignaient en dur : la
