@@ -79,8 +79,17 @@ CAS = {
     "faturar.html": {
         "reponses": {
             "/api/faturar/referenciais": {
-                "prestacoes": [{"id": 372683324, "titre": "Comissao sobre vendas", "taux": 23},
-                               {"id": 372683999, "titre": "Catering", "taux": 13}],
+                # ⚠️ TOUT LE CATALOGUE, PAS UN FILTRE. Le marqueur « sans catégorie » hérité de
+                # la caisse ne rendait qu'un article — « sticks » — et cachait la fiche qui
+                # avait servi à la seule facture réelle. L'écran l'a dit avant nous.
+                "artigos": [
+                    {"id": 900, "titre": "sticks", "reference": "STK1", "categorie": None,
+                     "categoria": "", "taux": 23},
+                    {"id": 372683324, "titre": "Comissao sobre vendas", "reference": "VCOM141",
+                     "categorie": 342853712, "categoria": "Extra", "taux": 23},
+                    {"id": 700, "titre": "Espresso", "reference": "ESP", "categorie": 1,
+                     "categoria": "Coffee", "taux": 13},
+                ],
                 "pagamentos": [{"id": 342853234, "titre": "Multibanco"},
                                {"id": 342853233, "titre": "Numerario"}],
                 "clientes": [{"id": 372689903, "nom": "TOMOKO HIRAOJI.", "nif": "332457389",
@@ -88,6 +97,15 @@ CAS = {
                               "ville": "Lisboa", "email": "", "incomplet": False},
                              {"id": 372689904, "nom": "", "nif": "500000000", "adresse": "",
                               "code_postal": "", "ville": "", "email": "", "incomplet": True}],
+                # La dernière facture réelle, telle que le cache la porte.
+                "ultima": {"jour": "2026-09-08", "numero": "FR 01P2026/1", "type": "FR",
+                           "client": {"nom": "TOMOKO HIRAOJI.", "nif": "332457389",
+                                      "adresse": "Rua Heróis de Quionga 17",
+                                      "code_postal": "1170-178", "ville": "Lisboa", "email": ""},
+                           "lignes": [{"libelle": "Comissao sobre venda popup 15 agosto",
+                                       "montant_cents": 13650, "ttc": True, "taux": 23,
+                                       "qty": 1, "service_id": 0}],
+                           "moyen_paiement": "Multibanco"},
                 "caixa": 342853246,
                 "modo": "tests",
             },
@@ -98,16 +116,22 @@ CAS = {
             # ⚠️ LE MODE EST ANNONCÉ. Émettre en « tests » en croyant émettre pour de vrai
             # laisse le client sans facture ; l'inverse abîme une série fiscale.
             "mode tests", "342853246",
-            # Les référentiels ont bien été lus et posés dans les listes.
-            "Comissao sobre vendas", "Multibanco", "TOMOKO HIRAOJI.",
-            # ⚠️ ET CE QUI MANQUE EST DIT, EN ENTIER. Un écran qui révèle les défauts un par un
-            # fait remplir, refuse, fait remplir, refuse encore.
+            # ⚠️ LA REPRISE DE LA DERNIÈRE FACTURE, la fonction la plus utile de l'écran : une
+            # facture tous les deux mois, et entre deux personne ne se souvient de rien.
+            "FR 01P2026/1", "Reprendre cette facture", "émise le 2026-09-08",
+            # Le catalogue entier est proposé, avec sa catégorie — « Espresso · Coffee » prouve
+            # qu'aucun filtre ne cache les fiches vendables.
+            "Comissao sobre vendas", "Espresso", "Coffee",
+            "Multibanco", "TOMOKO HIRAOJI.",
+            # La relecture reprend la forme du document imprimé : c'est l'objet qu'on compare.
+            "Descrição", "Taxa", "Sumário",
+            # ⚠️ ET CE QUI MANQUE EST DIT, EN ENTIER, dès le premier rendu.
             "Il manque", "nom du client", "NIF à 9 chiffres",
         ],
-        # ⚠️ CE QUI NE DOIT SURTOUT PAS S'AFFICHER. Le référentiel bouchonné annonce
-        # `modo: "tests"` : voir « émission réelle » voudrait dire que l'écran affiche le mode
-        # qu'il suppose et non celui que le serveur lui donne. On émettrait pour de vrai en
-        # croyant essayer, ou l'inverse — et l'inverse laisse le client sans facture.
+        # ⚠️ CE QUI NE DOIT SURTOUT PAS S'AFFICHER. Le référentiel annonce `modo: "tests"` :
+        # voir « émission réelle » voudrait dire que l'écran affiche le mode qu'il suppose et
+        # non celui que le serveur donne. On émettrait pour de vrai en croyant essayer — ou
+        # l'inverse, qui laisse le client sans facture.
         "interdit": ["émission réelle"],
     },
     "marge.html": {

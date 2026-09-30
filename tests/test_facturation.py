@@ -203,3 +203,94 @@ def test_les_identifiants_de_taux_sont_ceux_de_vendus():
 
 def test_l_echeance_se_calcule_sur_un_jour_donne_jamais_sur_l_horloge():
     assert date_echeance(datetime.date(2026, 12, 20), 30) == "2027-01-19"
+
+
+# ── Reprendre la dernière facture ───────────────────────────────────────────────────────────
+
+"""
+⚠️ LA FONCTION LA PLUS UTILE DE L'ÉCRAN, ET ELLE VIENT DE L'USAGE. Une facture tous les deux
+mois : entre deux, personne ne se souvient du client, du libellé, du taux ni du règlement. Les
+retrouver à la main est exactement là où l'on se trompe — et se tromper produit un document
+qu'on ne peut plus retirer.
+"""
+from facturation import derniere_facture, articles
+
+DOC_REEL = {
+    "type": "FR", "number": "FR 01P2026/1", "register_id": 342853246,
+    "client": {"name": "TOMOKO HIRAOJI.", "fiscal_id": "332457389",
+               "address": "Rua Heróis de Quionga 17", "postalcode": "1170-178", "city": "Lisboa"},
+    "items": [{"id": 372683324, "qty": 1, "title": "Comissao sobre venda popup 15 agosto",
+               "tax": {"id": "NOR", "rate": 23},
+               "amounts": {"net_unit": "110.98", "gross_unit": "136.50"}}],
+    "payments": [{"id": 342853234, "title": "Multibanco", "amount": "136.50"}],
+}
+
+
+def test_la_derniere_facture_se_reprend_a_l_identique():
+    d = derniere_facture([{"day": "2026-09-08", "docs": [DOC_REEL]}])
+    assert d["numero"] == "FR 01P2026/1" and d["type"] == "FR"
+    assert d["client"]["nom"] == "TOMOKO HIRAOJI." and d["client"]["nif"] == "332457389"
+    assert d["moyen_paiement"] == "Multibanco"
+    assert d["lignes"][0]["libelle"] == "Comissao sobre venda popup 15 agosto"
+
+
+def test_le_montant_est_repris_en_TTC_jamais_en_HT():
+    """⚠️ Reprendre le HT (110,98) ferait une facture à 136,51 € — un centime de plus que la
+    précédente, sur un document irréversible. On reprend ce qui avait été saisi."""
+    d = derniere_facture([{"day": "2026-09-08", "docs": [DOC_REEL]}])
+    assert d["lignes"][0]["montant_cents"] == 13650
+    assert d["lignes"][0]["ttc"] is True
+
+
+def test_l_article_n_est_PAS_repris():
+    """⚠️ Le document ne porte que l'identifiant de la LIGNE, pas celui de la fiche catalogue.
+    Le proposer ferait viser une fiche qui n'existe pas — l'écran le redemande, et le dit."""
+    d = derniere_facture([{"day": "2026-09-08", "docs": [DOC_REEL]}])
+    assert d["lignes"][0]["service_id"] == 0
+
+
+def test_les_ventes_ordinaires_ne_sont_pas_des_factures_a_tiers():
+    cache = [{"day": "2026-09-26", "docs": [{"type": "FS", "number": "FS 01P2026/1"}]}]
+    assert derniere_facture(cache) is None
+    assert derniere_facture([]) is None
+    assert derniere_facture(None) is None
+
+
+def test_la_plus_recente_gagne():
+    vieux = {**DOC_REEL, "number": "FR 01P2026/0"}
+    d = derniere_facture([{"day": "2026-09-08", "docs": [DOC_REEL]},
+                          {"day": "2026-07-01", "docs": [vieux]}])
+    assert d["numero"] == "FR 01P2026/1"
+
+
+# ── Le catalogue, sans filtre deviné ────────────────────────────────────────────────────────
+
+class _FauxReq:
+    def __init__(self, produits): self.produits = produits
+    def get(self, url, **kw):
+        class R:
+            status_code = 200
+            ok = True
+            def __init__(self, d): self._d = d
+            def json(self): return self._d
+            def raise_for_status(self): pass
+        return R(self.produits if kw.get("params", {}).get("page", 1) == 1 else [])
+
+
+def test_tout_le_catalogue_actif_est_rendu(monkeypatch):
+    """
+    ⚠️ LE MARQUEUR « SANS CATÉGORIE » ÉTAIT FAUX, ET C'EST L'ÉCRAN QUI L'A DIT. Il ne rendait
+    qu'un seul article — « sticks » — et cachait la fiche de commission qui avait servi à la
+    seule facture réelle. On ne remplace pas un marqueur faux par un autre : on rend tout.
+    """
+    monkeypatch.setenv("VENDUS_API_KEY", "k")
+    req = _FauxReq([
+        {"id": 1, "title": "Espresso", "category_id": 5, "tax_id": "INT", "status": "on"},
+        {"id": 2, "title": "sticks", "category_id": None, "tax_id": "NOR", "status": "on"},
+        {"id": 3, "title": "Comissao sobre vendas", "category_id": 9, "tax_id": "NOR", "status": "on"},
+        {"id": 4, "title": "Retiré", "category_id": 5, "tax_id": "NOR", "status": "off"},
+    ])
+    a = articles(req)
+    assert [x["id"] for x in a] == [2, 3, 1], "sans catégorie d'abord, puis par titre"
+    assert all(x["id"] != 4 for x in a), "un article désactivé ne se facture pas"
+    assert a[2]["taux"] == 13

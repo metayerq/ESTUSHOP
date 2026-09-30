@@ -51,6 +51,23 @@
   border-radius:4px; padding:18px 20px; font-size:14px; line-height:1.7; }
 .fa-emis code { font-family:var(--mono); }
 .fa-incomplet { color:var(--amber); }
+.fa-reprendre { display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  background:var(--bg-hover); border:1px solid var(--border); border-radius:4px;
+  padding:14px 16px; margin-bottom:18px; }
+.fa-reprendre .quoi { font-size:14px; }
+.fa-reprendre .quand { font-family:var(--mono); font-size:11px; color:var(--faint); }
+.fa-filtre { font-family:inherit; font-size:13px; padding:6px 8px; border:1px solid var(--border);
+  border-radius:4px; background:var(--bg); color:var(--text); width:100%; margin-bottom:4px; }
+.fa-deduit { font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:3px; }
+.fa-cat { color:var(--faint); }
+/* La relecture reprend la forme du document imprimé : c'est l'objet que Quentin compare. */
+.fa-pdf { width:100%; border-collapse:collapse; font-size:13px; margin-top:12px; }
+.fa-pdf th { font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.08em;
+  color:var(--faint); font-weight:500; text-align:right; padding:0 0 6px 12px; }
+.fa-pdf th:first-child { text-align:left; padding-left:0; }
+.fa-pdf td { padding:4px 0 4px 12px; text-align:right; border-top:1px solid var(--border); }
+.fa-pdf td:first-child { text-align:left; padding-left:0; }
+.fa-pdf tr.somme td { font-weight:600; }
 @media (max-width:760px){ .fa-lignes { font-size:13px; } }
 </style>
 </head>
@@ -74,13 +91,22 @@
        vitesse n'est pas le critère, la justesse l'est. -->
   <div class="fa-etapes"><b>1.</b> Qui &nbsp;·&nbsp; <b>2.</b> Quoi &nbsp;·&nbsp; <b>3.</b> Relire, puis émettre</div>
 
+  <!-- ⚠️ LA FONCTION LA PLUS UTILE DE L'ÉCRAN, ET ELLE VIENT DE L'USAGE. Une facture tous les
+       deux mois : entre deux, personne ne se souvient du client, du libellé, du taux ni du
+       règlement. Les retrouver à la main est exactement là où l'on se trompe — et se tromper
+       produit un document qu'on ne peut plus retirer. -->
+  <div id="fa-reprendre" class="fa-reprendre" style="display:none"></div>
+
   <div id="fa-manques" class="fa-manques" style="display:none"></div>
 
   <div class="fa-panneau">
     <h2>1 · L'acquéreur</h2>
-    <div class="fa-champ" style="margin-bottom:12px;max-width:420px">
-      <label>Client déjà connu de Vendus</label>
-      <select id="fa-client" onchange="reprendreClient()"><option value="">— saisir à la main —</option></select>
+    <div style="margin-bottom:14px;max-width:460px">
+      <label style="font-size:11px;font-family:var(--mono);color:var(--faint)">Client déjà connu — chercher par nom ou NIF</label>
+      <input class="fa-filtre" id="fa-q-client" placeholder="Tomoko, ou 332457389…"
+             oninput="filtrerClients()">
+      <select id="fa-client" size="4" style="width:100%;font-size:14px" onchange="reprendreClient()"></select>
+      <div class="fa-deduit">Rien de sélectionné = saisie à la main ci-dessous.</div>
     </div>
     <div class="fa-grille">
       <div class="fa-champ"><label>Nom *</label><input id="c-nom" oninput="rendre()"></div>
@@ -95,7 +121,7 @@
   <div class="fa-panneau">
     <h2>2 · Les prestations</h2>
     <table class="fa-lignes">
-      <thead><tr><th style="width:30%">Prestation</th><th style="width:34%">Libellé imprimé</th>
+      <thead><tr><th style="width:30%">Article Vendus</th><th style="width:34%">Libellé imprimé</th>
         <th style="width:12%">Montant</th><th style="width:10%">TVA</th><th style="width:8%">Qté</th><th></th></tr></thead>
       <tbody id="fa-corps"></tbody>
     </table>
@@ -129,15 +155,14 @@
 </div>
 {% include "_pied.html" %}
 <script>
-let REF = {prestacoes:[], pagamentos:[], clientes:[], caixa:null, modo:"tests"};
+let REF = {artigos:[], pagamentos:[], clientes:[], ultima:null, caixa:null, modo:"tests"};
 let LIGNES = [];
 
 const eur = c => (c/100).toLocaleString('pt-PT',{style:'currency',currency:'EUR'});
-const cents = txt => {
-  const n = parseFloat(String(txt||'').replace(',','.'));
-  return Number.isFinite(n) ? Math.round(n*100) : 0;
-};
-const val = id => document.getElementById(id).value.trim();
+const cents = txt => { const n = parseFloat(String(txt||'').replace(',','.'));
+                       return Number.isFinite(n) ? Math.round(n*100) : 0; };
+const val = id => (document.getElementById(id).value || '').trim();
+const echap = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 
 async function charger(){
   const r = await fetch('/api/faturar/referenciais');
@@ -149,86 +174,159 @@ async function charger(){
   document.getElementById('fa-caisse').innerHTML =
     'caisse ' + d.caixa + ' · <span class="fa-mode ' + (d.modo==='normal'?'reel':'') + '">' +
     (d.modo==='normal' ? 'émission réelle' : 'mode tests') + '</span>';
-  document.getElementById('fa-client').innerHTML = '<option value="">— saisir à la main —</option>' +
-    d.clientes.map((c,i)=>'<option value="'+i+'">'+(c.nom||'(sans nom)')+' · '+c.nif+
-      (c.incomplet?' ⚠':'')+'</option>').join('');
   document.getElementById('f-paiement').innerHTML =
-    d.pagamentos.map(p=>'<option value="'+p.id+'">'+p.titre+'</option>').join('');
+    d.pagamentos.map(p=>'<option value="'+p.id+'">'+echap(p.titre)+'</option>').join('');
+  filtrerClients();
+  dessinerReprise();
   if(LIGNES.length===0) ajouterLigne();
   rendre();
 }
 
+/* ── Reprendre la dernière facture ─────────────────────────────────────────────────────── */
+
+function dessinerReprise(){
+  const u = REF.ultima, boite = document.getElementById('fa-reprendre');
+  if(!u){ boite.style.display='none'; return; }
+  boite.style.display='';
+  const total = u.lignes.reduce((s,l)=>s+l.montant_cents*l.qty,0);
+  boite.innerHTML = `
+    <div style="flex:1;min-width:220px">
+      <div class="quoi"><b>${echap(u.numero||u.type)}</b> · ${echap(u.client.nom||'—')} · ${eur(total)}</div>
+      <div class="quand">émise le ${u.jour} · ${echap(u.lignes[0] ? u.lignes[0].libelle : '')}</div>
+    </div>
+    <button class="btn-primary" onclick="reprendre()">Reprendre cette facture</button>`;
+}
+
+function reprendre(){
+  const u = REF.ultima; if(!u) return;
+  for(const [id,v] of [['c-nom',u.client.nom],['c-nif',u.client.nif],['c-adresse',u.client.adresse],
+                       ['c-cp',u.client.code_postal],['c-ville',u.client.ville],['c-email',u.client.email]])
+    document.getElementById(id).value = v || '';
+  document.getElementById('f-type').value = u.type;
+  if(u.moyen_paiement){
+    const p = REF.pagamentos.find(p=>p.titre === u.moyen_paiement);
+    if(p) document.getElementById('f-paiement').value = p.id;
+  }
+  /* ⚠️ TOUT EST REPRIS SAUF L'ARTICLE, ET C'EST DIT. Le document ne porte que l'identifiant de
+     la LIGNE, pas celui de la fiche : le proposer ferait viser une fiche qui n'existe pas. */
+  LIGNES = u.lignes.map(l=>({service_id:0, q:'', libelle:l.libelle,
+    montant:(l.montant_cents/100).toFixed(2).replace('.',','), ttc:true, taux:l.taux, qty:l.qty}));
+  dessinerLignes(); rendre();
+  document.getElementById('fa-manques').scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+/* ── Le client ─────────────────────────────────────────────────────────────────────────── */
+
+function filtrerClients(){
+  const q = val('fa-q-client').toLowerCase();
+  const vus = REF.clientes.filter(c => !q ||
+    (c.nom||'').toLowerCase().includes(q) || (c.nif||'').includes(q)).slice(0, 60);
+  document.getElementById('fa-client').innerHTML = vus.map(c =>
+    `<option value="${c.nif}">${echap(c.nom||'(sans nom)')} · ${c.nif}${c.incomplet?' ⚠ fiche incomplète':''}</option>`
+  ).join('') || '<option disabled>aucun client ne correspond</option>';
+}
+
 function reprendreClient(){
-  const i = document.getElementById('fa-client').value;
-  if(i==='') return;
-  const c = REF.clientes[+i];
+  const c = REF.clientes.find(x=>x.nif === document.getElementById('fa-client').value);
+  if(!c) return;
   for(const [id,v] of [['c-nom',c.nom],['c-nif',c.nif],['c-adresse',c.adresse],
                        ['c-cp',c.code_postal],['c-ville',c.ville],['c-email',c.email]])
     document.getElementById(id).value = v || '';
   rendre();
 }
 
+/* ── Les lignes ────────────────────────────────────────────────────────────────────────── */
+
 function ajouterLigne(){
-  LIGNES.push({service_id:0, libelle:'', montant:'', ttc:true, taux:23, qty:1});
+  LIGNES.push({service_id:0, q:'', libelle:'', montant:'', ttc:true, taux:23, qty:1});
   dessinerLignes(); rendre();
+}
+function retirerLigne(i){ LIGNES.splice(i,1); if(!LIGNES.length) ajouterLigne(); else { dessinerLignes(); rendre(); } }
+
+function articlesFiltres(q){
+  const s = (q||'').toLowerCase();
+  /* ⚠️ TOUT LE CATALOGUE, SANS FILTRE DEVINÉ. Le marqueur « sans catégorie » hérité de la
+     caisse ne rendait qu'un article et cachait la fiche de la seule facture réelle. Les fiches
+     sans catégorie restent en tête — ce sont les plus probables — mais rien n'est caché. */
+  return REF.artigos.filter(a => !s || a.titre.toLowerCase().includes(s) ||
+    (a.reference||'').toLowerCase().includes(s) || (a.categoria||'').toLowerCase().includes(s))
+    .slice(0, 80);
 }
 
 function dessinerLignes(){
-  document.getElementById('fa-corps').innerHTML = LIGNES.map((l,i)=>`
+  document.getElementById('fa-corps').innerHTML = LIGNES.map((l,i)=>{
+    const choisi = REF.artigos.find(a=>a.id===l.service_id);
+    const unit = l.ttc ? cents(l.montant) : Math.round(cents(l.montant)*(1+l.taux/100));
+    const ht = Math.round(unit/(1+l.taux/100));
+    return `
     <tr>
-      <td><select onchange="majLigne(${i},'service_id',this.value,true)">
-        <option value="0">— choisir —</option>
-        ${REF.prestacoes.map(p=>`<option value="${p.id}"${p.id==l.service_id?' selected':''}>${p.titre}</option>`).join('')}
-      </select></td>
-      <td><input value="${l.libelle.replace(/"/g,'&quot;')}" oninput="majLigne(${i},'libelle',this.value)"></td>
-      <td><input class="fa-num" value="${l.montant}" inputmode="decimal" oninput="majLigne(${i},'montant',this.value)"></td>
-      <td><select onchange="majLigne(${i},'ttc',this.value)">
+      <td>
+        <input class="fa-filtre" value="${echap(l.q)}" placeholder="chercher un article…"
+               oninput="majLigne(${i},'q',this.value,true)">
+        <select onchange="majLigne(${i},'service_id',this.value,true)" style="width:100%">
+          <option value="0">— choisir —</option>
+          ${articlesFiltres(l.q).map(a=>`<option value="${a.id}"${a.id===l.service_id?' selected':''}>${echap(a.titre)}${a.categoria?' · '+echap(a.categoria):''} · ${a.taux}%</option>`).join('')}
+          ${choisi && !articlesFiltres(l.q).some(a=>a.id===choisi.id) ? `<option value="${choisi.id}" selected>${echap(choisi.titre)}</option>` : ''}
+        </select>
+      </td>
+      <td><input value="${echap(l.libelle)}" oninput="majLigne(${i},'libelle',this.value)" placeholder="ce qui sera imprimé"></td>
+      <td>
+        <input class="fa-num" value="${echap(l.montant)}" inputmode="decimal" placeholder="136,50"
+               oninput="majLigne(${i},'montant',this.value,true)">
+        <!-- ⚠️ LE MONTANT DÉDUIT EST AFFICHÉ SOUS LE CHAMP. C'est la confusion la plus chère de
+             cet écran : 136,50 saisis en HT sortent une facture à 167,90 €, et 110,98 saisis
+             en HT pour « retrouver » 136,50 en sortent 136,51. Le voir supprime le doute mieux
+             qu'un avertissement. -->
+        <div class="fa-deduit">${unit>0 ? (l.ttc ? '= '+eur(ht)+' HT' : '= '+eur(unit)+' TTC') : '&nbsp;'}</div>
+      </td>
+      <td><select onchange="majLigne(${i},'ttc',this.value,true)">
             <option value="1"${l.ttc?' selected':''}>TTC</option>
             <option value="0"${l.ttc?'':' selected'}>HT</option>
           </select>
-          <select onchange="majLigne(${i},'taux',this.value)">
+          <select onchange="majLigne(${i},'taux',this.value,true)">
             ${[0,6,13,23].map(t=>`<option value="${t}"${t==l.taux?' selected':''}>${t}%</option>`).join('')}
           </select></td>
-      <td><input class="fa-num" type="number" min="1" value="${l.qty}" oninput="majLigne(${i},'qty',this.value)"></td>
+      <td><input class="fa-num" type="number" min="1" value="${l.qty}" oninput="majLigne(${i},'qty',this.value,true)"></td>
       <td><button class="btn-secondary" onclick="retirerLigne(${i})" title="Retirer">×</button></td>
-    </tr>`).join('');
+    </tr>`;}).join('');
 }
 
 function majLigne(i, champ, v, redessiner){
+  const l = LIGNES[i];
   if(champ==='service_id'){
-    LIGNES[i].service_id = +v;
-    /* Le taux suit la fiche choisie : c'est Vendus qui le porte, pas nous. Il reste
-       modifiable — une prestation peut être facturée à un autre taux. */
-    const p = REF.prestacoes.find(p=>p.id===+v);
-    if(p){ LIGNES[i].taux = p.taux; if(!LIGNES[i].libelle) LIGNES[i].libelle = p.titre; }
+    l.service_id = +v;
+    const a = REF.artigos.find(a=>a.id===+v);
+    /* Le taux suit la fiche — c'est Vendus qui le porte — et reste modifiable. Le libellé
+       n'est proposé que s'il est vide : on n'écrase jamais ce qui a été écrit à la main. */
+    if(a){ l.taux = a.taux; if(!l.libelle) l.libelle = a.titre; }
   }
-  else if(champ==='ttc') LIGNES[i].ttc = v==='1';
-  else if(champ==='taux') LIGNES[i].taux = +v;
-  else if(champ==='qty') LIGNES[i].qty = Math.max(1, +v||1);
-  else LIGNES[i][champ] = v;
-  if(redessiner) dessinerLignes();
+  else if(champ==='ttc')  l.ttc  = v==='1';
+  else if(champ==='taux') l.taux = +v;
+  else if(champ==='qty')  l.qty  = Math.max(1, +v||1);
+  else l[champ] = v;
+  if(redessiner){
+    const actif = document.activeElement, id = actif && actif.value;
+    dessinerLignes();
+  }
   rendre();
 }
 
-function retirerLigne(i){ LIGNES.splice(i,1); dessinerLignes(); rendre(); }
+/* ── Le brouillon, les totaux, les manques ─────────────────────────────────────────────── */
 
 function brouillon(){
   const type = val('f-type');
-  const b = {
-    type,
-    client: {nom:val('c-nom'), nif:val('c-nif'), adresse:val('c-adresse'),
-             code_postal:val('c-cp'), ville:val('c-ville'), email:val('c-email')},
+  const b = {type,
+    client:{nom:val('c-nom'), nif:val('c-nif'), adresse:val('c-adresse'),
+            code_postal:val('c-cp'), ville:val('c-ville'), email:val('c-email')},
     lignes: LIGNES.map(l=>({service_id:l.service_id, libelle:l.libelle,
-      montant_cents:cents(l.montant), ttc:l.ttc, taux:l.taux, qty:l.qty})),
-  };
+      montant_cents:cents(l.montant), ttc:l.ttc, taux:l.taux, qty:l.qty}))};
   if(type==='FT') b.delai_jours = Math.max(1, +val('f-delai')||0);
   else b.moyen_paiement_id = +val('f-paiement')||0;
   return b;
 }
 
-/* ⚠️ LES TOTAUX SONT CALCULÉS DEUX FOIS — ici pour l'écran, et côté serveur pour ce qui part.
-   Ce n'est pas une duplication de la RÈGLE : le serveur ne fait jamais confiance à ce chiffre,
-   il le recalcule depuis les lignes. L'écran ne sert qu'à la relecture. */
+/* ⚠️ CALCULÉ ICI POUR LA RELECTURE SEULEMENT. Le serveur ne fait jamais confiance à ce chiffre :
+   il le recalcule depuis les lignes. La règle vit dans `facturation.py`, avec ses tests. */
 function totaux(){
   const parTaux = new Map();
   for(const l of LIGNES){
@@ -238,47 +336,24 @@ function totaux(){
   }
   const detail = [...parTaux.entries()].sort((a,b)=>a[0]-b[0]).map(([taux,brut])=>{
     const net = Math.round(brut/(1+taux/100));
-    return {taux, net, tva: brut-net};   // la TVA est le RESTE, jamais un second arrondi
+    return {taux, net, tva: brut-net, brut};   // la TVA est le RESTE, jamais un second arrondi
   });
-  const net = detail.reduce((s,d)=>s+d.net,0), tva = detail.reduce((s,d)=>s+d.tva,0);
-  return {net, tva, ttc:net+tva, detail};
+  return {net: detail.reduce((s,d)=>s+d.net,0), tva: detail.reduce((s,d)=>s+d.tva,0),
+          ttc: detail.reduce((s,d)=>s+d.brut,0), detail};
 }
 
 const ETIQUETTES = {
-  'client':'aucun client', 'client-nom':'nom du client', 'client-nif':'NIF à 9 chiffres',
-  'client-adresse':'adresse et ville', 'lignes':'au moins une ligne',
-  'ligne-libelle':'libellé de chaque ligne', 'ligne-montant':'montant de chaque ligne',
-  'ligne-prestation':'prestation de chaque ligne', 'ligne-taux':'taux de TVA', 'ligne-qty':'quantité',
-  'delai':'échéance en jours', 'type':'type de document'
+  'client-nom':'nom du client', 'client-nif':'NIF à 9 chiffres', 'client-adresse':'adresse et ville',
+  'lignes':'au moins une ligne', 'ligne-libelle':'libellé de chaque ligne',
+  'ligne-montant':'montant de chaque ligne', 'ligne-prestation':'article Vendus de chaque ligne',
+  'delai':'échéance en jours', 'paiement':'moyen de règlement'
 };
-
-function rendre(){
-  const type = val('f-type');
-  document.getElementById('f-box-delai').style.display = type==='FT' ? '' : 'none';
-  document.getElementById('f-box-paiement').style.display = type==='FR' ? '' : 'none';
-  dessinerTotaux();
-
-  const b = brouillon();
-  /* ⚠️ TOUS LES MANQUES, PAS LE PREMIER. Un écran qui les révèle un par un fait remplir un
-     champ, refuse, en fait remplir un autre, refuse encore. */
-  const m = manquesLocaux(b);
-  const boite = document.getElementById('fa-manques');
-  if(m.length){
-    boite.style.display = '';
-    boite.innerHTML = 'Il manque : ' + m.map(k=>ETIQUETTES[k]||k).join(' · ');
-  } else boite.style.display = 'none';
-
-  document.getElementById('fa-emettre').disabled = m.length>0;
-  dessinerRelecture(b, m.length===0);
-}
 
 function manquesLocaux(b){
   const m = [], rempli = v => typeof v==='string' && v.trim()!=='';
-  const c = b.client;
-  if(!rempli(c.nom)) m.push('client-nom');
-  if(!/^\d{9}$/.test(c.nif)) m.push('client-nif');
-  if(!rempli(c.adresse) || !rempli(c.ville)) m.push('client-adresse');
-  if(b.lignes.length===0) m.push('lignes');
+  if(!rempli(b.client.nom)) m.push('client-nom');
+  if(!/^\d{9}$/.test(b.client.nif)) m.push('client-nif');
+  if(!rempli(b.client.adresse) || !rempli(b.client.ville)) m.push('client-adresse');
   if(b.lignes.some(l=>!rempli(l.libelle))) m.push('ligne-libelle');
   if(b.lignes.some(l=>!(l.montant_cents>0))) m.push('ligne-montant');
   if(b.lignes.some(l=>!(l.service_id>0))) m.push('ligne-prestation');
@@ -287,55 +362,78 @@ function manquesLocaux(b){
   return m;
 }
 
-function dessinerTotaux(){
-  const t = totaux();
-  document.getElementById('fa-totaux').innerHTML =
-    t.detail.map(d=>`<span>base ${d.taux}% <b>${eur(d.net)}</b> · TVA ${eur(d.tva)}</span>`).join('') +
-    `<span>total <b>${eur(t.ttc)}</b></span>`;
+function rendre(){
+  const type = val('f-type');
+  document.getElementById('f-box-delai').style.display    = type==='FT' ? '' : 'none';
+  document.getElementById('f-box-paiement').style.display = type==='FR' ? '' : 'none';
+
+  const b = brouillon(), m = manquesLocaux(b), boite = document.getElementById('fa-manques');
+  /* ⚠️ TOUS LES MANQUES, PAS LE PREMIER. Un écran qui les révèle un par un fait remplir un
+     champ, refuse, en fait remplir un autre, refuse encore. */
+  if(m.length){ boite.style.display=''; boite.innerHTML = 'Il manque : ' + m.map(k=>ETIQUETTES[k]||k).join(' · '); }
+  else boite.style.display='none';
+  document.getElementById('fa-emettre').disabled = m.length>0;
+  dessinerRelecture(b);
 }
 
-function dessinerRelecture(b, prete){
+/* ⚠️ LA RELECTURE REPREND LA FORME DU DOCUMENT IMPRIMÉ — Taxa / Base / IVA / Total. C'est
+   l'objet que Quentin compare à la facture précédente ; le lui montrer autrement l'obligerait à
+   traduire, et c'est en traduisant qu'on laisse passer un centime. */
+function dessinerRelecture(b){
   const t = totaux();
   const fiche = REF.clientes.find(c=>c.nif===b.client.nif);
   document.getElementById('fa-relire').innerHTML = `
     <dl>
-      <dt>Document</dt><dd>${b.type==='FR'?'FR — facture-reçu, déjà payée':'FT — facture à régler'}
+      <dt>Document</dt><dd>${b.type==='FR'?'Fatura Recibo (FR) — déjà payée':'Fatura (FT) — à régler'}
         ${b.type==='FT'?' · échéance à '+b.delai_jours+' jours':''}</dd>
-      <dt>Acquéreur</dt><dd>${b.client.nom||'—'} · NIF ${b.client.nif||'—'}<br>
-        ${b.client.adresse||'—'} ${b.client.code_postal||''} ${b.client.ville||''}
+      <dt>Acquéreur</dt><dd>${echap(b.client.nom)||'—'} · Contribuinte ${echap(b.client.nif)||'—'}<br>
+        ${echap(b.client.adresse)||'—'} ${echap(b.client.code_postal)} ${echap(b.client.ville)}
         ${fiche && fiche.incomplet ? '<br><span class="fa-incomplet">⚠ la fiche Vendus de ce NIF est incomplète — ce qui est saisi ici la complètera</span>':''}</dd>
-      <dt>Lignes</dt><dd>${b.lignes.map(l=>`${l.qty}× ${l.libelle||'(sans libellé)'} — ${eur(l.ttc?l.montant_cents:Math.round(l.montant_cents*(1+l.taux/100)))} TTC (${l.taux}%)`).join('<br>')||'—'}</dd>
-      <dt>Total</dt><dd><b>${eur(t.ttc)}</b> dont ${eur(t.tva)} de TVA</dd>
-      <dt>Émission</dt><dd>caisse ${REF.caixa||'—'} · ${REF.modo==='normal'?'réelle':'mode tests'}</dd>
-    </dl>`;
+      <dt>Émission</dt><dd>caisse ${REF.caixa||'—'} · ${REF.modo==='normal'?'réelle':'mode tests'}
+        · date du jour</dd>
+    </dl>
+    <table class="fa-pdf">
+      <thead><tr><th>Descrição</th><th>P. Uni.</th><th>Qtd.</th><th>IVA</th><th>Total</th></tr></thead>
+      <tbody>${b.lignes.map(l=>{
+        const unit = l.ttc ? l.montant_cents : Math.round(l.montant_cents*(1+l.taux/100));
+        return `<tr><td>${echap(l.libelle)||'(sans libellé)'}</td><td>${eur(unit)}</td>
+          <td>${l.qty}</td><td>${l.taux}%</td><td>${eur(unit*l.qty)}</td></tr>`;}).join('')}
+      </tbody>
+    </table>
+    <table class="fa-pdf">
+      <thead><tr><th>Taxa</th><th>Base</th><th>IVA</th><th>Total</th></tr></thead>
+      <tbody>
+        ${t.detail.map(d=>`<tr><td>${d.taux}%</td><td>${eur(d.net)}</td><td>${eur(d.tva)}</td><td>${eur(d.brut)}</td></tr>`).join('')}
+        <tr class="somme"><td>Sumário</td><td>${eur(t.net)}</td><td>${eur(t.tva)}</td><td>${eur(t.ttc)}</td></tr>
+      </tbody>
+    </table>`;
 }
 
+/* ── L'émission ────────────────────────────────────────────────────────────────────────── */
+
 async function emettre(){
-  const bouton = document.getElementById('fa-emettre');
-  const zone = document.getElementById('fa-resultat');
-  bouton.disabled = true; bouton.textContent = 'Émission…';
-  zone.innerHTML = '';
+  const bouton = document.getElementById('fa-emettre'), zone = document.getElementById('fa-resultat');
+  bouton.disabled = true; bouton.textContent = 'Émission…'; zone.innerHTML = '';
   try{
     const r = await fetch('/api/faturar', {method:'POST',
       headers:{'Content-Type':'application/json'}, body: JSON.stringify(brouillon())});
     const d = await r.json();
     if(!r.ok){
       /* ⚠️ ON NE RÉÉMET JAMAIS TOUT SEUL. Une requête qui échoue après le POST peut avoir
-         abouti : réessayer facturerait deux fois le même client. On dit quoi vérifier. */
-      zone.innerHTML = `<div class="fa-manques">Refusé : ${d.error||('HTTP '+r.status)}
+         abouti : réessayer facturerait deux fois le même client. */
+      zone.innerHTML = `<div class="fa-manques">Refusé : ${echap(d.error)||('HTTP '+r.status)}
         ${d.manques?'<br>Il manque : '+d.manques.map(k=>ETIQUETTES[k]||k).join(' · '):''}
         <br>Rien n'a été émis. Si le réseau a coupé, vérifiez dans Vendus avant de recommencer.</div>`;
       bouton.disabled = false; bouton.textContent = 'Émettre la facture';
       return;
     }
     zone.innerHTML = `<div class="fa-emis"><b>Facture émise.</b><br>
-      Numéro <code>${d.numero||'—'}</code> · ATCUD <code>${d.atcud||'—'}</code> ·
+      Numéro <code>${echap(d.numero)||'—'}</code> · ATCUD <code>${echap(d.atcud)||'—'}</code> ·
       total <code>${d.total!=null?eur(Math.round(d.total*100)):'—'}</code><br>
       Elle ne se retire plus : une erreur se répare par note de crédit.</div>`;
     bouton.textContent = 'Émise';
-    LIGNES = [];
   }catch(e){
-    zone.innerHTML = `<div class="fa-manques">Réseau interrompu : ${String(e).slice(0,140)}.
+    zone.innerHTML = `<div class="fa-manques">Réseau interrompu : ${echap(String(e).slice(0,140))}.
       La facture a PEUT-ÊTRE été émise — vérifiez dans Vendus avant de recommencer.</div>`;
     bouton.disabled = false; bouton.textContent = 'Émettre la facture';
   }

@@ -268,19 +268,47 @@ def _pages(req, chemin, champ, env=None, par_page=100, max_pages=20):
     return out
 
 
-def prestations(req, env=None):
+def articles(req, env=None):
     """
-    Les fiches facturables.
+    TOUT le catalogue actif, avec sa catégorie — et aucun filtre deviné.
 
-    ⚠️ « SANS CATÉGORIE » EST LE MARQUEUR, ET IL A ÉTÉ MESURÉ. Les 112 produits actifs du compte
-    appartiennent tous à l'une des sept catégories : aucun ne serait pris à tort pour une
-    prestation. Et la grille de vente du comptoir filtre sur une catégorie active — une fiche
-    sans catégorie n'y est donc pas atteignable, elle ne peut pas être vendue par erreur.
+    ⚠️ LE MARQUEUR « SANS CATÉGORIE » ÉTAIT FAUX, ET C'EST L'ÉCRAN QUI L'A DIT. Porté depuis la
+    caisse, il devait distinguer les prestations facturables des produits vendus au comptoir :
+    « les 112 produits actifs appartiennent tous à l'une des sept catégories ». En vrai, la
+    liste ne rendait qu'un seul article — « sticks » — et la fiche de commission qui avait servi
+    à la facture du 08/09/2026 n'y était pas. Le café n'a donc pas de fiches « service »
+    séparées : la commission est une fiche ordinaire, avec une catégorie.
+
+    ⚠️ ON NE REMPLACE PAS UN MARQUEUR FAUX PAR UN AUTRE. Rendre tout le catalogue et laisser
+    choisir est la seule forme qui ne peut pas se tromper. Facturer une fiche vendable est
+    d'ailleurs légitime — un sac de café facturé à une entreprise est une vente comme une autre.
+    Les fiches sans catégorie sont simplement remontées en tête : ce sont les plus probables.
     """
-    return [{"id": p.get("id"), "titre": p.get("title") or "",
-             "taux": TAUX_PAR_ID.get(p.get("tax_id") or "", 23)}
-            for p in _pages(req, "/products/", "products", env)
-            if not p.get("category_id") and p.get("status") != "off"]
+    out = []
+    for p in _pages(req, "/products/", "products", env):
+        if p.get("status") == "off":
+            continue
+        out.append({
+            "id": p.get("id"),
+            "titre": (p.get("title") or "").strip(),
+            "reference": (p.get("reference") or "").strip(),
+            "categorie": p.get("category_id") or None,
+            "taux": TAUX_PAR_ID.get(p.get("tax_id") or "", 23),
+        })
+    # Sans catégorie d'abord, puis par titre : un ordre stable, et les plus probables en tête.
+    out.sort(key=lambda a: (a["categorie"] is not None, a["titre"].lower()))
+    return out
+
+
+def categories(req, env=None):
+    """Le nom des catégories, pour que la liste dise « Coffee » et non « 342853712 »."""
+    try:
+        return {c.get("id"): (c.get("title") or "").strip()
+                for c in _pages(req, "/products/categories/", "categories", env)}
+    except Exception:
+        # ⚠️ UN NOM DE CATÉGORIE MANQUANT NE DOIT PAS VIDER LA LISTE D'ARTICLES. C'est un
+        # confort de lecture, pas une donnée dont dépend la facture.
+        return {}
 
 
 def moyens_paiement(req, env=None):
@@ -334,3 +362,54 @@ def emettre(req, brouillon, env=None, aujourdhui=None):
             detail = r.text[:300]
         raise RuntimeError(f"Vendus a refusé (HTTP {r.status_code}) : {detail}")
     return r.json()
+
+
+def derniere_facture(lignes_cache):
+    """
+    La dernière facture à tiers, rendue comme un brouillon prêt à reprendre.
+
+    ⚠️ C'EST LA FONCTION LA PLUS UTILE DE CET ÉCRAN, ET ELLE VIENT DE L'USAGE. Une facture tous
+    les deux mois : entre deux, personne ne se souvient du client, de la fiche, du taux ni du
+    moyen de règlement. Retrouver tout ça à la main est exactement là où l'on se trompe — et se
+    tromper produit un document qu'on ne peut plus retirer.
+
+    ⚠️ ET ELLE LIT LE CACHE, PAS VENDUS. `live_docs_cache` porte déjà chaque journée avec ses
+    documents complets : une question de plus à Vendus ajouterait une dépendance réseau et une
+    incertitude d'API pour une donnée qu'on a sous la main.
+
+    `lignes_cache` : les lignes {day, docs} du plus récent au plus ancien.
+    """
+    for r in lignes_cache or []:
+        for doc in reversed(r.get("docs") or []):
+            if doc.get("type") not in ("FT", "FR"):
+                continue
+            c = doc.get("client") or {}
+            items = doc.get("items") or []
+            paiements = doc.get("payments") or []
+            return {
+                "jour": r.get("day"),
+                "numero": doc.get("number"),
+                "type": doc.get("type"),
+                "client": {"nom": (c.get("name") or "").strip(),
+                           "nif": (c.get("fiscal_id") or "").strip(),
+                           "adresse": (c.get("address") or "").strip(),
+                           "code_postal": (c.get("postalcode") or "").strip(),
+                           "ville": (c.get("city") or "").strip(),
+                           "email": (c.get("email") or "").strip()},
+                # ⚠️ LE MONTANT EST REPRIS EN TTC, parce que c'est ce qui avait été saisi et ce
+                # qui est imprimé. Reprendre le HT ferait dériver d'un centime à la réémission.
+                "lignes": [{"libelle": (it.get("title") or "").strip(),
+                            "montant_cents": round(float(
+                                (it.get("amounts") or {}).get("gross_unit") or 0) * 100),
+                            "ttc": True,
+                            "taux": int((it.get("tax") or {}).get("rate") or 23),
+                            "qty": int(it.get("qty") or 1),
+                            # ⚠️ PAS D'IDENTIFIANT DE FICHE : celui du document est l'id de la
+                            # LIGNE, pas du produit. Le proposer ferait viser une fiche qui
+                            # n'existe pas. L'article se rechoisit — c'est le seul champ à
+                            # reprendre à la main, et on le dit.
+                            "service_id": 0}
+                           for it in items],
+                "moyen_paiement": (paiements[0].get("title") if paiements else None),
+            }
+    return None

@@ -6583,6 +6583,15 @@ def api_customers():
     except Exception as e:
         return jsonify({"error": str(e)}), 502
 
+def _derniers_jours_docs(jours=400):
+    """Les journées en cache, de la plus récente à la plus ancienne."""
+    try:
+        return _supa_get("live_docs_cache",
+                         {"select": "day,docs", "order": "day.desc", "limit": str(jours)}) or []
+    except Exception:
+        return []
+
+
 @app.route("/faturar")
 def faturar_page():
     """
@@ -6606,10 +6615,19 @@ def api_faturar_referenciais():
         return jsonify({"error": "unauthorized"}), 403
     try:
         register_id, mode = facturation.caisse_et_mode()
+        cats = facturation.categories(_req)
         return jsonify({
-            "prestacoes": facturation.prestations(_req),
+            # ⚠️ TOUT LE CATALOGUE, SANS FILTRE DEVINÉ. Le marqueur « sans catégorie » hérité de
+            # la caisse ne rendait qu'un seul article et cachait la fiche qui avait servi à la
+            # seule facture réelle. On rend tout, nommé par sa catégorie, et on laisse choisir.
+            "artigos":    [{**a, "categoria": cats.get(a["categorie"]) or ""}
+                           for a in facturation.articles(_req)],
             "pagamentos": facturation.moyens_paiement(_req),
             "clientes":   facturation.clients_connus(_req),
+            # ⚠️ LA DERNIÈRE FACTURE EST LA FONCTION LA PLUS UTILE DE CET ÉCRAN. Une facture
+            # tous les deux mois : entre deux, personne ne se souvient du client, du libellé ni
+            # du règlement. La retrouver à la main est exactement là où l'on se trompe.
+            "ultima":     facturation.derniere_facture(_derniers_jours_docs()),
             "caixa": register_id,
             # ⚠️ LE MODE EST AFFICHÉ, PAS DEVINÉ. Émettre en « tests » en croyant émettre pour
             # de vrai laisse le client sans facture ; l'inverse abîme une série fiscale.
