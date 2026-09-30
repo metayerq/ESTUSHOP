@@ -96,16 +96,28 @@
     if (d.tickets !== null && d.tickets !== undefined) E('st-nb').textContent = d.tickets;
     if (d.moyen_texte) E('st-moy').textContent = d.moyen_texte;
 
+    /**
+     * ⚠️ « 1 jour(s) à vérifier » EST UN AVEU, PAS UNE TRADUCTION. Cette bande est le seul
+     * endroit où une anomalie de caisse se rattrape, elle est sous les yeux toute la journée,
+     * et le code sait accorder. Même formule que `arquivo_faturas` et `marge`.
+     */
+    var plur = function(n, sing, pl){ return n + ' ' + (n > 1 ? (pl || sing + 's') : sing); };
+
     var h = [];
-    if (d.ecarts) h.push('<a class="st-puce ko" href="/reconciliation">' + d.ecarts +
-      ' jour(s) à vérifier</a>');
+    if (d.ecarts) h.push('<a class="st-puce ko" href="/reconciliation">' +
+      plur(d.ecarts, 'jour à vérifier', 'jours à vérifier') + '</a>');
     else if (d.caisse_ok) h.push('<span class="st-puce ok">Caisse ✓ ' + d.caisse_ok + '</span>');
-    if (d.boissons_dues) h.push('<a class="st-puce at" href="/loyalty">' + d.boissons_dues +
-      ' boisson(s) due(s)</a>');
+    if (d.boissons_dues) h.push('<a class="st-puce at" href="/loyalty">' +
+      plur(d.boissons_dues, 'boisson due', 'boissons dues') + '</a>');
     E('st-alertes').innerHTML = h.join(' ');
 
+    /**
+     * ⚠️ LA PASTILLE PEUT NE PAS EXISTER. Elle vient des réglages du menu : une entrée
+     * renommée ou masquée la fait disparaître du rail, et `b.textContent` levait alors dans
+     * le `.then` — silencieusement avalé par le `.catch`, en emportant tout ce qui suit.
+     */
     var b = E('rail-ecarts');
-    if (d.ecarts){ b.textContent = d.ecarts; b.hidden = false; }
+    if (b && d.ecarts){ b.textContent = d.ecarts; b.hidden = false; }
   }).catch(function(){ /* silence : voir ci-dessus */ });
 })();
 </script>

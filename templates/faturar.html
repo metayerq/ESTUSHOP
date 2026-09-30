@@ -345,6 +345,9 @@
 <script>
 let REF = {artigos:[], pagamentos:[], clientes:[], ultima:null, caixa:null, modo:"tests"};
 let LIGNES = [];
+/* ⚠️ « 1 fiche(s) » EST UN AVEU, PAS UNE TRADUCTION. Même formule que `_rail`,
+   `arquivo_faturas` et `marge`. */
+const plur = (n, sing, pl) => `${n} ${n > 1 ? (pl || sing + 's') : sing}`;
 let TTC = true;                 // la bascule est globale, plus par ligne
 let TYPE = 'FR';                // la FR est le cas de toutes les factures réelles
 let CLIENT = null;              // la fiche choisie, ou null si saisie à la main
@@ -567,7 +570,7 @@ function dessinerClient(){
         ? 'Masquer les fiches incomplètes' : 'Afficher les fiches incomplètes'}</button>
     </div>
     <div class="fa-l" style="margin-top:8px;font-weight:400;color:var(--muted)">
-      ${vus.length} fiche(s) proposée(s)${INCOMPLETS ? '' : ' — les fiches sans nom sont masquées'}
+      ${plur(vus.length, 'fiche proposée', 'fiches proposées')}${INCOMPLETS ? '' : ' — les fiches sans nom sont masquées'}
     </div>`;
   CB['cbc'] = {options:[], surChoix:choisirClient, vise:-1, peupler:function(){
     const q = cbFiltre('cbc').toLowerCase();

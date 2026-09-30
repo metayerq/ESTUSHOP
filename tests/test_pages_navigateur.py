@@ -78,6 +78,14 @@ CAS = {
     # tant qu'il manque quelque chose.
     "faturar.html": {
         "reponses": {
+            # ⚠️ LA BANDE D'ÉTAT DU BANDEAU GLOBAL, SUR CETTE PAGE COMME SUR LES AUTRES.
+            # Un écart (singulier) et trois boissons (pluriel) : la même réponse exerce
+            # les deux accords, et « 1 jour(s) » ne peut plus passer.
+            "/api/statut": {
+                "ca": 41855, "ca_texte": "418,55 €", "compare": "+12 % vs mardi dernier",
+                "tickets": 63, "moyen_texte": "6,64 €",
+                "ecarts": 1, "boissons_dues": 3, "caisse_ok": None,
+            },
             "/api/faturar/referenciais": {
                 # ⚠️ TOUT LE CATALOGUE, PAS UN FILTRE. Le marqueur « sans catégorie » hérité de
                 # la caisse ne rendait qu'un article — « sticks » — et cachait la fiche qui avait
@@ -122,6 +130,9 @@ CAS = {
             # l'état final, facture émise, tout acquis.
             "✓ Relire",
             "ETAPE-NEUVE", "ETAPE-FAITE",
+            # ⚠️ DE VRAIS ACCORDS DANS LA BANDE D'ÉTAT : elle est sous les yeux toute
+            # la journée, et c'est là qu'un écart de caisse se rattrape.
+            "1 jour à vérifier", "3 boissons dues", "418,55 €",
             # ⚠️ LE MODE EST ANNONCÉ : liseré, badge, libellé du bouton.
             "TESTS · caisse 342853246",
             "Multibanco", "TOMOKO HIRAOJI.", "Ce qui partira",
@@ -139,7 +150,7 @@ CAS = {
             # ⚠️ LA BASCULE HT/TTC : une seule, globale, et elle change le montant facturé.
             "BASCULE-UNIQUE", "HT-VERS-TTC-OK", "RETOUR-TTC-OK",
             # ⚠️ TOUT DOIT SE FAIRE AU CLAVIER, liste d'articles comprise.
-            "CLAVIER-OK", "AIDE-OUVRABLE",
+            "CLAVIER-OK", "AIDE-OUVRABLE", "ACCORD-FICHES-OK",
             "ECART-SIGNALE", "EMAIL-EXPLICITE",
             "PRET-OUI", "CONFIRM-OK",
             # ⚠️ LE VERROU POST-ÉMISSION, la correction la plus importante de cet écran.
@@ -152,10 +163,16 @@ CAS = {
             "Il manque :",
             "SAISIE-PERDUE", "DEDUIT-MUET", "TOTALLIGNE-MUET", "ECART-MUET", "EMAIL-IMPLICITE",
             "BASCULE-PAR-LIGNE", "HT-VERS-TTC-MUET", "RETOUR-TTC-MUET",
-            "CLAVIER-MUET", "AIDE-MUETTE",
+            "CLAVIER-MUET", "AIDE-MUETTE", "ACCORD-FICHES-MUET",
             "REPRISE-TROUEE", "REPRISE-ABSENTE", "CATALOGUE-FILTRE", "PRET-NON",
             "CONFIRM-ABSENT", "VERROU-ROMPU", "NUMERO-MUET", "PDF-ABSENT", "CHECK-VIERGE non",
             "ETAPE-NEUVE-MUETTE", "ETAPE-FIGEE",
+            # Les accords de formulaire administratif, nulle part.
+            "jour(s)", "boisson(s)", "due(s)", "fiche(s)", "proposée(s)",
+            # ⚠️ PAS « 3 boisson » : c'est un préfixe de la bonne sortie, et le marqueur
+            # interdit rougissait sur le rendu correct. Un contrôle qui se déclenche sur
+            # ce qu'il cherche à obtenir ne contrôle rien.
+            "1 jours", "3 boisson due", "1 jour(s)",
             "NaN", "undefined",
         ],
         "scenario": r"""
@@ -171,6 +188,18 @@ CAS = {
 
   var etape = function(){ return E('fa-et-1').textContent.replace(/\s+/g,' ').trim(); };
   trace(etape() === '1 \u00b7 Qui' ? 'ETAPE-NEUVE' : 'ETAPE-NEUVE-MUETTE ' + etape());
+
+  /* ⚠️ LE COMPTE DE FICHES S'ACCORDE AUSSI, et il dit combien sont MASQUÉES. Une fiche sans
+     nom ne peut pas porter une facture : elle est cachée par défaut, et le compte doit
+     l'annoncer plutôt que la faire disparaître en silence. Le bouchon en a deux, dont une
+     sans nom — les deux accords passent par ici. */
+  var boutons = E('fa-client-zone').querySelectorAll('button');
+  var compte = function(){ return E('fa-client-zone').textContent.replace(/\s+/g,' '); };
+  var un = compte().indexOf('1 fiche proposée') >= 0;
+  boutons[1].click();
+  var deux = compte().indexOf('2 fiches proposées') >= 0;
+  trace((un && deux) ? 'ACCORD-FICHES-OK' : 'ACCORD-FICHES-MUET ' + compte().slice(0,90));
+  E('fa-client-zone').querySelectorAll('button')[1].click();
 
   var reprise = document.querySelector('#fa-reprendre button');
   if(!reprise){ trace('REPRISE-ABSENTE'); return; }
