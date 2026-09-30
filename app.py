@@ -6583,6 +6583,43 @@ def api_customers():
     except Exception as e:
         return jsonify({"error": str(e)}), 502
 
+def _enregistrer_facture(numero, doc_id, tipo, nif, lignes):
+    """
+    Note ce qu'on vient d'émettre — et surtout l'identifiant de fiche de chaque ligne.
+
+    ⚠️ VENDUS NE LE REND PAS. Ses lignes de document portent leur propre id, pas celui du
+    produit : sans ce registre, reprendre une facture laisse un trou sur le seul champ dont
+    dépendent la TVA et l'absence de fiche fantôme dans le catalogue de production.
+
+    ⚠️ ET CETTE ÉCRITURE NE DOIT JAMAIS FAIRE ÉCHOUER UNE ÉMISSION. La facture existe déjà chez
+    Vendus quand on arrive ici : lever perdrait la seule confirmation que l'écran peut donner,
+    pour une commodité de reprise. Un registre en panne coûte un champ à rechoisir.
+    """
+    if not numero:
+        return False
+    try:
+        ok, _ = _supa_upsert("faturas_emitidas", {
+            "numero": numero, "doc_id": doc_id, "dia": today_lisbon().isoformat(),
+            "tipo": tipo, "cliente_nif": nif,
+            "linhas": [{"service_id": l.get("service_id"), "libelle": l.get("libelle"),
+                        "montant_cents": l.get("montant_cents"), "taux": l.get("taux"),
+                        "qty": l.get("qty")} for l in (lignes or [])],
+        })
+        return bool(ok)
+    except Exception:
+        return False
+
+
+def _emissions_passees(limite=50):
+    """Nos émissions, de la plus récente à la plus ancienne. Vide si la table n'existe pas."""
+    try:
+        return _supa_get("faturas_emitidas",
+                         {"select": "numero,dia,tipo,cliente_nif,linhas,criado_em",
+                          "order": "dia.desc", "limit": str(limite)}) or []
+    except Exception:
+        return []
+
+
 def _derniers_jours_docs(jours=400):
     """Les journées en cache, de la plus récente à la plus ancienne."""
     try:
@@ -6616,18 +6653,31 @@ def api_faturar_referenciais():
     try:
         register_id, mode = facturation.caisse_et_mode()
         cats = facturation.categories(_req)
+        arts = [{**a, "categoria": cats.get(a["categorie"]) or ""}
+                for a in facturation.articles(_req)]
+        derniere = facturation.derniere_facture(_derniers_jours_docs())
+        if derniere:
+            """
+            ⚠️ ON SUPPRIME LE TROU, ON NE L'EXPLIQUE PLUS. La reprise laissait l'article à
+            rechoisir avec une note pour dire pourquoi. Quatre replis le retrouvent : le
+            registre de nos émissions, la référence de la ligne, le même libellé, le même
+            client. Et quand aucun ne répond, la ligne le signale — plutôt que de deviner une
+            fiche au hasard, donc un taux de TVA au hasard, sur un document irréversible.
+            """
+            passees = _emissions_passees()
+            registre = next((e for e in passees if e.get("numero") == derniere.get("numero")), None)
+            facturation.resoudre_articles(derniere, arts, registre=registre, emissions=passees)
         return jsonify({
             # ⚠️ TOUT LE CATALOGUE, SANS FILTRE DEVINÉ. Le marqueur « sans catégorie » hérité de
             # la caisse ne rendait qu'un seul article et cachait la fiche qui avait servi à la
             # seule facture réelle. On rend tout, nommé par sa catégorie, et on laisse choisir.
-            "artigos":    [{**a, "categoria": cats.get(a["categorie"]) or ""}
-                           for a in facturation.articles(_req)],
+            "artigos":    arts,
             "pagamentos": facturation.moyens_paiement(_req),
             "clientes":   facturation.clients_connus(_req),
             # ⚠️ LA DERNIÈRE FACTURE EST LA FONCTION LA PLUS UTILE DE CET ÉCRAN. Une facture
             # tous les deux mois : entre deux, personne ne se souvient du client, du libellé ni
             # du règlement. La retrouver à la main est exactement là où l'on se trompe.
-            "ultima":     facturation.derniere_facture(_derniers_jours_docs()),
+            "ultima":     derniere,
             "caixa": register_id,
             # ⚠️ LE MODE EST AFFICHÉ, PAS DEVINÉ. Émettre en « tests » en croyant émettre pour
             # de vrai laisse le client sans facture ; l'inverse abîme une série fiscale.
@@ -6675,6 +6725,9 @@ def api_faturar():
         # Tout le reste — délai dépassé, connexion rompue. Le POST a peut-être abouti.
         return jsonify({"error": str(e)[:300], "emis": "incertain"}), 502
     d = doc[0] if isinstance(doc, list) and doc else doc
+    _enregistrer_facture((d or {}).get("number"), (d or {}).get("id"),
+                         brouillon.get("type"), (brouillon.get("client") or {}).get("nif"),
+                         brouillon.get("lignes"))
     return jsonify({"ok": True, "numero": (d or {}).get("number"),
                     "id": (d or {}).get("id"), "atcud": (d or {}).get("atcud"),
                     "total": (d or {}).get("amount_gross"),

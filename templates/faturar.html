@@ -312,15 +312,20 @@ function reprendre(){
   }
   /* ⚠️ TOUT EST REPRIS SAUF L'ARTICLE, ET C'EST DIT. Le document ne porte que l'identifiant de
      la LIGNE, pas celui de la fiche : le proposer ferait viser une fiche qui n'existe pas. */
-  LIGNES = u.lignes.map(l=>({service_id:0, q:'', libelle:l.libelle,
+  /* ⚠️ L'ARTICLE EST REPRIS LUI AUSSI. Le serveur l'a retrouvé par quatre replis — notre
+     registre d'émissions, la référence de la ligne, le même libellé, le même client. La reprise
+     est donc sans perte, et la note ci-dessous ne parle plus que du cas où aucun n'a répondu. */
+  LIGNES = u.lignes.map(l=>({service_id:l.service_id||0, q:'', libelle:l.libelle,
     montant:(l.montant_cents/100).toFixed(2).replace('.',','), ttc:true, taux:l.taux, qty:l.qty}));
   dessinerLignes(); rendre();
-  /* ⚠️ LE COMMENTAIRE DU CODE DISAIT « ET ON LE DIT » — rien n'était dit à l'écran. On voyait
-     « Il manque : article Vendus » sans savoir que c'est le SEUL champ à refaire, ni pourquoi. */
   const note = document.getElementById('fa-note-reprise');
-  note.style.display = '';
-  note.innerHTML = `Tout est repris sauf <b>l'article Vendus</b> : la facture ne garde que
-    l'identifiant de sa LIGNE, pas celui de la fiche catalogue. C'est le seul champ à rechoisir.`;
+  const orphelines = u.lignes.filter(l=>!l.service_id).length;
+  if(orphelines){
+    note.style.display = '';
+    note.innerHTML = `${orphelines} ligne(s) sans article : la facture d'origine ne gardait pas
+      la référence de la fiche, et rien dans nos émissions passées ne permet de la retrouver.
+      C'est le seul champ à rechoisir.`;
+  } else note.style.display = 'none';
   document.getElementById('fa-manques').scrollIntoView({behavior:'smooth', block:'center'});
 }
 

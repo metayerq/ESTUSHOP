@@ -368,3 +368,112 @@ def test_le_format_portugais_avec_milliers_est_compris():
 def test_un_montant_mal_forme_est_REFUSE_jamais_interprete(t):
     # Interpréter au mieux produit un montant que personne n'a voulu, et on ne le sait qu'après.
     assert montant_cents_strict(t) is None
+
+
+# ══ RETROUVER L'ARTICLE D'UNE FACTURE REPRISE ══════════════════════════════════════════════
+"""
+⚠️ VENDUS NE REND PAS L'IDENTIFIANT DE LA FICHE : ses lignes de document portent leur propre id.
+Une reprise laissait donc un trou à combler à la main sur le SEUL champ dont dépendent la TVA et
+l'absence de fiche fantôme dans le catalogue de production.
+"""
+from facturation import resoudre_articles, _prefixe_reference
+
+CATALOGUE = [
+    {"id": 372683324, "titre": "Comissão sobre vendas", "reference": "VCOM141",
+     "categorie": 9, "taux": 23},
+    {"id": 700, "titre": "Iced Americano", "reference": "VICE10", "categorie": 1, "taux": 13},
+    {"id": 900, "titre": "sticks", "reference": "", "categorie": None, "taux": 23},
+]
+
+def _brouillon(libelle="Comissao sobre venda popup 15 agosto", reference="VCOM141-26090821",
+               nif="332457389"):
+    return {"type": "FR", "client": {**CLIENT, "nif": nif},
+            "lignes": [{"libelle": libelle, "reference": reference, "montant_cents": 13650,
+                        "ttc": True, "taux": 23, "qty": 1, "service_id": 0}]}
+
+
+def test_le_prefixe_de_reference_se_lit():
+    assert _prefixe_reference("VCOM141-26090821") == "vcom141"
+    assert _prefixe_reference("VICE10-2606012") == "vice10"
+    assert _prefixe_reference("") is None
+    assert _prefixe_reference(None) is None
+
+
+def test_LA_REFERENCE_RETROUVE_L_ARTICLE_DE_LA_FACTURE_REELLE():
+    """
+    ⚠️ LE CRITÈRE D'ACCEPTATION. Reprendre FR 01P2026/1 doit donner une facture émettable sans
+    rien toucher. Le repli « même libellé » ne pouvait pas y arriver : le registre est né après
+    cette facture, et « Comissao sobre venda popup 15 agosto » n'est le titre d'aucune fiche.
+    Seule la référence de la ligne portait le fil.
+    """
+    b = resoudre_articles(_brouillon(), CATALOGUE)
+    assert b["lignes"][0]["service_id"] == 372683324
+    assert b["lignes"][0]["source_article"] == "reference"
+    assert emettable(b), "la facture reprise doit être émettable sans rien toucher"
+
+
+def test_le_registre_l_emporte_sur_tout_le_reste():
+    # Le cas courant désormais : on a émis, donc on sait. Exact plutôt que déduit.
+    registre = {"linhas": [{"libelle": "Comissao sobre venda popup 15 agosto", "service_id": 700}]}
+    b = resoudre_articles(_brouillon(), CATALOGUE, registre=registre)
+    assert b["lignes"][0]["service_id"] == 700
+    assert b["lignes"][0]["source_article"] == "registre"
+
+
+def test_le_meme_libelle_dans_une_emission_passee():
+    emissions = [{"dia": "2026-08-01", "cliente_nif": "999999999",
+                  "linhas": [{"libelle": "Catering juillet", "service_id": 700}]}]
+    b = resoudre_articles(_brouillon(libelle="Catering juillet", reference=""), CATALOGUE,
+                          emissions=emissions)
+    assert b["lignes"][0]["service_id"] == 700
+    assert b["lignes"][0]["source_article"] == "libelle"
+
+
+def test_a_defaut_le_meme_client():
+    emissions = [{"dia": "2026-08-01", "cliente_nif": "332457389",
+                  "linhas": [{"libelle": "autre chose", "service_id": 372683324}]}]
+    b = resoudre_articles(_brouillon(libelle="libellé inédit", reference=""), CATALOGUE,
+                          emissions=emissions)
+    assert b["lignes"][0]["service_id"] == 372683324
+    assert b["lignes"][0]["source_article"] == "client"
+
+
+def test_la_plus_recente_emission_gagne():
+    emissions = [
+        {"dia": "2026-07-01", "cliente_nif": "332457389",
+         "linhas": [{"libelle": "Catering", "service_id": 700}]},
+        {"dia": "2026-08-01", "cliente_nif": "332457389",
+         "linhas": [{"libelle": "Catering", "service_id": 372683324}]},
+    ]
+    b = resoudre_articles(_brouillon(libelle="Catering", reference=""), CATALOGUE,
+                          emissions=emissions)
+    assert b["lignes"][0]["service_id"] == 372683324
+
+
+def test_RIEN_NE_SE_DEVINE_PAR_RESSEMBLANCE_DE_TITRE():
+    """
+    ⚠️ Un libellé surchargé ne correspond à aucune fiche. Le rapprocher « au plus proche »
+    choisirait une fiche au hasard, donc un TAUX DE TVA au hasard, sur un document
+    irréversible. Le champ reste vide et la ligne le dit.
+    """
+    b = resoudre_articles(_brouillon(libelle="quelque chose de neuf", reference=""), CATALOGUE)
+    assert b["lignes"][0]["service_id"] == 0
+    assert b["lignes"][0]["source_article"] == "introuvable"
+    assert "ligne-prestation" in manques(b)
+
+
+def test_une_fiche_disparue_du_catalogue_ne_se_propose_pas():
+    # ⚠️ Un article retiré ou désactivé ferait refuser le document par Vendus, après coup.
+    registre = {"linhas": [{"libelle": "Comissao sobre venda popup 15 agosto",
+                            "service_id": 111111}]}
+    b = resoudre_articles(_brouillon(reference=""), CATALOGUE, registre=registre)
+    assert b["lignes"][0]["service_id"] == 0
+
+
+def test_un_prefixe_qui_ne_correspond_a_rien_passe_au_repli_suivant():
+    emissions = [{"dia": "2026-08-01", "cliente_nif": "332457389",
+                  "linhas": [{"libelle": "Comissao sobre venda popup 15 agosto",
+                              "service_id": 700}]}]
+    b = resoudre_articles(_brouillon(reference="ZZZ999-26090821"), CATALOGUE,
+                          emissions=emissions)
+    assert b["lignes"][0]["source_article"] == "libelle"

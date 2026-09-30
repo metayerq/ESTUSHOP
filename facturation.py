@@ -458,10 +458,12 @@ def derniere_facture(lignes_cache):
                             "ttc": True,
                             "taux": int((it.get("tax") or {}).get("rate") or 23),
                             "qty": int(it.get("qty") or 1),
-                            # ⚠️ PAS D'IDENTIFIANT DE FICHE : celui du document est l'id de la
-                            # LIGNE, pas du produit. Le proposer ferait viser une fiche qui
-                            # n'existe pas. L'article se rechoisit — c'est le seul champ à
-                            # reprendre à la main, et on le dit.
+                            # ⚠️ L'IDENTIFIANT DU DOCUMENT EST CELUI DE LA LIGNE, PAS DU
+                            # PRODUIT : le proposer ferait viser une fiche qui n'existe pas.
+                            # C'est `resoudre_articles` qui le retrouve — voir ses quatre
+                            # replis. La RÉFÉRENCE, elle, est le seul fil que Vendus laisse
+                            # vers la fiche : « VCOM141-26090821 » porte « VCOM141 » devant.
+                            "reference": (it.get("reference") or "").strip(),
                             "service_id": 0}
                            for it in items],
                 "moyen_paiement": (paiements[0].get("title") if paiements else None),
@@ -495,3 +497,91 @@ def pdf_document(req, doc_id, env=None):
     if not octets.startswith(b"%PDF-"):
         raise RuntimeError("la réponse de Vendus n'est pas un PDF")
     return octets
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# RETROUVER L'ARTICLE D'UNE FACTURE REPRISE
+#
+# ⚠️ VENDUS NE REND PAS L'IDENTIFIANT DE LA FICHE. Ses lignes de document portent leur propre
+# id ; le catalogue est ailleurs. Une reprise laissait donc un trou à combler à la main — sur le
+# seul champ dont dépend la TVA et l'absence de fiche fantôme dans le catalogue de production.
+#
+# On enregistre donc désormais nos émissions (`faturas_emitidas`), ce qui rend le cas courant
+# exact. Les quatre replis servent aux factures émises AVANT ce registre — dont la seule qui
+# existe, FR 01P2026/1 du 08/09/2026.
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _prefixe_reference(ref):
+    """
+    « VCOM141-26090821 » → « vcom141 ».
+
+    ⚠️ C'EST LE SEUL FIL QUE VENDUS LAISSE. La référence d'une ligne de document commence par
+    celle de la fiche, suivie d'un tiret et d'un horodatage — motif observé sur la facture réelle
+    et sur les ventes du comptoir (« VICE10-2606012 » pour l'Iced Americano). Si le motif ne tient
+    pas, la comparaison échoue simplement et le repli suivant prend la main : rien n'est deviné.
+    """
+    t = (ref or "").strip().split("-")[0].strip().lower()
+    return t or None
+
+
+def resoudre_articles(brouillon, articles, registre=None, emissions=None):
+    """
+    Remplit `service_id` sur chaque ligne, et dit d'où vient la réponse.
+
+    Dans l'ordre, du plus sûr au plus faible :
+
+    0. `registre` — la ligne telle qu'on l'a émise. Exact, et c'est le cas courant désormais.
+    1. le préfixe de référence rapproché du catalogue. Déterministe.
+    2. la dernière émission portant le MÊME LIBELLÉ.
+    3. la dernière émission pour le MÊME CLIENT.
+    4. rien — le champ reste vide et la ligne le signale.
+
+    ⚠️ ON NE DEVINE JAMAIS PAR RESSEMBLANCE DE TITRE. Un libellé surchargé — « Comissão sobre
+    venda popup 15 agosto » — ne correspond à aucune fiche du catalogue, et le rapprocher « au
+    plus proche » choisirait une fiche au hasard, donc un taux de TVA au hasard, sur un document
+    irréversible. Mieux vaut un champ vide signalé.
+    """
+    par_ref = {}
+    for a in articles or []:
+        p = _prefixe_reference(a.get("reference"))
+        if p and p not in par_ref:
+            par_ref[p] = a["id"]
+    connus = {a["id"] for a in articles or []}
+
+    # Les émissions passées, de la plus récente à la plus ancienne.
+    passees = sorted(emissions or [], key=lambda e: (e.get("dia") or "", e.get("criado_em") or ""),
+                     reverse=True)
+    par_libelle, par_client = {}, {}
+    for e in passees:
+        for l in e.get("linhas") or []:
+            sid = l.get("service_id")
+            if not sid or sid not in connus:
+                continue
+            lib = (l.get("libelle") or "").strip().lower()
+            if lib and lib not in par_libelle:
+                par_libelle[lib] = sid
+            nif = (e.get("cliente_nif") or "").strip()
+            if nif and nif not in par_client:
+                par_client[nif] = sid
+
+    du_registre = {}
+    for l in (registre or {}).get("linhas") or []:
+        lib = (l.get("libelle") or "").strip().lower()
+        if lib and l.get("service_id"):
+            du_registre[lib] = l["service_id"]
+
+    nif_client = ((brouillon.get("client") or {}).get("nif") or "").strip()
+    for l in brouillon.get("lignes") or []:
+        lib = (l.get("libelle") or "").strip().lower()
+        for sid, source in (
+            (du_registre.get(lib), "registre"),
+            (par_ref.get(_prefixe_reference(l.get("reference")) or ""), "reference"),
+            (par_libelle.get(lib), "libelle"),
+            (par_client.get(nif_client), "client"),
+        ):
+            if sid and sid in connus:
+                l["service_id"], l["source_article"] = sid, source
+                break
+        else:
+            l["service_id"], l["source_article"] = 0, "introuvable"
+    return brouillon

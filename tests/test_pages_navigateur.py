@@ -104,7 +104,8 @@ CAS = {
                                       "code_postal": "1170-178", "ville": "Lisboa", "email": ""},
                            "lignes": [{"libelle": "Comissao sobre venda popup 15 agosto",
                                        "montant_cents": 13650, "ttc": True, "taux": 23,
-                                       "qty": 1, "service_id": 0}],
+                                       "qty": 1, "service_id": 372683324,
+                                       "source_article": "reference"}],
                            "moyen_paiement": "Multibanco"},
                 "caixa": 342853246,
                 "modo": "tests",
@@ -140,6 +141,8 @@ CAS = {
             "PRET-OUI bouton=Émettre la facture — tests",
             # Les deux signaux ajoutés après l'audit, éprouvés par le scénario.
             "ECART-SIGNALE", "EMAIL-EXPLICITE",
+            # ⚠️ LE CRITÈRE DU POINT 1 : la reprise remplit aussi l'article.
+            "REPRISE-COMPLETE",
             # Et le document reste atteignable après l'acte.
             "Ouvrir le PDF",
             # ⚠️ LE VERROU POST-ÉMISSION, la correction la plus importante de cet écran : sans
@@ -164,7 +167,8 @@ CAS = {
                      # Le mode réel ne doit pas s'afficher quand le serveur annonce « tests ».
                      "Émettre la facture — RÉEL",
                      "VERROU-ROMPU", "CONFIRM-ABSENT", "PRET-NON",
-                     "ECART-MUET", "EMAIL-IMPLICITE"],
+                     "ECART-MUET", "EMAIL-IMPLICITE",
+                     "REPRISE-TROUEE", "REPRISE-ABSENTE"],
         # Le scénario tape un montant et vérifie que la frappe survit ET que le montant déduit
         # suit. Il écrit son verdict dans la page, que le dump ramène.
         "scenario": """
@@ -201,9 +205,15 @@ CAS = {
   poser('c-nif', '332457389');
   poser('c-adresse', 'Rua Heróis de Quionga 17');
   poser('c-ville', 'Lisboa');
+  // ⚠️ ON REPREND AU LIEU DE RESAISIR : c'est le critère d'acceptation du point 1. Une reprise
+  // doit donner une facture émettable sans rien toucher, article compris.
+  var reprise = document.querySelector('#fa-reprendre button');
+  var vr = document.createElement('div'); document.body.appendChild(vr);
+  if(!reprise){ vr.textContent = 'REPRISE-ABSENTE'; return; }
+  reprise.click();
   var art = document.getElementById('fa-art-0');
-  art.value = '372683324';
-  art.dispatchEvent(new Event('change', {bubbles:true}));
+  vr.textContent = (art && art.value === '372683324') ? 'REPRISE-COMPLETE'
+                 : 'REPRISE-TROUEE article=' + (art && art.value);
   // Les champs de la ligne, dans l'ordre : filtre article, libellé, montant, quantité.
   var champs = document.querySelectorAll('#fa-corps input');
   if(champs[1]){ champs[1].value = 'Comissao';
