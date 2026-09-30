@@ -16,6 +16,55 @@ TAX_IDS = {0: "ISE", 6: "RED", 13: "INT", 23: "NOR"}
 TAUX_VALIDES = (0, 6, 13, 23)
 
 
+def nif_valide(nif):
+    """
+    Le NIF portugais porte une clé de contrôle modulo 11.
+
+    ⚠️ NEUF CHIFFRES NE SUFFISENT PAS. Une transposition — 332457389 tapé 332457839 — passe un
+    contrôle de longueur, atterrit sur un document fiscal au nom de personne, et ne se répare
+    que par note de crédit. Dix lignes l'attrapent avant l'émission.
+
+    Vérifié sur les deux NIF réels du dossier : 332457389 (l'acquéreur de la facture du
+    08/09/2026) et 519091647 (Quiet Frequency, l'émetteur).
+    """
+    n = (nif or "").strip()
+    if len(n) != 9 or not n.isdigit():
+        return False
+    # Les premiers chiffres attribués au Portugal. Un préfixe inconnu n'est pas un NIF.
+    if n[0] not in "125689" and n[:2] not in ("30", "31", "32", "33", "34", "35", "36",
+                                              "37", "38", "39", "45", "70", "71", "72",
+                                              "74", "75", "77", "78", "79", "90", "91",
+                                              "98", "99"):
+        return False
+    total = sum(int(n[i]) * (9 - i) for i in range(8))
+    cle = 11 - (total % 11)
+    if cle >= 10:
+        cle = 0
+    return cle == int(n[8])
+
+
+def montant_cents_strict(texte):
+    """
+    Un montant lu au clavier, ou `None`.
+
+    ⚠️ `parseFloat` AVALE EN SILENCE. « 1.365,00 » — le format portugais avec séparateur de
+    milliers — devient 1,37 € au lieu de 1 365,00 €. « 13,650 » devient 13,65 €. « 1a36 »
+    devient 1 €. Chacun de ces trois produit un document irréversible d'un montant que personne
+    n'a voulu. On exige donc une forme, et on refuse tout le reste au lieu de l'interpréter.
+    """
+    t = (texte or "").strip().replace(" ", "").replace("\u00a0", "")
+    if not t:
+        return None
+    # Séparateur de milliers portugais : on ne l'accepte QUE bien formé, jamais au hasard.
+    if t.count(".") == 1 and t.count(",") == 1 and t.index(".") < t.index(","):
+        t = t.replace(".", "")
+    t = t.replace(",", ".")
+    import re as _re
+    if not _re.fullmatch(r"\d{1,9}(\.\d{1,2})?", t):
+        return None
+    return round(float(t) * 100)
+
+
 def _rempli(v):
     """Une chaîne vide, ou faite d'espaces, n'est pas une donnée."""
     return isinstance(v, str) and v.strip() != ""
@@ -88,8 +137,7 @@ def manques(brouillon):
         # d'elles telle quelle produirait une facture sans acquéreur nommé.
         if not _rempli(c.get("nom")):
             m.append("client-nom")
-        nif = (c.get("nif") or "").strip()
-        if not (len(nif) == 9 and nif.isdigit()):
+        if not nif_valide(c.get("nif")):
             m.append("client-nif")
         if not _rempli(c.get("adresse")) or not _rempli(c.get("ville")):
             m.append("client-adresse")

@@ -294,3 +294,52 @@ def test_tout_le_catalogue_actif_est_rendu(monkeypatch):
     assert [x["id"] for x in a] == [2, 3, 1], "sans catégorie d'abord, puis par titre"
     assert all(x["id"] != 4 for x in a), "un article désactivé ne se facture pas"
     assert a[2]["taux"] == 13
+
+
+# ── La clé de contrôle du NIF ───────────────────────────────────────────────────────────────
+
+from facturation import nif_valide, montant_cents_strict
+
+
+def test_les_deux_NIF_reels_du_dossier_passent():
+    """L'acquéreur de la facture du 08/09/2026, et Quiet Frequency qui l'a émise."""
+    assert nif_valide("332457389")
+    assert nif_valide("519091647")
+
+
+def test_une_transposition_de_chiffres_est_refusee():
+    """
+    ⚠️ NEUF CHIFFRES NE SUFFISENT PAS. 332457839 au lieu de 332457389 passe un contrôle de
+    longueur, atterrit sur un document fiscal au nom de personne, et ne se répare que par note
+    de crédit.
+    """
+    assert not nif_valide("332457839")
+    assert "client-nif" in manques(
+        {"type": "FR", "client": {**CLIENT, "nif": "332457839"}, "lignes": [ligne()]})
+
+
+@pytest.mark.parametrize("n", ["", "12345678", "1234567890", "12345678A", "000000000",
+                               "432457389", "332457380"])
+def test_ce_qui_n_est_pas_un_NIF_est_refuse(n):
+    assert not nif_valide(n)
+
+
+# ── Le montant, lu strictement ──────────────────────────────────────────────────────────────
+
+def test_le_format_portugais_avec_milliers_est_compris():
+    """
+    ⚠️ `parseFloat` LE MANGEAIT EN SILENCE : « 1.365,00 » devenait 1,37 € au lieu de
+    1 365,00 €, sur un document irréversible.
+    """
+    assert montant_cents_strict("1.365,00") == 136500
+    assert montant_cents_strict("136,50") == 13650
+    assert montant_cents_strict("136.50") == 13650
+    assert montant_cents_strict(" 136,5 ") == 13650
+    assert montant_cents_strict("1000") == 100000
+
+
+@pytest.mark.parametrize("t", ["13,650", "1a36", "1.365.00", "1,36,5", "", "  ", "abc",
+                               "-136,50", "136,505"])
+def test_un_montant_mal_forme_est_REFUSE_jamais_interprete(t):
+    # Interpréter au mieux produit un montant que personne n'a voulu, et on ne le sait qu'après.
+    assert montant_cents_strict(t) is None

@@ -6657,12 +6657,23 @@ def api_faturar():
     m = facturation.manques(brouillon)
     if m:
         return jsonify({"error": "incompleto", "manques": m}), 400
+    """
+    ⚠️ TROIS ISSUES, ET LES CONFONDRE COÛTE UNE SECONDE FACTURE. « Rien n'a été émis » est vrai
+    d'un refus de Vendus et faux d'un réseau coupé : une coupure APRÈS le POST laisse un
+    document qui existe. Dire « rien n'est parti » dans ce cas invite à recommencer, et le
+    client est facturé deux fois. On porte donc la certitude dans la réponse.
+    """
     try:
         doc = facturation.emettre(_req, brouillon, aujourdhui=today_lisbon())
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        # Levée avant tout appel réseau : brouillon incomplet, caisse absente, mode invalide.
+        return jsonify({"error": str(e), "emis": "non"}), 400
+    except RuntimeError as e:
+        # Vendus a répondu et a refusé. Aucun document n'a été créé, c'est certain.
+        return jsonify({"error": str(e)[:300], "emis": "non"}), 502
     except Exception as e:
-        return jsonify({"error": str(e)[:300]}), 502
+        # Tout le reste — délai dépassé, connexion rompue. Le POST a peut-être abouti.
+        return jsonify({"error": str(e)[:300], "emis": "incertain"}), 502
     d = doc[0] if isinstance(doc, list) and doc else doc
     return jsonify({"ok": True, "numero": (d or {}).get("number"),
                     "id": (d or {}).get("id"), "atcud": (d or {}).get("atcud"),

@@ -43,7 +43,16 @@
   border-radius:4px; margin-bottom:14px; line-height:1.6; }
 .fa-mode { font-family:var(--mono); font-size:11px; padding:2px 7px; border-radius:4px;
   background:var(--amber-soft); color:var(--amber); }
-.fa-mode.reel { background:var(--bg-hover); color:var(--faint); }
+/* ⚠️ C'ÉTAIT L'INVERSE, ET C'EST LE CAS DANGEREUX QUI ÉTAIT LE PLUS DISCRET. « Émission
+   réelle » portait le gris le plus pâle de la page ; « mode tests », l'ambre. Un document
+   fiscal qui part pour de vrai doit se voir plus qu'un essai qui ne part pas. */
+.fa-mode.reel { background:var(--red-soft, var(--amber-soft)); color:var(--red, var(--amber));
+  font-weight:600; }
+.fa-verrou { opacity:.55; pointer-events:none; }
+.fa-confirme { background:var(--amber-soft); border:1px solid var(--amber); border-radius:4px;
+  padding:14px 16px; margin-top:14px; font-size:14px; line-height:1.6; }
+.fa-confirme b { font-size:15px; }
+.fa-refus { font-family:var(--mono); font-size:11px; color:var(--amber); margin-top:3px; }
 .fa-relire { border:1px solid var(--border); border-radius:4px; padding:16px 18px; background:var(--bg); }
 .fa-relire dl { display:grid; grid-template-columns:auto 1fr; gap:6px 18px; margin:0; font-size:14px; }
 .fa-relire dt { font-family:var(--mono); font-size:11px; color:var(--faint); }
@@ -121,8 +130,13 @@
   <div class="fa-panneau">
     <h2>2 · Les prestations</h2>
     <table class="fa-lignes">
-      <thead><tr><th style="width:30%">Article Vendus</th><th style="width:34%">Libellé imprimé</th>
-        <th style="width:12%">Montant</th><th style="width:10%">TVA</th><th style="width:8%">Qté</th><th></th></tr></thead>
+      <!-- ⚠️ PLUS DE CHOIX TTC/HT. Le montant connu est TOUJOURS celui que le client paie —
+           « j'ai reçu 136,50 € ». L'option HT n'a servi à rien en 72 jours et c'est elle qui
+           fabrique les 167,90 € pour 136,50 saisis, ou le centime de dérive si on tape le HT
+           pour « retrouver » le TTC. Pour quelqu'un qui a tout oublié, le choix lui-même est
+           la faute : on le retire. Le serveur garde `ttc`, sa règle est testée. -->
+      <thead><tr><th style="width:30%">Article Vendus</th><th style="width:32%">Libellé imprimé</th>
+        <th style="width:16%">Montant TTC</th><th style="width:10%">TVA</th><th style="width:8%">Qté</th><th></th></tr></thead>
       <tbody id="fa-corps"></tbody>
     </table>
     <button class="btn-secondary" style="margin-top:12px" onclick="ajouterLigne()">+ Ligne</button>
@@ -143,8 +157,11 @@
         <input id="f-delai" type="number" min="1" value="30" oninput="rendre()"></div>
     </div>
     <div class="fa-relire" id="fa-relire"></div>
-    <button class="btn-primary" id="fa-emettre" style="margin-top:16px" onclick="emettre()" disabled>
+    <!-- ⚠️ LE MODE VIT DANS LE LIBELLÉ, pas seulement dans l'en-tête. C'est le dernier endroit
+         que l'œil traverse avant l'acte irréversible. -->
+    <button class="btn-primary" id="fa-emettre" style="margin-top:16px" onclick="demanderConfirmation()" disabled>
       Émettre la facture</button>
+    <div id="fa-confirme"></div>
     <div id="fa-resultat" style="margin-top:16px"></div>
   </div>
 
@@ -157,10 +174,39 @@
 <script>
 let REF = {artigos:[], pagamentos:[], clientes:[], ultima:null, caixa:null, modo:"tests"};
 let LIGNES = [];
+/* ⚠️ UNE FOIS ÉMISE, L'ÉCRAN SE VERROUILLE. `rendre()` recalculait l'état du bouton à chaque
+   frappe : après une émission réussie, effleurer un champ le réarmait — libellé « Émise »,
+   `onclick` toujours branché — et un seul tap refacturait le client. Toute la prudence du
+   serveur contre la réémission était contournable par un effleurement. */
+let EMISE = false;
 
 const eur = c => (c/100).toLocaleString('pt-PT',{style:'currency',currency:'EUR'});
-const cents = txt => { const n = parseFloat(String(txt||'').replace(',','.'));
-                       return Number.isFinite(n) ? Math.round(n*100) : 0; };
+/* ⚠️ `parseFloat` AVALE EN SILENCE. « 1.365,00 » — le format portugais — devenait 1,37 € ;
+   « 13,650 » devenait 13,65 € ; « 1a36 » devenait 1 €. Chacun produit un document irréversible
+   d'un montant que personne n'a voulu. On exige une forme, on refuse le reste. */
+function centsStrict(txt){
+  let t = String(txt||'').trim().replace(/[\s\u00a0]/g,'');
+  if(!t) return null;
+  if((t.match(/\./g)||[]).length===1 && (t.match(/,/g)||[]).length===1 && t.indexOf('.')<t.indexOf(','))
+    t = t.replace('.','');
+  t = t.replace(',','.');
+  if(!/^\d{1,9}(\.\d{1,2})?$/.test(t)) return null;
+  return Math.round(parseFloat(t)*100);
+}
+const cents = txt => centsStrict(txt) ?? 0;
+
+/* ⚠️ NEUF CHIFFRES NE SUFFISENT PAS : le NIF portugais porte une clé modulo 11. Une
+   transposition passe un contrôle de longueur et atterrit sur un document fiscal au nom de
+   personne. Vérifié sur les deux NIF réels du dossier. */
+function nifValide(n){
+  n = String(n||'').trim();
+  if(!/^\d{9}$/.test(n)) return false;
+  let t = 0;
+  for(let i=0;i<8;i++) t += +n[i] * (9-i);
+  let c = 11 - (t % 11);
+  if(c >= 10) c = 0;
+  return c === +n[8];
+}
 const val = id => (document.getElementById(id).value || '').trim();
 const echap = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 
@@ -176,6 +222,8 @@ async function charger(){
     (d.modo==='normal' ? 'émission réelle' : 'mode tests') + '</span>';
   document.getElementById('f-paiement').innerHTML =
     d.pagamentos.map(p=>'<option value="'+p.id+'">'+echap(p.titre)+'</option>').join('');
+  document.getElementById('fa-emettre').textContent =
+    d.modo === 'normal' ? 'Émettre la facture — RÉEL' : 'Émettre la facture — tests';
   filtrerClients();
   dessinerReprise();
   if(LIGNES.length===0) ajouterLigne();
@@ -277,13 +325,9 @@ function dessinerLignes(){
              cet écran : 136,50 saisis en HT sortent une facture à 167,90 €, et 110,98 saisis
              en HT pour « retrouver » 136,50 en sortent 136,51. Le voir supprime le doute mieux
              qu'un avertissement. -->
-        <div class="fa-deduit" id="fa-deduit-${i}">${unit>0 ? (l.ttc ? '= '+eur(ht)+' HT' : '= '+eur(unit)+' TTC') : '&nbsp;'}</div>
+        <div class="fa-deduit" id="fa-deduit-${i}">${texteDeduit(l)}</div>
       </td>
-      <td><select onchange="majLigne(${i},'ttc',this.value,true)">
-            <option value="1"${l.ttc?' selected':''}>TTC</option>
-            <option value="0"${l.ttc?'':' selected'}>HT</option>
-          </select>
-          <select onchange="majLigne(${i},'taux',this.value,true)">
+      <td><select onchange="majLigne(${i},'taux',this.value,true)">
             ${[0,6,13,23].map(t=>`<option value="${t}"${t==l.taux?' selected':''}>${t}%</option>`).join('')}
           </select></td>
       <td><input class="fa-num" type="number" min="1" value="${l.qty}" oninput="majLigne(${i},'qty',this.value,'deduit')"></td>
@@ -300,7 +344,6 @@ function majLigne(i, champ, v, cible){
        n'est proposé que s'il est vide : on n'écrase jamais ce qui a été écrit à la main. */
     if(a){ l.taux = a.taux; if(!l.libelle) l.libelle = a.titre; }
   }
-  else if(champ==='ttc')  l.ttc  = v==='1';
   else if(champ==='taux') l.taux = +v;
   else if(champ==='qty')  l.qty  = Math.max(1, +v||1);
   else l[champ] = v;
@@ -317,12 +360,17 @@ function majLigne(i, champ, v, cible){
   rendre();
 }
 
+function texteDeduit(l){
+  if(!String(l.montant||'').trim()) return '&nbsp;';
+  const c = centsStrict(l.montant);
+  /* Un montant mal formé est REFUSÉ et dit, jamais interprété. */
+  if(c === null) return '<span class="fa-refus">montant illisible — ex. 136,50</span>';
+  if(c <= 0) return '<span class="fa-refus">montant nul</span>';
+  return '= ' + eur(Math.round(c/(1+l.taux/100))) + ' HT';
+}
 function majDeduit(i){
-  const l = LIGNES[i], boite = document.getElementById('fa-deduit-'+i);
-  if(!boite) return;
-  const unit = l.ttc ? cents(l.montant) : Math.round(cents(l.montant)*(1+l.taux/100));
-  const ht = Math.round(unit/(1+l.taux/100));
-  boite.innerHTML = unit>0 ? (l.ttc ? '= '+eur(ht)+' HT' : '= '+eur(unit)+' TTC') : '&nbsp;';
+  const boite = document.getElementById('fa-deduit-'+i);
+  if(boite) boite.innerHTML = texteDeduit(LIGNES[i]);
 }
 
 function majOptions(i){
@@ -367,7 +415,7 @@ function totaux(){
 }
 
 const ETIQUETTES = {
-  'client-nom':'nom du client', 'client-nif':'NIF à 9 chiffres', 'client-adresse':'adresse et ville',
+  'client-nom':'nom du client', 'client-nif':'NIF portugais valide (clé de contrôle)', 'client-adresse':'adresse et ville',
   'lignes':'au moins une ligne', 'ligne-libelle':'libellé de chaque ligne',
   'ligne-montant':'montant de chaque ligne', 'ligne-prestation':'article Vendus de chaque ligne',
   'delai':'échéance en jours', 'paiement':'moyen de règlement'
@@ -376,7 +424,7 @@ const ETIQUETTES = {
 function manquesLocaux(b){
   const m = [], rempli = v => typeof v==='string' && v.trim()!=='';
   if(!rempli(b.client.nom)) m.push('client-nom');
-  if(!/^\d{9}$/.test(b.client.nif)) m.push('client-nif');
+  if(!nifValide(b.client.nif)) m.push('client-nif');
   if(!rempli(b.client.adresse) || !rempli(b.client.ville)) m.push('client-adresse');
   if(b.lignes.some(l=>!rempli(l.libelle))) m.push('ligne-libelle');
   if(b.lignes.some(l=>!(l.montant_cents>0))) m.push('ligne-montant');
@@ -387,6 +435,9 @@ function manquesLocaux(b){
 }
 
 function rendre(){
+  /* ⚠️ APRÈS L'ÉMISSION, ON NE TOUCHE PLUS À RIEN. C'est ici que le bouton se réarmait : cette
+     fonction recalcule son état, et le moindre `oninput` l'appelle. */
+  if(EMISE) return;
   const type = val('f-type');
   document.getElementById('f-box-delai').style.display    = type==='FT' ? '' : 'none';
   document.getElementById('f-box-paiement').style.display = type==='FR' ? '' : 'none';
@@ -435,32 +486,75 @@ function dessinerRelecture(b){
 
 /* ── L'émission ────────────────────────────────────────────────────────────────────────── */
 
+/* ⚠️ DEUX GESTES AVANT L'IRRÉVERSIBLE, ET LE SECOND REJOUE CE QU'ON ENGAGE. L'étape 3 promet
+   une relecture ; rien ne l'imposait. La confirmation redit le type, l'acquéreur, le total et
+   surtout LE MODE — émettre en tests en croyant émettre laisse le client sans facture, et
+   l'inverse abîme une série fiscale. */
+function demanderConfirmation(){
+  if(EMISE) return;
+  const b = brouillon(), t = totaux(), reel = REF.modo === 'normal';
+  document.getElementById('fa-confirme').innerHTML = `
+    <div class="fa-confirme">
+      <b>${b.type === 'FR' ? 'Fatura Recibo' : 'Fatura'} · ${echap(b.client.nom)}
+         (NIF ${echap(b.client.nif)}) · ${eur(t.ttc)} TTC</b><br>
+      ${reel ? 'ÉMISSION RÉELLE — le document entre dans la série fiscale et ne se retire plus.'
+             : 'MODE TESTS — aucun document fiscal ne sera créé.'}
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-primary" onclick="emettre()">Confirmer et émettre${reel ? ' — RÉEL' : ' — tests'}</button>
+        <button class="btn-secondary" onclick="document.getElementById('fa-confirme').innerHTML=''">Revenir</button>
+      </div>
+    </div>`;
+}
+
 async function emettre(){
   const bouton = document.getElementById('fa-emettre'), zone = document.getElementById('fa-resultat');
+  document.getElementById('fa-confirme').innerHTML = '';
   bouton.disabled = true; bouton.textContent = 'Émission…'; zone.innerHTML = '';
   try{
     const r = await fetch('/api/faturar', {method:'POST',
       headers:{'Content-Type':'application/json'}, body: JSON.stringify(brouillon())});
     const d = await r.json();
-    if(!r.ok){
-      /* ⚠️ ON NE RÉÉMET JAMAIS TOUT SEUL. Une requête qui échoue après le POST peut avoir
-         abouti : réessayer facturerait deux fois le même client. */
-      zone.innerHTML = `<div class="fa-manques">Refusé : ${echap(d.error)||('HTTP '+r.status)}
-        ${d.manques?'<br>Il manque : '+d.manques.map(k=>ETIQUETTES[k]||k).join(' · '):''}
-        <br>Rien n'a été émis. Si le réseau a coupé, vérifiez dans Vendus avant de recommencer.</div>`;
-      bouton.disabled = false; bouton.textContent = 'Émettre la facture';
-      return;
-    }
+    if(!r.ok){ echec(d.emis, d.error, d.manques); return; }
+
+    /* ⚠️ VERROU. Le document existe et ne se retire plus : l'écran cesse d'être un formulaire.
+       Sans ce verrou, `rendre()` réarmait le bouton au premier effleurement d'un champ. */
+    EMISE = true;
+    document.querySelectorAll('.fa-panneau').forEach(p => p.classList.add('fa-verrou'));
+    document.getElementById('fa-reprendre').style.display = 'none';
+    document.getElementById('fa-manques').style.display = 'none';
+    bouton.textContent = 'Émise';
     zone.innerHTML = `<div class="fa-emis"><b>Facture émise.</b><br>
       Numéro <code>${echap(d.numero)||'—'}</code> · ATCUD <code>${echap(d.atcud)||'—'}</code> ·
       total <code>${d.total!=null?eur(Math.round(d.total*100)):'—'}</code><br>
-      Elle ne se retire plus : une erreur se répare par note de crédit.</div>`;
-    bouton.textContent = 'Émise';
+      Elle ne se retire plus : une erreur se répare par note de crédit.
+      ${d.qrcode ? '<div style="margin-top:10px">'+d.qrcode+'</div>' : ''}
+      <div style="margin-top:12px"><button class="btn-secondary" onclick="location.reload()">Nouvelle facture</button></div>
+    </div>`;
   }catch(e){
-    zone.innerHTML = `<div class="fa-manques">Réseau interrompu : ${echap(String(e).slice(0,140))}.
-      La facture a PEUT-ÊTRE été émise — vérifiez dans Vendus avant de recommencer.</div>`;
-    bouton.disabled = false; bouton.textContent = 'Émettre la facture';
+    /* Une exception ici est un réseau rompu côté navigateur : le POST a peut-être abouti. */
+    echec('incertain', String(e).slice(0,140));
   }
+}
+
+/**
+ * ⚠️ TROIS ISSUES, ET LES CONFONDRE COÛTE UNE SECONDE FACTURE. « Rien n'a été émis » est vrai
+ * d'un refus de Vendus et FAUX d'un réseau coupé : une coupure après le POST laisse un document
+ * qui existe. L'ancienne version affirmait « Rien n'a été émis » puis se contredisait deux
+ * lignes plus bas — et celui qui lit la première phrase recommence.
+ */
+function echec(emis, message, manques){
+  const bouton = document.getElementById('fa-emettre'), zone = document.getElementById('fa-resultat');
+  const certain = emis !== 'incertain';
+  zone.innerHTML = `<div class="fa-manques">
+    ${certain ? '<b>Aucune facture n\'a été créée.</b>' :
+      '<b>On ne sait pas si la facture a été créée.</b> La connexion a été rompue pendant l\'envoi : ' +
+      'vérifiez dans Vendus AVANT de recommencer — un second essai facturerait deux fois.'}
+    <br>${echap(message)||'erreur inconnue'}
+    ${manques ? '<br>Il manque : ' + manques.map(k=>ETIQUETTES[k]||k).join(' · ') : ''}</div>`;
+  /* Sur un doute, on ne rend PAS le bouton : c'est le seul cas où réessayer est dangereux. */
+  if(certain){ bouton.disabled = false; bouton.textContent =
+    REF.modo === 'normal' ? 'Émettre la facture — RÉEL' : 'Émettre la facture — tests'; }
+  else { bouton.textContent = 'Vérifiez dans Vendus'; }
 }
 
 charger();

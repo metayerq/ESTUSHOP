@@ -109,6 +109,10 @@ CAS = {
                 "caixa": 342853246,
                 "modo": "tests",
             },
+            # ⚠️ APRÈS `/referenciais`, jamais avant : le bouchon compare par préfixe et
+            # « /api/faturar » attraperait aussi « /api/faturar/referenciais ».
+            "/api/faturar": {"ok": True, "numero": "FR 01P2026/2",
+                             "atcud": "J69MJVX5-2", "total": 136.50},
         },
         "attendu": [
             # Les trois étapes : la troisième existe pour être lue avant d'émettre.
@@ -126,10 +130,19 @@ CAS = {
             # La relecture reprend la forme du document imprimé : c'est l'objet qu'on compare.
             "Descrição", "Taxa", "Sumário",
             # ⚠️ ET CE QUI MANQUE EST DIT, EN ENTIER, dès le premier rendu.
-            "Il manque", "nom du client", "NIF à 9 chiffres",
+            # Consignés par le scénario avant qu'il remplisse le formulaire.
+            "MANQUES-INITIAUX", "nom du client", "NIF portugais valide",
             # Le scénario ci-dessous tape dans le champ montant : la frappe doit survivre et le
             # montant déduit doit suivre. 136,50 TTC à 23 % font 110,98 € HT.
             "SAISIE-OK", "DEDUIT-OK", "110,98",
+            # ⚠️ LE MODE VIT DANS LE LIBELLÉ DU BOUTON, dernier endroit que l'œil traverse
+            # avant l'acte irréversible.
+            "PRET-OUI bouton=Émettre la facture — tests",
+            # ⚠️ LE VERROU POST-ÉMISSION, la correction la plus importante de cet écran : sans
+            # lui, retoucher un champ après avoir émis réarmait le bouton et un tap refacturait.
+            "PRET-OUI", "CONFIRM-OK", "VERROU-OK", "NUMERO-OK",
+            # Plus de choix TTC/HT : le montant connu est toujours celui que le client paie.
+            "Montant TTC",
         ],
         # ⚠️ CE QUI NE DOIT SURTOUT PAS S'AFFICHER. Le référentiel annonce `modo: "tests"` :
         # voir « émission réelle » voudrait dire que l'écran affiche le mode qu'il suppose et
@@ -140,7 +153,13 @@ CAS = {
                      # chaque frappe : le champ en cours de saisie était détruit, perdait le
                      # focus, et plus rien ne pouvait y être tapé. L'écran s'affichait
                      # parfaitement et ne servait à rien.
-                     "SAISIE-PERDUE", "DEDUIT-MUET"],
+                     "SAISIE-PERDUE", "DEDUIT-MUET",
+                     # ⚠️ L'OPTION HT A DISPARU, et sa disparition est le correctif : c'est elle
+                     # qui fabriquait 167,90 € pour 136,50 saisis, ou le centime de dérive.
+                     ">HT<",
+                     # Le mode réel ne doit pas s'afficher quand le serveur annonce « tests ».
+                     "Émettre la facture — RÉEL",
+                     "VERROU-ROMPU", "CONFIRM-ABSENT", "PRET-NON"],
         # Le scénario tape un montant et vérifie que la frappe survit ET que le montant déduit
         # suit. Il écrit son verdict dans la page, que le dump ramène.
         "scenario": """
@@ -150,6 +169,8 @@ CAS = {
   var marque = document.createElement('div');
   document.body.appendChild(marque);
   if(!champ){ marque.textContent = 'SAISIE-PERDUE aucun champ montant'; return; }
+
+  // 1. La frappe doit survivre, et le montant déduit suivre.
   champ.focus();
   champ.value = '136,50';
   champ.dispatchEvent(new Event('input', {bubbles:true}));
@@ -160,6 +181,58 @@ CAS = {
   marque.textContent =
     (focus && garde ? 'SAISIE-OK' : 'SAISIE-PERDUE focus=' + focus + ' valeur=' + (vivant && vivant.value)) +
     ' | ' + (deduit.indexOf('110,98') >= 0 ? 'DEDUIT-OK ' + deduit : 'DEDUIT-MUET ' + deduit);
+
+  // ⚠️ L'ÉTAT INITIAL EST CONSIGNÉ AVANT D'ÊTRE DÉTRUIT. Le scénario remplit le formulaire :
+  // sans cette trace, on ne pourrait plus vérifier que les manques étaient annoncés EN ENTIER
+  // au premier rendu — et c'est la promesse de l'écran.
+  var avant = document.createElement('div');
+  avant.textContent = 'MANQUES-INITIAUX ' + (document.getElementById('fa-manques').textContent || '(aucun)');
+  document.body.appendChild(avant);
+
+  // 2. Un brouillon complet, puis l'émission — pour éprouver le VERROU.
+  function poser(id, v){ var e = document.getElementById(id); e.value = v;
+                         e.dispatchEvent(new Event('input', {bubbles:true})); }
+  poser('c-nom', 'TOMOKO HIRAOJI.');
+  poser('c-nif', '332457389');
+  poser('c-adresse', 'Rua Heróis de Quionga 17');
+  poser('c-ville', 'Lisboa');
+  var art = document.getElementById('fa-art-0');
+  art.value = '372683324';
+  art.dispatchEvent(new Event('change', {bubbles:true}));
+  // Les champs de la ligne, dans l'ordre : filtre article, libellé, montant, quantité.
+  var champs = document.querySelectorAll('#fa-corps input');
+  if(champs[1]){ champs[1].value = 'Comissao';
+                 champs[1].dispatchEvent(new Event('input', {bubbles:true})); }
+  var m2 = document.querySelector('#fa-corps input[inputmode=decimal]');
+  m2.value = '136,50'; m2.dispatchEvent(new Event('input', {bubbles:true}));
+
+  var bouton = document.getElementById('fa-emettre');
+  var verdict = document.createElement('div');
+  document.body.appendChild(verdict);
+  if(bouton.disabled){ verdict.textContent = 'PRET-NON manques=' +
+      (document.getElementById('fa-manques').textContent || '(aucun)'); return; }
+  // Le libellé est consigné ici : après l'émission il devient « Émise ».
+  verdict.textContent = 'PRET-OUI bouton=' + bouton.textContent;
+
+  bouton.click();                                  // premier geste : la confirmation
+  var conf = document.querySelector('#fa-confirme .btn-primary');
+  var v2 = document.createElement('div'); document.body.appendChild(v2);
+  if(!conf){ v2.textContent = 'CONFIRM-ABSENT'; return; }
+  v2.textContent = 'CONFIRM-OK';
+  conf.click();                                    // second geste : l'émission
+
+  (function apres(k){
+    var zone = document.getElementById('fa-resultat');
+    if((zone.textContent||'').indexOf('Facture émise') < 0 && k < 80)
+      return setTimeout(function(){ apres(k+1); }, 20);
+    var v3 = document.createElement('div'); document.body.appendChild(v3);
+    // ⚠️ LE TEST QUI COMPTE. Retoucher un champ après l'émission réarmait le bouton — libellé
+    // « Émise », onclick toujours branché — et un seul tap refacturait le client.
+    poser('c-nom', 'TOMOKO HIRAOJI');
+    var b2 = document.getElementById('fa-emettre');
+    v3.textContent = (b2.disabled ? 'VERROU-OK' : 'VERROU-ROMPU bouton=' + b2.textContent) +
+                     ' | ' + ((zone.textContent||'').indexOf('FR 01P2026/2') >= 0 ? 'NUMERO-OK' : 'NUMERO-MUET');
+  })(0);
 })(0);
 """,
     },
