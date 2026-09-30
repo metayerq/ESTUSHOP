@@ -185,13 +185,38 @@ def test_un_mode_fiscal_inconnu_LEVE():
         corps_facture({"type": "FR", "client": CLIENT, "lignes": [ligne()]},
                       register_id=342853246, mode="reel", moyen_paiement_id=7)
 
-def test_l_email_n_est_envoye_que_s_il_est_rempli():
+def test_sans_email_rien_n_est_transmis():
     sans = corps_facture({"type": "FR", "client": CLIENT, "lignes": [ligne()]},
                          register_id=1, mode="tests", moyen_paiement_id=7)
     assert "email" not in sans["client"] and "send_email" not in sans["client"]
-    avec = corps_facture({"type": "FR", "client": {**CLIENT, "email": " a@b.pt "},
-                          "lignes": [ligne()]}, register_id=1, mode="tests", moyen_paiement_id=7)
-    assert avec["client"]["email"] == "a@b.pt" and avec["client"]["send_email"] == "yes"
+
+
+def test_un_email_rempli_ne_declenche_PAS_l_envoi_a_lui_seul():
+    """
+    ⚠️ L'ENVOI SE DEMANDE, IL NE SE DÉDUIT PAS. Remplir le champ posait `send_email: yes` : le
+    client recevait la facture sans que rien à l'écran ne l'annonce — et reprendre une fiche
+    connue qui portait un email suffisait à déclencher l'envoi. Un effet de bord invisible sur
+    un document fiscal est une décision prise à la place de quelqu'un.
+    """
+    b = corps_facture({"type": "FR", "client": {**CLIENT, "email": " a@b.pt "},
+                       "lignes": [ligne()]}, register_id=1, mode="tests", moyen_paiement_id=7)
+    assert b["client"]["email"] == "a@b.pt"
+    assert "send_email" not in b["client"], "l'envoi est parti sans qu'on le demande"
+
+
+def test_l_envoi_demande_explicitement_part():
+    b = corps_facture({"type": "FR", "client": {**CLIENT, "email": "a@b.pt"},
+                       "lignes": [ligne()], "envoyer_email": True},
+                      register_id=1, mode="tests", moyen_paiement_id=7)
+    assert b["client"]["send_email"] == "yes"
+
+
+def test_l_envoi_demande_sans_adresse_ne_part_pas():
+    # Cocher la case sans adresse ne doit pas produire un `send_email` sans destinataire.
+    b = corps_facture({"type": "FR", "client": CLIENT, "lignes": [ligne()],
+                       "envoyer_email": True},
+                      register_id=1, mode="tests", moyen_paiement_id=7)
+    assert "send_email" not in b["client"]
 
 def test_le_qrcode_est_toujours_demande():
     corps = corps_facture({"type": "FR", "client": CLIENT, "lignes": [ligne()]},

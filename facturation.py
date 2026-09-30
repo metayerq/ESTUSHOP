@@ -225,7 +225,13 @@ def corps_facture(brouillon, register_id, mode, moyen_paiement_id=None, aujourdh
     }
     if _rempli(c.get("email")):
         client["email"] = c["email"].strip()
-        client["send_email"] = "yes"
+        # ⚠️ L'ENVOI SE DEMANDE, IL NE SE DÉDUIT PLUS. Remplir le champ email posait
+        # `send_email: yes` : le client recevait la facture sans que rien à l'écran ne l'annonce,
+        # et reprendre une fiche connue qui portait un email suffisait à déclencher l'envoi.
+        # Un effet de bord invisible sur un document fiscal est une décision prise à la place de
+        # quelqu'un.
+        if brouillon.get("envoyer_email"):
+            client["send_email"] = "yes"
 
     corps = {
         "type": t,
@@ -461,3 +467,31 @@ def derniere_facture(lignes_cache):
                 "moyen_paiement": (paiements[0].get("title") if paiements else None),
             }
     return None
+
+
+def pdf_document(req, doc_id, env=None):
+    """
+    Le PDF d'un document émis, en octets.
+
+    `GET /documents/{id}/?output=pdf` répond 200 avec le PDF COMPLET encodé en base64 dans le
+    champ `output` — chemin éprouvé par la caisse, repris tel quel.
+
+    ⚠️ ON VÉRIFIE L'EN-TÊTE `%PDF-`. Le décodage base64 de Python est permissif : il ignore les
+    caractères invalides au lieu d'échouer, et rendrait volontiers quelques octets de rien du
+    tout sous le nom d'une facture.
+    """
+    import base64
+    _, mode = caisse_et_mode(env)
+    r = req.get(f"{BASE_VENDUS}/documents/{int(doc_id)}/", auth=_auth(env),
+                params={"output": "pdf", "mode": mode}, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+    d = data[0] if isinstance(data, list) and data else data
+    brut = (d or {}).get("output") or ""
+    if not isinstance(brut, str) or not brut.strip():
+        raise RuntimeError("Vendus n'a pas rendu de PDF pour ce document")
+    b64 = brut.split(",", 1)[-1] if brut.startswith("data:") else brut
+    octets = base64.b64decode("".join(b64.split()), validate=False)
+    if not octets.startswith(b"%PDF-"):
+        raise RuntimeError("la réponse de Vendus n'est pas un PDF")
+    return octets

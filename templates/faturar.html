@@ -77,7 +77,26 @@
 .fa-pdf td { padding:4px 0 4px 12px; text-align:right; border-top:1px solid var(--border); }
 .fa-pdf td:first-child { text-align:left; padding-left:0; }
 .fa-pdf tr.somme td { font-weight:600; }
-@media (max-width:760px){ .fa-lignes { font-size:13px; } }
+/* ⚠️ SOUS 900 px, LE TABLEAU DEVIENT DES CARTES. À ~810 px — l'iPad, l'un des deux appareils
+   réels — la colonne montant faisait 80 px, avec le champ le plus critique de l'écran dedans.
+   Réduire la police ne suffisait pas : c'est la largeur qui manque, pas la place pour le texte. */
+@media (max-width:900px){
+  .fa-lignes thead { display:none; }
+  .fa-lignes, .fa-lignes tbody, .fa-lignes tr, .fa-lignes td { display:block; width:auto; }
+  .fa-lignes tr { border:1px solid var(--border); border-radius:4px; padding:10px 12px;
+    margin-bottom:10px; }
+  .fa-lignes td { border:none; padding:6px 0; }
+  .fa-lignes td::before { content:attr(data-libelle); display:block; font-family:var(--mono);
+    font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--faint);
+    margin-bottom:3px; }
+  .fa-lignes td:last-child { text-align:left; }
+  .fa-lignes .fa-num { text-align:left; }
+}
+.fa-charge { font-family:var(--mono); font-size:11px; color:var(--faint); }
+.fa-panne { background:var(--amber-soft); color:var(--amber); border:1px solid var(--amber);
+  border-radius:4px; padding:14px 16px; margin-bottom:18px; font-size:14px; line-height:1.6; }
+.fa-ecart { color:var(--amber); }
+.fa-sous { font-size:12px; color:var(--faint); margin-top:8px; line-height:1.5; }
 </style>
 </head>
 <body>
@@ -104,8 +123,15 @@
        deux mois : entre deux, personne ne se souvient du client, du libellé, du taux ni du
        règlement. Les retrouver à la main est exactement là où l'on se trompe — et se tromper
        produit un document qu'on ne peut plus retirer. -->
+  <!-- ⚠️ UN ÉCRAN MORT DOIT LE DIRE. `charger()` sans filet laissait « … » dans l'en-tête et
+       des panneaux vides : une promesse rejetée, aucun message, et c'est la première
+       impression d'un écran neuf. L'appel pagine tout le catalogue et tous les clients Vendus,
+       donc il est lent et faillible par nature. -->
+  <div id="fa-panne" class="fa-panne" style="display:none"></div>
+
   <div id="fa-reprendre" class="fa-reprendre" style="display:none"></div>
 
+  <div id="fa-note-reprise" class="fa-manques" style="display:none"></div>
   <div id="fa-manques" class="fa-manques" style="display:none"></div>
 
   <div class="fa-panneau">
@@ -118,12 +144,21 @@
       <div class="fa-deduit">Rien de sélectionné = saisie à la main ci-dessous.</div>
     </div>
     <div class="fa-grille">
-      <div class="fa-champ"><label>Nom *</label><input id="c-nom" oninput="rendre()"></div>
-      <div class="fa-champ"><label>NIF * (9 chiffres)</label><input id="c-nif" inputmode="numeric" maxlength="9" oninput="rendre()"></div>
-      <div class="fa-champ"><label>Adresse *</label><input id="c-adresse" oninput="rendre()"></div>
-      <div class="fa-champ"><label>Code postal</label><input id="c-cp" oninput="rendre()"></div>
-      <div class="fa-champ"><label>Ville *</label><input id="c-ville" oninput="rendre()"></div>
-      <div class="fa-champ"><label>Email (envoi Vendus)</label><input id="c-email" type="email" oninput="rendre()"></div>
+      <div class="fa-champ"><label for="c-nom">Nom *</label><input id="c-nom" oninput="rendre()"></div>
+      <div class="fa-champ"><label for="c-nif">NIF *</label><input id="c-nif" inputmode="numeric" maxlength="9" oninput="rendre()"></div>
+      <div class="fa-champ"><label for="c-adresse">Adresse *</label><input id="c-adresse" oninput="rendre()"></div>
+      <div class="fa-champ"><label for="c-cp">Code postal</label><input id="c-cp" oninput="rendre()"></div>
+      <div class="fa-champ"><label for="c-ville">Ville *</label><input id="c-ville" oninput="rendre()"></div>
+      <div class="fa-champ">
+        <label for="c-email">Email du client</label>
+        <input id="c-email" type="email" oninput="rendre()">
+        <!-- ⚠️ L'ENVOI SE DEMANDE. Remplir le champ déclenchait l'envoi par Vendus sans qu'un
+             mot l'annonce — et reprendre une fiche connue qui portait un email suffisait. -->
+        <label style="font-size:12px;color:var(--text);display:flex;align-items:center;gap:6px;margin-top:6px">
+          <input type="checkbox" id="c-envoyer" onchange="rendre()" style="width:auto">
+          Envoyer la facture à cette adresse
+        </label>
+      </div>
     </div>
   </div>
 
@@ -159,6 +194,9 @@
     <div class="fa-relire" id="fa-relire"></div>
     <!-- ⚠️ LE MODE VIT DANS LE LIBELLÉ, pas seulement dans l'en-tête. C'est le dernier endroit
          que l'œil traverse avant l'acte irréversible. -->
+    <!-- ⚠️ LES MANQUES SONT RÉPÉTÉS ICI. Ils s'affichaient en haut de page, le bouton est en
+         bas : un bouton grisé sans explication à côté oblige à remonter pour comprendre. -->
+    <div id="fa-manques-bas" class="fa-sous"></div>
     <button class="btn-primary" id="fa-emettre" style="margin-top:16px" onclick="demanderConfirmation()" disabled>
       Émettre la facture</button>
     <div id="fa-confirme"></div>
@@ -211,9 +249,26 @@ const val = id => (document.getElementById(id).value || '').trim();
 const echap = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 
 async function charger(){
-  const r = await fetch('/api/faturar/referenciais');
-  const d = await r.json();
-  if(!r.ok){ document.getElementById('fa-caisse').textContent = d.error || 'référentiels indisponibles'; return; }
+  const entete = document.getElementById('fa-caisse'), panne = document.getElementById('fa-panne');
+  entete.innerHTML = '<span class="fa-charge">lecture du catalogue Vendus…</span>';
+  panne.style.display = 'none';
+  let d;
+  try{
+    /* ⚠️ SOUS FILET. Cet appel pagine tout le catalogue et tous les clients Vendus : il est
+       lent et faillible par nature. Sans try/catch, une coupure laissait « … » dans l'en-tête
+       et des panneaux vides — une promesse rejetée, aucun message, sur un écran neuf. */
+    const r = await fetch('/api/faturar/referenciais');
+    d = await r.json();
+    if(!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+  }catch(e){
+    entete.textContent = 'référentiels indisponibles';
+    panne.style.display = '';
+    panne.innerHTML = `<b>Impossible de préparer une facture.</b><br>${echap(String(e.message||e))}
+      <br>Rien n'est perdu et rien n'a été émis. Réessayez avec ↻ ; si ça persiste, vérifiez
+      <code>VENDUS_API_KEY</code>, <code>VENDUS_REGISTER_ID</code> et l'accès à Vendus.`;
+    document.getElementById('fa-emettre').disabled = true;
+    return;
+  }
   REF = d;
   /* ⚠️ LE MODE EST AFFICHÉ, PAS DEVINÉ. Émettre en « tests » en croyant émettre pour de vrai
      laisse le client sans facture ; l'inverse abîme une série fiscale. */
@@ -242,7 +297,7 @@ function dessinerReprise(){
       <div class="quoi"><b>${echap(u.numero||u.type)}</b> · ${echap(u.client.nom||'—')} · ${eur(total)}</div>
       <div class="quand">émise le ${u.jour} · ${echap(u.lignes[0] ? u.lignes[0].libelle : '')}</div>
     </div>
-    <button class="btn-primary" onclick="reprendre()">Reprendre cette facture</button>`;
+    <button class="btn-secondary" onclick="reprendre()">Reprendre cette facture</button>`;
 }
 
 function reprendre(){
@@ -260,6 +315,12 @@ function reprendre(){
   LIGNES = u.lignes.map(l=>({service_id:0, q:'', libelle:l.libelle,
     montant:(l.montant_cents/100).toFixed(2).replace('.',','), ttc:true, taux:l.taux, qty:l.qty}));
   dessinerLignes(); rendre();
+  /* ⚠️ LE COMMENTAIRE DU CODE DISAIT « ET ON LE DIT » — rien n'était dit à l'écran. On voyait
+     « Il manque : article Vendus » sans savoir que c'est le SEUL champ à refaire, ni pourquoi. */
+  const note = document.getElementById('fa-note-reprise');
+  note.style.display = '';
+  note.innerHTML = `Tout est repris sauf <b>l'article Vendus</b> : la facture ne garde que
+    l'identifiant de sa LIGNE, pas celui de la fiche catalogue. C'est le seul champ à rechoisir.`;
   document.getElementById('fa-manques').scrollIntoView({behavior:'smooth', block:'center'});
 }
 
@@ -308,7 +369,7 @@ function dessinerLignes(){
     const ht = Math.round(unit/(1+l.taux/100));
     return `
     <tr>
-      <td>
+      <td data-libelle="Article Vendus">
         <input class="fa-filtre" value="${echap(l.q)}" placeholder="chercher un article…"
                oninput="majLigne(${i},'q',this.value,'options')">
         <select id="fa-art-${i}" onchange="majLigne(${i},'service_id',this.value,true)" style="width:100%">
@@ -317,9 +378,11 @@ function dessinerLignes(){
           ${choisi && !articlesFiltres(l.q).some(a=>a.id===choisi.id) ? `<option value="${choisi.id}" selected>${echap(choisi.titre)}</option>` : ''}
         </select>
       </td>
-      <td><input value="${echap(l.libelle)}" oninput="majLigne(${i},'libelle',this.value)" placeholder="ce qui sera imprimé"></td>
-      <td>
-        <input class="fa-num" value="${echap(l.montant)}" inputmode="decimal" placeholder="136,50"
+      <td data-libelle="Libellé imprimé"><input value="${echap(l.libelle)}" oninput="majLigne(${i},'libelle',this.value)" placeholder="ce qui sera imprimé"></td>
+      <td data-libelle="Montant TTC">
+        <!-- ⚠️ PLACEHOLDER NEUTRE. « 136,50 » était le montant de la vraie facture précédente :
+             un exemple réaliste dans le champ le plus dangereux se relit comme une valeur. -->
+        <input class="fa-num" value="${echap(l.montant)}" inputmode="decimal" placeholder="0,00"
                oninput="majLigne(${i},'montant',this.value,'deduit')">
         <!-- ⚠️ LE MONTANT DÉDUIT EST AFFICHÉ SOUS LE CHAMP. C'est la confusion la plus chère de
              cet écran : 136,50 saisis en HT sortent une facture à 167,90 €, et 110,98 saisis
@@ -327,11 +390,15 @@ function dessinerLignes(){
              qu'un avertissement. -->
         <div class="fa-deduit" id="fa-deduit-${i}">${texteDeduit(l)}</div>
       </td>
-      <td><select onchange="majLigne(${i},'taux',this.value,true)">
+      <td data-libelle="TVA"><select onchange="majLigne(${i},'taux',this.value,true)">
             ${[0,6,13,23].map(t=>`<option value="${t}"${t==l.taux?' selected':''}>${t}%</option>`).join('')}
-          </select></td>
-      <td><input class="fa-num" type="number" min="1" value="${l.qty}" oninput="majLigne(${i},'qty',this.value,'deduit')"></td>
-      <td><button class="btn-secondary" onclick="retirerLigne(${i})" title="Retirer">×</button></td>
+          </select>
+          <!-- ⚠️ UN TAUX CHANGÉ APRÈS LE CHOIX DE LA FICHE FACTURE À LA MAUVAISE TVA SANS UN
+               MOT. L'ambre est réservé à ce qui appelle une action avant d'émettre. -->
+          ${choisi && choisi.taux !== l.taux ? `<div class="fa-deduit fa-ecart">≠ fiche (${choisi.taux}%)</div>` : ''}
+      </td>
+      <td data-libelle="Qté"><input class="fa-num" type="number" min="1" value="${l.qty}" oninput="majLigne(${i},'qty',this.value,'deduit')"></td>
+      <td data-libelle=""><button class="btn-secondary" onclick="retirerLigne(${i})">Retirer cette ligne</button></td>
     </tr>`;}).join('');
 }
 
@@ -390,6 +457,7 @@ function brouillon(){
   const b = {type,
     client:{nom:val('c-nom'), nif:val('c-nif'), adresse:val('c-adresse'),
             code_postal:val('c-cp'), ville:val('c-ville'), email:val('c-email')},
+    envoyer_email: document.getElementById('c-envoyer').checked,
     lignes: LIGNES.map(l=>({service_id:l.service_id, libelle:l.libelle,
       montant_cents:cents(l.montant), ttc:l.ttc, taux:l.taux, qty:l.qty}))};
   if(type==='FT') b.delai_jours = Math.max(1, +val('f-delai')||0);
@@ -445,8 +513,11 @@ function rendre(){
   const b = brouillon(), m = manquesLocaux(b), boite = document.getElementById('fa-manques');
   /* ⚠️ TOUS LES MANQUES, PAS LE PREMIER. Un écran qui les révèle un par un fait remplir un
      champ, refuse, en fait remplir un autre, refuse encore. */
-  if(m.length){ boite.style.display=''; boite.innerHTML = 'Il manque : ' + m.map(k=>ETIQUETTES[k]||k).join(' · '); }
+  const texte = m.length ? 'Il manque : ' + m.map(k=>ETIQUETTES[k]||k).join(' · ') : '';
+  if(m.length){ boite.style.display=''; boite.innerHTML = texte; }
   else boite.style.display='none';
+  /* Le même texte à côté du bouton : un bouton grisé sans explication oblige à remonter. */
+  document.getElementById('fa-manques-bas').innerHTML = texte;
   document.getElementById('fa-emettre').disabled = m.length>0;
   dessinerRelecture(b);
 }
@@ -465,7 +536,10 @@ function dessinerRelecture(b){
         ${echap(b.client.adresse)||'—'} ${echap(b.client.code_postal)} ${echap(b.client.ville)}
         ${fiche && fiche.incomplet ? '<br><span class="fa-incomplet">⚠ la fiche Vendus de ce NIF est incomplète — ce qui est saisi ici la complètera</span>':''}</dd>
       <dt>Émission</dt><dd>caisse ${REF.caixa||'—'} · ${REF.modo==='normal'?'réelle':'mode tests'}
-        · date du jour</dd>
+        · ${new Date().toLocaleDateString('pt-PT')}</dd>
+      <dt>Email</dt><dd>${b.envoyer_email && b.client.email
+        ? 'envoyée à ' + echap(b.client.email) + ' par Vendus'
+        : 'aucun envoi — la facture reste à remettre'}</dd>
     </dl>
     <table class="fa-pdf">
       <thead><tr><th>Descrição</th><th>P. Uni.</th><th>Qtd.</th><th>IVA</th><th>Total</th></tr></thead>
@@ -528,7 +602,13 @@ async function emettre(){
       total <code>${d.total!=null?eur(Math.round(d.total*100)):'—'}</code><br>
       Elle ne se retire plus : une erreur se répare par note de crédit.
       ${d.qrcode ? '<div style="margin-top:10px">'+d.qrcode+'</div>' : ''}
-      <div style="margin-top:12px"><button class="btn-secondary" onclick="location.reload()">Nouvelle facture</button></div>
+      <!-- ⚠️ LE DOCUMENT RESTE ATTEIGNABLE. L'écran rendait un numéro puis plus rien : il
+           fallait aller le chercher dans Vendus — précisément la navigation qu'on a oubliée
+           deux mois plus tard. -->
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        ${d.id ? `<a class="btn-secondary" href="/api/faturar/${d.id}/pdf" target="_blank" rel="noopener">Ouvrir le PDF</a>` : ''}
+        <button class="btn-secondary" onclick="location.reload()">Nouvelle facture</button>
+      </div>
     </div>`;
   }catch(e){
     /* Une exception ici est un réseau rompu côté navigateur : le POST a peut-être abouti. */
@@ -556,6 +636,18 @@ function echec(emis, message, manques){
     REF.modo === 'normal' ? 'Émettre la facture — RÉEL' : 'Émettre la facture — tests'; }
   else { bouton.textContent = 'Vérifiez dans Vendus'; }
 }
+
+/* ⚠️ UN BROUILLON SOIGNÉ NE DOIT PAS PARTIR SUR UN F5. Sur iPad, un onglet fermé par erreur
+   effaçait un client, un libellé et un montant qu'il faut retaper à l'identique. On avertit
+   seulement si quelque chose a été saisi, et jamais après l'émission — à ce moment-là il n'y a
+   plus rien à perdre. */
+window.addEventListener('beforeunload', function (e) {
+  if (EMISE) return;
+  const b = brouillon();
+  const sale = b.client.nom || b.client.nif ||
+               b.lignes.some(l => l.libelle || l.montant_cents > 0 || l.service_id > 0);
+  if (sale) { e.preventDefault(); e.returnValue = ''; }
+});
 
 charger();
 </script>

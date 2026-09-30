@@ -111,7 +111,7 @@ CAS = {
             },
             # ⚠️ APRÈS `/referenciais`, jamais avant : le bouchon compare par préfixe et
             # « /api/faturar » attraperait aussi « /api/faturar/referenciais ».
-            "/api/faturar": {"ok": True, "numero": "FR 01P2026/2",
+            "/api/faturar": {"ok": True, "numero": "FR 01P2026/2", "id": 378400001,
                              "atcud": "J69MJVX5-2", "total": 136.50},
         },
         "attendu": [
@@ -138,6 +138,10 @@ CAS = {
             # ⚠️ LE MODE VIT DANS LE LIBELLÉ DU BOUTON, dernier endroit que l'œil traverse
             # avant l'acte irréversible.
             "PRET-OUI bouton=Émettre la facture — tests",
+            # Les deux signaux ajoutés après l'audit, éprouvés par le scénario.
+            "ECART-SIGNALE", "EMAIL-EXPLICITE",
+            # Et le document reste atteignable après l'acte.
+            "Ouvrir le PDF",
             # ⚠️ LE VERROU POST-ÉMISSION, la correction la plus importante de cet écran : sans
             # lui, retoucher un champ après avoir émis réarmait le bouton et un tap refacturait.
             "PRET-OUI", "CONFIRM-OK", "VERROU-OK", "NUMERO-OK",
@@ -159,7 +163,8 @@ CAS = {
                      ">HT<",
                      # Le mode réel ne doit pas s'afficher quand le serveur annonce « tests ».
                      "Émettre la facture — RÉEL",
-                     "VERROU-ROMPU", "CONFIRM-ABSENT", "PRET-NON"],
+                     "VERROU-ROMPU", "CONFIRM-ABSENT", "PRET-NON",
+                     "ECART-MUET", "EMAIL-IMPLICITE"],
         # Le scénario tape un montant et vérifie que la frappe survit ET que le montant déduit
         # suit. Il écrit son verdict dans la page, que le dump ramène.
         "scenario": """
@@ -205,6 +210,29 @@ CAS = {
                  champs[1].dispatchEvent(new Event('input', {bubbles:true})); }
   var m2 = document.querySelector('#fa-corps input[inputmode=decimal]');
   m2.value = '136,50'; m2.dispatchEvent(new Event('input', {bubbles:true}));
+
+  // ⚠️ L'ÉCART DE TAUX : la fiche est à 23 %, on glisse à 13 %. Sans signal, la facture part
+  // à la mauvaise TVA sans un mot.
+  var taux = document.querySelectorAll('#fa-corps select')[1];
+  if(taux){ taux.value = '13'; taux.dispatchEvent(new Event('change', {bubbles:true})); }
+  var e1 = document.createElement('div'); document.body.appendChild(e1);
+  /* ⚠️ ON CHERCHE DANS LE TABLEAU, PAS DANS `document.body`. Ce scénario est un <script> à
+     l'intérieur du body, et `body.textContent` inclut le texte des scripts : la recherche
+     trouvait sa propre chaîne et le marqueur restait vert quoi qu'il arrive. Un test qui ne
+     peut pas échouer ne garde rien. */
+  e1.textContent = (document.getElementById('fa-corps').textContent.indexOf('fiche (23%)') >= 0)
+    ? 'ECART-SIGNALE' : 'ECART-MUET';
+  if(taux){ taux.value = '23'; taux.dispatchEvent(new Event('change', {bubbles:true})); }
+
+  // ⚠️ L'ENVOI PAR EMAIL EST UNE DÉCISION, pas un effet de bord du champ rempli.
+  poser('c-email', 'tomoko@exemple.pt');
+  var e2 = document.createElement('div'); document.body.appendChild(e2);
+  var avantCoche = document.getElementById('fa-relire').textContent.indexOf('aucun envoi') >= 0;
+  var coche = document.getElementById('c-envoyer');
+  coche.checked = true; coche.dispatchEvent(new Event('change', {bubbles:true}));
+  var apresCoche = document.getElementById('fa-relire').textContent.indexOf('envoyée à tomoko@exemple.pt') >= 0;
+  e2.textContent = (avantCoche && apresCoche) ? 'EMAIL-EXPLICITE' : 'EMAIL-IMPLICITE';
+  coche.checked = false; coche.dispatchEvent(new Event('change', {bubbles:true}));
 
   var bouton = document.getElementById('fa-emettre');
   var verdict = document.createElement('div');

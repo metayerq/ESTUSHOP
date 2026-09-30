@@ -593,6 +593,19 @@ def test_aucune_cellule_de_tableau_ne_sort_du_contexte_tabulaire():
         for style in re.findall(r"<style[^>]*>(.*?)</style>", html, re.S):
             # On enlève les commentaires : une règle citée en exemple n'est pas une règle.
             style = re.sub(r"/\*.*?\*/", " ", style, flags=re.S)
+            """
+            ⚠️ LES BLOCS `@media (max-width: …)` SONT EXEMPTÉS, ET C'EST RAISONNÉ. Ce contrôle
+            existe parce qu'une cellule sortie du contexte tabulaire cesse de s'aligner sur sa
+            colonne — silencieusement. Sous une largeur donnée, il n'y a PLUS de colonnes :
+            transformer les rangées en cartes est la seule façon de rendre un tableau de six
+            colonnes utilisable sur un iPad, et le désalignement est alors l'intention.
+
+            Ce qui reste interdit est l'essentiel : la même déclaration hors média, c'est-à-dire
+            sur l'écran large où les colonnes existent — la panne du 28/09/2026, où cinq en-têtes
+            se sont empilés sur la même case pendant que le corps du tableau restait en place.
+            """
+            style = re.sub(r"@media[^{]*max-width[^{]*\{(?:[^{}]|\{[^{}]*\})*\}", " ",
+                           style, flags=re.S)
             for bloc in re.finditer(r"([^{}]+)\{([^{}]*)\}", style):
                 selecteur, corps = bloc.group(1), bloc.group(2)
                 # ⚠️ SEUL LE DERNIER ÉLÉMENT DU SÉLECTEUR EST CELUI QU'ON STYLE. La première

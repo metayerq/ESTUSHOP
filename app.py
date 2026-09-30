@@ -6681,6 +6681,26 @@ def api_faturar():
                     "qrcode": (d or {}).get("qrcode")})
 
 
+@app.route("/api/faturar/<int:doc_id>/pdf")
+def api_faturar_pdf(doc_id):
+    """
+    Le PDF d'une facture émise.
+
+    ⚠️ ELLE EXISTE POUR QU'ON NE PERDE PAS LE DOCUMENT APRÈS L'AVOIR CRÉÉ. L'écran rendait un
+    numéro et un ATCUD, puis plus rien : il fallait aller le chercher dans Vendus — précisément
+    la navigation qu'on a oubliée deux mois plus tard.
+    """
+    if _current_role() not in ("admin",):
+        return jsonify({"error": "unauthorized"}), 403
+    try:
+        octets = facturation.pdf_document(_req, doc_id)
+    except Exception as e:
+        return jsonify({"error": str(e)[:200]}), 502
+    from flask import Response
+    return Response(octets, mimetype="application/pdf", headers={
+        "Content-Disposition": f'inline; filename="fatura-{doc_id}.pdf"'})
+
+
 @app.route("/clientes")
 def clientes_page():
     """Page « clients » : ce que les cartes du terminal disent de la fidélité.
