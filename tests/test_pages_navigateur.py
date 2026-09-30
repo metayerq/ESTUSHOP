@@ -127,12 +127,41 @@ CAS = {
             "Descrição", "Taxa", "Sumário",
             # ⚠️ ET CE QUI MANQUE EST DIT, EN ENTIER, dès le premier rendu.
             "Il manque", "nom du client", "NIF à 9 chiffres",
+            # Le scénario ci-dessous tape dans le champ montant : la frappe doit survivre et le
+            # montant déduit doit suivre. 136,50 TTC à 23 % font 110,98 € HT.
+            "SAISIE-OK", "DEDUIT-OK", "110,98",
         ],
         # ⚠️ CE QUI NE DOIT SURTOUT PAS S'AFFICHER. Le référentiel annonce `modo: "tests"` :
         # voir « émission réelle » voudrait dire que l'écran affiche le mode qu'il suppose et
         # non celui que le serveur donne. On émettrait pour de vrai en croyant essayer — ou
         # l'inverse, qui laisse le client sans facture.
-        "interdit": ["émission réelle"],
+        "interdit": ["émission réelle",
+                     # ⚠️ LE CHAMP MONTANT DOIT RESTER SAISISSABLE. Le tableau était redessiné à
+                     # chaque frappe : le champ en cours de saisie était détruit, perdait le
+                     # focus, et plus rien ne pouvait y être tapé. L'écran s'affichait
+                     # parfaitement et ne servait à rien.
+                     "SAISIE-PERDUE", "DEDUIT-MUET"],
+        # Le scénario tape un montant et vérifie que la frappe survit ET que le montant déduit
+        # suit. Il écrit son verdict dans la page, que le dump ramène.
+        "scenario": """
+(function attendre(n){
+  var champ = document.querySelector('#fa-corps input[inputmode=decimal]');
+  if(!champ && n < 60) return setTimeout(function(){ attendre(n+1); }, 20);
+  var marque = document.createElement('div');
+  document.body.appendChild(marque);
+  if(!champ){ marque.textContent = 'SAISIE-PERDUE aucun champ montant'; return; }
+  champ.focus();
+  champ.value = '136,50';
+  champ.dispatchEvent(new Event('input', {bubbles:true}));
+  var vivant = document.querySelector('#fa-corps input[inputmode=decimal]');
+  var focus  = document.activeElement === vivant;
+  var garde  = vivant && vivant.value === '136,50';
+  var deduit = (document.getElementById('fa-deduit-0') || {}).textContent || '';
+  marque.textContent =
+    (focus && garde ? 'SAISIE-OK' : 'SAISIE-PERDUE focus=' + focus + ' valeur=' + (vivant && vivant.value)) +
+    ' | ' + (deduit.indexOf('110,98') >= 0 ? 'DEDUIT-OK ' + deduit : 'DEDUIT-MUET ' + deduit);
+})(0);
+""",
     },
     "marge.html": {
         "reponses": {
@@ -257,12 +286,17 @@ window.fetch = function (u) {
 </script>"""
 
 
-def _rendre(nom, reponses, tmp_path):
+def _rendre(nom, reponses, tmp_path, scenario=None):
     env = Environment(loader=FileSystemLoader(os.path.join(RACINE, "templates")))
     html = env.get_template(nom).render(v="test", role="admin")
     sonde = SONDE.replace("__REPONSES__", json.dumps(reponses))
     # ⚠️ AVANT LES SCRIPTS DE LA PAGE, sinon le bouchon arrive après le premier appel.
     html = re.sub(r"<body[^>]*>", lambda m: m.group(0) + sonde, html, count=1)
+    # ⚠️ LE SCÉNARIO PASSE APRÈS LES SCRIPTS DE LA PAGE, et il attend que l'écran soit peuplé.
+    # Sans lui, ce harnais ne voit qu'un rendu figé : il ne peut pas attraper une page qui
+    # s'affiche correctement mais devient inutilisable dès qu'on y tape — c'est arrivé deux fois.
+    if scenario:
+        html = html.replace("</body>", "<script>" + scenario + "</script></body>", 1)
     chemin = tmp_path / nom
     io.open(chemin, "w", encoding="utf-8").write(html)
     return chemin
@@ -273,7 +307,7 @@ def _rendre(nom, reponses, tmp_path):
 def test_la_page_s_affiche_vraiment(nom, tmp_path):
     binaire, env = NAVIGATEUR
     cas = CAS[nom]
-    chemin = _rendre(nom, cas["reponses"], tmp_path)
+    chemin = _rendre(nom, cas["reponses"], tmp_path, cas.get("scenario"))
 
     r = subprocess.run(
         [binaire, "--headless", "--no-sandbox", "--disable-gpu", "--dump-dom",

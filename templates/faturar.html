@@ -262,8 +262,8 @@ function dessinerLignes(){
     <tr>
       <td>
         <input class="fa-filtre" value="${echap(l.q)}" placeholder="chercher un article…"
-               oninput="majLigne(${i},'q',this.value,true)">
-        <select onchange="majLigne(${i},'service_id',this.value,true)" style="width:100%">
+               oninput="majLigne(${i},'q',this.value,'options')">
+        <select id="fa-art-${i}" onchange="majLigne(${i},'service_id',this.value,true)" style="width:100%">
           <option value="0">— choisir —</option>
           ${articlesFiltres(l.q).map(a=>`<option value="${a.id}"${a.id===l.service_id?' selected':''}>${echap(a.titre)}${a.categoria?' · '+echap(a.categoria):''} · ${a.taux}%</option>`).join('')}
           ${choisi && !articlesFiltres(l.q).some(a=>a.id===choisi.id) ? `<option value="${choisi.id}" selected>${echap(choisi.titre)}</option>` : ''}
@@ -272,12 +272,12 @@ function dessinerLignes(){
       <td><input value="${echap(l.libelle)}" oninput="majLigne(${i},'libelle',this.value)" placeholder="ce qui sera imprimé"></td>
       <td>
         <input class="fa-num" value="${echap(l.montant)}" inputmode="decimal" placeholder="136,50"
-               oninput="majLigne(${i},'montant',this.value,true)">
+               oninput="majLigne(${i},'montant',this.value,'deduit')">
         <!-- ⚠️ LE MONTANT DÉDUIT EST AFFICHÉ SOUS LE CHAMP. C'est la confusion la plus chère de
              cet écran : 136,50 saisis en HT sortent une facture à 167,90 €, et 110,98 saisis
              en HT pour « retrouver » 136,50 en sortent 136,51. Le voir supprime le doute mieux
              qu'un avertissement. -->
-        <div class="fa-deduit">${unit>0 ? (l.ttc ? '= '+eur(ht)+' HT' : '= '+eur(unit)+' TTC') : '&nbsp;'}</div>
+        <div class="fa-deduit" id="fa-deduit-${i}">${unit>0 ? (l.ttc ? '= '+eur(ht)+' HT' : '= '+eur(unit)+' TTC') : '&nbsp;'}</div>
       </td>
       <td><select onchange="majLigne(${i},'ttc',this.value,true)">
             <option value="1"${l.ttc?' selected':''}>TTC</option>
@@ -286,12 +286,12 @@ function dessinerLignes(){
           <select onchange="majLigne(${i},'taux',this.value,true)">
             ${[0,6,13,23].map(t=>`<option value="${t}"${t==l.taux?' selected':''}>${t}%</option>`).join('')}
           </select></td>
-      <td><input class="fa-num" type="number" min="1" value="${l.qty}" oninput="majLigne(${i},'qty',this.value,true)"></td>
+      <td><input class="fa-num" type="number" min="1" value="${l.qty}" oninput="majLigne(${i},'qty',this.value,'deduit')"></td>
       <td><button class="btn-secondary" onclick="retirerLigne(${i})" title="Retirer">×</button></td>
     </tr>`;}).join('');
 }
 
-function majLigne(i, champ, v, redessiner){
+function majLigne(i, champ, v, cible){
   const l = LIGNES[i];
   if(champ==='service_id'){
     l.service_id = +v;
@@ -304,11 +304,35 @@ function majLigne(i, champ, v, redessiner){
   else if(champ==='taux') l.taux = +v;
   else if(champ==='qty')  l.qty  = Math.max(1, +v||1);
   else l[champ] = v;
-  if(redessiner){
-    const actif = document.activeElement, id = actif && actif.value;
-    dessinerLignes();
-  }
+  /* ⚠️ ON NE REDESSINE JAMAIS LE TABLEAU SOUS LES DOIGTS. Redessiner à chaque frappe détruit
+     le champ en cours de saisie : il perd le focus et on ne peut plus rien taper — c'est
+     exactement ce qui rendait le montant inaccessible. Les listes déroulantes, elles, peuvent
+     être redessinées : leur valeur est déjà choisie quand l'événement arrive.
+       'deduit'  → on réécrit seulement le montant déduit sous le champ
+       'options' → on réécrit seulement les options de la liste d'articles
+       true      → redessin complet, réservé aux <select> et aux ajouts/retraits de ligne */
+  if(cible === 'deduit') majDeduit(i);
+  else if(cible === 'options') majOptions(i);
+  else if(cible) dessinerLignes();
   rendre();
+}
+
+function majDeduit(i){
+  const l = LIGNES[i], boite = document.getElementById('fa-deduit-'+i);
+  if(!boite) return;
+  const unit = l.ttc ? cents(l.montant) : Math.round(cents(l.montant)*(1+l.taux/100));
+  const ht = Math.round(unit/(1+l.taux/100));
+  boite.innerHTML = unit>0 ? (l.ttc ? '= '+eur(ht)+' HT' : '= '+eur(unit)+' TTC') : '&nbsp;';
+}
+
+function majOptions(i){
+  const l = LIGNES[i], liste = document.getElementById('fa-art-'+i);
+  if(!liste) return;
+  const choisi = REF.artigos.find(a=>a.id===l.service_id);
+  const vus = articlesFiltres(l.q);
+  liste.innerHTML = '<option value="0">— choisir —</option>' +
+    vus.map(a=>`<option value="${a.id}"${a.id===l.service_id?' selected':''}>${echap(a.titre)}${a.categoria?' · '+echap(a.categoria):''} · ${a.taux}%</option>`).join('') +
+    (choisi && !vus.some(a=>a.id===choisi.id) ? `<option value="${choisi.id}" selected>${echap(choisi.titre)}</option>` : '');
 }
 
 /* ── Le brouillon, les totaux, les manques ─────────────────────────────────────────────── */
