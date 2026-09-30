@@ -115,7 +115,13 @@ CAS = {
                              "atcud": "J69MJVX5-2", "total": 136.50},
         },
         "attendu": [
-            "1 · Qui", "2 · Quoi", "3 · Relire", "L'acquéreur", "Les prestations", "Le document",
+            "L'acquéreur", "Les prestations", "Le document",
+            # ⚠️ LE FIL DES ÉTAPES BOUGE : « 1 · Qui » tant que c'est à faire, « ✓ Qui »
+            # une fois acquis. Trois pastilles numérotées vertes se lisaient encore comme
+            # trois choses à faire. La transition est tracée par le scénario ; ici on exige
+            # l'état final, facture émise, tout acquis.
+            "✓ Relire",
+            "ETAPE-NEUVE", "ETAPE-FAITE",
             # ⚠️ LE MODE EST ANNONCÉ : liseré, badge, libellé du bouton.
             "TESTS · caisse 342853246",
             "Multibanco", "TOMOKO HIRAOJI.", "Ce qui partira",
@@ -132,6 +138,8 @@ CAS = {
             "SAISIE-OK", "DEDUIT-OK", "TOTALLIGNE-OK",
             # ⚠️ LA BASCULE HT/TTC : une seule, globale, et elle change le montant facturé.
             "BASCULE-UNIQUE", "HT-VERS-TTC-OK", "RETOUR-TTC-OK",
+            # ⚠️ TOUT DOIT SE FAIRE AU CLAVIER, liste d'articles comprise.
+            "CLAVIER-OK", "AIDE-OUVRABLE",
             "ECART-SIGNALE", "EMAIL-EXPLICITE",
             "PRET-OUI", "CONFIRM-OK",
             # ⚠️ LE VERROU POST-ÉMISSION, la correction la plus importante de cet écran.
@@ -144,8 +152,10 @@ CAS = {
             "Il manque :",
             "SAISIE-PERDUE", "DEDUIT-MUET", "TOTALLIGNE-MUET", "ECART-MUET", "EMAIL-IMPLICITE",
             "BASCULE-PAR-LIGNE", "HT-VERS-TTC-MUET", "RETOUR-TTC-MUET",
+            "CLAVIER-MUET", "AIDE-MUETTE",
             "REPRISE-TROUEE", "REPRISE-ABSENTE", "CATALOGUE-FILTRE", "PRET-NON",
             "CONFIRM-ABSENT", "VERROU-ROMPU", "NUMERO-MUET", "PDF-ABSENT", "CHECK-VIERGE non",
+            "ETAPE-NEUVE-MUETTE", "ETAPE-FIGEE",
             "NaN", "undefined",
         ],
         "scenario": r"""
@@ -159,9 +169,13 @@ CAS = {
   var vierge = E('fa-check').textContent.replace(/\s+/g,' ').trim();
   trace('CHECK-VIERGE ' + (vierge.indexOf('\u2717') < 0 ? 'oui' : 'non ' + vierge));
 
+  var etape = function(){ return E('fa-et-1').textContent.replace(/\s+/g,' ').trim(); };
+  trace(etape() === '1 \u00b7 Qui' ? 'ETAPE-NEUVE' : 'ETAPE-NEUVE-MUETTE ' + etape());
+
   var reprise = document.querySelector('#fa-reprendre button');
   if(!reprise){ trace('REPRISE-ABSENTE'); return; }
   reprise.click();
+  trace(etape() === '\u2713 Qui' ? 'ETAPE-FAITE' : 'ETAPE-FIGEE ' + etape());
   var art = E('cba0-input');
   trace((art && art.value.indexOf('Comiss') === 0)
         ? 'REPRISE-COMPLETE' : 'REPRISE-TROUEE article=' + (art && art.value));
@@ -171,8 +185,28 @@ CAS = {
   var liste = E('cba0-liste').textContent;
   trace((liste.indexOf('Espresso') >= 0 && liste.indexOf('Coffee') >= 0)
         ? 'CATALOGUE-COMPLET' : 'CATALOGUE-FILTRE ' + liste.slice(0,70));
+  /* ⚠️ LA LISTE SE PARCOURT AU CLAVIER. Un <li> qui n'écoute que `mousedown` est une liste
+     que personne ne peut traverser sans souris. */
+  art.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowDown', bubbles:true}));
+  art.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true}));
+  trace((E('cba0-input').value && E('cba0-liste').hidden)
+        ? 'CLAVIER-OK'
+        : 'CLAVIER-MUET v=' + E('cba0-input').value + ' cache=' + E('cba0-liste').hidden);
+
+  /* On repose ensuite l'article de la facture réelle, à la souris. */
+  var art2 = E('cba0-input');
+  art2.focus(); art2.value = '';
+  art2.dispatchEvent(new Event('input', {bubbles:true}));
   document.querySelector('#cba0-liste li[data-v="372683324"]')
     .dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
+
+  /* ⚠️ L'EXPLICATION DU PIÈGE TTC/HT ÉTAIT UN `title` : rien au clavier, rien au doigt. */
+  var aide = E('fa-aide-ttc'), texte = E('fa-aide-ttc-texte');
+  var cacheAvant = texte.hidden;
+  aide.click();
+  trace((cacheAvant && !texte.hidden
+         && aide.getAttribute('aria-expanded') === 'true'
+         && texte.textContent.indexOf('136,51') >= 0) ? 'AIDE-OUVRABLE' : 'AIDE-MUETTE');
 
   var champ = document.querySelector('#fa-corps input[inputmode=decimal]');
   champ.focus(); champ.value = '136,50';

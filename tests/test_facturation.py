@@ -10,6 +10,7 @@ Le premier test rejoue la SEULE facture réellement émise — FR 01P2026/1, 136
 08/09/2026 — et exige les montants que Vendus a effectivement produits.
 """
 import datetime
+import json
 import pytest
 from facturation import (TAX_IDS, ligne_ttc_unitaire, totaux, manques, emettable,
                          date_echeance, corps_facture)
@@ -477,3 +478,27 @@ def test_un_prefixe_qui_ne_correspond_a_rien_passe_au_repli_suivant():
     b = resoudre_articles(_brouillon(reference="ZZZ999-26090821"), CATALOGUE,
                           emissions=emissions)
     assert b["lignes"][0]["source_article"] == "libelle"
+
+
+# ── L'accent sur le fil ─────────────────────────────────────────────────────────────────────
+
+def test_LE_LIBELLE_ACCENTUE_ARRIVE_INTACT_SUR_LE_FIL():
+    """
+    ⚠️ « Comissão », pas « Comissao ». Le libellé part tel quel sur un document fiscal, et un
+    accent perdu ne se corrige plus : il faudrait une note de crédit.
+
+    On vérifie la SÉRIALISATION, pas le dictionnaire. Une affectation n'abîme jamais un accent ;
+    c'est l'encodage du corps HTTP qui l'abîme, et c'est donc lui qu'il faut regarder — ici
+    exactement ce que `requests` met sur le fil pour `json=corps`.
+    """
+    libelle = "Comissão sobre vendas — jardim"
+    corps = corps_facture({"type": "FR", "client": CLIENT, "lignes": [ligne(libelle=libelle)]},
+                          register_id=342853246, mode="tests", moyen_paiement_id=342853234)
+    assert corps["items"][0]["title"] == libelle
+
+    relu = json.loads(json.dumps(corps, allow_nan=False).encode("utf-8").decode("utf-8"))
+    assert relu["items"][0]["title"] == libelle
+    # Le mangleur classique — un aller-retour latin-1/utf-8 — donnerait « ComissÃ£o ».
+    assert "Ã" not in relu["items"][0]["title"]
+    # Et l'adresse du client passe par le même chemin.
+    assert relu["client"]["address"] == "Rua Heróis de Quionga 17"

@@ -28,8 +28,16 @@
   z-index:60; }
 .fa-lisere.reel { background:var(--red); }
 
+/* ⚠️ PAS DE `--faint` POUR DU TEXTE ICI. Le jeton mesure 3,15:1 sur carte claire et 3,68:1 sur
+   carte sombre : sous le 4,5:1 de l'AA, à 11 et 12 px, sur des montants et des taux. `--muted`
+   passe (4,78:1 et 5,66:1). Le jeton global reste tel quel — il habille 21 autres gabarits, et
+   le changer est une décision à prendre à part. `--faint` reste bon pour un trait, pas pour un mot. */
+/* Fond OPAQUE, pas `--bg-hover` : le translucide éclaircissait la carte sous le texte et le
+   badge retombait à 4,38:1. Ce badge dit quel mode fiscal est armé — il se lit ou il ne sert
+   à rien. */
 .fa-badge { font-family:var(--mono); font-size:11px; padding:3px 8px; border-radius:var(--r-sm);
-  background:var(--bg-hover); color:var(--faint); white-space:nowrap; }
+  background:var(--bg-page); border:1px solid var(--border); color:var(--muted);
+  white-space:nowrap; }
 .fa-badge.reel { background:var(--red-soft); color:var(--red); font-weight:600; }
 
 /* ── Le fil des étapes ───────────────────────────────────────────────────── */
@@ -65,10 +73,10 @@
   border:1px solid var(--border); border-radius:var(--r-sm); background:var(--bg);
   color:var(--text); width:100%; min-width:0; }
 .fa-champ input:focus, .fa-saisie:focus, .fa-etape:focus-visible, .fa-btn:focus-visible,
-.fa-seg button:focus-visible, .fa-cb-input:focus { outline:2px solid var(--accent);
+.fa-seg button:focus-visible, .fa-aide:focus-visible, .fa-cb-input:focus { outline:2px solid var(--accent);
   outline-offset:1px; }
 .fa-refus { font-size:12px; color:var(--amber); margin-top:3px; }
-.fa-deduit { font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:3px; }
+.fa-deduit { font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:3px; }
 .fa-ecart { color:var(--amber); }
 
 /* ⚠️ AUCUN CONTRÔLE NATIF VISIBLE. Un `<select>` système au milieu de champs
@@ -109,8 +117,8 @@
 .fa-cb-liste[hidden] { display:none; }
 .fa-cb-liste li { padding:7px 9px; border-radius:var(--r-sm); font-size:14px; cursor:pointer; }
 .fa-cb-liste li.vise { background:var(--bg-hover); }
-.fa-cb-liste li .sous { font-size:12px; color:var(--faint); }
-.fa-cb-vide { padding:7px 9px; font-size:13px; color:var(--faint); }
+.fa-cb-liste li .sous { font-size:12px; color:var(--muted); }
+.fa-cb-vide { padding:7px 9px; font-size:13px; color:var(--muted); }
 
 /* ── Carte client ────────────────────────────────────────────────────────── */
 .fa-fiche { display:flex; justify-content:space-between; gap:14px; align-items:flex-start;
@@ -121,7 +129,7 @@
 
 /* ── Lignes ──────────────────────────────────────────────────────────────── */
 .fa-lignes { width:100%; border-collapse:collapse; font-size:14px; }
-.fa-lignes th { font-size:12px; font-weight:500; color:var(--faint); text-align:left;
+.fa-lignes th { font-size:12px; font-weight:500; color:var(--muted); text-align:left;
   padding:0 8px 8px 0; }
 .fa-lignes td { padding:5px 8px 5px 0; border-bottom:1px solid var(--border);
   vertical-align:top; }
@@ -142,13 +150,13 @@
     margin-bottom:10px; }
   .fa-lignes td { border:none; padding:6px 0; }
   .fa-lignes td::before { content:attr(data-libelle); display:block; font-size:12px;
-    font-weight:500; color:var(--faint); margin-bottom:3px; }
+    font-weight:500; color:var(--muted); margin-bottom:3px; }
   .fa-lignes .fa-num { text-align:left; }
 }
 
 /* ── Aperçu / relecture ──────────────────────────────────────────────────── */
 .fa-pdf { width:100%; border-collapse:collapse; font-size:13px; margin-top:10px; }
-.fa-pdf th { font-size:11px; font-weight:500; color:var(--faint); text-align:right;
+.fa-pdf th { font-size:11px; font-weight:500; color:var(--muted); text-align:right;
   padding:0 0 6px 12px; }
 .fa-pdf th:first-child { text-align:left; padding-left:0; }
 .fa-pdf td { padding:4px 0 4px 12px; text-align:right; border-top:1px solid var(--border);
@@ -156,7 +164,7 @@
 .fa-pdf td:first-child { text-align:left; padding-left:0; }
 .fa-pdf tr.somme td { font-weight:600; }
 .fa-dl { display:grid; grid-template-columns:auto 1fr; gap:5px 16px; margin:0; font-size:13px; }
-.fa-dl dt { font-size:12px; font-weight:500; color:var(--faint); }
+.fa-dl dt { font-size:12px; font-weight:500; color:var(--muted); }
 .fa-dl dd { margin:0; }
 
 /* ── La barre du bas : le seul endroit qui dit ce qui manque ──────────────── */
@@ -187,13 +195,15 @@
 .fa-echec { background:var(--amber-soft); color:var(--amber); border:1px solid var(--amber);
   border-radius:var(--r-sm); padding:14px 16px; font-size:14px; line-height:1.6; }
 .fa-emis code, .fa-echec code { font-family:var(--mono); font-size:12px; }
-.fa-aide { font-size:12px; color:var(--faint); cursor:help; border-bottom:1px dotted var(--faint); }
+.fa-aide { font-size:12px; color:var(--muted); cursor:pointer; background:none; padding:0;
+  border:0; border-bottom:1px dotted var(--muted); font-family:inherit; }
+.fa-aide-texte { font-size:13px; color:var(--muted); line-height:1.55; max-width:62ch;
+  margin:-6px 0 14px; }
 .fa-reprendre { display:flex; align-items:center; gap:14px; flex-wrap:wrap;
   background:var(--bg-hover); border:1px solid var(--border); border-radius:var(--r);
   padding:12px 16px; margin-bottom:16px; }
 .fa-reprendre .quoi { font-size:14px; flex:1; min-width:200px; }
-.fa-reprendre .quand { font-size:12px; color:var(--faint); }
-.fa-note { font-size:13px; color:var(--amber); margin-top:10px; line-height:1.5; }
+.fa-reprendre .quand { font-size:12px; color:var(--muted); }
 </style>
 </head>
 <body>
@@ -210,7 +220,7 @@
     <div style="display:flex;gap:8px;align-items:center;">
       <span class="fa-badge" id="fa-mode">…</span>
       <button class="fa-btn" onclick="charger()" title="Recharger">↻</button>
-      <a href="/logout" title="Log out" style="font-size:12px;color:var(--faint);text-decoration:none;padding:5px 8px;">⎋</a>
+      <a href="/logout" title="Log out" style="font-size:12px;color:var(--muted);text-decoration:none;padding:5px 8px;">⎋</a>
     </div>
   </div>
 
@@ -265,8 +275,17 @@
             <button type="button" onclick="poserTtc(true)">TTC</button>
             <button type="button" onclick="poserTtc(false)">HT</button>
           </span>
-          <span class="fa-aide" id="fa-aide-ttc">pourquoi ça compte</span>
+          <!-- ⚠️ UN BOUTON, PAS UN `title`. L'infobulle native ne s'ouvre qu'à la souris :
+               au clavier et au doigt, l'explication du piège TTC/HT n'existait pas. -->
+          <button type="button" class="fa-aide" id="fa-aide-ttc"
+                  aria-expanded="false" aria-controls="fa-aide-ttc-texte"
+                  onclick="basculerAide()">pourquoi ça compte</button>
         </div>
+        <p class="fa-aide-texte" id="fa-aide-ttc-texte" hidden>
+          Un montant saisi TTC part tel quel. 136,50 € à 23 % donnent 110,98 € de base ;
+          le même 110,98 retapé en HT ressortirait à 136,51 €, un centime de plus sur un
+          document qui ne se corrige pas.
+        </p>
         <table class="fa-lignes">
           <thead><tr>
             <th style="width:26%">Article Vendus</th>
@@ -462,10 +481,6 @@ async function charger(){
   badge.textContent = (reel ? 'RÉEL' : 'TESTS') + ' · caisse ' + d.caixa;
   E('f-paiement').innerHTML = d.pagamentos.map(p=>
     `<option value="${p.id}">${echap(p.titre)}</option>`).join('');
-  E('fa-aide-ttc').title =
-    'Un montant saisi TTC part tel quel. 136,50 € à 23 % donnent 110,98 € de base ; '
-    + 'le même 110,98 retapé en HT ressortirait à 136,51 €, un centime de plus sur un document '
-    + 'qui ne se corrige pas.';
   dessinerClient(); dessinerReprise(); poserTtc(true); poserType(TYPE);
   if(LIGNES.length === 0) ajouterLigne(); else dessinerLignes();
   rendre();
@@ -551,7 +566,7 @@ function dessinerClient(){
       <button class="fa-btn" onclick="basculerIncomplets()">${INCOMPLETS
         ? 'Masquer les fiches incomplètes' : 'Afficher les fiches incomplètes'}</button>
     </div>
-    <div class="fa-l" style="margin-top:8px;font-weight:400;color:var(--faint)">
+    <div class="fa-l" style="margin-top:8px;font-weight:400;color:var(--muted)">
       ${vus.length} fiche(s) proposée(s)${INCOMPLETS ? '' : ' — les fiches sans nom sont masquées'}
     </div>`;
   CB['cbc'] = {options:[], surChoix:choisirClient, vise:-1, peupler:function(){
@@ -582,6 +597,11 @@ function changerClient(){ CLIENT = null; poserChamps({}); dessinerClient(); rend
 function nouveauClient(){ CLIENT = null; poserChamps({}); E('fa-client-champs').hidden = false;
                           E('fa-client-zone').innerHTML = ''; TOUCHE.client = true; rendre();
                           E('c-nom').focus(); }
+function basculerAide(){
+  const t = E('fa-aide-ttc-texte'), b = E('fa-aide-ttc');
+  t.hidden = !t.hidden;
+  b.setAttribute('aria-expanded', t.hidden ? 'false' : 'true');
+}
 function basculerIncomplets(){ INCOMPLETS = !INCOMPLETS; dessinerClient(); }
 
 /* ══ Les lignes ════════════════════════════════════════════════════════════════════════════ */
@@ -800,9 +820,16 @@ function rendre(){
               aria-label="${NOMS[k]}${quoi}">${marque} ${NOMS[k]}${quoi}</button>`;
   }).join('');
 
-  E('fa-et-1').classList.toggle('faite', g.client.length === 0);
-  E('fa-et-2').classList.toggle('faite', g.montants.length === 0 && g.articles.length === 0);
-  E('fa-et-3').classList.toggle('faite', total === 0);
+  /* ⚠️ LE NUMÉRO CÈDE LA PLACE À UN ✓. Trois pastilles vertes numérotées se lisaient encore
+     comme trois choses à faire ; le ✓ dit que c'est acquis, et le lecteur d'écran l'entend. */
+  [['fa-et-1', 1, 'Qui',    g.client.length === 0],
+   ['fa-et-2', 2, 'Quoi',   g.montants.length === 0 && g.articles.length === 0],
+   ['fa-et-3', 3, 'Relire', total === 0]].forEach(([id, n, nom, faite])=>{
+    const bt = E(id); if(!bt) return;
+    bt.classList.toggle('faite', faite);
+    bt.textContent = (faite ? '\u2713' : n + ' \u00b7') + ' ' + nom;
+    bt.setAttribute('aria-label', nom + (faite ? ' \u2014 fait' : ' \u2014 \u00e0 compl\u00e9ter'));
+  });
 
   E('c-nif-refus').textContent =
     (TOUCHE.client || TENTE) && val('c-nif') && !nifValide(val('c-nif'))
