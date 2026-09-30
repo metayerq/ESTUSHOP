@@ -80,14 +80,14 @@ CAS = {
         "reponses": {
             "/api/faturar/referenciais": {
                 # ⚠️ TOUT LE CATALOGUE, PAS UN FILTRE. Le marqueur « sans catégorie » hérité de
-                # la caisse ne rendait qu'un article — « sticks » — et cachait la fiche qui
-                # avait servi à la seule facture réelle. L'écran l'a dit avant nous.
+                # la caisse ne rendait qu'un article — « sticks » — et cachait la fiche qui avait
+                # servi à la seule facture réelle. L'écran l'a dit avant nous.
                 "artigos": [
                     {"id": 900, "titre": "sticks", "reference": "STK1", "categorie": None,
                      "categoria": "", "taux": 23},
-                    {"id": 372683324, "titre": "Comissao sobre vendas", "reference": "VCOM141",
+                    {"id": 372683324, "titre": "Comissão sobre vendas", "reference": "VCOM141",
                      "categorie": 342853712, "categoria": "Extra", "taux": 23},
-                    {"id": 700, "titre": "Espresso", "reference": "ESP", "categorie": 1,
+                    {"id": 700, "titre": "Espresso", "reference": "VICE10", "categorie": 1,
                      "categoria": "Coffee", "taux": 13},
                 ],
                 "pagamentos": [{"id": 342853234, "titre": "Multibanco"},
@@ -97,12 +97,12 @@ CAS = {
                               "ville": "Lisboa", "email": "", "incomplet": False},
                              {"id": 372689904, "nom": "", "nif": "500000000", "adresse": "",
                               "code_postal": "", "ville": "", "email": "", "incomplet": True}],
-                # La dernière facture réelle, telle que le cache la porte.
+                # La dernière facture réelle, avec l'article DÉJÀ RÉSOLU par le serveur.
                 "ultima": {"jour": "2026-09-08", "numero": "FR 01P2026/1", "type": "FR",
                            "client": {"nom": "TOMOKO HIRAOJI.", "nif": "332457389",
                                       "adresse": "Rua Heróis de Quionga 17",
                                       "code_postal": "1170-178", "ville": "Lisboa", "email": ""},
-                           "lignes": [{"libelle": "Comissao sobre venda popup 15 agosto",
+                           "lignes": [{"libelle": "Comissão sobre venda popup 15 agosto",
                                        "montant_cents": 13650, "ttc": True, "taux": 23,
                                        "qty": 1, "service_id": 372683324,
                                        "source_article": "reference"}],
@@ -110,166 +110,126 @@ CAS = {
                 "caixa": 342853246,
                 "modo": "tests",
             },
-            # ⚠️ APRÈS `/referenciais`, jamais avant : le bouchon compare par préfixe et
-            # « /api/faturar » attraperait aussi « /api/faturar/referenciais ».
+            # ⚠️ APRÈS `/referenciais`, jamais avant : le bouchon compare par préfixe.
             "/api/faturar": {"ok": True, "numero": "FR 01P2026/2", "id": 378400001,
                              "atcud": "J69MJVX5-2", "total": 136.50},
         },
         "attendu": [
-            # Les trois étapes : la troisième existe pour être lue avant d'émettre.
-            "L'acquéreur", "Les prestations", "Relire, puis émettre",
-            # ⚠️ LE MODE EST ANNONCÉ. Émettre en « tests » en croyant émettre pour de vrai
-            # laisse le client sans facture ; l'inverse abîme une série fiscale.
-            "mode tests", "342853246",
-            # ⚠️ LA REPRISE DE LA DERNIÈRE FACTURE, la fonction la plus utile de l'écran : une
-            # facture tous les deux mois, et entre deux personne ne se souvient de rien.
-            "FR 01P2026/1", "Reprendre cette facture", "émise le 2026-09-08",
-            # Le catalogue entier est proposé, avec sa catégorie — « Espresso · Coffee » prouve
-            # qu'aucun filtre ne cache les fiches vendables.
-            "Comissao sobre vendas", "Espresso", "Coffee",
-            "Multibanco", "TOMOKO HIRAOJI.",
-            # La relecture reprend la forme du document imprimé : c'est l'objet qu'on compare.
+            "1 · Qui", "2 · Quoi", "3 · Relire", "L'acquéreur", "Les prestations", "Le document",
+            # ⚠️ LE MODE EST ANNONCÉ : liseré, badge, libellé du bouton.
+            "TESTS · caisse 342853246",
+            "Multibanco", "TOMOKO HIRAOJI.", "Ce qui partira",
             "Descrição", "Taxa", "Sumário",
-            # ⚠️ ET CE QUI MANQUE EST DIT, EN ENTIER, dès le premier rendu.
-            # Consignés par le scénario avant qu'il remplisse le formulaire.
-            "MANQUES-INITIAUX", "nom du client", "NIF portugais valide",
-            # Le scénario ci-dessous tape dans le champ montant : la frappe doit survivre et le
-            # montant déduit doit suivre. 136,50 TTC à 23 % font 110,98 € HT.
-            "SAISIE-OK", "DEDUIT-OK", "110,98",
-            # ⚠️ LE MODE VIT DANS LE LIBELLÉ DU BOUTON, dernier endroit que l'œil traverse
-            # avant l'acte irréversible.
-            "PRET-OUI bouton=Émettre la facture — tests",
-            # Les deux signaux ajoutés après l'audit, éprouvés par le scénario.
-            "ECART-SIGNALE", "EMAIL-EXPLICITE",
-            # ⚠️ LE CRITÈRE DU POINT 1 : la reprise remplit aussi l'article.
+            # ⚠️ AUCUN ✗ AVANT D'AVOIR TOUCHÉ : un écran neuf tout en rouge apprend à ignorer
+            # le rouge, et c'est celui qui compte qu'on rate ensuite.
+            "CHECK-VIERGE oui",
+            # ⚠️ LE CRITÈRE DU POINT 1 : reprendre suffit, article compris.
             "REPRISE-COMPLETE",
-            # Et le document reste atteignable après l'acte.
-            "Ouvrir le PDF",
-            # ⚠️ LE VERROU POST-ÉMISSION, la correction la plus importante de cet écran : sans
-            # lui, retoucher un champ après avoir émis réarmait le bouton et un tap refacturait.
-            "PRET-OUI", "CONFIRM-OK", "VERROU-OK", "NUMERO-OK",
-            # Plus de choix TTC/HT : le montant connu est toujours celui que le client paie.
-            "Montant TTC",
+            # ⚠️ ET L'ACCENT TRAVERSE : « Comissão », pas « Comissao ».
+            "Comissão sobre venda popup 15 agosto",
+            # Tout le catalogue est offert, fiches vendables comprises.
+            "CATALOGUE-COMPLET",
+            "SAISIE-OK", "DEDUIT-OK", "TOTALLIGNE-OK",
+            # ⚠️ LA BASCULE HT/TTC : une seule, globale, et elle change le montant facturé.
+            "BASCULE-UNIQUE", "HT-VERS-TTC-OK", "RETOUR-TTC-OK",
+            "ECART-SIGNALE", "EMAIL-EXPLICITE",
+            "PRET-OUI", "CONFIRM-OK",
+            # ⚠️ LE VERROU POST-ÉMISSION, la correction la plus importante de cet écran.
+            "VERROU-OK", "NUMERO-OK", "PDF-OK",
         ],
-        # ⚠️ CE QUI NE DOIT SURTOUT PAS S'AFFICHER. Le référentiel annonce `modo: "tests"` :
-        # voir « émission réelle » voudrait dire que l'écran affiche le mode qu'il suppose et
-        # non celui que le serveur donne. On émettrait pour de vrai en croyant essayer — ou
-        # l'inverse, qui laisse le client sans facture.
-        "interdit": ["émission réelle",
-                     # ⚠️ LE CHAMP MONTANT DOIT RESTER SAISISSABLE. Le tableau était redessiné à
-                     # chaque frappe : le champ en cours de saisie était détruit, perdait le
-                     # focus, et plus rien ne pouvait y être tapé. L'écran s'affichait
-                     # parfaitement et ne servait à rien.
-                     "SAISIE-PERDUE", "DEDUIT-MUET",
-                     # ⚠️ L'OPTION HT A DISPARU, et sa disparition est le correctif : c'est elle
-                     # qui fabriquait 167,90 € pour 136,50 saisis, ou le centime de dérive.
-                     ">HT<",
-                     # Le mode réel ne doit pas s'afficher quand le serveur annonce « tests ».
-                     "Émettre la facture — RÉEL",
-                     "VERROU-ROMPU", "CONFIRM-ABSENT", "PRET-NON",
-                     "ECART-MUET", "EMAIL-IMPLICITE",
-                     "REPRISE-TROUEE", "REPRISE-ABSENTE"],
-        # Le scénario tape un montant et vérifie que la frappe survit ET que le montant déduit
-        # suit. Il écrit son verdict dans la page, que le dump ramène.
-        "scenario": """
+        "interdit": [
+            # Le mode réel ne doit pas s'afficher quand le serveur annonce « tests ».
+            "RÉEL · caisse", "Émettre — RÉEL",
+            # Les bandeaux du haut ont disparu : un seul endroit dit ce qui manque.
+            "Il manque :",
+            "SAISIE-PERDUE", "DEDUIT-MUET", "TOTALLIGNE-MUET", "ECART-MUET", "EMAIL-IMPLICITE",
+            "BASCULE-PAR-LIGNE", "HT-VERS-TTC-MUET", "RETOUR-TTC-MUET",
+            "REPRISE-TROUEE", "REPRISE-ABSENTE", "CATALOGUE-FILTRE", "PRET-NON",
+            "CONFIRM-ABSENT", "VERROU-ROMPU", "NUMERO-MUET", "PDF-ABSENT", "CHECK-VIERGE non",
+            "NaN", "undefined",
+        ],
+        "scenario": r"""
 (function attendre(n){
-  var champ = document.querySelector('#fa-corps input[inputmode=decimal]');
-  if(!champ && n < 60) return setTimeout(function(){ attendre(n+1); }, 20);
-  var marque = document.createElement('div');
-  document.body.appendChild(marque);
-  if(!champ){ marque.textContent = 'SAISIE-PERDUE aucun champ montant'; return; }
+  var E = function(i){ return document.getElementById(i); };
+  if((!E('fa-reprendre') || E('fa-reprendre').hidden) && n < 80)
+    return setTimeout(function(){ attendre(n+1); }, 20);
+  var trace = function(t){ var d = document.createElement('div'); d.textContent = t;
+                           document.body.appendChild(d); };
 
-  // 1. La frappe doit survivre, et le montant déduit suivre.
-  champ.focus();
-  champ.value = '136,50';
+  var vierge = E('fa-check').textContent.replace(/\s+/g,' ').trim();
+  trace('CHECK-VIERGE ' + (vierge.indexOf('\u2717') < 0 ? 'oui' : 'non ' + vierge));
+
+  var reprise = document.querySelector('#fa-reprendre button');
+  if(!reprise){ trace('REPRISE-ABSENTE'); return; }
+  reprise.click();
+  var art = E('cba0-input');
+  trace((art && art.value.indexOf('Comiss') === 0)
+        ? 'REPRISE-COMPLETE' : 'REPRISE-TROUEE article=' + (art && art.value));
+
+  art.focus(); art.value = '';
+  art.dispatchEvent(new Event('input', {bubbles:true}));
+  var liste = E('cba0-liste').textContent;
+  trace((liste.indexOf('Espresso') >= 0 && liste.indexOf('Coffee') >= 0)
+        ? 'CATALOGUE-COMPLET' : 'CATALOGUE-FILTRE ' + liste.slice(0,70));
+  document.querySelector('#cba0-liste li[data-v="372683324"]')
+    .dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
+
+  var champ = document.querySelector('#fa-corps input[inputmode=decimal]');
+  champ.focus(); champ.value = '136,50';
   champ.dispatchEvent(new Event('input', {bubbles:true}));
   var vivant = document.querySelector('#fa-corps input[inputmode=decimal]');
-  var focus  = document.activeElement === vivant;
-  var garde  = vivant && vivant.value === '136,50';
-  var deduit = (document.getElementById('fa-deduit-0') || {}).textContent || '';
-  marque.textContent =
-    (focus && garde ? 'SAISIE-OK' : 'SAISIE-PERDUE focus=' + focus + ' valeur=' + (vivant && vivant.value)) +
-    ' | ' + (deduit.indexOf('110,98') >= 0 ? 'DEDUIT-OK ' + deduit : 'DEDUIT-MUET ' + deduit);
+  trace((document.activeElement === vivant && vivant.value === '136,50')
+        ? 'SAISIE-OK' : 'SAISIE-PERDUE');
+  trace((E('fa-deduit-0').textContent.indexOf('110,98') >= 0) ? 'DEDUIT-OK' : 'DEDUIT-MUET');
+  trace((E('fa-lt-0').textContent.indexOf('136,50') >= 0) ? 'TOTALLIGNE-OK' : 'TOTALLIGNE-MUET');
 
-  // ⚠️ L'ÉTAT INITIAL EST CONSIGNÉ AVANT D'ÊTRE DÉTRUIT. Le scénario remplit le formulaire :
-  // sans cette trace, on ne pourrait plus vérifier que les manques étaient annoncés EN ENTIER
-  // au premier rendu — et c'est la promesse de l'écran.
-  var avant = document.createElement('div');
-  avant.textContent = 'MANQUES-INITIAUX ' + (document.getElementById('fa-manques').textContent || '(aucun)');
-  document.body.appendChild(avant);
+  /* ⚠️ LA BASCULE HT/TTC EST GLOBALE, ET ELLE DÉCIDE DU MONTANT FACTURÉ : 136,50 saisis en HT
+     font une facture à 167,90 €. Une bascule par ligne rendait deux lignes incohérentes. */
+  trace(document.querySelectorAll('#fa-corps .fa-seg').length === 0
+        ? 'BASCULE-UNIQUE' : 'BASCULE-PAR-LIGNE');
+  E('fa-seg-ttc').children[1].click();
+  trace((E('fa-deduit-0').textContent.indexOf('167,90') >= 0
+         && E('fa-lt-0').textContent.indexOf('167,90') >= 0)
+        ? 'HT-VERS-TTC-OK'
+        : 'HT-VERS-TTC-MUET d=' + E('fa-deduit-0').textContent
+                        + ' t=' + E('fa-lt-0').textContent);
+  E('fa-seg-ttc').children[0].click();
+  trace((E('fa-lt-0').textContent.indexOf('136,50') >= 0) ? 'RETOUR-TTC-OK' : 'RETOUR-TTC-MUET');
 
-  // 2. Un brouillon complet, puis l'émission — pour éprouver le VERROU.
-  function poser(id, v){ var e = document.getElementById(id); e.value = v;
-                         e.dispatchEvent(new Event('input', {bubbles:true})); }
-  poser('c-nom', 'TOMOKO HIRAOJI.');
-  poser('c-nif', '332457389');
-  poser('c-adresse', 'Rua Heróis de Quionga 17');
-  poser('c-ville', 'Lisboa');
-  // ⚠️ ON REPREND AU LIEU DE RESAISIR : c'est le critère d'acceptation du point 1. Une reprise
-  // doit donner une facture émettable sans rien toucher, article compris.
-  var reprise = document.querySelector('#fa-reprendre button');
-  var vr = document.createElement('div'); document.body.appendChild(vr);
-  if(!reprise){ vr.textContent = 'REPRISE-ABSENTE'; return; }
-  reprise.click();
-  var art = document.getElementById('fa-art-0');
-  vr.textContent = (art && art.value === '372683324') ? 'REPRISE-COMPLETE'
-                 : 'REPRISE-TROUEE article=' + (art && art.value);
-  // Les champs de la ligne, dans l'ordre : filtre article, libellé, montant, quantité.
-  var champs = document.querySelectorAll('#fa-corps input');
-  if(champs[1]){ champs[1].value = 'Comissao';
-                 champs[1].dispatchEvent(new Event('input', {bubbles:true})); }
-  var m2 = document.querySelector('#fa-corps input[inputmode=decimal]');
-  m2.value = '136,50'; m2.dispatchEvent(new Event('input', {bubbles:true}));
+  var taux = document.querySelector('#fa-corps select');
+  taux.value = '13'; taux.dispatchEvent(new Event('change', {bubbles:true}));
+  trace((E('fa-corps').textContent.indexOf('fiche (23%)') >= 0) ? 'ECART-SIGNALE' : 'ECART-MUET');
+  taux.value = '23'; taux.dispatchEvent(new Event('change', {bubbles:true}));
 
-  // ⚠️ L'ÉCART DE TAUX : la fiche est à 23 %, on glisse à 13 %. Sans signal, la facture part
-  // à la mauvaise TVA sans un mot.
-  var taux = document.querySelectorAll('#fa-corps select')[1];
-  if(taux){ taux.value = '13'; taux.dispatchEvent(new Event('change', {bubbles:true})); }
-  var e1 = document.createElement('div'); document.body.appendChild(e1);
-  /* ⚠️ ON CHERCHE DANS LE TABLEAU, PAS DANS `document.body`. Ce scénario est un <script> à
-     l'intérieur du body, et `body.textContent` inclut le texte des scripts : la recherche
-     trouvait sa propre chaîne et le marqueur restait vert quoi qu'il arrive. Un test qui ne
-     peut pas échouer ne garde rien. */
-  e1.textContent = (document.getElementById('fa-corps').textContent.indexOf('fiche (23%)') >= 0)
-    ? 'ECART-SIGNALE' : 'ECART-MUET';
-  if(taux){ taux.value = '23'; taux.dispatchEvent(new Event('change', {bubbles:true})); }
-
-  // ⚠️ L'ENVOI PAR EMAIL EST UNE DÉCISION, pas un effet de bord du champ rempli.
-  poser('c-email', 'tomoko@exemple.pt');
-  var e2 = document.createElement('div'); document.body.appendChild(e2);
-  var avantCoche = document.getElementById('fa-relire').textContent.indexOf('aucun envoi') >= 0;
-  var coche = document.getElementById('c-envoyer');
-  coche.checked = true; coche.dispatchEvent(new Event('change', {bubbles:true}));
-  var apresCoche = document.getElementById('fa-relire').textContent.indexOf('envoyée à tomoko@exemple.pt') >= 0;
-  e2.textContent = (avantCoche && apresCoche) ? 'EMAIL-EXPLICITE' : 'EMAIL-IMPLICITE';
+  E('fa-client-zone').querySelector('button').click();
+  var mail = E('c-email'); mail.value = 'tomoko@exemple.pt';
+  mail.dispatchEvent(new Event('input', {bubbles:true}));
+  var avant = E('fa-relire').textContent.indexOf('aucun envoi') >= 0;
+  var coche = E('c-envoyer'); coche.checked = true;
+  coche.dispatchEvent(new Event('change', {bubbles:true}));
+  var apres = E('fa-relire').textContent.indexOf('tomoko@exemple.pt') >= 0;
+  trace((avant && apres) ? 'EMAIL-EXPLICITE' : 'EMAIL-IMPLICITE');
   coche.checked = false; coche.dispatchEvent(new Event('change', {bubbles:true}));
 
-  var bouton = document.getElementById('fa-emettre');
-  var verdict = document.createElement('div');
-  document.body.appendChild(verdict);
-  if(bouton.disabled){ verdict.textContent = 'PRET-NON manques=' +
-      (document.getElementById('fa-manques').textContent || '(aucun)'); return; }
-  // Le libellé est consigné ici : après l'émission il devient « Émise ».
-  verdict.textContent = 'PRET-OUI bouton=' + bouton.textContent;
+  var bouton = E('fa-emettre');
+  if(bouton.disabled){ trace('PRET-NON ' + E('fa-check').textContent.replace(/\s+/g,' ')); return; }
+  trace('PRET-OUI bouton=' + bouton.textContent);
 
-  bouton.click();                                  // premier geste : la confirmation
-  var conf = document.querySelector('#fa-confirme .btn-primary');
-  var v2 = document.createElement('div'); document.body.appendChild(v2);
-  if(!conf){ v2.textContent = 'CONFIRM-ABSENT'; return; }
-  v2.textContent = 'CONFIRM-OK';
-  conf.click();                                    // second geste : l'émission
+  bouton.click();
+  var conf = document.querySelector('#fa-confirme button');
+  if(!conf){ trace('CONFIRM-ABSENT'); return; }
+  trace('CONFIRM-OK');
+  conf.click();
 
-  (function apres(k){
-    var zone = document.getElementById('fa-resultat');
+  (function apresEmission(k){
+    var zone = E('fa-resultat');
     if((zone.textContent||'').indexOf('Facture émise') < 0 && k < 80)
-      return setTimeout(function(){ apres(k+1); }, 20);
-    var v3 = document.createElement('div'); document.body.appendChild(v3);
-    // ⚠️ LE TEST QUI COMPTE. Retoucher un champ après l'émission réarmait le bouton — libellé
-    // « Émise », onclick toujours branché — et un seul tap refacturait le client.
-    poser('c-nom', 'TOMOKO HIRAOJI');
-    var b2 = document.getElementById('fa-emettre');
-    v3.textContent = (b2.disabled ? 'VERROU-OK' : 'VERROU-ROMPU bouton=' + b2.textContent) +
-                     ' | ' + ((zone.textContent||'').indexOf('FR 01P2026/2') >= 0 ? 'NUMERO-OK' : 'NUMERO-MUET');
+      return setTimeout(function(){ apresEmission(k+1); }, 20);
+    var nom = E('c-nom'); nom.value = 'TOMOKO HIRAOJI';
+    nom.dispatchEvent(new Event('input', {bubbles:true}));
+    trace(E('fa-emettre').disabled ? 'VERROU-OK' : 'VERROU-ROMPU');
+    trace((zone.textContent.indexOf('FR 01P2026/2') >= 0) ? 'NUMERO-OK' : 'NUMERO-MUET');
+    trace((zone.innerHTML.indexOf('/api/faturar/378400001/pdf') >= 0) ? 'PDF-OK' : 'PDF-ABSENT');
   })(0);
 })(0);
 """,
