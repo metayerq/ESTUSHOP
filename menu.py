@@ -52,6 +52,10 @@ CATALOGUE = [
     {"chemin": "/loyalty",        "libelle": "Fidélité",         "groupe": "Clients"},
     {"chemin": "/marketing",      "libelle": "Marketing SMS",    "groupe": "Clients"},
     {"chemin": "/clientes",       "libelle": "Clients Vendus",   "groupe": "Clients"},
+    # Remontée de la caisse le 30/09/2026 : une facture à tiers en 72 jours n'avait rien à
+    # faire au comptoir, et un écran qui ressemble à l'écran de vente finit par recevoir un
+    # tap de vente.
+    {"chemin": "/faturar",        "libelle": "Facturer un tiers", "groupe": "Clients"},
 
     # Faire tourner la maison.
     {"chemin": "/sop",            "libelle": "SOP — checklists", "groupe": "Exploitation"},

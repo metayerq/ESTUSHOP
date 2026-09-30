@@ -8,6 +8,7 @@ Usage:
 """
 
 import os
+import facturation
 import time as _time
 import json
 import re as _re
@@ -6581,6 +6582,75 @@ def api_customers():
         return jsonify({"enabled": _rm.enabled(), "empty": True, "error": str(e)})
     except Exception as e:
         return jsonify({"error": str(e)}), 502
+
+@app.route("/faturar")
+def faturar_page():
+    """
+    Facturer un tiers — l'écran, remonté de la caisse le 30/09/2026.
+
+    ⚠️ IL A QUITTÉ LE COMPTOIR PARCE QU'IL N'Y AVAIT RIEN À FAIRE. Mesuré : UNE facture à tiers
+    en 72 jours, un FR de 136,50 € le 08/09/2026, et ce jour-là aucun paiement n'est passé par
+    le terminal. Neuf cents lignes d'écran et une route qui émet des documents fiscaux vivaient
+    dans la caisse pour un geste bimestriel — et un écran qui ressemble à l'écran de vente
+    finit par recevoir un tap de vente.
+    """
+    if _current_role() not in ("admin",):
+        return redirect("/login")
+    return render_template("faturar.html")
+
+
+@app.route("/api/faturar/referenciais")
+def api_faturar_referenciais():
+    """Les prestations facturables, les règlements du compte et les clients déjà connus."""
+    if _current_role() not in ("admin",):
+        return jsonify({"error": "unauthorized"}), 403
+    try:
+        register_id, mode = facturation.caisse_et_mode()
+        return jsonify({
+            "prestacoes": facturation.prestations(_req),
+            "pagamentos": facturation.moyens_paiement(_req),
+            "clientes":   facturation.clients_connus(_req),
+            "caixa": register_id,
+            # ⚠️ LE MODE EST AFFICHÉ, PAS DEVINÉ. Émettre en « tests » en croyant émettre pour
+            # de vrai laisse le client sans facture ; l'inverse abîme une série fiscale.
+            "modo": mode,
+        })
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        return jsonify({"error": f"Vendus injoignable : {str(e)[:160]}"}), 502
+
+
+@app.route("/api/faturar", methods=["POST"])
+def api_faturar():
+    """
+    Émet UNE facture.
+
+    ⚠️ CE QUI PEUT ÊTRE REFUSÉ L'EST AVANT LE RÉSEAU. Une facture émise ne se retire que par
+    note de crédit : `manques()` puis `corps_facture()` lèvent avant le moindre appel, et rien
+    n'est parti.
+
+    ⚠️ ET AUCUNE RÉÉMISSION AUTOMATIQUE. Une requête qui échoue après le POST peut avoir
+    abouti ; réessayer facturerait deux fois le même client.
+    """
+    if _current_role() not in ("admin",):
+        return jsonify({"error": "unauthorized"}), 403
+    brouillon = request.get_json(silent=True) or {}
+    m = facturation.manques(brouillon)
+    if m:
+        return jsonify({"error": "incompleto", "manques": m}), 400
+    try:
+        doc = facturation.emettre(_req, brouillon, aujourdhui=today_lisbon())
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)[:300]}), 502
+    d = doc[0] if isinstance(doc, list) and doc else doc
+    return jsonify({"ok": True, "numero": (d or {}).get("number"),
+                    "id": (d or {}).get("id"), "atcud": (d or {}).get("atcud"),
+                    "total": (d or {}).get("amount_gross"),
+                    "qrcode": (d or {}).get("qrcode")})
+
 
 @app.route("/clientes")
 def clientes_page():

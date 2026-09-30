@@ -72,6 +72,44 @@ SANS = pytest.mark.skipif(
 # ⚠️ ON VÉRIFIE DU TEXTE RENDU, PAS LA PRÉSENCE D'UN GABARIT. Un conteneur vide prouve que le
 # script est mort ; c'est exactement ce qui s'est produit trois fois.
 CAS = {
+    # ⚠️ REMONTÉE DE LA CAISSE LE 30/09/2026. L'écran émet des documents fiscaux : un script
+    # mort y produirait un formulaire vide, ou pire un bouton actif sur un brouillon incomplet.
+    # On exige donc les trois étapes rendues, le mode d'émission ANNONCÉ, et le bouton DÉSACTIVÉ
+    # tant qu'il manque quelque chose.
+    "faturar.html": {
+        "reponses": {
+            "/api/faturar/referenciais": {
+                "prestacoes": [{"id": 372683324, "titre": "Comissao sobre vendas", "taux": 23},
+                               {"id": 372683999, "titre": "Catering", "taux": 13}],
+                "pagamentos": [{"id": 342853234, "titre": "Multibanco"},
+                               {"id": 342853233, "titre": "Numerario"}],
+                "clientes": [{"id": 372689903, "nom": "TOMOKO HIRAOJI.", "nif": "332457389",
+                              "adresse": "Rua Heróis de Quionga 17", "code_postal": "1170-178",
+                              "ville": "Lisboa", "email": "", "incomplet": False},
+                             {"id": 372689904, "nom": "", "nif": "500000000", "adresse": "",
+                              "code_postal": "", "ville": "", "email": "", "incomplet": True}],
+                "caixa": 342853246,
+                "modo": "tests",
+            },
+        },
+        "attendu": [
+            # Les trois étapes : la troisième existe pour être lue avant d'émettre.
+            "L'acquéreur", "Les prestations", "Relire, puis émettre",
+            # ⚠️ LE MODE EST ANNONCÉ. Émettre en « tests » en croyant émettre pour de vrai
+            # laisse le client sans facture ; l'inverse abîme une série fiscale.
+            "mode tests", "342853246",
+            # Les référentiels ont bien été lus et posés dans les listes.
+            "Comissao sobre vendas", "Multibanco", "TOMOKO HIRAOJI.",
+            # ⚠️ ET CE QUI MANQUE EST DIT, EN ENTIER. Un écran qui révèle les défauts un par un
+            # fait remplir, refuse, fait remplir, refuse encore.
+            "Il manque", "nom du client", "NIF à 9 chiffres",
+        ],
+        # ⚠️ CE QUI NE DOIT SURTOUT PAS S'AFFICHER. Le référentiel bouchonné annonce
+        # `modo: "tests"` : voir « émission réelle » voudrait dire que l'écran affiche le mode
+        # qu'il suppose et non celui que le serveur lui donne. On émettrait pour de vrai en
+        # croyant essayer, ou l'inverse — et l'inverse laisse le client sans facture.
+        "interdit": ["émission réelle"],
+    },
     "marge.html": {
         "reponses": {
             "/api/marge": {
