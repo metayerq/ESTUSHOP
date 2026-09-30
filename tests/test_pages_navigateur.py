@@ -139,7 +139,8 @@ CAS = {
             "Descrição", "Taxa", "Sumário",
             # ⚠️ AUCUN ✗ AVANT D'AVOIR TOUCHÉ : un écran neuf tout en rouge apprend à ignorer
             # le rouge, et c'est celui qui compte qu'on rate ensuite.
-            "CHECK-VIERGE oui", "OUVERTURE-CALME",
+            "CHECK-VIERGE oui", "OUVERTURE-CALME", "PRESELECTION-OK", "REFERENCE-VISIBLE",
+            "FOCUS-OFFRE-TOUT",
             # ⚠️ LE CRITÈRE DU POINT 1 : reprendre suffit, article compris.
             "REPRISE-COMPLETE",
             # ⚠️ ET L'ACCENT TRAVERSE : « Comissão », pas « Comissao ».
@@ -166,7 +167,7 @@ CAS = {
             "BASCULE-PAR-LIGNE", "HT-VERS-TTC-MUET", "RETOUR-TTC-MUET",
             "CLAVIER-MUET", "AIDE-MUETTE", "ACCORD-FICHES-MUET",
             "FR-AVEC-ECHEANCE", "FT-AVEC-REGLEMENT", "OUVERTURE-ENCOMBREE",
-            "ENTREE-MUETTE",
+            "ENTREE-MUETTE", "PRESELECTION-MUETTE", "REFERENCE-ABSENTE", "FOCUS-SE-FILTRE",
             "REPRISE-TROUEE", "REPRISE-ABSENTE", "CATALOGUE-FILTRE", "PRET-NON",
             "CONFIRM-ABSENT", "VERROU-ROMPU", "NUMERO-MUET", "PDF-ABSENT", "CHECK-VIERGE non",
             "ETAPE-NEUVE-MUETTE", "ETAPE-FIGEE",
@@ -191,6 +192,31 @@ CAS = {
      choisi — alors que l'étape 1 est le client. */
   trace((E('cba0-liste').hidden && document.activeElement !== E('cba0-input'))
         ? 'OUVERTURE-CALME' : 'OUVERTURE-ENCOMBREE');
+
+  /* ⚠️ LA LIGNE NEUVE ARRIVE AVEC LE DERNIER ARTICLE, ET RIEN D'AUTRE. L'article est pré-posé
+     et VISIBLE — on peut le changer ; le libellé et le montant restent vides, parce que
+     réimprimer le texte et la somme du mois dernier serait une faute, pas une aide. */
+  var libelle = document.querySelector('#fa-corps input[aria-label^="Libellé imprimé"]');
+  var somme   = document.querySelector('#fa-corps input[inputmode=decimal]');
+  trace((E('cba0-input').value.indexOf('Comiss') === 0 && !libelle.value && !somme.value)
+        ? 'PRESELECTION-OK'
+        : 'PRESELECTION-MUETTE art=' + E('cba0-input').value
+          + ' lib=' + libelle.value + ' mt=' + somme.value);
+
+  /* ⚠️ LA RÉFÉRENCE IDENTIFIE LA FICHE, LE TITRE NON. La facture imprime ce code dans la
+     colonne « Código », et deux fiches peuvent porter le même titre. */
+  var refChamp = E('fa-ref-0').textContent.indexOf('VCOM141') >= 0;
+  E('cba0-input').focus();
+  var texteListe = E('cba0-liste').textContent;
+  var refListe = texteListe.indexOf('VCOM141') >= 0;
+  trace((refChamp && refListe) ? 'REFERENCE-VISIBLE'
+        : 'REFERENCE-ABSENTE champ=' + refChamp + ' liste=' + refListe);
+
+  /* ⚠️ CLIQUER DANS UN CHAMP DÉJÀ REMPLI OFFRE TOUT LE CATALOGUE. S'en servir comme filtre
+     n'offrait que la fiche déjà posée : changer d'article demandait de tout effacer d'abord. */
+  trace((texteListe.indexOf('Espresso') >= 0 && texteListe.indexOf('sticks') >= 0)
+        ? 'FOCUS-OFFRE-TOUT' : 'FOCUS-SE-FILTRE ' + texteListe.slice(0,70));
+  E('cba0-input').blur(); cbFermer('cba0');
 
   var vierge = E('fa-check').textContent.replace(/\s+/g,' ').trim();
   trace('CHECK-VIERGE ' + (vierge.indexOf('\u2717') < 0 ? 'oui' : 'non ' + vierge));

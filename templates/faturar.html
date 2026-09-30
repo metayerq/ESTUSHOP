@@ -353,6 +353,12 @@ let INCOMPLETS = false;         // « afficher les fiches incomplètes »
    `oninput` l'appelle : après une émission réussie, effleurer un champ le réarmait et un seul
    tap refacturait le client. */
 let EMISE = false;
+/* ⚠️ LE DERNIER ARTICLE UTILISÉ, PRÉ-POSÉ SUR UNE LIGNE NEUVE. Il vient de la dernière facture
+   émise, et il est VISIBLE dans le champ : on peut le changer d'un geste. On ne le substitue
+   jamais à l'émission — pré-remplir ce qui s'affiche est une aide, deviner à la place de
+   quelqu'un sur un document irréversible n'en est pas une. Le LIBELLÉ, lui, reste vide :
+   réimprimer le texte du mois dernier sur la facture de ce mois-ci serait une faute. */
+let DERNIER_ARTICLE = 0;
 /* ⚠️ PAS D'ERREUR AVANT D'AVOIR TOUCHÉ. Un écran neuf qui s'ouvre tout en rouge apprend à
    ignorer le rouge. Chaque groupe ne se juge qu'une fois visité — ou dès qu'on tente d'émettre. */
 const TOUCHE = {client:false, montants:false, articles:false};
@@ -396,7 +402,10 @@ const cpValide = v => !v || /^\d{4}-\d{3}$/.test(v);
    ⚠️ ÉCRIT À LA MAIN, ET NAVIGABLE AU CLAVIER. Le champ de recherche doublé d'une listbox
    native demandait deux gestes et deux endroits pour une seule décision ; un `<datalist>`
    n'aurait rendu que du texte, alors qu'il faut un identifiant. Flèches, Entrée, Échap. */
-function cbFiltre(cb){ return (E(cb+'-input').value || '').trim(); }
+function cbFiltre(cb){
+  if(CB[cb] && CB[cb].tout) return '';
+  return (E(cb+'-input').value || '').trim();
+}
 
 function cbRendre(cb, options, surChoix){
   const liste = E(cb+'-liste'), champ = E(cb+'-input');
@@ -419,7 +428,15 @@ function cbRendre(cb, options, surChoix){
 }
 const CB = {};
 
-function cbOuvrir(cb){ if(CB[cb] && CB[cb].peupler) CB[cb].peupler(); }
+/* ⚠️ CLIQUER DANS LE CHAMP OFFRE TOUT, TAPER RESTREINT. Le champ garde le libellé de la fiche
+   choisie ; s'en servir comme filtre au moment du focus rendait une liste vide — on ne pouvait
+   plus changer d'article sans tout effacer à la main d'abord. */
+function cbOuvrir(cb, tout){
+  if(!CB[cb] || !CB[cb].peupler) return;
+  CB[cb].tout = !!tout;
+  CB[cb].peupler();
+  CB[cb].tout = false;
+}
 function cbFermer(cb){
   const liste = E(cb+'-liste'), champ = E(cb+'-input');
   if(liste) liste.hidden = true;
@@ -435,7 +452,7 @@ function cbClavier(cb, ev){
   const c = CB[cb], liste = E(cb+'-liste');
   if(ev.key === 'Escape'){ cbFermer(cb); return; }
   if(!c || !liste || liste.hidden){
-    if(ev.key === 'ArrowDown'){ ev.preventDefault(); cbOuvrir(cb); }
+    if(ev.key === 'ArrowDown'){ ev.preventDefault(); cbOuvrir(cb, true); }
     return;
   }
   const n = c.options.length;
@@ -481,6 +498,11 @@ async function charger(){
   badge.textContent = (reel ? 'RÉEL' : 'TESTS') + ' · caisse ' + d.caixa;
   E('f-paiement').innerHTML = d.pagamentos.map(p=>
     `<option value="${p.id}">${echap(p.titre)}</option>`).join('');
+  /* La mémoire de l'article vient de la dernière facture émise — c'est la seule source qui
+     survive à un rechargement, et c'est celle qui a le plus de chances d'être la bonne. */
+  const derniere = REF.ultima && REF.ultima.lignes && REF.ultima.lignes[0];
+  if(derniere && derniere.service_id) DERNIER_ARTICLE = derniere.service_id;
+
   dessinerClient(); dessinerReprise(); poserTtc(true); poserType(TYPE);
   if(LIGNES.length === 0) ajouterLigne(false); else dessinerLignes();
   rendre();
@@ -557,7 +579,7 @@ function dessinerClient(){
       <input class="fa-cb-input" id="cbc-input" role="combobox" aria-expanded="false"
              aria-controls="cbc-liste" aria-autocomplete="list" autocomplete="off"
              placeholder="Tomoko, ou 332457389…"
-             oninput="cbOuvrir('cbc')" onfocus="cbOuvrir('cbc')"
+             oninput="cbOuvrir('cbc')" onfocus="cbOuvrir('cbc', true)"
              onkeydown="cbClavier('cbc', event)">
       <ul class="fa-cb-liste" id="cbc-liste" role="listbox" hidden></ul>
     </div>
@@ -623,7 +645,9 @@ function poserType(t){
    l'étape 1 est justement le client. On ne focalise que pour un geste de l'utilisateur :
    « + Ligne », ou Entrée dans la dernière ligne. */
 function ajouterLigne(focaliser = true){
-  LIGNES.push({service_id:0, libelle:'', montant:'', taux:23, qty:1});
+  const a = REF.artigos && REF.artigos.find(x=>x.id === DERNIER_ARTICLE);
+  LIGNES.push({service_id: a ? a.id : 0, source_article: a ? 'dernier' : undefined,
+               libelle:'', montant:'', taux: a ? a.taux : 23, qty:1});
   dessinerLignes(); rendre();
   if(!focaliser) return;
   const champs = document.querySelectorAll('#fa-corps .fa-cb-input');
@@ -637,7 +661,14 @@ function retirerLigne(i){
 
 function articleTitre(id){
   const a = REF.artigos.find(a=>a.id === id);
-  return a ? a.titre + (a.categoria ? ' · ' + a.categoria : '') : '';
+  return a ? a.titre : '';
+}
+/* ⚠️ LA RÉFÉRENCE VA SOUS LE CHAMP, PAS DEDANS. Dans le champ elle était coupée — la colonne
+   fait 26 % — donc invisible là où elle sert. Sous le champ elle tient toujours, comme le
+   montant déduit sous la somme. C'est le code que la facture imprime en colonne « Código ». */
+function articleReference(id){
+  const a = REF.artigos.find(a=>a.id === id);
+  return a && a.reference ? a.reference : '';
 }
 function uniteCents(l){
   const c = centsStrict(l.montant);
@@ -665,11 +696,12 @@ function dessinerLignes(){
           <input class="fa-cb-input" id="cba${i}-input" role="combobox" aria-expanded="false"
                  aria-controls="cba${i}-liste" aria-autocomplete="list" autocomplete="off"
                  aria-label="Article Vendus de la ligne ${i+1}"
-                 placeholder="chercher un article…" value="${echap(choisi ? choisi.titre : '')}"
-                 oninput="cbOuvrir('cba${i}')" onfocus="cbOuvrir('cba${i}')"
+                 placeholder="chercher un article…" value="${echap(articleTitre(l.service_id))}"
+                 oninput="cbOuvrir('cba${i}')" onfocus="cbOuvrir('cba${i}', true)"
                  onkeydown="cbClavier('cba${i}', event)">
           <ul class="fa-cb-liste" id="cba${i}-liste" role="listbox" hidden></ul>
         </div>
+        <div class="fa-deduit" id="fa-ref-${i}">${echap(articleReference(l.service_id))}</div>
         ${l.source_article === 'introuvable'
           ? '<div class="fa-refus">à rechoisir</div>' : ''}
       </td>
@@ -709,8 +741,11 @@ function dessinerLignes(){
       const o = REF.artigos.filter(a=> !q || a.titre.toLowerCase().includes(q) ||
           (a.reference||'').toLowerCase().includes(q) || (a.categoria||'').toLowerCase().includes(q))
         .slice(0,60)
+        /* ⚠️ LA RÉFÉRENCE D'ABORD. C'est elle qui identifie la fiche — la facture imprime
+           son code dans la colonne « Código », et deux fiches peuvent porter le même titre.
+           Sans elle, on ne peut pas vérifier qu'on a repris LA bonne. */
         .map(a=>({valeur:String(a.id), titre:a.titre,
-                  sous:[a.categoria, a.taux + '%'].filter(Boolean).join(' · ')}));
+                  sous:[a.reference, a.categoria, a.taux + '%'].filter(Boolean).join(' · ')}));
       cbRendre('cba'+i, o, v=>choisirArticle(i, +v));
     }};
   });
@@ -723,6 +758,7 @@ function choisirArticle(i, id){
   /* Le taux suit la fiche — c'est Vendus qui le porte — et reste modifiable. Le libellé n'est
      proposé que s'il est vide : on n'écrase jamais ce qui a été écrit à la main. */
   if(a){ l.taux = a.taux; if(!l.libelle) l.libelle = a.titre; }
+  DERNIER_ARTICLE = id;
   TOUCHE.articles = true;
   dessinerLignes(); rendre();
 }
