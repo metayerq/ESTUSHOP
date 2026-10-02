@@ -146,6 +146,128 @@ def cout_periode(charges, employes, jours_ouverts, jours_ouverts_mois):
     return fixes, perso
 
 
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# LE PLANNING — CE QUE COÛTE UN JOUR PARTICULIER
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ DEUX RÉGIMES, ET C'EST TOUT L'INTÉRÊT. Le barista fixe est payé pareil qu'il fasse trois
+# jours ou cinq : faire dériver SON coût du planning rendrait un mois creux artificiellement
+# bon marché, alors que la paie est identique. Sa paie reste donc lissée, et le planning ne dit
+# de lui que « il est là ». L'extra, lui, coûte ses heures le jour où il les fait.
+#
+# ⚠️ ET LE TAUX SE RÉSOUT À LA DATE DU SHIFT. Une augmentation d'octobre ne doit pas réécrire
+# un service de septembre : on cherche la version de la fiche en vigueur CE JOUR-LÀ, avec le
+# même `applicable()` que les charges. La règle est écrite une fois.
+
+
+def heures(debut, fin):
+    """
+    Les heures d'un shift, en décimal. Rend 0.0 sur une saisie illisible.
+
+    ⚠️ ON REFUSE PLUTÔT QUE D'INVENTER. Une heure de fin avant l'heure de début n'est pas une
+    nuit à cheval sur minuit — c'est une faute de frappe, et la traiter comme un service de
+    vingt-trois heures gonflerait le coût du jour sans que personne ne comprenne pourquoi.
+    """
+    def _m(v):
+        if v is None:
+            return None
+        t = str(v).strip()
+        if not t:
+            return None
+        bouts = t.split(":")
+        try:
+            h = int(bouts[0])
+            m = int(bouts[1]) if len(bouts) > 1 else 0
+        except (ValueError, IndexError):
+            return None
+        if not (0 <= h <= 23 and 0 <= m <= 59):
+            return None
+        return h * 60 + m
+
+    a, b = _m(debut), _m(fin)
+    if a is None or b is None or b <= a:
+        return 0.0
+    return (b - a) / 60.0
+
+
+def fiche_du_jour(employes, person_id, jour):
+    """
+    La version de la fiche de cette personne en vigueur ce jour-là, ou `None`.
+
+    ⚠️ UNE PERSONNE A PLUSIEURS FICHES. Augmenter quelqu'un clôt la sienne et en ouvre une
+    autre, avec un identifiant neuf : seule `person_id` les relie. Prendre « la » fiche par son
+    `id` donnerait le bon nom et le mauvais taux dès la première augmentation.
+    """
+    if not person_id:
+        return None
+    for e in employes or []:
+        if str(e.get("person_id") or "") != str(person_id):
+            continue
+        if applicable(e, jour):
+            return e
+    return None
+
+
+def cout_shift(shift, employes):
+    """Ce que coûte un shift : ses heures au taux de la personne, ce jour-là."""
+    jour = _jour(shift.get("day"))
+    if jour is None:
+        return 0.0
+    fiche = fiche_du_jour(employes, shift.get("person_id"), jour)
+    if fiche is None:
+        # ⚠️ UN SHIFT SANS FICHE APPLICABLE NE COÛTE RIEN, ET C'EST VOULU. Il reste visible au
+        # planning — quelqu'un a bien travaillé — mais inventer un taux serait pire que zéro.
+        # L'écran le signale ; le calcul ne devine pas.
+        return 0.0
+    try:
+        taux = float(fiche.get("hourly_rate") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return heures(shift.get("start_time"), shift.get("end_time")) * taux
+
+
+def _est_extra(e):
+    return str(e.get("type") or "") == "extra"
+
+
+def personnel_du_jour(employes, shifts, jour, jours_ouverts_mois, bascule=None):
+    """
+    Le coût du personnel pour CE jour : permanents lissés, extras réels.
+
+    `jours_ouverts_mois` est le nombre de jours réellement ouverts du mois de `jour` — pas une
+    constante. `bascule` est la date à partir de laquelle les extras passent au planning ;
+    avant elle, ils gardent leur montant mensuel lissé, et le passé ne bouge pas.
+
+    ⚠️ SANS LA BASCULE, LE JOUR DE LA MISE EN SERVICE EFFACE LE COÛT DES EXTRAS DE TOUS LES MOIS
+    CLOS. Septembre n'a aucun shift enregistré : son personnel paraîtrait soudain moins cher, et
+    le point mort de septembre deviendrait faux après coup.
+    """
+    if not jours_ouverts_mois:
+        return 0.0
+    planning = bascule is not None and jour >= bascule
+
+    total = 0.0
+    for e in employes or []:
+        if not applicable(e, jour):
+            continue
+        if planning and _est_extra(e):
+            continue    # son coût vient de ses shifts, plus de son montant mensuel
+        total += cout_employe_mensuel(e) / jours_ouverts_mois
+
+    if not planning:
+        return total
+
+    for s in shifts or []:
+        if _jour(s.get("day")) != jour:
+            continue
+        fiche = fiche_du_jour(employes, s.get("person_id"), jour)
+        # ⚠️ SEULS LES EXTRAS SONT FACTURÉS À L'HEURE. Un permanent inscrit au planning est déjà
+        # compté dans sa paie lissée : ajouter ses heures le paierait deux fois.
+        if fiche is not None and _est_extra(fiche):
+            total += cout_shift(s, employes)
+    return total
+
+
 def jours_ouverts_entre(debut, fin, est_ouvert):
     """Les dates réellement ouvertes d'une période, bornes incluses."""
     out, j = [], debut

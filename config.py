@@ -110,6 +110,17 @@ LAUNCH_OPEN_DAYS = {
 }
 SCHEDULE_CUTOVER = date(2026, 6, 12)   # à partir d'ici : calendrier OPEN_WEEKDAYS
 
+# ── Bascule du planning ──────────────────────────────────────────────────────
+# ⚠️ AVANT CETTE DATE, UN EXTRA COÛTE SON MONTANT MENSUEL LISSÉ ; APRÈS, IL COÛTE SES SHIFTS.
+# Sans cette borne, le jour où les extras passent au planning, tous les mois clos perdraient
+# leur coût d'extras d'un coup — septembre n'a aucun shift enregistré, et son personnel
+# paraîtrait soudain moins cher. C'est précisément le défaut que les dates de validité des
+# charges corrigent : un chiffre qui bouge sans que la réalité ait bougé.
+#
+# Même promesse que le jour de la migration des charges : avant la bascule, le calcul est
+# EXACTEMENT celui d'hier.
+PLANNING_CUTOVER = date(2026, 10, 1)
+
 def count_open_days_raw(from_date: date, to_date: date) -> int:
     """Nombre de jours d'ouverture effectifs entre deux dates incluses (peut être 0)."""
     n = 0
