@@ -676,7 +676,8 @@ def test_UN_TAUX_A_ZERO_EST_UNE_ABSENCE_DE_TAUX(admin, extra):
 # le montant de septembre ». L'invariant n'est pas « jamais rétroactif », il est « jamais en
 # silence » — et une première écriture sur un champ vide n'écrase rien.
 
-EXTRA_SANS_TAUX = {"id": "e7", "name": "Savannah", "type": "extra", "gross_monthly": 0.0,
+EXTRA_SANS_TAUX = {"id": "e7", "person_id": "p-sav", "name": "Savannah",
+                   "type": "extra", "gross_monthly": 0.0,
                    "meal_card_daily": 0.0, "tsu_exempt": False, "hourly_rate": None,
                    "notes": "", "active": True, "valid_from": None, "valid_to": None}
 
@@ -754,3 +755,48 @@ def test_UNE_PREMIERE_SAISIE_ACCOMPAGNEE_DUN_VRAI_CHANGEMENT_GARDE_LA_CEREMONIE(
     neuve = [e[2] for e in extra_sans_taux if e[0] == "insert"][0]
     assert neuve["hourly_rate"] == 12.0, "la ligne de remplacement a perdu le taux"
     assert neuve["gross_monthly"] == 800.0
+
+
+# ══ UNE FICHE SANS IDENTITÉ N'EST RELIÉE À RIEN ═════════════════════════════════════════════
+#
+# ⚠️ `person_id` TIENT ENSEMBLE LES VERSIONS SUCCESSIVES D'UNE MÊME PERSONNE. `fiche_du_jour`
+# rend `None` sans elle : un service au planning ne trouve aucune fiche, ne coûte rien, et le
+# point mort du jour est amputé en silence. La route de création n'en posait AUCUNE — la
+# migration en avait donné une aux fiches existantes, et toutes celles créées depuis naissaient
+# muettes. Le défaut était invisible tant qu'on ne planifiait pas la personne.
+
+def test_UNE_FICHE_CREEE_RECOIT_UNE_IDENTITE(admin, monkeypatch):
+    ecrits = []
+    monkeypatch.setattr(flask_app, "_supa_insert",
+                        lambda t, r: (ecrits.append(r), (True, None))[1])
+    r = admin.post("/api/employees", json={"name": "Savannah", "type": "extra",
+                                           "hourly_rate": "9"})
+    assert r.get_json()["ok"] is True
+    assert ecrits[0].get("person_id"), "la fiche naît sans identité"
+    assert len(str(ecrits[0]["person_id"])) >= 16, ecrits[0]["person_id"]
+
+
+def test_DEUX_FICHES_NONT_PAS_LA_MEME_IDENTITE(admin, monkeypatch):
+    """
+    ⚠️ LE CONTRÔLE QUI COMPTE. Une constante conviendrait au test précédent et relierait toutes
+    les personnes entre elles : le planning de l'une coûterait le taux de l'autre.
+    """
+    ecrits = []
+    monkeypatch.setattr(flask_app, "_supa_insert",
+                        lambda t, r: (ecrits.append(r), (True, None))[1])
+    admin.post("/api/employees", json={"name": "Savannah", "type": "extra"})
+    admin.post("/api/employees", json={"name": "Noa", "type": "extra"})
+    assert ecrits[0]["person_id"] != ecrits[1]["person_id"]
+
+
+def test_MODIFIER_UNE_FICHE_NE_LUI_DONNE_PAS_UNE_IDENTITE_NEUVE(admin, extra_sans_taux):
+    """
+    ⚠️ SINON CHAQUE AUGMENTATION COUPERAIT LA PERSONNE EN DEUX. La ligne de remplacement doit
+    porter la MÊME identité : c'est elle qui relie les versions, et le planning d'avril doit
+    continuer de trouver la fiche d'avril.
+    """
+    admin.patch("/api/employees/e7",
+                json={"gross_monthly": 800.0, "reason": "passage en forfait",
+                      "effective_from": "2026-10-01"})
+    neuve = [e[2] for e in extra_sans_taux if e[0] == "insert"][0]
+    assert neuve.get("person_id") == EXTRA_SANS_TAUX.get("person_id")

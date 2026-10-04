@@ -195,6 +195,7 @@
   </div>
 
   <p class="pl-alerte" id="pl-passe" hidden></p>
+  <p class="pl-alerte" id="f-orphelines" hidden></p>
   <p class="pl-note" id="pl-note"></p>
 </div>
 
@@ -623,11 +624,30 @@ function ouvrir(jour, shiftId, ruleId){
   E('f-supprimer').hidden = !(s || v);
   E('f-refus').hidden = true;
 
+  /* ⚠️ UNE FICHE SANS IDENTITÉ NE S'OFFRE PAS. Son `<option>` portait une valeur VIDE : la
+     choisir produisait un service que le serveur refusait, ou pire, le dédoublonnage repliait
+     TOUTES les fiches sans identité sur une seule entrée — un nom à l'écran, une autre personne
+     derrière. On les écarte et on le dit, plutôt que d'offrir un choix qui ne mène nulle part. */
   const vues = new Set();
-  E('f-personne').innerHTML = (DATA.employees||[])
-    .filter(e=>{ if(vues.has(e.person_id)) return false; vues.add(e.person_id); return true; })
+  const offrables = (DATA.employees||[]).filter(e=>{
+    if(!e.person_id) return false;
+    if(vues.has(e.person_id)) return false;
+    vues.add(e.person_id); return true;
+  });
+  const orphelines = [...new Set((DATA.employees||[])
+    .filter(e=>!e.person_id).map(e=>e.name))];
+  E('f-personne').innerHTML = offrables
     .map(e=>`<option value="${echap(e.person_id)}">${echap(e.name)}${
       e.type === 'extra' ? ' · extra' : ''}</option>`).join('');
+  const av = E('f-orphelines');
+  if(av){
+    av.hidden = !orphelines.length;
+    av.textContent = orphelines.length
+      ? orphelines.join(', ') + (orphelines.length > 1 ? ' n\'ont' : " n'a")
+        + " pas d'identité en base et ne peuvent pas être planifiées — rouvre et réenregistre "
+        + 'la fiche depuis Charges → Personnel.'
+      : '';
+  }
 
   const src = s || v;
   E('f-jour').value  = src ? String(src.day).slice(0,10) : jour;

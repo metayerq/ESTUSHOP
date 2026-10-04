@@ -13,6 +13,7 @@ import time as _time
 import json
 import re as _re
 import secrets as _secrets
+import uuid as _uuid
 import hmac
 import time
 import hashlib
@@ -4549,6 +4550,13 @@ def api_employees_post():
         return jsonify({"ok": False, "error": "name required"}), 400
     row = {
         "name":             name,
+        # ⚠️ UNE FICHE SANS IDENTITÉ N'EST RELIÉE À RIEN. `person_id` est ce qui tient ensemble
+        # les versions successives d'une même personne — `fiche_du_jour` rend `None` sans elle,
+        # donc un service au planning ne trouve aucune fiche et ne coûte rien. Cette route n'en
+        # posait aucune : la migration en avait donné une aux fiches existantes, et toutes
+        # celles créées depuis naissaient muettes. Au planning, leur `<option>` portait une
+        # valeur VIDE, et le dédoublonnage les repliait toutes sur une seule entrée.
+        "person_id":        str(_uuid.uuid4()),
         "type":             data.get("type", "full_time"),
         "gross_monthly":    round(float(data.get("gross_monthly", 0)), 2),
         "hours_week":       float(data.get("hours_week", 40)),
