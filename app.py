@@ -21,7 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 # « Aujourd'hui » et « maintenant » au sens du café (Europe/Lisbon), jamais
 # l'horloge UTC du serveur Vercel. Voir config.py pour le pourquoi.
-from config import today_lisbon, now_lisbon, TVA_MOYENNE_BLENDED
+from config import today_lisbon, now_lisbon, TVA_MOYENNE_BLENDED, PLANNING_CUTOVER
 
 # Le programme de points. `points.py` est une traduction vérifiée du calcul qui tourne à la
 # caisse ; `programme.py` regroupe les lignes brutes en clients. Ni l'un ni l'autre ne touche
@@ -484,6 +484,10 @@ ACCOUNTANT_ALLOWED_PREFIXES = ("/contabilidade", "/api/contabilidade", "/logout"
 INVESTOR_BLOCKED_PREFIXES = (
     "/expenses", "/api/expenses",
     "/holidays", "/api/time_off",
+    # ⚠️ ET LE PLANNING AVEC EUX. Il affiche qui travaille, quel jour, de quelle heure à quelle
+    # heure, et à quel taux. C'est l'emploi du temps de personnes identifiées, pas un chiffre
+    # d'actionnaire — même raison que les congés, juste au-dessus.
+    "/planning", "/api/shifts",
     "/reconciliation", "/api/reconciliation", "/api/cash",
     "/api/cashflow",
     # ⚠️ AJOUTÉ EN SEPTEMBRE 2026 : LE FICHIER CLIENTS N'ÉTAIT PAS FERMÉ. L'ancienne page
@@ -4351,6 +4355,87 @@ def api_time_off_post():
 def api_time_off_delete(row_id):
     ok = _supa_delete("time_off", "id", row_id)
     return jsonify({"ok": ok})
+
+
+# ── Planning du personnel ─────────────────────────────────────────────────────
+#
+# ⚠️ UN SHIFT NE PORTE PAS SON COÛT, IL PORTE DES HEURES. Le taux se résout à la date du
+# service, via la fiche en vigueur ce jour-là : une augmentation d'octobre ne réécrit pas un
+# service de septembre. Figer le coût à la saisie aurait rendu toute correction de taux
+# invisible sur l'historique.
+
+@app.route("/planning")
+def planning_page():
+    return render_template("planning.html")
+
+
+@app.route("/api/shifts", methods=["GET"])
+def api_shifts_get():
+    """
+    Les shifts d'une fenêtre, et les personnes à qui les rattacher.
+
+    ⚠️ ON REND AUSSI LES FICHES, ET PAS SEULEMENT LEUR NOM. L'écran doit pouvoir dire qui est
+    extra, à quel taux, et à partir de quand — sinon il affiche un planning dont il ne peut pas
+    annoncer le coût, ce qui est précisément ce qu'on vient corriger.
+    """
+    debut = (request.args.get("from") or "").strip()
+    fin   = (request.args.get("to") or "").strip()
+    params = {"order": "day.asc,start_time.asc"}
+    if debut:
+        params["day"] = f"gte.{debut}"
+    if fin:
+        # PostgREST n'accepte qu'un filtre par colonne dans un dict : on passe par `and`.
+        params.pop("day", None)
+        params["and"] = f"(day.gte.{debut or '1970-01-01'},day.lte.{fin})"
+    shifts = _supa_get("shifts", params)
+    employes = _supa_get("employees", {"order": "name.asc"})
+    return jsonify({"shifts": shifts, "employees": employes,
+                    "bascule": PLANNING_CUTOVER.isoformat()})
+
+
+@app.route("/api/shifts", methods=["POST"])
+def api_shifts_post():
+    if _current_role() != "admin":
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    data = request.get_json(silent=True) or {}
+
+    person_id = (data.get("person_id") or "").strip()
+    jour      = (data.get("day") or "").strip()
+    debut     = (data.get("start_time") or "").strip()
+    fin       = (data.get("end_time") or "").strip()
+    if not (person_id and jour and debut and fin):
+        return jsonify({"ok": False, "error": "personne, jour et horaires obligatoires"}), 400
+    try:
+        date.fromisoformat(jour[:10])
+    except ValueError:
+        return jsonify({"ok": False, "error": "jour illisible"}), 400
+    # ⚠️ ON REFUSE PLUTÔT QUE DE COMPTER ZÉRO. `heures()` rend 0.0 sur une saisie inversée, ce
+    # qui est juste pour un calcul mais muet pour celui qui saisit : son service apparaîtrait
+    # au planning en ne coûtant rien, et le point mort du jour serait faux sans un mot.
+    if _ch.heures(debut, fin) <= 0:
+        return jsonify({"ok": False,
+                        "error": "l'heure de fin doit suivre l'heure de début"}), 400
+
+    row = {"person_id": person_id, "day": jour[:10],
+           "start_time": debut, "end_time": fin,
+           "note": (data.get("note") or "").strip(),
+           "updated_at": datetime.now(timezone.utc).isoformat()}
+    if data.get("id"):
+        ok, err = _supa_patch("shifts", {"id": f"eq.{data['id']}"}, row)
+    else:
+        ok, err = _supa_insert("shifts", row)
+    return jsonify({"ok": ok, "error": err})
+
+
+@app.route("/api/shifts/<string:shift_id>", methods=["DELETE"])
+def api_shifts_delete(shift_id):
+    if _current_role() != "admin":
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    # ⚠️ ICI ON SUPPRIME VRAIMENT, ET C'EST VOULU. Un shift est une PRÉVISION, pas un fait
+    # comptable : le clôturer comme une charge laisserait un planning illisible, encombré de
+    # services qui n'ont pas eu lieu. Ce qu'on ne réécrit jamais, ce sont les montants — et un
+    # shift n'en porte pas.
+    return jsonify({"ok": _supa_delete("shifts", "id", shift_id)})
 
 
 # ── SOP : procédures & checklists opérationnelles (+ registre HACCP) ───────────
