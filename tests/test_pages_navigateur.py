@@ -622,9 +622,25 @@ CAS = {
             "/api/statut": {"ca": None, "ca_texte": "—", "tickets": None, "moyen_texte": "",
                             "ecarts": 0, "boissons_dues": 0, "caisse_ok": None},
             "/api/charges": {
+                # ⚠️ TROIS ONGLETS DEPUIS LE 04/10 : fixes, variables, personnel. Le bouchon
+                # porte une charge de chaque sorte, sinon le troisième onglet n'est jamais rendu.
+                "attente": {"Électricité": ["2026-09-01"]},
+                "mois_courant": "2026-10-01",
                 "charges": [{"id": "c1", "name": "Loyer", "amount": 700.0,
                              "frequency": "monthly", "category": "local", "notes": "",
-                             "active": True, "valid_from": None, "valid_to": None}],
+                             "mode": "stable", "mois": None,
+                             "active": True, "valid_from": None, "valid_to": None},
+                            {"id": "c2", "name": "Électricité", "amount": 77.10,
+                             "frequency": "monthly", "category": "Energy & utilities",
+                             "notes": "", "mode": "facture", "mois": "2026-08-01",
+                             "active": True, "valid_from": "2026-08-01", "valid_to": None},
+                            # ⚠️ UNE SECONDE CHARGE VARIABLE, À JOUR CELLE-LÀ. Avec une seule,
+                            # « 1 en attente » et « 1 charge » sont indiscernables : le compteur
+                            # pouvait compter n'importe lequel des deux et passer quand même.
+                            {"id": "c3", "name": "Eau", "amount": 31.40,
+                             "frequency": "monthly", "category": "Energy & utilities",
+                             "notes": "", "mode": "facture", "mois": "2026-09-01",
+                             "active": True, "valid_from": "2026-09-01", "valid_to": None}],
                 "employees": [
                     {"id": "e1", "name": "Marco Silva", "type": "full_time",
                      "gross_monthly": 1200.0, "meal_card_daily": 10.20, "tsu_exempt": False,
@@ -641,6 +657,9 @@ CAS = {
             "Loyer", "Marco Silva", "Ana Dias",
             # ⚠️ LE TAUX HORAIRE EST CE QUI CHIFFRE LE PLANNING : sans lui, un extra apparaît
             # au calendrier et sa journée ne coûte rien.
+            "TROIS-ONGLETS", "COMPTEUR-DIT-LATTENTE", "FIXES-SANS-LES-VARIABLES",
+            "RESUME-DIT-LA-COMPOSITION", "ONGLET-BASCULE", "MOIS-EN-CLAIR", "PAS-DE-LOYER-ICI", "CHAMP-DE-SAISIE",
+            "VARIABLES-HORS-DES-FIXES",
             "CHAMP-TAUX", "TAUX-REPRIS", "OUVRIR-NE-MODIFIE-PAS",
             "TAUX-ENVOYE", "EXTRA-SANS-CARTE-REPAS", "EXTRA-SANS-MENSUEL-ACCEPTE",
             "CARTE-REPAS-MASQUEE", "REFUS-LISIBLE",
@@ -655,6 +674,9 @@ CAS = {
             "TAUX-EXIGE-UN-MOTIF", "APERCU-PAR-SERVICE",
         ],
         "interdit": [
+            "ONGLET-MANQUANT", "COMPTEUR-MUET", "FIXES-MELANGEES", "ONGLET-FIGE",
+            "RESUME-TROMPEUR", "poste(s)", "employee(s)",
+            "MOIS-EN-CODE", "LOYER-EN-DOUBLE", "PAS-DE-CHAMP", "VARIABLES-DANS-LES-FIXES",
             "CHAMP-ABSENT", "TAUX-PERDU", "OUVRIR-RECLAME-UN-MOTIF",
             "TAUX-PERDU-A-LENVOI", "EXTRA-AVEC-CARTE-REPAS", "EXTRA-REFUSE-SANS-MENSUEL",
             "CARTE-REPAS-VISIBLE", "REFUS-UNDEFINED",
@@ -669,6 +691,38 @@ CAS = {
     return setTimeout(function(){ attendre(n+1); }, 20);
   var trace = function(t){ var d = document.createElement('div'); d.textContent = t;
                            document.body.appendChild(d); };
+
+  /* ══ LES TROIS ONGLETS ════════════════════════════════════════════════════════════════
+   * ⚠️ UNE FACTURE EN ATTENTE DOIT SE VOIR SANS NAVIGUER. Dans un onglet séparé elle devient
+   * invisible depuis l'onglet par défaut : le compteur de l'onglet est ce qui remplace cette
+   * visibilité, et c'est le seul endroit de l'écran qui porte une couleur d'alerte. */
+  trace(E('tab-variables') ? 'TROIS-ONGLETS' : 'ONGLET-MANQUANT');
+  trace(E('badge-variables').textContent === '1'
+        ? 'COMPTEUR-DIT-LATTENTE' : 'COMPTEUR-MUET ' + E('badge-variables').textContent);
+  trace(E('badge-charges').textContent === '1'
+        ? 'FIXES-SANS-LES-VARIABLES' : 'FIXES-MELANGEES ' + E('badge-charges').textContent);
+  /* ⚠️ LA CARTE DU HAUT ADDITIONNE TOUT, et ne doit donc plus s'appeler « Charges fixes » :
+     l'écran affichait « Charges fixes · 3 postes » au-dessus d'un onglet « Charges fixes 1 ».
+     Le montant est juste ; c'est le nom qui mentait. */
+  var ks = E('sum-fixes-sub').textContent.replace(/\s+/g,' ');
+  trace((ks.indexOf('3 postes') >= 0 && ks.indexOf('2 sur facture') >= 0)
+        ? 'RESUME-DIT-LA-COMPOSITION' : 'RESUME-TROMPEUR ' + ks);
+
+  switchTab('variables');
+  var vv = E('view-variables');
+  trace(vv.style.display !== 'none' ? 'ONGLET-BASCULE' : 'ONGLET-FIGE');
+  var tv = vv.textContent.replace(/\s+/g,' ');
+  /* Le mois en attente s'affiche en toutes lettres, pas en 2026-09. */
+  trace(tv.indexOf('septembre 2026') >= 0
+        ? 'MOIS-EN-CLAIR' : 'MOIS-EN-CODE ' + tv.slice(0,90));
+  trace(tv.indexOf('Loyer') < 0 ? 'PAS-DE-LOYER-ICI' : 'LOYER-EN-DOUBLE');
+  /* ⚠️ ET L'INVERSE AUSSI : une charge variable ne doit pas rester dans le tableau des fixes.
+     L'y laisser la montrerait deux fois, avec deux gestes différents pour la même ligne. */
+  var tf = E('view-charges').textContent.replace(/\s+/g,' ');
+  trace(tf.indexOf('Électricité') < 0 && tf.indexOf('Loyer') >= 0
+        ? 'VARIABLES-HORS-DES-FIXES' : 'VARIABLES-DANS-LES-FIXES ' + tf.slice(0,90));
+  trace(E('fact-Électricité') ? 'CHAMP-DE-SAISIE' : 'PAS-DE-CHAMP');
+  switchTab('personnel');
 
   trace(E('emp-rate') ? 'CHAMP-TAUX' : 'CHAMP-ABSENT');
 

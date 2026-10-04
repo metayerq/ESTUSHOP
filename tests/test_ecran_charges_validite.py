@@ -703,7 +703,30 @@ def test_les_onglets_ne_sont_plus_une_quatrieme_copie():
         assert mort not in bloc, f"{mort} : l'ancien composant est revenu"
     js = g[g.rindex("<script>"):]
     assert "classList.toggle('active'" not in js, "le marqueur d'actif est resté sur une classe"
-    assert js.count("setAttribute('aria-selected'") == 2, "les deux onglets ne sont pas marqués"
+
+    """
+    ⚠️ CE CONTRÔLE COMPTAIT LES APPELS, ET LE COMPTE A CHANGÉ LE 04/10/2026. Il exigeait
+    exactement deux `setAttribute('aria-selected')` — un par onglet, écrits à la main. Un
+    troisième onglet est arrivé (Charges variables) et la bascule est passée par une BOUCLE :
+    un seul appel pour trois onglets, et le contrôle rougissait sur du code meilleur que celui
+    qu'il gardait.
+
+    On remplace le compte par l'invariant : chaque onglet du `tablist` a sa vue, et tous sont
+    marqués par l'attribut. Un onglet ajouté sans sa vue — ou marqué par une classe — ne passe
+    plus, et cela quel que soit leur nombre.
+    """
+    import re
+    onglets = set(re.findall(r'id="tab-([a-z]+)"', g))
+    vues    = set(re.findall(r'id="view-([a-z]+)"', g))
+    assert onglets, "plus aucun onglet"
+    assert onglets == vues, (
+        f"un onglet n'a pas sa vue, ou l'inverse : onglets={sorted(onglets)} "
+        f"vues={sorted(vues)}")
+    assert "setAttribute('aria-selected'" in js, "les onglets ne sont plus marqués"
+    liste = re.search(r"const ONGLETS = \[([^\]]*)\]", js)
+    assert liste, "la bascule ne nomme plus les onglets qu'elle couvre"
+    assert len(re.findall(r"'([a-z]+)'", liste.group(1))) == len(onglets), (
+        "la bascule ne couvre pas tous les onglets du tablist")
 
 
 def test_le_type_de_contrat_nest_pas_peint_comme_un_etat():

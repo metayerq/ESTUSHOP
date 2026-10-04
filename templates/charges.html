@@ -209,7 +209,14 @@ select.field-input { cursor:pointer; }
   #}
   <div class="db-grid db-g4 db-mb">
     <div class="db-card db-compact" title="Somme des charges fixes actives, toutes ramenées au mois (trimestriel ÷ 3, annuel ÷ 12).">
-      <div class="db-l">Charges fixes</div>
+      {#
+        ⚠️ CETTE CARTE S'APPELAIT « CHARGES FIXES » ET COMPTAIT AUSSI L'EAU ET L'ÉLECTRICITÉ.
+        Tant qu'il n'y avait qu'un onglet, le raccourci passait. Avec trois, l'écran affichait
+        « Charges fixes 808,50 € · 3 postes » au-dessus d'un onglet « Charges fixes 1 » — deux
+        chiffres contradictoires sous le même nom. Le montant, lui, doit bien tout additionner :
+        l'électricité pèse sur le mois, qu'elle vive dans un autre onglet ou non.
+      #}
+      <div class="db-l">Charges</div>
       <div class="db-v" id="sum-fixes">&mdash;</div>
       <div class="db-s" id="sum-fixes-sub"></div>
     </div>
@@ -245,10 +252,35 @@ select.field-input { cursor:pointer; }
     <button role="tab" id="tab-charges" aria-selected="true" onclick="switchTab('charges')">
       Charges fixes <span class="n" id="badge-charges">&mdash;</span>
     </button>
+    {#
+      ⚠️ LE COMPTEUR DE CET ONGLET DIT CE QUI ATTEND, PAS COMBIEN IL Y A DE CHARGES. Dans la
+      proposition d'origine, les cartes à saisir vivaient en haut de l'écran : une facture en
+      attente se voyait sans naviguer. Dans un onglet séparé, elle devient invisible depuis
+      l'onglet par défaut — le compteur est ce qui remplace cette visibilité, et c'est le seul
+      endroit de l'écran qui porte une couleur d'alerte.
+    #}
+    <button role="tab" id="tab-variables" aria-selected="false" onclick="switchTab('variables')">
+      Charges variables <span class="n" id="badge-variables">&mdash;</span>
+    </button>
     <button role="tab" id="tab-personnel" aria-selected="false" onclick="switchTab('personnel')">
       Personnel <span class="n" id="badge-personnel">&mdash;</span>
     </button>
   </nav>
+
+  <!-- ── Tab: Charges variables ──
+       Eau et électricité : un montant MESURÉ, différent chaque mois. Ce n'est pas un
+       changement de charge, c'est un relevé — d'où l'absence de date d'effet et de motif. -->
+  <div id="view-variables" style="display:none">
+    <div class="db-card db-mb">
+      <div class="db-card-h">
+        <span class="db-card-t">Factures du mois</span>
+        <span class="db-sp"></span>
+        <button class="db-btn" onclick="openChargeModal('facture')">+ Ajouter</button>
+      </div>
+      <div id="cartes-variables" style="padding:4px 0 2px"></div>
+    </div>
+    <div class="db-s" id="note-variables" style="margin:-6px 0 18px"></div>
+  </div>
 
   <!-- ── Tab: Charges fixes ── -->
   <div id="view-charges">
@@ -480,14 +512,19 @@ let chargesData = [];
 let employeesData = [];
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
+const ONGLETS = ['charges', 'variables', 'personnel'];
+
 function switchTab(tab) {
-  document.getElementById('view-charges').style.display   = tab === 'charges'   ? '' : 'none';
-  document.getElementById('view-personnel').style.display = tab === 'personnel' ? '' : 'none';
+  ONGLETS.forEach((o) => {
+    document.getElementById('view-' + o).style.display = tab === o ? '' : 'none';
+    document.getElementById('tab-' + o).setAttribute('aria-selected', String(tab === o));
+  });
+  /* ⚠️ L'ONGLET SURVIT AU RECHARGEMENT. Saisir une facture recharge la page : retomber sur
+   * « Charges fixes » obligerait à revenir à chaque mois rattrapé. */
+  try { localStorage.setItem('charges-onglet', tab); } catch (e) { /* navigation privée */ }
   /* ⚠️ `aria-selected`, PAS UNE CLASSE. Le segmenté partagé se peint sur l'attribut ; garder
    * `.active` laisserait les deux onglets à l'identique — et l'attribut manquant priverait
    * aussi les lecteurs d'écran de l'information. */
-  document.getElementById('tab-charges').setAttribute('aria-selected', String(tab === 'charges'));
-  document.getElementById('tab-personnel').setAttribute('aria-selected', String(tab === 'personnel'));
 }
 
 // ── Load ──────────────────────────────────────────────────────────────────
@@ -500,11 +537,14 @@ async function loadAll() {
     ]);
     chargesData   = c.charges   || [];
     employeesData = c.employees || [];
+    ATTENTE       = c.attente   || {};
+    MOIS_COURANT  = c.mois_courant || '';
     // merge employees from second call
     if (Array.isArray(e)) employeesData = e;
     else if (e.employees) employeesData = e.employees;
 
     renderCharges();
+    renderVariables();
     renderEmployees();
     updateSummary();
   } finally {
@@ -528,14 +568,18 @@ function toMonthly(amount, freq) {
 
 function renderCharges() {
   const tbody = document.getElementById('charges-body');
-  if (!chargesData.length) {
+  /* ⚠️ LES CHARGES VARIABLES ONT LEUR ONGLET. Les laisser ici aussi les montrerait deux fois,
+   * avec deux gestes différents pour la même ligne — et le tableau des fixes afficherait une
+   * ligne par mois de facture, qui noierait le loyer sous l'électricité. */
+  const fixes = chargesData.filter((c) => c.mode !== 'facture');
+  if (!fixes.length) {
     tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--db-muted);padding:32px;">No costs — click "+ Add"</td></tr>`;
     document.getElementById('badge-charges').textContent = '0';
     return;
   }
   // Grouper par catégorie
   const byCat = {};
-  for (const c of chargesData) {
+  for (const c of fixes) {
     const cat = c.category || 'Misc';
     if (!byCat[cat]) byCat[cat] = [];
     byCat[cat].push(c);
@@ -577,7 +621,10 @@ function renderCharges() {
     <td></td>
   </tr>`;
   tbody.innerHTML = html;
-  document.getElementById('badge-charges').textContent = chargesData.filter(c=>c.active).length;
+  /* Le compteur de l'onglet compte ce que l'onglet montre. Les totaux, eux, additionnent
+     TOUT — l'électricité pèse sur le mois, qu'elle vive dans un autre onglet ou non. */
+  document.getElementById('badge-charges').textContent =
+    chargesData.filter(c => c.active && c.mode !== 'facture').length;
 }
 
 // ── Employees ─────────────────────────────────────────────────────────────
@@ -611,6 +658,139 @@ function calcEmpCost(e) {
     repas:   Math.round(repasMonthly* 100) / 100,
   };
 }
+
+/* ══ CHARGES VARIABLES ═════════════════════════════════════════════════════════════════════
+ *
+ * ⚠️ CE QUI EST « EN ATTENTE » VIENT DU SERVEUR. La règle — le mois courant n'est jamais
+ * réclamé, les mois clos sans facture le sont du plus ancien au plus récent — vit dans
+ * `charges.py`, pure et testée. La réécrire ici donnerait deux définitions de « en retard »,
+ * et l'écran finirait par réclamer un mois que le calcul ignore.
+ */
+let ATTENTE = {}, MOIS_COURANT = '';
+
+const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre',
+                 'octobre','novembre','décembre'];
+const moisDit = (iso) => {
+  const [a, m] = String(iso || '').split('-');
+  return MOIS_FR[(+m || 1) - 1] + ' ' + a;
+};
+
+/** Les lignes de facture d'une charge, de la plus récente à la plus ancienne. */
+function facturesDe(nom) {
+  return chargesData
+    .filter((c) => c.mode === 'facture' && c.name === nom && c.mois)
+    .sort((a, b) => String(b.mois).localeCompare(String(a.mois)));
+}
+
+function renderVariables() {
+  const zone = document.getElementById('cartes-variables');
+  const noms = [...new Set(chargesData.filter((c) => c.mode === 'facture').map((c) => c.name))];
+
+  if (!noms.length) {
+    /* ⚠️ UNE CASE VIDE DIT CE QUI LA REMPLIRA. « Aucune charge » laisse devant un écran mort. */
+    zone.innerHTML = '<div style="color:var(--db-muted);padding:22px 2px;font-size:13.5px">'
+      + "Aucune charge variable. L'eau et l'électricité se saisissent facture par facture : "
+      + 'un montant par mois, sans date d\'effet ni motif.</div>';
+    document.getElementById('badge-variables').textContent = '0';
+    document.getElementById('note-variables').textContent = '';
+    return;
+  }
+
+  let enAttente = 0;
+  zone.innerHTML = noms.map((nom) => {
+    const manquants = ATTENTE[nom] || [];
+    enAttente += manquants.length;
+    const fs = facturesDe(nom);
+    const derniere = fs[0];
+    /* Le mois à saisir : le plus ancien en retard, sinon le mois courant s'il est libre. */
+    const aSaisir = manquants[0]
+      || (fs.some((f) => String(f.mois).slice(0, 7) === MOIS_COURANT.slice(0, 7))
+            ? null : MOIS_COURANT);
+
+    const etat = manquants.length
+      ? `<span class="db-badge warn">${manquants.length > 1
+          ? manquants.length + ' mois en attente' : 'à saisir'}</span>`
+      : (derniere && String(derniere.mois).slice(0, 7) === MOIS_COURANT.slice(0, 7)
+          ? '<span class="db-badge up">à jour</span>'
+          : '<span class="db-badge flat">en attente</span>');
+
+    /* ⚠️ LE MOIS S'AFFICHE EN GRAND AU-DESSUS DU CHAMP. Le risque du rattrapage, c'est
+     * d'inverser deux montants : on ne saisit qu'un mois à la fois, et on le dit. */
+    const saisie = aSaisir ? `
+      <div style="margin-top:12px">
+        <div style="font-size:17px;font-weight:600;text-transform:capitalize">${moisDit(aSaisir)}</div>
+        <div style="display:flex;gap:8px;margin-top:7px;align-items:center">
+          <input class="db-champ" style="max-width:150px" type="number" step="0.01" min="0.01"
+                 inputmode="decimal" placeholder="0,00 €"
+                 id="fact-${escAttr(nom)}" onkeydown="if(event.key==='Enter')saisirFacture('${escAttr(nom)}','${aSaisir}')">
+          <button class="db-btn fort" onclick="saisirFacture('${escAttr(nom)}','${aSaisir}')">
+            Enregistrer</button>
+        </div>
+      </div>` : '';
+
+    const histo = fs.slice(0, 13).reverse();
+    const max = Math.max(...histo.map((f) => parseFloat(f.amount) || 0), 1);
+    const barres = histo.length > 1 ? `
+      <div style="display:flex;align-items:flex-end;gap:3px;height:52px;margin:14px 0 4px">
+        ${histo.map((f, i) => `<div title="${moisDit(f.mois)} · ${fmt(f.amount)}"
+            style="flex:1;border-radius:3px 3px 0 0;background:var(--db-iris);
+                   opacity:${i === histo.length - 1 ? 1 : .32};
+                   height:${Math.max(6, (parseFloat(f.amount) || 0) / max * 100)}%"></div>`).join('')}
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--db-muted)">
+        <span>${moisDit(histo[0].mois)}</span><span>${moisDit(histo[histo.length-1].mois)}</span>
+      </div>` : '';
+
+    /* ⚠️ LA COMPARAISON EST AU MÊME MOIS L'AN DERNIER. Terrasse l'été, chauffage l'hiver :
+     * opposer octobre à septembre fait lire une dérive là où il n'y a qu'une saison. */
+    const anDernier = derniere && fs.find((f) =>
+      String(f.mois).slice(0, 7) === String(+String(derniere.mois).slice(0, 4) - 1)
+        + String(derniere.mois).slice(4, 7));
+    const compare = (derniere && anDernier)
+      ? `<span style="color:var(--db-muted)"> · ${moisDit(anDernier.mois)} : ${fmt(anDernier.amount)}</span>`
+      : '';
+
+    return `<div class="db-card db-card-p" style="margin-bottom:10px">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+        <span style="font-weight:600;font-size:15px">${esc(nom)}</span>${etat}
+      </div>
+      <div class="db-s" style="margin-top:2px">${derniere
+        ? `Dernière facture : ${moisDit(derniere.mois)} · <b>${fmt(derniere.amount)}</b>${compare}`
+        : 'Aucune facture saisie'}</div>
+      ${saisie}${barres}
+    </div>`;
+  }).join('');
+
+  const b = document.getElementById('badge-variables');
+  b.textContent = enAttente ? String(enAttente) : String(noms.length);
+  b.style.color = enAttente ? 'var(--db-amber)' : '';
+
+  document.getElementById('note-variables').textContent = enAttente
+    ? "Un mois en attente est compté au tableau de bord avec la dernière facture connue, "
+      + "annoncé « estimé ». Le point mort l'est donc aussi."
+    : "Une facture couvre son mois, même saisie le mois suivant. Ni date d'effet ni motif : "
+      + "son motif, c'est elle-même.";
+}
+
+async function saisirFacture(nom, mois) {
+  const champ = document.getElementById('fact-' + nom);
+  const v = (champ && champ.value || '').trim().replace(',', '.');
+  if (!v || !(parseFloat(v) > 0)) { showToast('Saisis un montant supérieur à zéro'); return; }
+  const r = await fetch('/api/charges/facture', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: nom, mois: mois, amount: parseFloat(v) }),
+  });
+  const d = await r.json();
+  if (d.ok) { showToast(d.corrige ? 'Facture corrigée' : 'Facture enregistrée'); loadAll(); }
+  else showToast('Error: ' + (d.error || 'refus sans explication du serveur'));
+}
+
+/* ⚠️ UN NOM DE CHARGE EST UNE SAISIE LIBRE, donc du texte non fiable dans du HTML. Cet écran
+ * n'avait aucun échappeur — les autres gabarits en portent un, celui-ci construisait ses lignes
+ * sans. */
+const esc = (s) => String(s === null || s === undefined ? '' : s)
+  .replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const escAttr = (s) => String(s).replace(/['"\\]/g, '');
 
 function renderEmployees() {
   const container = document.getElementById('emp-cards');
@@ -746,6 +926,9 @@ function prochainChangement() {
   if (Math.round((apres - avant) * 100) === 0) return null;
   return { quand, avant, apres };
 }
+/* « 1 poste(s) » est un aveu, pas une traduction — même formule que _rail et marge. */
+const plurCh = (n, sing, pl) => `${n} ${n > 1 ? (pl || sing + 's') : sing}`;
+
 function updateSummary() {
   const totalFixes = chargesData.filter(c=>c.active).reduce((s,c) => s + toMonthly(c.amount, c.frequency), 0);
   const totalPerso = employeesData.filter(e=>e.active).reduce((s,e) => s + calcEmpCost(e).monthly, 0);
@@ -753,9 +936,14 @@ function updateSummary() {
   const parJour = total / JOURS_MOIS;
 
   document.getElementById('sum-fixes').textContent = fmt(totalFixes);
-  document.getElementById('sum-fixes-sub').textContent = `${chargesData.filter(c=>c.active).length} active items`;
+  const actives = chargesData.filter(c => c.active);
+  const surFacture = actives.filter(c => c.mode === 'facture').length;
+  document.getElementById('sum-fixes-sub').textContent =
+    plurCh(actives.length, 'poste')
+    + (surFacture ? ` · ${plurCh(surFacture, 'sur facture', 'sur facture')}` : '');
   document.getElementById('sum-perso').textContent = fmt(totalPerso);
-  document.getElementById('sum-perso-sub').textContent = `${employeesData.filter(e=>e.active).length} employee(s)`;
+  document.getElementById('sum-perso-sub').textContent =
+    plurCh(employeesData.filter(e=>e.active).length, 'personne');
   document.getElementById('sum-total').textContent = fmt(total);
   document.getElementById('sum-total-sub').textContent = `excl. depreciation`;
   document.getElementById('sum-jour').textContent = fmt(parJour);
@@ -1301,6 +1489,13 @@ function showToast(msg) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
+/* ⚠️ L'ONGLET SURVIT AU RECHARGEMENT. Saisir une facture recharge la page : retomber sur
+ * « Charges fixes » obligerait à revenir à l'onglet à chaque mois rattrapé. */
+try {
+  const garde = localStorage.getItem('charges-onglet');
+  if (ONGLETS.includes(garde)) switchTab(garde);
+} catch (e) { /* navigation privée */ }
+
 loadAll();
 </script>
 {% include "_pied.html" %}
