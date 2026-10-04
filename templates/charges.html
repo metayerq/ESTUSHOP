@@ -751,7 +751,11 @@ function facturesDe(nom) {
 
 function renderVariables() {
   const zone = document.getElementById('cartes-variables');
-  const noms = [...new Set(chargesData.filter((c) => c.mode === 'facture').map((c) => c.name))];
+  /* ⚠️ L'ORDRE DES COLONNES EST FIXÉ ICI, pas hérité de la base. Sans tri, Eau et Électricité
+   * échangeaient de place selon l'ordre de retour des lignes : on revient sur un écran qu'on
+   * croit connaître et la colonne de gauche n'est plus la même charge. */
+  const noms = [...new Set(chargesData.filter((c) => c.mode === 'facture').map((c) => c.name))]
+    .sort((a, b) => a.localeCompare(b, 'fr'));
 
   if (!noms.length) {
     /* ⚠️ UNE CASE VIDE DIT CE QUI LA REMPLIRA, et comment y arriver. « Aucune charge » laisse

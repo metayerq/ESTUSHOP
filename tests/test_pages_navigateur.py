@@ -659,7 +659,7 @@ CAS = {
             # au calendrier et sa journée ne coûte rien.
             "TROIS-ONGLETS", "COMPTEUR-DIT-LATTENTE", "FIXES-SANS-LES-VARIABLES",
             "RESUME-DIT-LA-COMPOSITION", "RESUME-BIEN-NOMME", "ONGLET-BASCULE", "MOIS-EN-CLAIR", "PAS-DE-LOYER-ICI", "CHAMP-DE-SAISIE",
-            "VARIABLES-HORS-DES-FIXES", "UN-POINT-SANS-GRAPHE",
+            "VARIABLES-HORS-DES-FIXES", "COLONNES-ORDONNEES", "UN-POINT-SANS-GRAPHE",
             "GRAPHE-ANNONCE", "FENETRE-OUVRE", "SELECTEUR-DE-MOIS",
             "MOIS-PROPOSE-LE-RETARD", "CORRECTION-ANNONCEE",
             "CHAMP-TAUX", "TAUX-REPRIS", "OUVRIR-NE-MODIFIE-PAS",
@@ -683,7 +683,7 @@ CAS = {
             # attendu, donc le contrôle rougissait sur un rendu correct. Deuxième
             # fois de la session — un marqueur interdit ne doit jamais être contenu
             # dans celui qu'on espère.
-            "UN-POINT-AVEC-GRAPHE", "GRAPHE-MUET", "FENETRE-FERMEE",
+            "COLONNES-AU-HASARD", "UN-POINT-AVEC-GRAPHE", "GRAPHE-MUET", "FENETRE-FERMEE",
             "SELECTEUR-DE-JOUR", "MOIS-PROPOSE-AUTRE", "CORRECTION-SILENCIEUSE", "VARIABLES-DANS-LES-FIXES",
             "CHAMP-ABSENT", "TAUX-PERDU", "OUVRIR-RECLAME-UN-MOTIF",
             "TAUX-PERDU-A-LENVOI", "EXTRA-AVEC-CARTE-REPAS", "EXTRA-REFUSE-SANS-MENSUEL",
@@ -738,6 +738,12 @@ CAS = {
   /* ⚠️ MOINS DE DEUX FACTURES NE FONT PAS UNE ÉVOLUTION. Le bouchon n'en donne qu'une par
      charge : une barre unique occuperait toute la largeur et se lirait comme un maximum, alors
      qu'elle n'est comparée à rien. Même règle que `miniCourbe`. */
+  /* ⚠️ L'ORDRE DES COLONNES NE SUIT PAS LA BASE. Le bouchon renvoie Électricité avant Eau ;
+     à l'écran, Eau passe devant — sinon deux chargements donnent deux dispositions. */
+  var titres = [...vv.querySelectorAll('.var-nom')].map(function(t){ return t.textContent.trim(); });
+  trace(JSON.stringify(titres) === '["Eau","Électricité"]'
+        ? 'COLONNES-ORDONNEES' : 'COLONNES-AU-HASARD ' + JSON.stringify(titres));
+
   trace(vv.querySelectorAll('.var-barres').length === 0
         ? 'UN-POINT-SANS-GRAPHE' : 'UN-POINT-AVEC-GRAPHE');
   trace(tv.indexOf('deuxième facture') >= 0 ? 'GRAPHE-ANNONCE' : 'GRAPHE-MUET');
