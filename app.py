@@ -4460,12 +4460,21 @@ def api_shifts_post():
         return jsonify({"ok": False,
                         "error": "l'heure de fin doit suivre l'heure de début"}), 400
 
+    rule_id = (data.get("rule_id") or "").strip() or None
     row = {"person_id": person_id, "day": jour[:10],
            "start_time": debut, "end_time": fin,
            "note": (data.get("note") or "").strip(),
+           "rule_id": rule_id,
+           "annule": bool(data.get("annule")),
            "updated_at": datetime.now(timezone.utc).isoformat()}
     if data.get("id"):
         ok, err = _supa_patch("shifts", {"id": f"eq.{data['id']}"}, row)
+    elif rule_id:
+        # ⚠️ UNE EXCEPTION SE REPOSE SANS DOUBLON. Annuler un mercredi, puis changer d'avis et
+        # l'annuler à nouveau après l'avoir rétabli, doit retomber sur la même ligne : l'index
+        # unique (règle, jour) refuserait un second insert, et l'écran annoncerait un échec
+        # pour une action qui a parfaitement du sens.
+        ok, err = _supa_upsert("shifts", row, on_conflict="rule_id,day")
     else:
         ok, err = _supa_insert("shifts", row)
     return jsonify({"ok": ok, "error": err})
@@ -6362,8 +6371,14 @@ def _supa_get(table, params=None):
             f"table '{table}' absente du projet Supabase — migration non exécutée ?")
     return []
 
-def _supa_upsert(table, data):
-    r = _req.post(f"{SUPA_URL}/rest/v1/{table}", json=data,
+def _supa_upsert(table, data, on_conflict=None):
+    """
+    ⚠️ SANS `on_conflict`, POSTGREST FUSIONNE SUR LA CLÉ PRIMAIRE SEULEMENT. Une ligne qui entre
+    en conflit avec un index unique AUTRE que la clé primaire est refusée en 409, pas fusionnée.
+    C'est le cas des exceptions de planning, uniques par (règle, jour) et non par identifiant.
+    """
+    params = {"on_conflict": on_conflict} if on_conflict else None
+    r = _req.post(f"{SUPA_URL}/rest/v1/{table}", json=data, params=params,
                   headers=_supa_headers("resolution=merge-duplicates"))
     if r.ok:
         return True, None

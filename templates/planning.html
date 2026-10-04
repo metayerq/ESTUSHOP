@@ -23,7 +23,10 @@
 
 .pl-barre { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
 .pl-nav { display:flex; gap:4px; }
+/* ⚠️ `min-width` NE SUFFIT PAS À UN BOUTON QUI PORTE DU TEXTE. « Aujourd'hui » débordait de
+   sa boîte entre les deux flèches — mesuré à l'écran, pas vu en relisant la règle. */
 .pl-nav button { font-family:inherit; font-size:14px; min-width:34px; height:32px;
+  padding:0 12px; white-space:nowrap;
   border:1px solid var(--border); background:var(--bg-card); color:var(--text);
   border-radius:var(--r-sm); cursor:pointer; }
 .pl-nav button:hover { background:var(--bg-hover); }
@@ -78,6 +81,46 @@
   .pl-jour { min-height:0; }
 }
 
+/* ── Les trois vues ──────────────────────────────────────────────────────── */
+.pl-vues { display:inline-flex; border:1px solid var(--border); border-radius:var(--r-sm);
+  overflow:hidden; }
+.pl-vues button { font-family:inherit; font-size:13px; padding:6px 14px; border:0;
+  background:var(--bg-card); color:var(--muted); cursor:pointer; }
+.pl-vues button + button { border-left:1px solid var(--border); }
+.pl-vues button.actif { background:var(--accent); color:#fff; font-weight:600; }
+.pl-vues button:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+
+/* ⚠️ LE MOIS NE MONTRE PAS LA MÊME CHOSE QUE LA SEMAINE, ET C'EST VOULU. Trente cases au
+   format de la semaine seraient illisibles : on y lit des initiales et un coût, pas des
+   horaires. Ce qu'on vient chercher au mois, c'est la forme de la masse salariale. */
+.pl-mois { display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:6px; }
+.pl-mois .pl-entete { font-size:11px; font-weight:600; color:var(--muted); text-align:center;
+  text-transform:uppercase; letter-spacing:.04em; padding-bottom:2px; }
+.pl-case { border:1px solid var(--border); border-radius:var(--r-sm); background:var(--bg-card);
+  padding:6px; min-height:74px; display:flex; flex-direction:column; gap:3px;
+  cursor:pointer; text-align:left; font-family:inherit; width:100%; }
+.pl-case:hover { background:var(--bg-hover); }
+.pl-case:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.pl-case.ferme { background:var(--bg-page); border-style:dashed; cursor:default; }
+.pl-case.hors { opacity:.35; }
+.pl-case.aujourdhui { border-color:var(--accent); }
+.pl-case .n { font-size:12px; font-weight:600; font-variant-numeric:tabular-nums; }
+.pl-case .qui { font-size:11px; color:var(--muted); line-height:1.35; }
+.pl-case .eur { margin-top:auto; font-size:11px; font-variant-numeric:tabular-nums;
+  color:var(--muted); }
+
+/* ── La vue jour ─────────────────────────────────────────────────────────── */
+.pl-jourseul { border:1px solid var(--border); border-radius:var(--r); background:var(--bg-card);
+  padding:16px; max-width:560px; display:flex; flex-direction:column; gap:10px; }
+
+/* ── Les règles ──────────────────────────────────────────────────────────── */
+.pl-regles { margin-top:26px; }
+.pl-regles h2 { font-size:15px; font-weight:600; margin:0 0 4px; }
+.pl-regle { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 0;
+  border-top:1px solid var(--border); font-size:13px; }
+.pl-regle .quoi { flex:1; min-width:220px; }
+.pl-regle .quand { color:var(--muted); font-variant-numeric:tabular-nums; }
+
 .pl-fond { position:fixed; inset:0; background:rgba(10,15,40,.45); display:none;
   align-items:center; justify-content:center; padding:20px; z-index:80; }
 .pl-fond.ouvert { display:flex; }
@@ -121,16 +164,33 @@
   <div id="pl-panne" class="pl-panne" hidden></div>
 
   <div class="pl-barre">
+    <span class="pl-vues" id="pl-vues" role="group" aria-label="Période affichée">
+      <button type="button" onclick="poserVue('jour')">Jour</button>
+      <button type="button" onclick="poserVue('semaine')">Semaine</button>
+      <button type="button" onclick="poserVue('mois')">Mois</button>
+    </span>
     <div class="pl-nav">
-      <button type="button" onclick="allerSemaine(-1)" aria-label="Semaine précédente">‹</button>
-      <button type="button" onclick="allerSemaine(0)">Cette semaine</button>
-      <button type="button" onclick="allerSemaine(1)" aria-label="Semaine suivante">›</button>
+      <button type="button" onclick="decaler(-1)" aria-label="Période précédente">‹</button>
+      <button type="button" onclick="decaler(0)">Aujourd'hui</button>
+      <button type="button" onclick="decaler(1)" aria-label="Période suivante">›</button>
     </div>
     <span class="pl-periode" id="pl-periode">…</span>
     <span class="pl-total" id="pl-total"></span>
   </div>
 
-  <div class="pl-semaine" id="pl-semaine"></div>
+  <div id="pl-vue"></div>
+
+  <div class="pl-regles">
+    <h2>Récurrences</h2>
+    <p class="pl-note" style="margin:0 0 6px">
+      « Ana tous les mercredis de 9 h à 17 h. » Une récurrence est vivante : la modifier change
+      tous ses services, y compris ceux des mois passés. Pour l'arrêter sans toucher à
+      l'historique, donne-lui une fin de validité plutôt que de la supprimer.
+    </p>
+    <div id="pl-liste-regles"></div>
+    <button class="pl-btn" style="margin-top:10px" onclick="ouvrirRegle(null)">
+      + Nouvelle récurrence</button>
+  </div>
 
   <p class="pl-alerte" id="pl-passe" hidden></p>
   <p class="pl-note" id="pl-note"></p>
@@ -173,6 +233,56 @@
   </div>
 </div>
 
+<div class="pl-fond" id="pl-fond-regle" onclick="if(event.target===this)fermerRegle()">
+  <div class="pl-boite" role="dialog" aria-modal="true" aria-labelledby="pl-titre-regle">
+    <div class="pl-titre" id="pl-titre-regle">Nouvelle récurrence</div>
+    <div class="pl-champ">
+      <label for="r-personne">Personne</label>
+      <select id="r-personne"></select>
+    </div>
+    <div class="pl-champ">
+      <label for="r-jour">Chaque</label>
+      <select id="r-jour">
+        <option value="0">lundi</option><option value="1">mardi</option>
+        <option value="2">mercredi</option><option value="3">jeudi</option>
+        <option value="4">vendredi</option><option value="5">samedi</option>
+        <option value="6">dimanche</option>
+      </select>
+    </div>
+    <div class="pl-deux">
+      <div class="pl-champ">
+        <label for="r-debut">Début</label>
+        <input id="r-debut" type="time" step="300" value="09:00">
+      </div>
+      <div class="pl-champ">
+        <label for="r-fin">Fin</label>
+        <input id="r-fin" type="time" step="300" value="17:00">
+      </div>
+    </div>
+    <div class="pl-deux">
+      <div class="pl-champ">
+        <label for="r-depuis">À partir du</label>
+        <input id="r-depuis" type="date">
+      </div>
+      <div class="pl-champ">
+        <!-- ⚠️ « JUSQU'AU » EST LE PREMIER JOUR NON COUVERT, comme partout ici. -->
+        <label for="r-jusqua">Jusqu'au (exclu)</label>
+        <input id="r-jusqua" type="date">
+      </div>
+    </div>
+    <div class="pl-refus" id="r-refus" hidden></div>
+    <div id="r-apercu" class="pl-note" style="margin:0"></div>
+    <div class="pl-actions">
+      <button class="pl-btn danger" id="r-supprimer" onclick="supprimerRegle()" hidden>
+        Supprimer</button>
+      <span class="droite">
+        <button class="pl-btn" onclick="fermerRegle()">Annuler</button>
+        <button class="pl-btn primaire" id="r-ok" onclick="enregistrerRegle()">Enregistrer</button>
+      </span>
+    </div>
+  </div>
+</div>
+
 {% include "_pied.html" %}
 <script>
 const E = id => document.getElementById(id);
@@ -183,7 +293,15 @@ const echap = s => String(s === null || s === undefined ? '' : s)
 /* « 1 service(s) » est un aveu, pas une traduction — même formule que _rail et marge. */
 const plur = (n, sing, pl) => `${n} ${n > 1 ? (pl || sing + 's') : sing}`;
 
-let LUNDI = null, DATA = {shifts:[], employees:[], couts:{}, bascule:null}, EDITE = null;
+let LUNDI = null, DATA = {shifts:[], employees:[], regles:[], services:{}, couts:{},
+                         bascule:null};
+let EDITE = null, EDITE_REGLE = null;
+
+/* ⚠️ LA VUE SURVIT AU RECHARGEMENT. Retomber sur « semaine » à chaque ↻ ferait perdre la vue
+   mois juste après l'avoir ouverte — c'est celle qu'on garde affichée pour piloter. */
+let VUE = 'semaine';
+try { VUE = localStorage.getItem('pl-vue') || 'semaine'; } catch(e) { /* navigation privée */ }
+const JOURS_FR = ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
 
 /* ⚠️ LA SEMAINE COMMENCE LUNDI, ET `getDay()` DIT 0 POUR DIMANCHE. Sans ce décalage, la
    semaine affichée commençait la veille un dimanche sur deux. */
@@ -205,18 +323,45 @@ function jours(){
   return out;
 }
 
-function allerSemaine(n){
-  if(n === 0) LUNDI = lundiDe(new Date());
-  else { LUNDI = new Date(LUNDI); LUNDI.setDate(LUNDI.getDate() + 7*n); }
+/* ⚠️ `LUNDI` EST L'ANCRE DES TROIS VUES. En mois, c'est le lundi de la semaine qui contient
+   le jour courant ; la fenêtre demandée au serveur, elle, couvre le mois entier. Garder trois
+   ancres séparées faisait sauter d'un mois en changeant de vue. */
+function allerSemaine(n){ decaler(n); }
+
+function decaler(n){
+  if(n === 0){ LUNDI = lundiDe(new Date()); charger(); return; }
+  const d = new Date(LUNDI);
+  if(VUE === 'jour')         d.setDate(d.getDate() + n);
+  else if(VUE === 'semaine') d.setDate(d.getDate() + 7*n);
+  else                       d.setMonth(d.getMonth() + n, 1);
+  LUNDI = (VUE === 'semaine') ? lundiDe(d) : d;
   charger();
+}
+
+function poserVue(v){
+  VUE = v;
+  try { localStorage.setItem('pl-vue', v); } catch(e) { /* navigation privée */ }
+  charger();
+}
+
+/* La fenêtre à demander au serveur, selon la vue. */
+function fenetre(){
+  if(VUE === 'jour') return [new Date(LUNDI), new Date(LUNDI)];
+  if(VUE === 'semaine'){
+    const l = lundiDe(LUNDI), d = new Date(l); d.setDate(d.getDate()+6);
+    return [l, d];
+  }
+  const p = new Date(LUNDI.getFullYear(), LUNDI.getMonth(), 1);
+  const f = new Date(LUNDI.getFullYear(), LUNDI.getMonth()+1, 0);
+  return [p, f];
 }
 
 async function charger(){
   const panne = E('pl-panne');
   if(!LUNDI) LUNDI = lundiDe(new Date());
-  const js = jours();
+  const [d0, d1] = fenetre();
   try{
-    const r = await fetch(`/api/shifts?from=${iso(js[0])}&to=${iso(js[6])}`);
+    const r = await fetch(`/api/shifts?from=${iso(d0)}&to=${iso(d1)}`);
     const d = await r.json();
     if(!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
     DATA = d; panne.hidden = true;
@@ -226,7 +371,8 @@ async function charger(){
     panne.hidden = false;
     panne.innerHTML = `<b>Le planning n'a pas pu être chargé.</b><br>${echap(e.message||e)}
       <br>Rien n'est perdu — aucun service n'a été modifié.`;
-    DATA = {shifts:[], employees:[], couts:{}, bascule:DATA.bascule};
+    DATA = {shifts:[], employees:[], regles:[], services:{}, couts:{},
+            bascule:DATA.bascule};
   }
   rendre();
 }
@@ -254,74 +400,186 @@ function heures(debut, fin){
 }
 function hhmm(t){ return String(t||'').slice(0,5); }
 
+/* ⚠️ LES SERVICES VIENNENT DU SERVEUR DÉJÀ DÉPLIÉS. Une règle produit des services qui
+   n'existent pas en base : les déplier ici demanderait d'y réécrire les bornes de validité, le
+   jour de semaine et la priorité des exceptions. Quatre règles pour un seul calendrier, et deux
+   endroits où elles peuvent diverger. */
+function servicesDe(j){ return (DATA.services && DATA.services[j]) || []; }
+
+function puce(j, s){
+  const f = fiche(s.person_id, j);
+  const h = heures(s.start_time, s.end_time);
+  /* Un permanent est déjà dans sa paie lissée : afficher un montant en face de son nom
+     laisserait croire qu'il s'ajoute. On montre les heures, pas un prix. */
+  const extra = f && f.type === 'extra';
+  const taux = extra ? parseFloat(f.hourly_rate || 0) : 0;
+  const prix = extra && taux ? eur(h * taux) : '';
+  /* ⚠️ UN SERVICE DE RÈGLE SE DISTINGUE À L'ŒIL. Le supprimer ne fait pas la même chose : il
+     pose une exception pour ce jour, il n'efface pas une ligne. */
+  const marque = s.source === 'regle' ? ' ↻'
+               : (s.source === 'regle-modifiee' ? ' ↻*' : '');
+  return `<button class="pl-chip" onclick="ouvrir('${j}','${s.id || ''}','${s.rule_id || ''}')"
+      aria-label="Modifier le service de ${echap(nomDe(s.person_id, j))} le ${j}">
+      <span class="pl-chip-eur">${prix}</span>
+      <span class="pl-chip-nom">${echap(nomDe(s.person_id, j))}${marque}</span>
+      <span class="pl-chip-h">${hhmm(s.start_time)}–${hhmm(s.end_time)}</span>
+    </button>`;
+}
+
+function pied(cout){
+  if(!cout) return '';
+  return `<div class="pl-pied">personnel <b>${eur(cout.personnel)}</b><br>
+          journée <b>${eur(cout.total)}</b></div>`;
+}
+
 function rendre(){
-  const js = jours();
-  const fmtJ = new Intl.DateTimeFormat('fr-FR', {weekday:'long'});
-  const fmtD = new Intl.DateTimeFormat('fr-FR', {day:'numeric', month:'short'});
-  E('pl-periode').textContent = fmtD.format(js[0]) + ' — ' + fmtD.format(js[6]);
+  [...E('pl-vues').children].forEach((b,i)=>
+    b.classList.toggle('actif', ['jour','semaine','mois'][i] === VUE));
 
-  const aujourdhui = iso(new Date());
-  let semaine = 0, nbServices = 0;
+  if(VUE === 'jour') rendreJour();
+  else if(VUE === 'mois') rendreMois();
+  else rendreSemaine();
 
-  E('pl-semaine').innerHTML = js.map(d=>{
-    const j = iso(d);
-    const cout = DATA.couts ? DATA.couts[j] : null;
-    const ouvert = !!cout;
-    const duJour = (DATA.shifts||[]).filter(s=>String(s.day||'').slice(0,10) === j);
-    nbServices += duJour.length;
-    if(cout) semaine += cout.total;
+  rendreRegles();
 
-    const chips = duJour.map(s=>{
-      const f = fiche(s.person_id, j);
-      const h = heures(s.start_time, s.end_time);
-      /* Un permanent est déjà dans sa paie lissée : afficher un montant en face de son nom
-         laisserait croire qu'il s'ajoute. On montre les heures, pas un prix. */
-      const extra = f && f.type === 'extra';
-      const taux = extra ? parseFloat(f.hourly_rate || 0) : 0;
-      const prix = extra && taux ? eur(h * taux) : '';
-      return `<button class="pl-chip" onclick="ouvrir('${j}','${s.id}')"
-                aria-label="Modifier le service de ${echap(nomDe(s.person_id, j))}">
-          <span class="pl-chip-eur">${prix}</span>
-          <span class="pl-chip-nom">${echap(nomDe(s.person_id, j))}</span>
-          <span class="pl-chip-h">${hhmm(s.start_time)}–${hhmm(s.end_time)}</span>
-        </button>`;
-    }).join('');
-
-    return `<div class="pl-jour${ouvert ? '' : ' ferme'}${j === aujourdhui ? ' aujourdhui' : ''}">
-      <div class="pl-tete">
-        <span class="pl-nom">${fmtJ.format(d)}</span>
-        <span class="pl-date">${fmtD.format(d)}</span>
-      </div>
-      ${ouvert
-        ? (chips || '<div class="pl-vide">personne</div>') +
-          `<button class="pl-ajout" onclick="ouvrir('${j}', null)">+ ajouter</button>` +
-          `<div class="pl-pied">personnel <b>${eur(cout.personnel)}</b><br>
-             journée <b>${eur(cout.total)}</b></div>`
-        : '<div class="pl-vide">fermé</div>'}
-    </div>`;
-  }).join('');
-
-  E('pl-total').innerHTML = `${plur(nbServices,'service')} · semaine <b>${eur(semaine)}</b>`;
+  /* ⚠️ MODIFIER UN JOUR DÉJÀ PASSÉ CHANGE UN COÛT DÉJÀ LU. Tu as choisi de pouvoir le faire ;
+     l'écran le dit au moment du geste plutôt que de l'interdire. */
+  const [, d1] = fenetre();
+  const moisCourant = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  E('pl-passe').hidden = !(d1 < moisCourant);
+  if(d1 < moisCourant) E('pl-passe').textContent =
+    "Cette période appartient à un mois déjà clos : y toucher changera le coût et le point "
+    + "mort affichés pour ce mois, au dashboard comme en comptabilité.";
 
   E('pl-note').textContent =
     "Le permanent garde sa paie lissée : le planning dit qu'il est là, pas ce qu'il coûte ce "
     + "jour-là — sa paie est la même qu'il fasse trois jours ou cinq. Un extra coûte ses heures, "
-    + "le jour où il les fait.";
-
-  /* ⚠️ MODIFIER UN JOUR DÉJÀ PASSÉ CHANGE UN COÛT DÉJÀ LU. Tu as choisi de pouvoir le faire ;
-     l'écran le dit au moment du geste plutôt que de l'interdire. */
-  const passe = js[6] < new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  E('pl-passe').hidden = !passe;
-  if(passe) E('pl-passe').textContent =
-    "Cette semaine appartient à un mois déjà clos : y toucher changera le coût et le point "
-    + "mort affichés pour ce mois, au dashboard comme en comptabilité.";
+    + "le jour où il les fait. « ↻ » marque un service produit par une récurrence.";
 }
 
-function ouvrir(jour, shiftId){
+function totaux(dates){
+  let somme = 0, n = 0;
+  dates.forEach(j=>{
+    const c = DATA.couts && DATA.couts[j];
+    if(c) somme += c.total;
+    n += servicesDe(j).length;
+  });
+  return [somme, n];
+}
+
+const FMT_JOUR = new Intl.DateTimeFormat('fr-FR', {weekday:'long'});
+const FMT_DATE = new Intl.DateTimeFormat('fr-FR', {day:'numeric', month:'short'});
+const FMT_LONG = new Intl.DateTimeFormat('fr-FR',
+  {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+const FMT_MOIS = new Intl.DateTimeFormat('fr-FR', {month:'long', year:'numeric'});
+
+function rendreSemaine(){
+  const l = lundiDe(LUNDI), js = [];
+  for(let i=0;i<7;i++){ const d = new Date(l); d.setDate(d.getDate()+i); js.push(d); }
+  E('pl-periode').textContent = FMT_DATE.format(js[0]) + ' — ' + FMT_DATE.format(js[6]);
+  const aujourdhui = iso(new Date());
+
+  E('pl-vue').innerHTML = '<div class="pl-semaine">' + js.map(d=>{
+    const j = iso(d), cout = DATA.couts ? DATA.couts[j] : null, ouvert = !!cout;
+    const chips = servicesDe(j).map(s=>puce(j, s)).join('');
+    return `<div class="pl-jour${ouvert ? '' : ' ferme'}${j === aujourdhui ? ' aujourdhui' : ''}">
+      <div class="pl-tete">
+        <span class="pl-nom">${FMT_JOUR.format(d)}</span>
+        <span class="pl-date">${FMT_DATE.format(d)}</span>
+      </div>
+      ${ouvert
+        ? (chips || '<div class="pl-vide">personne</div>')
+          + `<button class="pl-ajout" onclick="ouvrir('${j}', null, null)">+ ajouter</button>`
+          + pied(cout)
+        : '<div class="pl-vide">fermé</div>'}
+    </div>`;
+  }).join('') + '</div>';
+
+  const [somme, n] = totaux(js.map(iso));
+  E('pl-total').innerHTML = `${plur(n,'service')} · semaine <b>${eur(somme)}</b>`;
+}
+
+function rendreJour(){
+  const d = new Date(LUNDI), j = iso(d);
+  E('pl-periode').textContent = FMT_LONG.format(d);
+  const cout = DATA.couts ? DATA.couts[j] : null;
+  const chips = servicesDe(j).map(s=>puce(j, s)).join('');
+
+  E('pl-vue').innerHTML = `<div class="pl-jourseul">
+    ${cout
+      ? (chips || '<div class="pl-vide">personne ce jour-là</div>')
+        + `<button class="pl-ajout" onclick="ouvrir('${j}', null, null)">+ ajouter</button>`
+        + pied(cout)
+      : '<div class="pl-vide">le café est fermé ce jour-là</div>'}
+  </div>`;
+
+  const [somme, n] = totaux([j]);
+  E('pl-total').innerHTML = `${plur(n,'service')} · journée <b>${eur(somme)}</b>`;
+}
+
+/* ⚠️ LE MOIS NE MONTRE PAS LA MÊME CHOSE QUE LA SEMAINE. Trente cases au format de la semaine
+   seraient illisibles : on y lit des initiales et un coût, pas des horaires. Ce qu'on vient
+   chercher au mois, c'est la forme de la masse salariale — où elle se concentre. */
+function rendreMois(){
+  const an = LUNDI.getFullYear(), mois = LUNDI.getMonth();
+  E('pl-periode').textContent = FMT_MOIS.format(new Date(an, mois, 1));
+  const premier = new Date(an, mois, 1);
+  const depart = lundiDe(premier);
+  const aujourdhui = iso(new Date());
+
+  let html = '<div class="pl-mois">'
+    + JOURS_FR.map(n=>`<div class="pl-entete">${n.slice(0,3)}</div>`).join('');
+  const dansLeMois = [];
+  for(let i=0;i<42;i++){
+    const d = new Date(depart); d.setDate(d.getDate()+i);
+    if(i >= 35 && d.getMonth() !== mois) break;
+    const j = iso(d), hors = d.getMonth() !== mois;
+    if(!hors) dansLeMois.push(j);
+    const cout = (!hors && DATA.couts) ? DATA.couts[j] : null;
+    const serv = hors ? [] : servicesDe(j);
+    /* Des initiales, pas des noms : sept colonnes et trente lignes ne laissent pas la place,
+       et le nom complet se lit au survol comme en vue jour. */
+    const qui = serv.map(s=>{
+      const nom = nomDe(s.person_id, j);
+      return echap(nom.split(/\s+/).map(x=>x[0] || '').join('').slice(0,2).toUpperCase());
+    }).join(' · ');
+    const classe = hors ? 'pl-case hors' : (cout ? 'pl-case' : 'pl-case ferme')
+      + (j === aujourdhui ? ' aujourdhui' : '');
+    const action = (!hors && cout) ? `onclick="allerAuJour('${j}')"` : 'disabled';
+    html += `<button class="${classe}" ${action}
+        aria-label="${FMT_LONG.format(d)}${serv.length ? ' — ' + serv.length + ' service' : ''}">
+      <span class="n">${d.getDate()}</span>
+      <span class="qui">${qui}</span>
+      <span class="eur">${cout ? eur(cout.total) : ''}</span>
+    </button>`;
+  }
+  E('pl-vue').innerHTML = html + '</div>';
+
+  const [somme, n] = totaux(dansLeMois);
+  E('pl-total').innerHTML = `${plur(n,'service')} · mois <b>${eur(somme)}</b>`;
+}
+
+function allerAuJour(j){
+  LUNDI = new Date(j + 'T12:00:00');
+  poserVue('jour');
+}
+
+let EDITE_REGLE_JOUR = null;
+
+function ouvrir(jour, shiftId, ruleId){
   EDITE = shiftId || null;
+  EDITE_REGLE_JOUR = ruleId ? {rule_id: ruleId, day: jour} : null;
   const s = shiftId ? (DATA.shifts||[]).find(x=>String(x.id) === String(shiftId)) : null;
-  E('pl-titre').textContent = s ? 'Modifier le service' : 'Ajouter un service';
-  E('f-supprimer').hidden = !s;
+  /* Un service de règle n'a pas de ligne en base tant qu'on n'y a pas touché : on le retrouve
+     dans les services dépliés. */
+  const v = (!s && ruleId)
+    ? servicesDe(jour).find(x=>String(x.rule_id) === String(ruleId)) : null;
+  E('pl-titre').textContent = (s || v) ? 'Modifier le service' : 'Ajouter un service';
+  /* ⚠️ UN SERVICE DE RÈGLE NE SE SUPPRIME PAS, IL S'ANNULE POUR CE JOUR. Supprimer une ligne
+     qui n'existe pas ne ferait rien, et le service reparaîtrait au rechargement — exactement
+     le genre de bouton qui a l'air de marcher. */
+  E('f-supprimer').textContent = ruleId ? 'Annuler ce jour-là' : 'Supprimer';
+  E('f-supprimer').hidden = !(s || v);
   E('f-refus').hidden = true;
 
   const vues = new Set();
@@ -330,11 +588,15 @@ function ouvrir(jour, shiftId){
     .map(e=>`<option value="${echap(e.person_id)}">${echap(e.name)}${
       e.type === 'extra' ? ' · extra' : ''}</option>`).join('');
 
-  E('f-jour').value  = s ? String(s.day).slice(0,10) : jour;
-  E('f-debut').value = s ? hhmm(s.start_time) : '09:00';
-  E('f-fin').value   = s ? hhmm(s.end_time)   : '17:00';
-  E('f-note').value  = s ? (s.note || '') : '';
-  if(s) E('f-personne').value = s.person_id;
+  const src = s || v;
+  E('f-jour').value  = src ? String(src.day).slice(0,10) : jour;
+  E('f-debut').value = src ? hhmm(src.start_time) : '09:00';
+  E('f-fin').value   = src ? hhmm(src.end_time)   : '17:00';
+  E('f-note').value  = src ? (src.note || '') : '';
+  if(src) E('f-personne').value = src.person_id;
+  /* La personne d'un service de règle ne se change pas ici : ce serait modifier la règle pour
+     un seul jour, ce qui n'a pas de sens. On change l'horaire, ou on annule. */
+  E('f-personne').disabled = !!EDITE_REGLE_JOUR;
   apercu();
   E('pl-fond').classList.add('ouvert');
   E('f-personne').focus();
@@ -373,6 +635,7 @@ async function enregistrer(){
                    start_time: E('f-debut').value, end_time: E('f-fin').value,
                    note: E('f-note').value};
     if(EDITE) corps.id = EDITE;
+    if(EDITE_REGLE_JOUR) corps.rule_id = EDITE_REGLE_JOUR.rule_id;
     const r = await fetch('/api/shifts', {method:'POST',
       headers:{'Content-Type':'application/json'}, body: JSON.stringify(corps)});
     const d = await r.json();
@@ -386,10 +649,22 @@ async function enregistrer(){
 }
 
 async function supprimer(){
-  if(!EDITE) return;
   E('f-supprimer').disabled = true;
   try{
-    const r = await fetch('/api/shifts/' + encodeURIComponent(EDITE), {method:'DELETE'});
+    let r;
+    if(EDITE_REGLE_JOUR){
+      /* ⚠️ ANNULER, PAS SUPPRIMER. Le service vient d'une règle : il n'a pas de ligne à
+         effacer. On enregistre une exception « absent ce jour-là », qui est ce que la règle
+         vivante permet de faire sans toucher aux autres semaines. */
+      r = await fetch('/api/shifts', {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({...EDITE_REGLE_JOUR, person_id: E('f-personne').value,
+                              start_time: E('f-debut').value, end_time: E('f-fin').value,
+                              annule: true, id: EDITE || undefined})});
+    } else {
+      if(!EDITE) return;
+      r = await fetch('/api/shifts/' + encodeURIComponent(EDITE), {method:'DELETE'});
+    }
     const d = await r.json();
     if(!d.ok) throw new Error(d.error || 'refus');
     fermer(); await charger();
@@ -400,7 +675,134 @@ async function supprimer(){
   }
 }
 
-document.addEventListener('keydown', e=>{ if(e.key === 'Escape') fermer(); });
+/* ══ Les récurrences ═══════════════════════════════════════════════════════════════════════ */
+
+function rendreRegles(){
+  const liste = (DATA.regles || []);
+  if(!liste.length){
+    E('pl-liste-regles').innerHTML =
+      '<div class="pl-vide" style="text-align:left">aucune récurrence</div>';
+    return;
+  }
+  E('pl-liste-regles').innerHTML = liste.map(r=>{
+    /* La fiche se résout à la date de DÉBUT de la règle, pas à aujourd'hui : une règle close
+       porte le nom qu'avait la personne quand elle courait. */
+    const ref = r.valid_from || iso(new Date());
+    const bornes = [
+      r.valid_from ? 'du ' + r.valid_from : null,
+      r.valid_to ? "jusqu'au " + r.valid_to + ' (exclu)' : null,
+    ].filter(Boolean).join(' ');
+    return `<div class="pl-regle">
+      <span class="quoi"><b>${echap(nomDe(r.person_id, ref))}</b>
+        — chaque ${JOURS_FR[r.weekday]}</span>
+      <span class="quand">${hhmm(r.start_time)}–${hhmm(r.end_time)}</span>
+      <span class="quand">${echap(bornes || 'sans limite')}</span>
+      <button class="pl-btn" onclick="ouvrirRegle('${r.id}')">Modifier</button>
+    </div>`;
+  }).join('');
+}
+
+function ouvrirRegle(id){
+  EDITE_REGLE = id || null;
+  const r = id ? (DATA.regles||[]).find(x=>String(x.id) === String(id)) : null;
+  E('pl-titre-regle').textContent = r ? 'Modifier la récurrence' : 'Nouvelle récurrence';
+  E('r-supprimer').hidden = !r;
+  E('r-refus').hidden = true;
+
+  const vues = new Set();
+  E('r-personne').innerHTML = (DATA.employees||[])
+    .filter(e=>{ if(vues.has(e.person_id)) return false; vues.add(e.person_id); return true; })
+    .map(e=>`<option value="${echap(e.person_id)}">${echap(e.name)}${
+      e.type === 'extra' ? ' · extra' : ''}</option>`).join('');
+
+  E('r-jour').value    = r ? String(r.weekday) : String((new Date(LUNDI)).getDay() === 0 ? 6
+                                                        : (new Date(LUNDI)).getDay() - 1);
+  E('r-debut').value   = r ? hhmm(r.start_time) : '09:00';
+  E('r-fin').value     = r ? hhmm(r.end_time)   : '17:00';
+  E('r-depuis').value  = r ? (r.valid_from || '') : iso(new Date());
+  E('r-jusqua').value  = r ? (r.valid_to || '') : '';
+  if(r) E('r-personne').value = r.person_id;
+  apercuRegle();
+  E('pl-fond-regle').classList.add('ouvert');
+  E('r-personne').focus();
+}
+function fermerRegle(){
+  E('pl-fond-regle').classList.remove('ouvert'); EDITE_REGLE = null;
+}
+
+function apercuRegle(){
+  const h = heures(E('r-debut').value, E('r-fin').value);
+  const f = fiche(E('r-personne').value, E('r-depuis').value || iso(new Date()));
+  if(!f || h <= 0){ E('r-apercu').textContent = ''; return; }
+  const jour = JOURS_FR[+E('r-jour').value];
+  if(f.type !== 'extra'){
+    E('r-apercu').textContent =
+      `Chaque ${jour}, ${h.toFixed(2).replace('.',',')} h — paie lissée, cette récurrence `
+      + `n'ajoute rien au coût des journées.`;
+    return;
+  }
+  const taux = parseFloat(f.hourly_rate || 0);
+  E('r-apercu').textContent = taux
+    ? `Chaque ${jour} : ${h.toFixed(2).replace('.',',')} h × ${eur(taux)} = ${eur(h*taux)} `
+      + `par service, soit environ ${eur(h*taux*4.33)} par mois.`
+    : "aucun taux horaire sur cette fiche — ces services ne coûteront rien tant qu'il "
+      + "n'est pas posé.";
+}
+['r-personne','r-jour','r-debut','r-fin','r-depuis'].forEach(id=>{
+  const el = E(id); if(el) el.addEventListener('input', apercuRegle);
+  if(el) el.addEventListener('change', apercuRegle);
+});
+
+async function enregistrerRegle(){
+  const refus = E('r-refus');
+  if(heures(E('r-debut').value, E('r-fin').value) <= 0){
+    refus.hidden = false;
+    refus.textContent = "L'heure de fin doit suivre l'heure de début.";
+    return;
+  }
+  E('r-ok').disabled = true;
+  try{
+    const corps = {person_id: E('r-personne').value, weekday: +E('r-jour').value,
+                   start_time: E('r-debut').value, end_time: E('r-fin').value,
+                   valid_from: E('r-depuis').value, valid_to: E('r-jusqua').value};
+    if(EDITE_REGLE) corps.id = EDITE_REGLE;
+    const r = await fetch('/api/shift_rules', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(corps)});
+    const d = await r.json();
+    if(!d.ok) throw new Error(d.error || 'refus');
+    fermerRegle(); await charger();
+  }catch(e){
+    refus.hidden = false; refus.textContent = String(e.message || e);
+  }finally{
+    E('r-ok').disabled = false;
+  }
+}
+
+async function supprimerRegle(){
+  if(!EDITE_REGLE) return;
+  /* ⚠️ SUPPRIMER EFFACE AUSSI LE PASSÉ. Les services d'une règle n'existent nulle part
+     ailleurs : les mois déjà lus perdraient leur coût. Donner une fin de validité arrête la
+     récurrence sans toucher à l'historique, et c'est presque toujours ce qu'on veut. */
+  if(!confirm("Supprimer efface aussi les services passés de cette récurrence, et change le "
+            + "coût des mois déjà clos.\n\nPour l'arrêter sans toucher à l'historique, "
+            + "renseigne plutôt « Jusqu'au ».\n\nSupprimer quand même ?")) return;
+  E('r-supprimer').disabled = true;
+  try{
+    const r = await fetch('/api/shift_rules/' + encodeURIComponent(EDITE_REGLE),
+                          {method:'DELETE'});
+    const d = await r.json();
+    if(!d.ok) throw new Error(d.error || 'refus');
+    fermerRegle(); await charger();
+  }catch(e){
+    E('r-refus').hidden = false; E('r-refus').textContent = String(e.message || e);
+  }finally{
+    E('r-supprimer').disabled = false;
+  }
+}
+
+document.addEventListener('keydown', e=>{
+  if(e.key === 'Escape'){ fermer(); fermerRegle(); }
+});
 charger();
 </script>
 </body>

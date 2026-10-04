@@ -446,9 +446,34 @@ def test_lecriture_fusionnante_existe_toujours_pour_qui_en_a_besoin(monkeypatch)
         ok = True
 
     monkeypatch.setattr(flask_app._req, "post",
-                        lambda url, json, headers: (vus.update(headers), Reponse())[1])
+                        lambda url, json, headers, params=None:
+                            (vus.update(headers), vus.update({"_params": params}),
+                             Reponse())[2])
     flask_app._supa_upsert("card_visits", {"pid": "x"})
     assert "merge-duplicates" in vus.get("Prefer", "")
+    # ⚠️ SANS `on_conflict`, RIEN NE CHANGE POUR LES APPELANTS D'AVANT. La clause est arrivée
+    # pour les exceptions de planning, uniques par (règle, jour) et non par clé primaire :
+    # l'ajouter partout ferait fusionner sur une colonne que ces tables n'ont pas.
+    assert vus["_params"] is None, "la fusion par défaut ne doit viser aucune autre colonne"
+
+
+def test_la_fusion_peut_viser_une_contrainte_autre_que_la_cle_primaire(monkeypatch):
+    """
+    ⚠️ SANS `on_conflict`, POSTGREST FUSIONNE SUR LA CLÉ PRIMAIRE SEULEMENT, et une ligne en
+    conflit avec un AUTRE index unique est refusée en 409 au lieu d'être fusionnée. Les
+    exceptions de planning sont uniques par (règle, jour) : annuler un mercredi, le rétablir,
+    puis l'annuler à nouveau se serait soldé par un échec pour une action qui a du sens.
+    """
+    vus = {}
+
+    class Reponse:
+        ok = True
+
+    monkeypatch.setattr(flask_app._req, "post",
+                        lambda url, json, headers, params=None:
+                            (vus.update({"params": params}), Reponse())[1])
+    flask_app._supa_upsert("shifts", {"rule_id": "r1"}, on_conflict="rule_id,day")
+    assert vus["params"] == {"on_conflict": "rule_id,day"}
 
 
 # ── Se raviser ───────────────────────────────────────────────────────────────────────────────
