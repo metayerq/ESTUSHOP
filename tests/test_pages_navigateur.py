@@ -1078,6 +1078,11 @@ window.fetch = function (u) {
 </script>"""
 
 
+LIGNE_JUIN = {"id": "e06", "name": "Électricité", "amount": 70.0, "frequency": "monthly", "category": "Energy & utilities", "notes": "", "mode": "facture", "mois": "2026-06-01", "active": True, "valid_from": "2026-06-01", "valid_to": None}
+LIGNE_AOUT = {"id": "e08", "name": "Électricité", "amount": 75.0, "frequency": "monthly", "category": "Energy & utilities", "notes": "", "mode": "facture", "mois": "2026-08-01", "active": True, "valid_from": "2026-08-01", "valid_to": None}
+LIGNE_SEPT = {"id": "e09", "name": "Électricité", "amount": 120.0, "frequency": "monthly", "category": "Energy & utilities", "notes": "", "mode": "facture", "mois": "2026-09-01", "active": True, "valid_from": "2026-09-01", "valid_to": None}
+
+
 def _rendre(nom, reponses, tmp_path, scenario=None):
     env = Environment(loader=FileSystemLoader(os.path.join(RACINE, "templates")))
     html = env.get_template(nom).render(v="test", role="admin")
@@ -1271,6 +1276,126 @@ setTimeout(function(){
     assert not d["hors"], (
         f"{len(d['hors'])} onglet(s) hors de l'écran de {d['large']} px : {d['hors']} — "
         "la barre défile, donc rien ne signale à l'écran qu'ils existent")
+
+
+@SANS
+def test_LE_GRAPHE_DES_CHARGES_VARIABLES_SE_LIT_ET_SE_CORRIGE(tmp_path):
+    """
+    ⚠️ LE GRAPHE COLLAIT LES FACTURES BOUT À BOUT. Avec juin, août et septembre, les trois
+    barres se touchaient : l'absence de JUILLET était invisible, et la pente juin→août se
+    lisait comme une variation d'un mois sur l'autre. Un graphe qui tait ce qu'il ne sait pas
+    ment plus qu'un graphe absent.
+
+    ⚠️ ET IL NE SE LISAIT PAS. Les valeurs n'étaient accessibles que par l'infobulle native —
+    une seconde d'attente, la police du système — et pas du tout au clavier : le lecteur
+    d'écran n'entendait qu'« Évolution sur 4 mois », sans une seule valeur.
+
+    Les montants sont choisis pour que septembre dépasse de plus de 30 % la moyenne des mois
+    renseignés qui précèdent, et août non : le repère doit apparaître sur l'un et pas l'autre.
+    """
+    binaire, env = NAVIGATEUR
+    reponses = {
+        "/api/statut": {"ca": None, "ca_texte": "—", "tickets": None, "moyen_texte": "",
+                        "ecarts": 0, "boissons_dues": 0, "caisse_ok": None},
+        "/api/charges": {
+            "attente": {"Électricité": ["2026-07-01"]},
+            "mois_courant": "2026-10-01",
+            "charges": [LIGNE_JUIN, LIGNE_AOUT, LIGNE_SEPT],
+            "employees": [],
+        },
+    }
+    chemin = _rendre("charges.html", reponses, tmp_path, r"""
+setTimeout(function(){
+  var trace = function(t){ var d = document.createElement('div'); d.textContent = t;
+                           document.body.appendChild(d); };
+  switchTab('variables');
+  var carte = document.querySelector('.var-carte');
+  var barres = carte.querySelectorAll('.var-barres > button');
+
+  /* Quatre emplacements pour trois factures : juillet manque et DOIT occuper le sien. */
+  trace(barres.length === 4 ? 'QUATRE-EMPLACEMENTS' : 'MOIS-COLLES ' + barres.length);
+  var creux = carte.querySelectorAll('.var-barres > button.creux');
+  trace((creux.length === 1 && creux[0].dataset.mois === '2026-07-01')
+        ? 'TROU-VISIBLE' : 'TROU-MASQUE ' + creux.length);
+
+  /* Un mois sans facture n'est pas une barre à zéro : zéro dirait que le compteur n'a rien
+     relevé. L'emplacement n'a pas de hauteur calculée. */
+  trace(creux[0].style.height === '' ? 'TROU-SANS-VALEUR' : 'TROU-VALORISE ' + creux[0].style.height);
+
+  /* Le repère d'anomalie : septembre oui, août non. */
+  var alertes = [].slice.call(carte.querySelectorAll('.var-barres > button.alerte'))
+                  .map(function(b){ return b.dataset.mois; });
+  trace(JSON.stringify(alertes) === '["2026-09-01"]'
+        ? 'ANORMAL-SIGNALE' : 'ANORMAL-MUET ' + JSON.stringify(alertes));
+
+  /* Le survol réécrit le grand chiffre de la carte, pas une bulle du navigateur. */
+  var avant = carte.querySelector('.var-montant').textContent;
+  var aout = carte.querySelector('[data-mois="2026-08-01"]');
+  aout.dispatchEvent(new MouseEvent('mouseenter', {bubbles:false}));
+  var pendant = carte.querySelector('.var-montant').textContent;
+  var sous = carte.querySelector('.var-sous').textContent;
+  trace(pendant.indexOf('75') >= 0 ? 'SURVOL-DIT-LE-MONTANT' : 'SURVOL-MUET ' + pendant);
+  trace(sous.indexOf('août 2026') >= 0 ? 'SURVOL-DIT-LE-MOIS' : 'SURVOL-SANS-MOIS ' + sous);
+
+  /* Et il REND la carte à son état : un écran qui reste sur la dernière barre survolée fait
+     lire un mois ancien comme s'il était le dernier. */
+  carte.querySelector('.var-barres').dispatchEvent(new MouseEvent('mouseleave', {bubbles:false}));
+  trace(carte.querySelector('.var-montant').textContent === avant
+        ? 'SURVOL-REND-LA-CARTE' : 'SURVOL-COLLE ' + carte.querySelector('.var-montant').textContent);
+
+  /* Survoler le trou doit dire qu'il n'y a RIEN, pas afficher un zéro. */
+  creux[0].dispatchEvent(new MouseEvent('mouseenter', {bubbles:false}));
+  var st = carte.querySelector('.var-sous').textContent;
+  var sm = carte.querySelector('.var-montant').textContent;
+  trace((sm === '—' && st.indexOf('aucune facture') >= 0)
+        ? 'TROU-SE-DIT' : 'TROU-CHIFFRE ' + sm + ' / ' + st);
+
+  /* Le clavier atteint les valeurs : l'étiquette porte le mois ET le montant. */
+  var et = aout.getAttribute('aria-label') || '';
+  trace((et.indexOf('août 2026') >= 0 && et.indexOf('75') >= 0)
+        ? 'CLAVIER-ENTEND-LA-VALEUR' : 'CLAVIER-SOURD ' + et);
+
+  /* Cliquer une barre ouvre la fenêtre SUR CE MOIS, en mode correction. */
+  aout.click();
+  var ok = document.getElementById('fact-ok').textContent;
+  trace((document.getElementById('fact-mois').value === '2026-08' && ok === 'Corriger')
+        ? 'BARRE-CORRIGE-SON-MOIS' : 'BARRE-OUVRE-AUTRE-CHOSE ' +
+          document.getElementById('fact-mois').value + '/' + ok);
+  fermerFacture();
+
+  /* Cliquer le trou ouvre la MÊME fenêtre, sur juillet, en saisie. */
+  creux[0].click();
+  trace((document.getElementById('fact-mois').value === '2026-07'
+         && document.getElementById('fact-ok').textContent === 'Enregistrer')
+        ? 'TROU-SE-SAISIT' : 'TROU-INERTE ' + document.getElementById('fact-mois').value);
+  fermerFacture();
+
+  /* Le total dit sur combien de mois il porte, et combien manquent. */
+  var stats = (carte.querySelector('.var-stats') || {}).textContent || '';
+  trace(stats.indexOf('3 mois') >= 0 ? 'TOTAL-DIT-SA-PORTEE' : 'TOTAL-SANS-PORTEE ' + stats);
+  trace(stats.indexOf('265') >= 0 ? 'TOTAL-JUSTE' : 'TOTAL-FAUX ' + stats);
+  trace(stats.indexOf('1 mois sans facture') >= 0
+        ? 'TOTAL-AVOUE-LE-TROU' : 'TOTAL-TAIT-LE-TROU ' + stats);
+  trace(stats.indexOf('septembre 2026') >= 0 ? 'PLUS-CHER-NOMME' : 'PLUS-CHER-TU ' + stats);
+}, 400);
+""")
+    r = subprocess.run(
+        [binaire, "--headless", "--no-sandbox", "--disable-gpu", "--dump-dom",
+         "--virtual-time-budget=4000", "file://" + str(chemin)],
+        capture_output=True, text=True, timeout=90, env=env)
+    rendu = re.sub(r"<script[\s\S]*?</script>", " ", r.stdout, flags=re.I)
+
+    for m in ["QUATRE-EMPLACEMENTS", "TROU-VISIBLE", "TROU-SANS-VALEUR", "ANORMAL-SIGNALE",
+              "SURVOL-DIT-LE-MONTANT", "SURVOL-DIT-LE-MOIS", "SURVOL-REND-LA-CARTE",
+              "TROU-SE-DIT", "CLAVIER-ENTEND-LA-VALEUR", "BARRE-CORRIGE-SON-MOIS",
+              "TROU-SE-SAISIT", "TOTAL-DIT-SA-PORTEE", "TOTAL-JUSTE", "TOTAL-AVOUE-LE-TROU",
+              "PLUS-CHER-NOMME"]:
+        assert m in rendu, f"« {m} » absent — {rendu[-900:]}"
+    for m in ["MOIS-COLLES", "TROU-MASQUE", "TROU-VALORISE", "ANORMAL-MUET", "SURVOL-MUET",
+              "SURVOL-SANS-MOIS", "SURVOL-COLLE", "TROU-CHIFFRE", "CLAVIER-SOURD",
+              "BARRE-OUVRE-AUTRE-CHOSE", "TROU-INERTE", "TOTAL-SANS-PORTEE", "TOTAL-FAUX",
+              "TOTAL-TAIT-LE-TROU", "PLUS-CHER-TU", "NaN", "undefined", "Invalid Date"]:
+        assert m not in rendu, f"« {m} » apparaît à l'écran"
 
 
 @SANS

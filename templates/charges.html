@@ -203,10 +203,36 @@ select.field-input { cursor:pointer; }
 .var-nom { font-weight:600; font-size:16px; }
 .var-montant { font-size:30px; font-weight:600; letter-spacing:-.02em;
   font-variant-numeric:tabular-nums; margin:10px 0 2px; }
-.var-barres { display:flex; align-items:flex-end; gap:4px; height:92px; margin:18px 0 5px; }
-.var-barres > div { flex:1; border-radius:3px 3px 0 0; background:var(--db-iris); opacity:.3;
-  min-height:4px; }
-.var-barres > div.vif { opacity:1; }
+.var-barres { display:flex; align-items:flex-end; gap:4px; height:92px; margin:22px 0 5px; }
+/* ⚠️ CHAQUE BARRE EST UN BOUTON, pas un bloc décoratif : c'est le seul endroit de l'écran où un
+   mois ancien est visible, donc c'est de là qu'on doit pouvoir le corriger. Et un bouton se
+   tabule — l'ancienne version n'offrait au clavier et au lecteur d'écran qu'un « Évolution sur
+   4 mois » sans une seule valeur. */
+/* ⚠️ LA COULEUR DE LA BARRE EST PORTÉE PAR UN ENFANT, PAS PAR LE BOUTON. L'`opacity` posée sur
+   le bouton s'applique à TOUT son contenu, pastille d'anomalie comprise : le repère tombait à
+   30 % sur chaque barre qui n'était pas la dernière — c'est-à-dire exactement là où il sert.
+   Vu sur une capture, invisible à la relecture du CSS. */
+.var-barres > button { flex:1; border:0; padding:0; font:inherit; cursor:pointer;
+  background:none; position:relative; min-height:4px; }
+.var-barres > button > i { display:block; height:100%; border-radius:3px 3px 0 0;
+  background:var(--db-iris); opacity:.3; }
+.var-barres > button.vif > i { opacity:1; }
+.var-barres > button:hover > i, .var-barres > button:focus-visible > i { opacity:.7; }
+.var-barres > button.vif:hover > i, .var-barres > button.vif:focus-visible > i { opacity:1; }
+.var-barres > button:focus-visible { outline:2px solid var(--db-iris); outline-offset:2px; }
+/* Un mois sans facture : un emplacement vide, pas une barre à zéro. */
+.var-barres > button.creux { height:100%; }
+.var-barres > button.creux > i { background:transparent; opacity:1;
+  border:1px dashed var(--db-amber); border-radius:3px; }
+.var-barres > button.creux:hover > i, .var-barres > button.creux:focus-visible > i {
+  background:var(--db-amber-soft); }
+.var-barres > button.alerte { position:relative; }
+.var-barres > button.alerte::after { content:""; position:absolute; top:-8px; left:50%;
+  transform:translateX(-50%); width:5px; height:5px; border-radius:50%;
+  background:var(--db-amber); }
+.var-stats { margin-top:9px; font-size:11.5px; color:var(--db-muted);
+  font-variant-numeric:tabular-nums; }
+.var-stats b { color:var(--db-ink); font-weight:600; }
 .var-axe { display:flex; justify-content:space-between; font-size:10.5px; color:var(--db-muted);
   font-variant-numeric:tabular-nums; }
 .var-saisie { margin-top:16px; padding-top:14px; border-top:1px solid var(--db-line); }
@@ -749,6 +775,59 @@ function facturesDe(nom) {
     .sort((a, b) => String(b.mois).localeCompare(String(a.mois)));
 }
 
+/* ⚠️ UN TROU DANS L'HISTORIQUE DOIT SE VOIR. Le graphe collait les factures bout à bout : avec
+ * juin, juillet et septembre, les trois barres se touchaient et l'absence d'août était
+ * INVISIBLE — la pente juillet→septembre se lisait comme une évolution d'un mois sur l'autre.
+ * C'est la même faute que la barre unique : un graphe qui tait ce qu'il ne sait pas.
+ *
+ * On construit donc la suite des mois du premier au dernier, un emplacement par mois, vide
+ * quand la facture manque. Pas au-delà du dernier : les mois à venir ne sont pas des trous. */
+function serieMensuelle(fs) {
+  if (!fs.length) return [];
+  const parMois = new Map(fs.map((f) => [String(f.mois).slice(0, 7), f]));
+  const bornes = [...parMois.keys()].sort();
+  const [af, mf] = bornes[bornes.length - 1].split('-').map(Number);
+  let [a, m] = bornes[0].split('-').map(Number);
+  const out = [];
+  while (a < af || (a === af && m <= mf)) {
+    const k = a + '-' + String(m).padStart(2, '0');
+    out.push({ mois: k + '-01', facture: parMois.get(k) || null });
+    if (++m > 12) { m = 1; a += 1; }
+  }
+  return out;
+}
+
+/* Le survol réécrit le GRAND chiffre de la carte au lieu d'ouvrir une bulle : l'œil est déjà
+ * là, et une infobulle du navigateur arrive avec une seconde de retard et sa propre police. */
+function survolBarre(el) {
+  const carte = el.closest('.var-carte');
+  const mt = carte.querySelector('.var-montant');
+  const ss = carte.querySelector('.var-sous');
+  if (carte.dataset.defautM === undefined) {
+    carte.dataset.defautM = mt.textContent;
+    carte.dataset.defautS = ss.innerHTML;
+  }
+  if (el.dataset.manquant) {
+    mt.textContent = '—';
+    ss.innerHTML = `<span style="color:var(--db-amber)">${esc(moisDit(el.dataset.mois))}`
+      + ' &mdash; aucune facture</span>'
+      + '<span class="db-s" style="margin-left:6px">cliquer pour la saisir</span>';
+    return;
+  }
+  mt.textContent = fmt(el.dataset.montant);
+  const d = el.dataset.delta;
+  ss.innerHTML = esc(moisDit(el.dataset.mois))
+    + (d ? ` <span class="db-badge ${+d > 0 ? 'down' : 'up'}">${+d > 0 ? '+' : ''}${d} %</span>`
+         + '<span class="db-s" style="margin-left:6px">vs mois précédent</span>' : '');
+}
+
+function quitterBarres(zone) {
+  const carte = zone.closest('.var-carte');
+  if (!carte || carte.dataset.defautM === undefined) return;
+  carte.querySelector('.var-montant').textContent = carte.dataset.defautM;
+  carte.querySelector('.var-sous').innerHTML = carte.dataset.defautS;
+}
+
 function renderVariables() {
   const zone = document.getElementById('cartes-variables');
   /* ⚠️ L'ORDRE DES COLONNES EST FIXÉ ICI, pas hérité de la base. Sans tri, Eau et Électricité
@@ -803,17 +882,69 @@ function renderVariables() {
      * barre seule dit déjà qu'une mesure existe » — et la capture m'a contredit : une barre
      * unique occupe toute la largeur et se lit comme un maximum, alors qu'elle n'est comparée à
      * rien. C'est la règle que `miniCourbe` applique déjà deux cents lignes plus bas. */
-    const histo = fs.slice(0, 13).reverse();
-    const max = Math.max(...histo.map((f) => parseFloat(f.amount) || 0), 1);
+    const histo = serieMensuelle(fs).slice(-13);
+    const pleins = histo.filter((s) => s.facture);
+    const max = Math.max(...pleins.map((s) => parseFloat(s.facture.amount) || 0), 1);
+    const dernierPlein = histo.map((s) => !!s.facture).lastIndexOf(true);
+
+    const barres = histo.map((s, i) => {
+      const mois = String(s.mois).slice(0, 7);
+      if (!s.facture) {
+        /* Un mois sans facture est un EMPLACEMENT, pas une barre à zéro : zéro voudrait dire
+         * que le compteur n'a rien relevé. Il occupe toute la hauteur, en pointillé. */
+        return `<button type="button" class="creux" data-manquant="1" data-mois="${s.mois}"
+          onmouseenter="survolBarre(this)" onfocus="survolBarre(this)"
+          onblur="quitterBarres(this.parentElement)"
+          onclick="ouvrirFacture('${escAttr(nom)}', '${mois}')"
+          aria-label="${esc(moisDit(s.mois))}, aucune facture — saisir"><i></i></button>`;
+      }
+      const v = parseFloat(s.facture.amount) || 0;
+      /* L'écart se dit par rapport au mois PRÉCÉDENT RENSEIGNÉ : comparer à un trou donnerait
+       * une variation inventée. */
+      const avant = histo.slice(0, i).filter((x) => x.facture).pop();
+      const va = avant ? (parseFloat(avant.facture.amount) || 0) : 0;
+      const delta = (avant && va) ? Math.round((v - va) / va * 100) : '';
+      /* ⚠️ UNE FACTURE ANORMALE EST CE QU'ON VIENT CHERCHER ICI, et comparer des hauteurs à
+       * l'œil ne la donne pas. Repère au-dessus de la barre à partir de +30 % sur la moyenne
+       * des trois mois renseignés qui précèdent — pas sur le seul mois d'avant, qu'une saison
+       * suffit à faire bouger. */
+      const trois = histo.slice(0, i).filter((x) => x.facture).slice(-3)
+        .map((x) => parseFloat(x.facture.amount) || 0);
+      const moy = trois.length ? trois.reduce((p, c) => p + c, 0) / trois.length : 0;
+      const alerte = (trois.length >= 2 && moy > 0 && v > moy * 1.3) ? ' alerte' : '';
+      return `<button type="button" class="${i === dernierPlein ? 'vif' : ''}${alerte}"
+        data-mois="${s.mois}" data-montant="${v}" data-delta="${delta}"
+        style="height:${Math.max(5, v / max * 100)}%"
+        onmouseenter="survolBarre(this)" onfocus="survolBarre(this)"
+        onblur="quitterBarres(this.parentElement)"
+        onclick="ouvrirFacture('${escAttr(nom)}', '${mois}')"
+        aria-label="${esc(moisDit(s.mois))}, ${fmt(v)}${alerte ? ', inhabituel' : ''} — corriger"
+        ><i></i></button>`;
+    }).join('');
+
+    /* ⚠️ LE TOTAL DIT SUR COMBIEN DE MOIS IL PORTE. Avec un trou, une somme présentée comme
+     * « 12 mois » serait fausse d'une facture entière — et c'est le nombre qui part chez le
+     * comptable. */
+    const douze = histo.slice(-12).filter((s) => s.facture)
+      .map((s) => parseFloat(s.facture.amount) || 0);
+    const total = douze.reduce((p, c) => p + c, 0);
+    const trous = histo.slice(-12).length - douze.length;
+    const cher = pleins.slice(-12).reduce((p, c) =>
+      (!p || (parseFloat(c.facture.amount) || 0) > (parseFloat(p.facture.amount) || 0)) ? c : p, null);
+    const stats = douze.length >= 2 ? `
+      <div class="var-stats">Total ${plurCh(douze.length, 'mois', 'mois')}
+        <b>${fmt(total)}</b> · moyenne <b>${fmt(total / douze.length)}</b>
+        · plus cher ${esc(moisDit(cher.facture.mois))} <b>${fmt(cher.facture.amount)}</b>${
+        trous ? ` · <span style="color:var(--db-amber)">${
+          plurCh(trous, 'mois sans facture', 'mois sans facture')}</span>` : ''}</div>` : '';
+
     const graphe = histo.length >= 2 ? `
-      <div class="var-barres" role="img"
-           aria-label="Évolution sur ${plurCh(histo.length, 'mois', 'mois')}">
-        ${histo.map((f, i) => `<div class="${i === histo.length - 1 ? 'vif' : ''}"
-            title="${moisDit(f.mois)} · ${fmt(f.amount)}"
-            style="height:${Math.max(5, (parseFloat(f.amount) || 0) / max * 100)}%"></div>`).join('')}
+      <div class="var-barres" role="group" onmouseleave="quitterBarres(this)"
+           aria-label="Évolution de ${esc(nom)}, ${plurCh(histo.length, 'mois', 'mois')}">
+        ${barres}
       </div>
-      <div class="var-axe"><span>${moisDit(histo[0].mois)}</span>
-        <span>${moisDit(histo[histo.length - 1].mois)}</span></div>`
+      <div class="var-axe"><span>${esc(moisDit(histo[0].mois))}</span>
+        <span>${esc(moisDit(histo[histo.length - 1].mois))}</span></div>${stats}`
       : `<div class="var-vide">${histo.length
             ? "L'évolution s'affichera à partir de la deuxième facture."
             : 'Aucune facture saisie'}</div>`;
@@ -834,8 +965,8 @@ function renderVariables() {
     return `<div class="var-carte">
       <div class="var-tete"><span class="var-nom">${esc(nom)}</span>${etat}</div>
       <div class="var-montant">${derniere ? fmt(derniere.amount) : '—'}</div>
-      <div class="db-s">${derniere ? moisDit(derniere.mois) : 'en attente de la première facture'}
-        ${ecart ? ' · ' + ecart : ''}</div>
+      <div class="db-s var-sous">${derniere ? esc(moisDit(derniere.mois))
+          : 'en attente de la première facture'}${ecart ? ' · ' + ecart : ''}</div>
       ${graphe}${saisie}
       <div style="margin-top:14px">
         <button class="db-btn fort" onclick="ouvrirFacture('${escAttr(nom)}')">+ Facture</button>
@@ -868,7 +999,10 @@ function renderVariables() {
  * bouton « corriger » serait un geste de plus à apprendre pour la même intention — poser le
  * bon chiffre sur le bon mois.
  */
-function ouvrirFacture(nom) {
+/* `mois` est optionnel : passé par une barre du graphe, c'est le chemin direct vers la
+ * correction d'un mois précis — ouvrir la fenêtre puis retrouver le mois à la main était le
+ * geste le plus long de l'écran. */
+function ouvrirFacture(nom, mois) {
   const noms = [...new Set(chargesData.filter((c) => c.mode === 'facture').map((c) => c.name))];
   document.getElementById('fact-nom').innerHTML =
     noms.map((n) => `<option value="${escAttr(n)}">${esc(n)}</option>`).join('');
@@ -878,7 +1012,7 @@ function ouvrirFacture(nom) {
      vient saisir neuf fois sur dix. */
   const attente = ATTENTE[nom || noms[0]] || [];
   document.getElementById('fact-mois').value =
-    String(attente[0] || MOIS_COURANT).slice(0, 7);
+    mois ? String(mois).slice(0, 7) : String(attente[0] || MOIS_COURANT).slice(0, 7);
   document.getElementById('fact-montant').value = '';
   majFacture();
   document.getElementById('fact-modal').classList.add('open');
