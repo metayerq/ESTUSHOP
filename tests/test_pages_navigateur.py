@@ -1026,3 +1026,47 @@ def test_la_page_s_affiche_vraiment(nom, tmp_path):
             "C'est exactement la panne qu'aucun contrôle de syntaxe ne voit.")
     for m in cas["interdit"]:
         assert m not in rendu, f"{nom} : « {m} » apparaît à l'écran"
+
+
+# ══ LA PAGE NE DOIT GLISSER À AUCUNE LARGEUR ════════════════════════════════════════════════
+#
+# ⚠️ CE CONTRÔLE EXISTE PARCE QUE `1fr` NE DESCEND JAMAIS SOUS SON CONTENU. `1fr` vaut
+# `minmax(auto, 1fr)`, et `auto` a pour plancher la largeur minimale du contenu : trois cartes
+# dont les sous-titres refusent de se réduire additionnent leurs planchers, et la grille dépasse
+# son conteneur. Mesuré le 04/10/2026 : à 1024 px — un iPad en PAYSAGE — le tableau de bord
+# s'étalait sur 1111 px et la page entière glissait sous le doigt, menu compris.
+#
+# ⚠️ ET LE PORTRAIT ALLAIT BIEN. C'est ce qui rend ce défaut invisible à la relecture : on
+# vérifie « est-ce que ça tient sur mobile », la réponse est oui, et la taille qui casse est
+# celle du milieu — entre le point de rupture à 900 px et la largeur confortable à 1100.
+#
+# ⚠️ ON MESURE `scrollWidth`, PAS LA FEUILLE DE STYLE. Une règle peut être juste et un contenu
+# la déborder quand même ; seul le rectangle rendu le dit.
+
+LARGEURS = [390, 768, 900, 1024, 1100, 1280]
+
+
+@SANS
+@pytest.mark.parametrize("largeur", LARGEURS)
+def test_le_tableau_de_bord_ne_glisse_a_aucune_largeur(largeur, tmp_path):
+    binaire, env = NAVIGATEUR
+    cas = CAS["index.html"]
+    chemin = _rendre("index.html", cas["reponses"], tmp_path, """
+setTimeout(function(){
+  var d = document.createElement('div'); d.id = 'LARGEUR';
+  d.textContent = document.documentElement.scrollWidth;
+  document.body.appendChild(d);
+}, 600);
+""")
+    r = subprocess.run(
+        [binaire, "--headless", "--no-sandbox", "--disable-gpu", "--dump-dom",
+         f"--window-size={largeur},900", "--virtual-time-budget=3000",
+         "file://" + str(chemin)], capture_output=True, text=True, timeout=90, env=env)
+    m = re.search(r'<div id="LARGEUR">(\d+)</div>', r.stdout)
+    assert m, f"{largeur} px : la mesure n'a pas été rendue\n{r.stderr[:300]}"
+    mesure = int(m.group(1))
+    # ⚠️ ON TOLÈRE LA BARRE DE DÉFILEMENT VERTICALE, qui retire une quinzaine de pixels à la
+    # zone utile — jamais plus. Au-delà, c'est le contenu qui pousse.
+    assert mesure <= largeur, (
+        f"à {largeur} px, la page s'étale sur {mesure} px : elle glisse horizontalement, "
+        "menu compris")

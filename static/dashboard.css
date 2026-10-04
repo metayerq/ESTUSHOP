@@ -131,9 +131,17 @@
 .db-link:hover { text-decoration: underline; }
 
 .db-grid { display: grid; gap: 16px; }
-.db-g3 { grid-template-columns: repeat(3, 1fr); }
-.db-g2 { grid-template-columns: repeat(2, 1fr); }
-.db-g-2-1 { grid-template-columns: 1.9fr 1fr; }
+/* ⚠️ `1fr` NE DESCEND JAMAIS SOUS SON CONTENU, ET C'EST CE QUI DÉBORDAIT. `1fr` vaut
+   `minmax(auto, 1fr)`, et `auto` a pour plancher la largeur minimale du contenu : une carte
+   dont le sous-titre tient en 137 px refuse de se réduire, les trois tracks additionnent leurs
+   planchers, et la grille dépasse son conteneur. Mesuré : à 1024 px — un iPad en paysage — le
+   tableau de bord s'étalait sur 1111 px et la page entière glissait.
+
+   `minmax(0, 1fr)` autorise la réduction ; le contenu se replie au lieu de pousser. Le même
+   correctif est déjà en place dans `.app` et dans `faturar.html` — il manquait seulement ici. */
+.db-g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.db-g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.db-g-2-1 { grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr); }
 .db-mb { margin-bottom: 16px; }
 
 /* ── Métriques ──────────────────────────────────────────────────────────── */
@@ -225,6 +233,21 @@
 }
 .db-reason:empty { display: none; }
 
+/* ⚠️ CE PALIER ET LE `minmax(0, …)` CI-DESSUS SE SUFFISENT CHACUN POUR LE DÉBORDEMENT —
+   vérifié par mutation : retirer l'un laisse la page tenir, retirer les DEUX la fait glisser.
+   Ils ne servent pourtant pas la même chose. Le `minmax` empêche de DÉBORDER ; ce palier
+   empêche d'être ILLISIBLE : trois cartes dans 828 px utiles tiennent, mais chacune tombe sous
+   la largeur où ses chiffres se lisent. On garde les deux, et on sait pourquoi.
+
+   ⚠️ IL MANQUAIT UN PALIER ENTRE 900 ET 1100. En dessous de 900 px la grille passe à une
+   colonne, au-dessus elle en garde trois : entre les deux — l'iPad en paysage, et un petit
+   portable — trois cartes se partageaient l'écran moins le rail de 196 px, et chacune tombait
+   sous la largeur où ses chiffres restent lisibles. Autoriser la réduction ne suffisait pas :
+   il fallait aussi cesser d'en demander trois. */
+@media (max-width: 1100px) {
+  .db-g3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 @media (max-width: 900px) {
   .db-g3, .db-g2, .db-g-2-1 { grid-template-columns: 1fr; }
   .db-v.xl { font-size: 30px; }
@@ -235,12 +258,12 @@
       ⚠️ PLUS PETITES QUE LES TROIS DU HAUT, ET C'EST VOULU. Elles portent du contexte,
       pas la réponse : leur donner la même taille remettrait six chiffres de même
       poids sur l'écran, ce qu'on vient précisément de défaire. ── */
-.db .db-g4 { grid-template-columns: repeat(4, 1fr); }
+.db .db-g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .db-compact { padding: 13px 15px; }
 .db-compact .db-v { font-size: 20px; letter-spacing: -.4px; }
 .db-compact .db-s { font-size: 11.5px; margin-top: 4px; }
 .db-compact .db-l { font-size: 11.5px; margin-bottom: 4px; }
-@media (max-width: 900px) { .db .db-g4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 900px) { .db .db-g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .db .db-g4 { grid-template-columns: 1fr; } }
 
 /* ── Les trois boutons de la barre de période ────────────────────────────────
