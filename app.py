@@ -7020,8 +7020,12 @@ def clientes_page():
 
 @app.route("/api/returning")
 def api_returning():
-    f  = request.args.get("from") or OPENING_DAY
-    to = request.args.get("to") or today_lisbon().isoformat()
+    # ⚠️ NOMS FRANÇAIS, ET LES ANGLAIS RESTENT ACCEPTÉS. Tout est en français dans ce dépôt,
+    # jusqu'au garde qui refuse l'anglais dans le script du tableau de bord. Mais `from`/`to`
+    # ont pu être appelés d'ailleurs : les retirer casserait un appel qu'on ne voit pas d'ici.
+    f  = (request.args.get("debut") or request.args.get("from") or OPENING_DAY)
+    to = (request.args.get("fin") or request.args.get("to")
+          or today_lisbon().isoformat())
     try:
         return jsonify(_returning_metrics(f, to))
     except SupabaseSchemaError as e:

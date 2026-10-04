@@ -513,12 +513,88 @@ function renderReponse(d) {
   }
 }
 
+/* ══ Clients qui reviennent ═══════════════════════════════════════════════════════════════
+ *
+ * ⚠️ CHARGÉ À PART, ET C'EST VOULU. Ces chiffres viennent d'une petite table Supabase
+ * d'empreintes de cartes, pas de Vendus : les coudre dans `/api/data` ferait payer leur lecture
+ * à chaque rafraîchissement du tableau de bord, y compris quand le bloc est masqué.
+ *
+ * ⚠️ ET LA FENÊTRE EST CELLE QUI EST AFFICHÉE. Les anciennes tuiles portaient toujours
+ * l'historique complet : changer de période ne les faisait pas bouger d'un chiffre, et on
+ * finissait par les lire comme un décor.
+ */
+let _retSeq = 0;
+
+async function chargerRetours(depuis, jusqua) {
+  const bloc = document.getElementById('ret-bloc');
+  if (!bloc) return;
+  const seq = ++_retSeq;
+  try {
+    /* ⚠️ LES PARAMÈTRES PASSENT PAR `URLSearchParams`, PAS PAR UNE INTERPOLATION. Une date
+     * collée dans l'URL n'est pas échappée, et le garde de langue lisait « to= » comme un mot
+     * anglais affiché — il avait tort, mais la construction propre lève les deux à la fois. */
+    const q = new URLSearchParams();
+    q.set('debut', depuis);
+    q.set('fin', jusqua);
+    const r = await fetch('/api/returning?' + q);
+    const d = await r.json();
+    if (seq !== _retSeq) return;        // l'utilisateur a changé de période entre-temps
+    rendreRetours(d);
+  } catch (e) {
+    if (seq === _retSeq) bloc.style.display = 'none';
+  }
+}
+
+function rendreRetours(d) {
+  const E = (id) => document.getElementById(id);
+  const bloc = E('ret-bloc');
+  /* Pas de terminal configuré, ou aucune empreinte : on ne montre pas un bloc vide. */
+  if (!d || d.enabled === false || d.empty || !d.period) { bloc.style.display = 'none'; return; }
+  const p = d.period;
+
+  /* ⚠️ AUCUN PASSAGE N'EST PAS « 0 % DE RETOURS ». Sur une journée sans paiement par carte,
+   * un 0 % affirmerait que personne n'est revenu — alors qu'on n'a vu personne. */
+  if (!p.visits) {
+    bloc.style.display = '';
+    E('ret-pct').textContent = '—';
+    E('ret-pct-sub').innerHTML = '<span class="db-s">aucun paiement par carte sur la période</span>';
+    E('ret-cartes').textContent = '—';
+    E('ret-cartes-sub').textContent = '';
+    E('ret-reg').textContent = '—';
+    E('ret-reg-sub').textContent = '';
+    E('ret-note').textContent = '';
+    return;
+  }
+
+  bloc.style.display = '';
+  E('ret-pct').textContent = p.returning_pct != null ? p.returning_pct + ' %' : '—';
+  E('ret-pct-sub').innerHTML =
+    `<span class="db-s">${plurJs(p.returning, 'passage')} sur ${p.visits}</span>`;
+
+  E('ret-cartes').textContent = p.cards;
+  /* Déjà vue AVANT la période contre jamais vue : c'est la croissance de la base. */
+  E('ret-cartes-sub').innerHTML =
+    `<span class="db-s">${p.new_cards} nouvelle${p.new_cards > 1 ? 's' : ''}`
+    + ` · ${p.known_cards} déjà connue${p.known_cards > 1 ? 's' : ''}</span>`;
+
+  E('ret-reg').textContent = p.regulars;
+  E('ret-reg-sub').innerHTML = p.regulars_visit_pct != null
+    ? `<span class="db-s">4 passages ou plus · ${p.regulars_visit_pct} % des passages</span>`
+    : '<span class="db-s">4 passages ou plus</span>';
+
+  /* ⚠️ CE QUE CE CHIFFRE NE DIT PAS. Il ne voit que les paiements par CARTE : un habitué qui
+   * paie en espèces n'y figure jamais. Le taire ferait lire une fréquentation là où il n'y a
+   * qu'une part de la fréquentation. */
+  E('ret-note').innerHTML =
+    '<span class="db-s">Empreintes de cartes du terminal : les paiements en espèces '
+    + 'n’y figurent pas. « Récurrente » = carte déjà vue avant ce passage, sur tout '
+    + 'l’historique.</span>';
+}
+
+function plurJs(n, sing, pl) { return n + ' ' + (n > 1 ? (pl || sing + 's') : sing); }
+
 function render(d) {
   window._lastData = d;
-  /* ⚠️ « RETURNING CUSTOMERS » A DEUX PAGES À LUI : `/clientes` analyse les empreintes de
-   * cartes du terminal, `/loyalty` suit le rattachement au programme. Les tuiles d'ici ne
-   * faisaient que renvoyer vers la première.
-   */
   // Bandeau warnings — sources de données en échec
   const warnBanner = document.getElementById('warn-banner');
   if (d.warnings && d.warnings.length) {
@@ -527,6 +603,9 @@ function render(d) {
   } else {
     warnBanner.style.display = 'none';
   }
+
+  /* La fenêtre du bloc « clients qui reviennent » est celle du tableau de bord. */
+  if (d.from_date && d.to_date) chargerRetours(d.from_date, d.to_date);
 
   // Sous-titre
   let subtitle = 'Alcântara';

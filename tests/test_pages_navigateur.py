@@ -777,6 +777,133 @@ CAS = {
 })(0);
 """,
     },
+    "index.html": {
+        "reponses": {
+            "/api/statut": {"ca": None, "ca_texte": "—", "tickets": None, "moyen_texte": "",
+                            "ecarts": 0, "boissons_dues": 0, "caisse_ok": None},
+            # ⚠️ UNE CHARGE UTILE RÉALISTE, PAS UN DICTIONNAIRE VIDE. Avec `{}`, le rendu
+            # du tableau de bord part en vrille et le harnais ne voit plus que ses propres
+            # dégâts — il ne garde alors plus rien de la page.
+            "/api/data": {
+                "preset": "custom", "period_label": "1 sept – 30 sept",
+                "from_date": "2026-09-01", "to_date": "2026-09-30", "n_days": 30,
+                "periode": {"jours_ouverts": 22, "jours_calendaires": 30, "en_cours": False},
+                "is_single_day": False,
+                "has_items": True, "date": "2026-09-30",
+                "updated_at": "2026-09-30 18:00:00", "is_today": False,
+                "comp_label": "vs les 30 jours précédents", "comp_sofar": False,
+                "today": {"ca": 12400.0, "ca_ht": 11000.0, "nb": 2100, "ticket": 5.90,
+                          "ticket_ht": 5.24},
+                "yesterday": {"ca": 11000.0, "ca_ht": 9800.0, "nb": 1950, "ticket": 5.64,
+                              "ticket_ht": 5.03},
+                "seuil": 120,
+                "daily": [{"date": f"2026-09-{j:02d}", "ca_ttc": 400 + j, "ca_ht": 360 + j,
+                           "nb": 70} for j in (1, 3, 4, 5, 7)],
+                "daily_comp": [{"date": f"2026-08-{j:02d}", "ca_ttc": 380 + j,
+                                "ca_ht": 340 + j, "nb": 66} for j in (3, 4, 6, 7, 10)],
+                "payments": [], "tva": [], "week": [], "weekdays": [], "median": 5.40,
+                "upsell": {}, "ticket_dist": [], "recent": [],
+                "today_lastweek": None, "wow": None, "warnings": [],
+                "economics": {
+                    "ca_ttc": 12400.0, "ca_ht": 11000.0, "open_days": 22,
+                    "cogs_ht": 3200.0, "cogs_coverage_pct": 97.0,
+                    "marge_brute_ht": 7800.0, "marge_brute_ht_pct": 70.9,
+                    "marge_hors_ventes_ht": 0.0, "marge_totale_ht": 7800.0,
+                    "marge_is_estimated": False,
+                    "cout_fixe_periode": 1200.0, "cout_perso_periode": 2400.0,
+                    "cout_total_periode": 3600.0, "cout_jour": 163.6,
+                    "cout_fixe_jour": 1200.0, "cout_perso_jour": 2400.0,
+                    "cout_total_jour": 3600.0, "amort_jour": 596.0,
+                    "ebitda_ht": 4200.0,
+                    "seuil_ca_ttc": 5740.0, "seuil_ca_ttc_jour": 260.9,
+                    "seuil_ca_ttc_par_jour": {}, "seuil_ca_ht": 5080.0,
+                    "manque_seuil": 0.0, "pct_seuil": 216,
+                    "charges_source": "supabase", "seuil_margin_src": "reelle",
+                    "seuil_tva_src": "mesure", "seuil_tva_pct": 13.0,
+                    "seuil_margin_pct": 70.9, "excludes_today": False,
+                    "periode": {"jours_ouverts": 22, "jours_calendaires": 30,
+                                "en_cours": False},
+                    "commissions_ht": 0.0, "popup_commission_ht": 0.0,
+                },
+            },
+            "/api/popup-flag": {},
+            "/api/returning": {
+                "enabled": True, "empty": False,
+                "period": {"visits": 142, "returning": 58, "returning_pct": 40.8,
+                           "cards": 97, "known_cards": 31, "new_cards": 66,
+                           "regulars": 9, "regulars_visit_pct": 18.3},
+                "all": {"visits": 1200, "cards": 640, "repeat_cards": 220,
+                        "repeat_cards_pct": 34.4},
+            },
+        },
+        "attendu": [
+            "Clients qui reviennent", "Analyse complète",
+            # ⚠️ LE BLOC SUIT LA PÉRIODE AFFICHÉE. Les anciennes tuiles portaient toujours
+            # l'historique complet : changer de période ne les faisait pas bouger d'un chiffre.
+            "FENETRE-SUIVIE", "BLOC-VISIBLE",
+            "PART-AFFICHEE", "CARTES-NEUVES-ET-CONNUES", "HABITUES",
+            # ⚠️ ET CE QUE LE CHIFFRE NE DIT PAS EST ÉCRIT À CÔTÉ.
+            "ESPECES-DITES",
+            # Aucun passage ≠ 0 % de retours.
+            "VIDE-SE-TAIT",
+        ],
+        "interdit": [
+            "FENETRE-FIGEE", "BLOC-CACHE", "PART-ABSENTE", "CARTES-MUETTES", "HABITUES-MUETS",
+            "ESPECES-TUES", "VIDE-AFFIRME-ZERO",
+            "NaN", "undefined", "Invalid Date", "passage(s)",
+        ],
+        "scenario": r"""
+(function attendre(n){
+  var E = function(i){ return document.getElementById(i); };
+  if(!E('ret-bloc') && n < 80) return setTimeout(function(){ attendre(n+1); }, 20);
+  var trace = function(t){ var d = document.createElement('div'); d.textContent = t;
+                           document.body.appendChild(d); };
+
+  var vues = [];
+  var vrai = window.fetch;
+  window.fetch = function(u, o){ vues.push(String(u)); return vrai(u, o); };
+
+  /* ⚠️ ON NE PEUT PAS APPELER `chargerRetours` SOI-MÊME. Mon premier scénario le faisait, et
+     ne prouvait donc rien de ce qui est demandé : que le bloc suive la période AFFICHÉE.
+     Changer la fenêtre dans `render` passait inaperçu. On repasse par `render`, qui est le
+     chemin réel. */
+  render(window._lastData);
+  setTimeout(function(){
+    var url = vues.join(' ');
+    trace((url.indexOf('2026-09-01') >= 0 && url.indexOf('2026-09-30') >= 0)
+          ? 'FENETRE-SUIVIE' : 'FENETRE-FIGEE ' + url);
+    /* Le bloc doit être VISIBLE, pas seulement présent dans le document. */
+    trace(E('ret-bloc').style.display !== 'none'
+          ? 'BLOC-VISIBLE' : 'BLOC-CACHE');
+
+    trace(E('ret-pct').textContent.indexOf('40.8') >= 0
+          ? 'PART-AFFICHEE' : 'PART-ABSENTE ' + E('ret-pct').textContent);
+    var sc = E('ret-cartes-sub').textContent;
+    trace((sc.indexOf('66 nouvelles') >= 0 && sc.indexOf('31 déjà connues') >= 0)
+          ? 'CARTES-NEUVES-ET-CONNUES' : 'CARTES-MUETTES ' + sc);
+    trace(E('ret-reg').textContent === '9'
+          ? 'HABITUES' : 'HABITUES-MUETS ' + E('ret-reg').textContent);
+    trace(E('ret-note').textContent.indexOf('espèces') >= 0
+          ? 'ESPECES-DITES' : 'ESPECES-TUES ' + E('ret-note').textContent);
+
+    /* ⚠️ AUCUN PASSAGE N'EST PAS « 0 % DE RETOURS ». Sur une journée sans paiement par carte,
+       un 0 % affirmerait que personne n'est revenu — alors qu'on n'a vu personne. */
+    rendreRetours({enabled:true, empty:false, period:{visits:0, returning:0,
+      returning_pct:null, cards:0, known_cards:0, new_cards:0, regulars:0,
+      regulars_visit_pct:null}});
+    /* ⚠️ « — » SEUL NE PROUVE RIEN : le chemin ordinaire affiche aussi « — » quand le
+       pourcentage est nul. Ce qui distingue, c'est de DIRE pourquoi. */
+    trace((E('ret-pct').textContent === '\u2014'
+           && E('ret-pct-sub').textContent.indexOf('aucun paiement par carte') >= 0
+           && E('ret-cartes').textContent === '\u2014')
+          ? 'VIDE-SE-TAIT'
+          : 'VIDE-AFFIRME-ZERO ' + E('ret-pct').textContent + ' / '
+            + E('ret-pct-sub').textContent);
+    window.fetch = vrai;
+  }, 150);
+})(0);
+""",
+    },
     "inventario.html": {
         "reponses": {
             "/api/inventario": {
@@ -814,6 +941,13 @@ window.fetch = function (u) {
 def _rendre(nom, reponses, tmp_path, scenario=None):
     env = Environment(loader=FileSystemLoader(os.path.join(RACINE, "templates")))
     html = env.get_template(nom).render(v="test", role="admin")
+    # ⚠️ LES CHEMINS ABSOLUS NE RÉSOLVENT PAS EN `file://`. Tant qu'on ne les réécrivait pas,
+    # `/static/dashboard.js` n'était jamais chargé : le gabarit du tableau de bord s'affichait
+    # sans UNE SEULE de ses fonctions, et le harnais ne voyait qu'une coquille. Les pages déjà
+    # couvertes portent leur script en ligne, ce qui a masqué le trou — jusqu'à index.html.
+    html = re.sub(r'(href|src)="/static/',
+                  lambda m: f'{m.group(1)}="{os.path.join(RACINE, "static")}/', html)
+
     sonde = SONDE.replace("__REPONSES__", json.dumps(reponses))
     # ⚠️ AVANT LES SCRIPTS DE LA PAGE, sinon le bouchon arrive après le premier appel.
     html = re.sub(r"<body[^>]*>", lambda m: m.group(0) + sonde, html, count=1)

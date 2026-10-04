@@ -195,6 +195,45 @@
     </div>
   </div>
 
+  {#
+    ⚠️ CE BLOC AVAIT ÉTÉ RETIRÉ LE 21/09/2026, et son absence a manqué. Il était alors fait de
+    quatre tuiles qui ne faisaient que renvoyer vers /clientes ; il revient en UNE ligne de
+    récapitulatif, et surtout il suit la période affichée — ce que les anciennes tuiles ne
+    faisaient pas.
+
+    ⚠️ ET « RÉCURRENTE » SE JUGE SUR TOUT L'HISTORIQUE, PAS SUR LA PÉRIODE. Une carte vue en
+    juin et revue aujourd'hui est une cliente qui revient, même si la fenêtre n'affiche que
+    cette semaine. Compter les retours à l'intérieur de la seule fenêtre ferait tomber le taux
+    à zéro sur une journée, par construction.
+  #}
+  <div class="db-card db-mb" id="ret-bloc" style="display:none">
+    <div class="db-card-p">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        <h2 class="db-title" style="margin:0;font-size:16px">Clients qui reviennent</h2>
+        <span class="db-sp"></span>
+        <a href="/clientes" class="db-link">Analyse complète &rarr;</a>
+      </div>
+      <div style="display:flex;gap:42px;flex-wrap:wrap;align-items:flex-start">
+        <div>
+          <div class="db-l">Part de passages r&eacute;currents</div>
+          <div class="db-v xl" id="ret-pct">&mdash;</div>
+          <div class="db-s" id="ret-pct-sub"></div>
+        </div>
+        <div>
+          <div class="db-l">Cartes vues</div>
+          <div class="db-v" id="ret-cartes">&mdash;</div>
+          <div class="db-s" id="ret-cartes-sub"></div>
+        </div>
+        <div>
+          <div class="db-l">Habitu&eacute;s</div>
+          <div class="db-v" id="ret-reg">&mdash;</div>
+          <div class="db-s" id="ret-reg-sub"></div>
+        </div>
+      </div>
+      <div class="db-s" id="ret-note" style="margin-top:12px"></div>
+    </div>
+  </div>
+
   <!-- ══ QUATRE MESURES QU'AUCUNE AUTRE CARTE NE PORTE ═══════════════════════════════════ -->
   {#
     ⚠️ « OÙ VA L'ARGENT » DÉCOMPOSAIT CE QUE LES DEUX CARTES CI-DESSUS RÉSUMENT DÉJÀ — la part
