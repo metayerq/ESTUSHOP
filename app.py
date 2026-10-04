@@ -487,7 +487,7 @@ INVESTOR_BLOCKED_PREFIXES = (
     # ⚠️ ET LE PLANNING AVEC EUX. Il affiche qui travaille, quel jour, de quelle heure à quelle
     # heure, et à quel taux. C'est l'emploi du temps de personnes identifiées, pas un chiffre
     # d'actionnaire — même raison que les congés, juste au-dessus.
-    "/planning", "/api/shifts",
+    "/planning", "/api/shifts", "/api/shift_rules",
     "/reconciliation", "/api/reconciliation", "/api/cash",
     "/api/cashflow",
     # ⚠️ AJOUTÉ EN SEPTEMBRE 2026 : LE FICHIER CLIENTS N'ÉTAIT PAS FERMÉ. L'ancienne page
@@ -4389,6 +4389,10 @@ def api_shifts_get():
         params["and"] = f"(day.gte.{debut or '1970-01-01'},day.lte.{fin})"
     shifts = _supa_get("shifts", params)
     employes = _supa_get("employees", {"order": "name.asc"})
+    # ⚠️ TOUTES LES RÈGLES, PAS CELLES DE LA FENÊTRE. Une règle n'a pas de date : elle a des
+    # bornes de validité. La filtrer par la fenêtre affichée ferait disparaître du calendrier
+    # une récurrence parfaitement en vigueur.
+    regles = _supa_get("shift_rules", {"order": "weekday.asc,start_time.asc"})
 
     # ⚠️ LE COÛT SE CALCULE ICI, PAS DANS LE NAVIGATEUR. Réécrire en JavaScript la paie lissée,
     # la TSU, la bascule et le diviseur du mois donnerait deux règles pour un seul chiffre — et
@@ -4406,11 +4410,30 @@ def api_shifts_get():
             jours = _ch.jours_ouverts_entre(d0, d1, ouvert)
             fixes_rows = _supa_get("charges_fixes", {})
             _, _, par_jour = _ch.cout_periode_planning(
-                fixes_rows, employes, shifts, jours, ouvert, PLANNING_CUTOVER)
+                fixes_rows, employes, shifts, jours, ouvert, PLANNING_CUTOVER, regles)
             couts = {j.isoformat(): {k: round(v, 2) for k, v in d.items()}
                      for j, d in par_jour.items()}
 
-    return jsonify({"shifts": shifts, "employees": employes, "couts": couts,
+    # ⚠️ LES SERVICES DÉPLIÉS SONT CALCULÉS ICI. Une règle produit des services qui n'existent
+    # pas en base : les déplier dans le navigateur demanderait d'y réécrire les bornes de
+    # validité, le jour de semaine et la priorité des exceptions — quatre règles pour un seul
+    # calendrier, et deux endroits où elles peuvent diverger.
+    services = {}
+    if debut and fin:
+        try:
+            j0, j1 = date.fromisoformat(debut[:10]), date.fromisoformat(fin[:10])
+        except ValueError:
+            j0 = j1 = None
+        if j0 and j1 and j0 <= j1:
+            j = j0
+            while j <= j1:
+                du_jour = _ch.services_du_jour(j, regles, shifts)
+                if du_jour:
+                    services[j.isoformat()] = du_jour
+                j += timedelta(1)
+
+    return jsonify({"shifts": shifts, "employees": employes, "regles": regles,
+                    "services": services, "couts": couts,
                     "bascule": PLANNING_CUTOVER.isoformat()})
 
 
@@ -4457,6 +4480,79 @@ def api_shifts_delete(shift_id):
     # services qui n'ont pas eu lieu. Ce qu'on ne réécrit jamais, ce sont les montants — et un
     # shift n'en porte pas.
     return jsonify({"ok": _supa_delete("shifts", "id", shift_id)})
+
+
+@app.route("/api/shift_rules", methods=["POST"])
+def api_shift_rules_post():
+    """
+    Créer ou modifier une règle.
+
+    ⚠️ UNE RÈGLE EST VIVANTE, ET C'EST UN CHOIX ASSUMÉ. La modifier change tous les services
+    qu'elle produit, passés compris : corriger un horaire aujourd'hui bouge le coût de
+    septembre. L'écran l'annonce au moment du geste ; cette route ne l'interdit pas.
+    """
+    if _current_role() != "admin":
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    data = request.get_json(silent=True) or {}
+
+    person_id = (data.get("person_id") or "").strip()
+    debut = (data.get("start_time") or "").strip()
+    fin   = (data.get("end_time") or "").strip()
+    if not (person_id and debut and fin):
+        return jsonify({"ok": False, "error": "personne et horaires obligatoires"}), 400
+    try:
+        weekday = int(data.get("weekday"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "jour de semaine illisible"}), 400
+    if not 0 <= weekday <= 6:
+        return jsonify({"ok": False, "error": "jour de semaine hors bornes"}), 400
+    if _ch.heures(debut, fin) <= 0:
+        return jsonify({"ok": False,
+                        "error": "l'heure de fin doit suivre l'heure de début"}), 400
+
+    def _borne(cle):
+        v = (data.get(cle) or "").strip()
+        if not v:
+            return None
+        try:
+            return date.fromisoformat(v[:10]).isoformat()
+        except ValueError:
+            return False
+
+    depuis, jusqua = _borne("valid_from"), _borne("valid_to")
+    if depuis is False or jusqua is False:
+        return jsonify({"ok": False, "error": "date de validité illisible"}), 400
+    # ⚠️ LA BORNE HAUTE EST EXCLUE : une règle qui finit avant de commencer ne produirait
+    # jamais rien, et resterait au tableau comme une récurrence qui ne récurre pas.
+    if depuis and jusqua and jusqua <= depuis:
+        return jsonify({"ok": False,
+                        "error": "la fin de validité doit suivre le début"}), 400
+
+    row = {"person_id": person_id, "weekday": weekday,
+           "start_time": debut, "end_time": fin,
+           "valid_from": depuis, "valid_to": jusqua,
+           "note": (data.get("note") or "").strip(),
+           "updated_at": datetime.now(timezone.utc).isoformat()}
+    if data.get("id"):
+        ok, err = _supa_patch("shift_rules", {"id": f"eq.{data['id']}"}, row)
+    else:
+        ok, err = _supa_insert("shift_rules", row)
+    return jsonify({"ok": ok, "error": err})
+
+
+@app.route("/api/shift_rules/<string:rule_id>", methods=["DELETE"])
+def api_shift_rules_delete(rule_id):
+    """
+    ⚠️ SUPPRIMER UNE RÈGLE EFFACE TOUS SES SERVICES, PASSÉS COMPRIS — ils n'existent nulle part
+    ailleurs. C'est la conséquence directe d'une règle vivante. Pour arrêter une récurrence sans
+    toucher à l'historique, on pose `valid_to` : c'est ce que l'écran propose en premier.
+    """
+    if _current_role() != "admin":
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    # Les exceptions rattachées n'ont plus de règle à modifier : on les retire aussi, sinon
+    # elles resteraient en base à annuler un service qui n'existe plus.
+    _supa_delete("shifts", "rule_id", rule_id)
+    return jsonify({"ok": _supa_delete("shift_rules", "id", rule_id)})
 
 
 # ── SOP : procédures & checklists opérationnelles (+ registre HACCP) ───────────

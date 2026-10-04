@@ -234,3 +234,154 @@ def test_les_jours_fermes_nont_pas_de_cout(admin, base_peuplee):
 def test_sans_fenetre_aucun_cout_nest_invente(admin, base_peuplee):
     """Sans bornes, on ne sait pas quels jours répartir — on ne rend pas un chiffre au hasard."""
     assert admin.get("/api/shifts").get_json()["couts"] == {}
+
+
+# ══ LES RÈGLES DE RÉCURRENCE ════════════════════════════════════════════════════════════════
+
+REGLE = {"person_id": "p-ana", "weekday": 2, "start_time": "09:00", "end_time": "17:00"}
+
+
+def test_seul_ladmin_pose_une_regle(staff, ecrits):
+    assert staff.post("/api/shift_rules", json=REGLE).status_code == 403
+    assert ecrits == []
+
+
+def test_les_regles_sont_fermees_a_linvestisseur():
+    assert "/api/shift_rules" in flask_app.INVESTOR_BLOCKED_PREFIXES
+
+
+@pytest.mark.parametrize("casse", [
+    {"weekday": 7},            # hors bornes
+    {"weekday": -1},
+    {"weekday": "mercredi"},   # illisible
+    {"start_time": "17:00", "end_time": "09:00"},
+    {"person_id": ""},
+])
+def test_une_regle_mal_posee_est_refusee(admin, ecrits, casse):
+    assert admin.post("/api/shift_rules", json=dict(REGLE, **casse)).status_code == 400
+    assert ecrits == []
+
+
+def test_une_fin_de_validite_avant_le_debut_est_refusee(admin, ecrits):
+    """
+    ⚠️ UNE RÈGLE QUI FINIT AVANT DE COMMENCER NE PRODUIT JAMAIS RIEN, et reste au tableau comme
+    une récurrence qui ne récurre pas. Personne ne cherche la faute dans les dates.
+    """
+    r = admin.post("/api/shift_rules",
+                   json=dict(REGLE, valid_from="2026-11-01", valid_to="2026-10-01"))
+    assert r.status_code == 400
+    assert ecrits == []
+
+
+def test_une_date_de_validite_illisible_est_refusee(admin, ecrits):
+    assert admin.post("/api/shift_rules",
+                      json=dict(REGLE, valid_from="le 1er")).status_code == 400
+    assert ecrits == []
+
+
+def test_une_regle_valide_est_inseree(admin, ecrits):
+    assert admin.post("/api/shift_rules", json=REGLE).get_json()["ok"] is True
+    op, table, row = ecrits[0]
+    assert (op, table) == ("insert", "shift_rules")
+    assert row["weekday"] == 2 and row["person_id"] == "p-ana"
+
+
+def test_une_regle_sans_bornes_vaut_depuis_toujours(admin, ecrits):
+    """Convention du dépôt : NULL n'est jamais zéro, il est « pas de borne »."""
+    admin.post("/api/shift_rules", json=REGLE)
+    row = ecrits[0][2]
+    assert row["valid_from"] is None and row["valid_to"] is None
+
+
+def test_UNE_REGLE_NE_PORTE_JAMAIS_SON_COUT(admin, ecrits):
+    """Comme un shift : le taux se résout à la lecture, à la date de chaque service produit."""
+    admin.post("/api/shift_rules", json=dict(REGLE, cost=96.0, hourly_rate=12.0))
+    row = ecrits[0][2]
+    for interdit in ("cost", "hourly_rate", "amount", "total"):
+        assert interdit not in row
+
+
+def test_SUPPRIMER_UNE_REGLE_EMPORTE_SES_EXCEPTIONS(admin, ecrits):
+    """
+    ⚠️ SANS ÇA, UNE EXCEPTION ORPHELINE RESTE EN BASE À ANNULER UN SERVICE QUI N'EXISTE PLUS.
+    Elle ne se voit nulle part, et elle ressurgit si une règle réutilise l'identifiant.
+    """
+    admin.delete("/api/shift_rules/r1")
+    assert ("delete", "shifts", "rule_id", "r1") in ecrits
+    assert ("delete", "shift_rules", "id", "r1") in ecrits
+
+
+# ── La lecture déplie ───────────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def base_avec_regle(monkeypatch):
+    tables = {
+        "shifts": [],
+        "shift_rules": [{"id": "r1", "person_id": "p-ana", "weekday": 2,
+                         "start_time": "09:00", "end_time": "17:00",
+                         "valid_from": "2026-10-01", "valid_to": None}],
+        "employees": [BARISTA, ANA],
+        "charges_fixes": [],
+    }
+    monkeypatch.setattr(flask_app, "_supa_get", lambda t, p=None: tables.get(t, []))
+    flask_app.app.config["TESTING"] = True
+    return tables
+
+
+def test_LA_LECTURE_DEPLIE_LES_REGLES(admin, base_avec_regle):
+    """
+    ⚠️ DÉPLIER DANS LE NAVIGATEUR DEMANDERAIT D'Y RÉÉCRIRE les bornes de validité, le jour de
+    semaine et la priorité des exceptions — quatre règles pour un seul calendrier, et deux
+    endroits où elles peuvent diverger.
+    """
+    d = admin.get("/api/shifts?from=2026-10-05&to=2026-10-11").get_json()
+    # Le 7 octobre 2026 est un mercredi.
+    assert "2026-10-07" in d["services"]
+    assert d["services"]["2026-10-07"][0]["source"] == "regle"
+    assert d["services"].get("2026-10-08") is None
+
+
+def test_les_regles_ne_sont_pas_filtrees_par_la_fenetre(admin, base_avec_regle, monkeypatch):
+    """Une règle n'a pas de date : la filtrer sur la semaine affichée la ferait disparaître."""
+    vus = {}
+    monkeypatch.setattr(flask_app, "_supa_get",
+                        lambda t, p=None: (vus.setdefault(t, p), base_avec_regle.get(t, []))[1])
+    admin.get("/api/shifts?from=2026-10-05&to=2026-10-11")
+    assert "2026-10" not in str(vus.get("shift_rules"))
+
+
+def test_une_annulation_retire_le_service_deplie(admin, base_avec_regle):
+    base_avec_regle["shifts"] = [{"id": "s1", "rule_id": "r1", "person_id": "p-ana",
+                                  "day": "2026-10-07", "start_time": "09:00",
+                                  "end_time": "17:00", "annule": True}]
+    d = admin.get("/api/shifts?from=2026-10-05&to=2026-10-11").get_json()
+    assert "2026-10-07" not in d["services"]
+
+
+def test_LE_COUT_RENDU_PAR_LA_ROUTE_COMPTE_LES_REGLES(admin, base_avec_regle):
+    """
+    ⚠️ LA DIVERGENCE QUE TOUT CECI PRÉTEND EMPÊCHER. Mes premiers tests de route vérifiaient le
+    dépliage — « Ana apparaît bien le mercredi » — et pas le coût. Retirer les règles du calcul
+    laissait donc l'écran afficher Ana et le point mort faire comme si elle n'était pas là.
+    Trouvé par mutation.
+
+    La règle porte ici sur le SAMEDI : mercredi, le café est fermé et n'a pas de coût du tout.
+    """
+    base_avec_regle["shift_rules"] = [{"id": "r1", "person_id": "p-ana", "weekday": 5,
+                                       "start_time": "09:00", "end_time": "17:00",
+                                       "valid_from": "2026-10-01", "valid_to": None}]
+    d = admin.get("/api/shifts?from=2026-10-05&to=2026-10-11").get_json()["couts"]
+    samedi, vendredi = d["2026-10-10"], d["2026-10-09"]
+    assert samedi["personnel"] - vendredi["personnel"] == pytest.approx(8 * 12.0), (
+        "le samedi porte un service de 8 h à 12 € que le coût ignore")
+
+
+def test_une_annulation_retire_aussi_le_cout(admin, base_avec_regle):
+    base_avec_regle["shift_rules"] = [{"id": "r1", "person_id": "p-ana", "weekday": 5,
+                                       "start_time": "09:00", "end_time": "17:00",
+                                       "valid_from": "2026-10-01", "valid_to": None}]
+    base_avec_regle["shifts"] = [{"id": "s1", "rule_id": "r1", "person_id": "p-ana",
+                                  "day": "2026-10-10", "start_time": "09:00",
+                                  "end_time": "17:00", "annule": True}]
+    d = admin.get("/api/shifts?from=2026-10-05&to=2026-10-11").get_json()["couts"]
+    assert d["2026-10-10"]["personnel"] == pytest.approx(d["2026-10-09"]["personnel"])
