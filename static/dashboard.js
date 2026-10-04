@@ -234,10 +234,121 @@ function voile(ctx, couleur, h) {
   return g;
 }
 
+/* ══ UN SEUL JOUR N'EST PAS UNE SÉRIE ═════════════════════════════════════════════════════
+ *
+ * ⚠️ SUR « AUJOURD'HUI », LA COURBE DES JOURNÉES TRAÇAIT UN POINT. Un point ne dit ni une
+ * tendance, ni un rythme, ni où l'on en est : la plus grande surface de l'écran ne portait
+ * aucune information, le jour où on la regarde le plus souvent.
+ *
+ * Le serveur calcule déjà `curve` — le cumul de la journée, transaction par transaction — et
+ * `curve_prev`, le même jour de la semaine précédente. Personne ne les affichait : la charge
+ * utile partait et mourait dans le navigateur.
+ *
+ * ⚠️ ET LE CUMUL EST LA BONNE FORME, parce qu'il se compare au POINT MORT. « 240 € à 15 h sur
+ * 310 € à faire » est une phrase actionnable pendant le service ; « 40 € entre 14 h et 15 h »
+ * ne l'est pas — on ne décide rien d'une tranche horaire déjà passée.
+ */
+function renderCumulDuJour(d, j) {
+  const cv = document.getElementById('chart-daily');
+  const serie = d.curve || [];
+  const prev  = d.curve_prev || [];
+  if (!serie.length) return false;
+
+  /* Les deux journées n'ont pas les mêmes heures de passage : on les projette sur un axe
+     commun de minutes, sinon la comparaison glisse d'un cran à chaque transaction. */
+  const enMin = (t) => {
+    const m = String(t || '').match(/(\d{1,2})h(\d{2})/);
+    return m ? (+m[1]) * 60 + (+m[2]) : null;
+  };
+  const points = (xs) => xs.map((p) => ({ x: enMin(p.time), y: p.ca_cum }))
+                           .filter((p) => p.x != null);
+
+  const seuil = d.economics && d.economics.seuil_ca_ttc_jour;
+  const jeux = [
+    {
+      label: 'Encaissé cumulé', data: points(serie), borderColor: j.iris, borderWidth: 2.5,
+      pointRadius: 0, pointHoverRadius: 4, tension: .2, fill: true,
+      backgroundColor: (c) => voile(c.chart.ctx, j.iris, c.chart.height),
+      stepped: false, order: 1,
+    },
+  ];
+  if (prev.length) {
+    jeux.push({
+      label: 'Même jour, semaine précédente', data: points(prev), borderColor: j.slate,
+      borderWidth: 2, borderDash: [5, 5], pointRadius: 0, pointHoverRadius: 3,
+      tension: .2, fill: false, order: 2,
+    });
+  }
+  if (seuil > 0) {
+    /* La ligne de point mort est horizontale ICI, et c'est juste : c'est le coût d'UNE
+       journée, qui ne varie pas au fil des heures. */
+    const bornes = points(serie);
+    const x0 = Math.min(...bornes.map((p) => p.x));
+    const x1 = Math.max(...bornes.map((p) => p.x), x0 + 60);
+    jeux.push({
+      label: 'Point mort du jour', data: [{ x: x0, y: seuil }, { x: x1, y: seuil }],
+      borderColor: j.ink, borderWidth: 1.5, borderDash: [2, 5], pointRadius: 0,
+      pointHoverRadius: 0, fill: false, order: 3,
+    });
+  }
+
+  if (chartDaily) chartDaily.destroy();
+  chartDaily = new Chart(cv.getContext('2d'), {
+    type: 'line',
+    data: { datasets: jeux },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      parsing: false,
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: j.ink, padding: 10, displayColors: true, boxWidth: 8, boxHeight: 8,
+          callbacks: {
+            title: (cs) => heureDe(cs[0].parsed.x),
+            label: (c) => ` ${c.dataset.label} : ${fmt(c.parsed.y)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          ticks: { color: j.faint, font: { size: 11 }, maxTicksLimit: 8,
+                   callback: (v) => heureDe(v) },
+          grid: { display: false },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { color: j.faint, font: { size: 11 }, callback: (v) => fmt(v) },
+          grid: { color: j.line, drawTicks: false },
+        },
+      },
+    },
+  });
+  return true;
+}
+
+function heureDe(min) {
+  const h = Math.floor(min / 60), m = Math.round(min % 60);
+  return String(h).padStart(2, '0') + 'h' + String(m).padStart(2, '0');
+}
+
 function renderCourbe(d) {
   const cv = document.getElementById('chart-daily');
   if (!cv || typeof Chart === 'undefined') return;
   const j = jetons();
+
+  /* ⚠️ UN JOUR UNIQUE PREND L'AUTRE FORME. Sans ce branchement, la série des journées trace
+   * un point — et c'est ce que « Aujourd'hui » affichait. */
+  /* ⚠️ LA LÉGENDE SUIT LA COURBE QU'ELLE EXPLIQUE. Sur un jour unique les pointillés sont le
+   * MÊME JOUR de la semaine passée, pas « la période précédente » : un café ne se compare pas
+   * un samedi à un mardi, et la légende doit dire ce qui est tracé. */
+  const leg = document.getElementById('db-legende-comp');
+  if (leg) leg.textContent = d.is_single_day
+    ? 'même jour, semaine précédente' : 'période précédente';
+
+  if (d.is_single_day && renderCumulDuJour(d, j)) return;
+
   const jours = (d.daily || []);
   const comp = (d.daily_comp || []);
 

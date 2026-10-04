@@ -846,10 +846,16 @@ CAS = {
             "ESPECES-DITES",
             # Aucun passage ≠ 0 % de retours.
             "VIDE-SE-TAIT",
+            # ⚠️ UN SEUL JOUR N'EST PAS UNE SÉRIE : le cumul de la journée contre son
+            # point mort, et le même jour de la semaine passée en pointillés.
+            "JOUR-TROIS-SERIES", "JOUR-CUMUL", "JOUR-POINT-MORT",
+            "JOUR-PLUSIEURS-POINTS", "JOUR-AXE-TEMPS", "LEGENDE-ADAPTEE",
         ],
         "interdit": [
             "FENETRE-FIGEE", "BLOC-CACHE", "PART-ABSENTE", "CARTES-MUETTES", "HABITUES-MUETS",
             "ESPECES-TUES", "VIDE-AFFIRME-ZERO",
+            "JOUR-SERIES-MANQUANTES", "JOUR-SANS-CUMUL", "JOUR-SANS-POINT-MORT",
+            "JOUR-UN-POINT", "JOUR-AXE-RANG", "LEGENDE-FIGEE",
             "NaN", "undefined", "Invalid Date", "passage(s)",
         ],
         "scenario": r"""
@@ -900,6 +906,40 @@ CAS = {
           : 'VIDE-AFFIRME-ZERO ' + E('ret-pct').textContent + ' / '
             + E('ret-pct-sub').textContent);
     window.fetch = vrai;
+
+    /* ══ LA VUE D'UN SEUL JOUR ═══════════════════════════════════════════════════════════
+     *
+     * ⚠️ « AUJOURD'HUI » TRAÇAIT UN POINT. La série des journées n'en contient qu'une : la
+     * plus grande surface de l'écran ne portait aucune information, le jour où on la regarde
+     * le plus. Le serveur calculait déjà `curve` et `curve_prev` — et personne ne les
+     * affichait.
+     *
+     * Chart.js vient d'un CDN, absent hors ligne : on le remplace par un espion qui retient
+     * la configuration construite. C'est elle qu'on vérifie, pas des pixels. */
+    var vuChart = null;
+    window.Chart = function(ctx, cfg){ vuChart = cfg; this.destroy = function(){}; };
+    renderCourbe({
+      is_single_day: true,
+      daily: [{date: '2026-09-30', ca_ttc: 410, nb: 70}],
+      curve: [{time: '08h00', ca_cum: 0}, {time: '09h12', ca_cum: 24.5},
+              {time: '12h40', ca_cum: 180.0}, {time: '15h05', ca_cum: 410.0}],
+      curve_prev: [{time: '08h30', ca_cum: 0}, {time: '13h00', ca_cum: 150.0}],
+      economics: {seuil_ca_ttc_jour: 310.0},
+    });
+    var jeux = (vuChart && vuChart.data && vuChart.data.datasets) || [];
+    var noms = jeux.map(function(x){ return x.label; }).join(' | ');
+    trace(jeux.length === 3 ? 'JOUR-TROIS-SERIES' : 'JOUR-SERIES-MANQUANTES ' + noms);
+    trace(noms.indexOf('cumulé') >= 0 ? 'JOUR-CUMUL' : 'JOUR-SANS-CUMUL ' + noms);
+    trace(noms.indexOf('Point mort du jour') >= 0
+          ? 'JOUR-POINT-MORT' : 'JOUR-SANS-POINT-MORT ' + noms);
+    /* La courbe doit porter plus d'un point : c'est tout le problème qu'on corrige. */
+    trace((jeux[0] && jeux[0].data.length >= 4)
+          ? 'JOUR-PLUSIEURS-POINTS' : 'JOUR-UN-POINT n=' + (jeux[0] && jeux[0].data.length));
+    /* L'axe est le temps, pas un rang : sinon deux journées aux heures différentes glissent. */
+    trace((vuChart.options.scales.x.type === 'linear' && jeux[0].data[1].x === 552)
+          ? 'JOUR-AXE-TEMPS' : 'JOUR-AXE-RANG');
+    trace(E('db-legende-comp').textContent.indexOf('même jour') >= 0
+          ? 'LEGENDE-ADAPTEE' : 'LEGENDE-FIGEE ' + E('db-legende-comp').textContent);
   }, 150);
 })(0);
 """,
