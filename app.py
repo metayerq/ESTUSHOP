@@ -3958,6 +3958,40 @@ def api_charges_get():
     return jsonify({"charges": charges, "employees": employees,
                     "attente": attente, "mois_courant": _ch.mois_de(today_lisbon()).isoformat()})
 
+@app.route("/api/charges/mode", methods=["POST"])
+def api_charge_mode():
+    """
+    Basculer une charge entre « stable » et « sur facture ».
+
+    ⚠️ ON CONVERTIT TOUTES LES LIGNES DU MÊME NOM, pas seulement celle en vigueur. Une charge
+    augmentée a plusieurs lignes datées : n'en convertir qu'une ferait apparaître la même charge
+    dans les deux onglets, avec deux gestes différents pour la même histoire.
+
+    ⚠️ ET LE `mois` RESTE NUL À LA CONVERSION. On ne sait pas à quel mois correspond le montant
+    déjà saisi — l'inventer serait affirmer une mesure qu'on n'a pas. La charge s'affiche donc
+    « aucune facture saisie », ne réclame rien, et la première facture prend le relais à partir
+    de son propre mois.
+    """
+    if _current_role() != "admin":
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    data = request.get_json(silent=True) or {}
+    nom = (data.get("name") or "").strip()
+    mode = (data.get("mode") or "").strip()
+    if not nom or mode not in ("stable", "facture"):
+        return jsonify({"ok": False, "error": "charge et mode obligatoires"}), 400
+
+    lignes = _supa_get("charges_fixes", {"name": f"eq.{nom}", "limit": 200})
+    if not lignes:
+        return jsonify({"ok": False, "error": f"aucune charge nommée « {nom} »"}), 404
+
+    ok, err = _supa_patch("charges_fixes", {"name": f"eq.{nom}"}, {"mode": mode})
+    if ok:
+        _journal_action(_current_role(), "charge-mode", nom[:24],
+                        {"mode": lignes[0].get("mode") or "stable"}, {"mode": mode},
+                        "changement de mode de saisie")
+    return jsonify({"ok": ok, "error": err})
+
+
 @app.route("/api/charges/facture", methods=["POST"])
 def api_charge_facture():
     """

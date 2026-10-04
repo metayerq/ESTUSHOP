@@ -659,7 +659,9 @@ CAS = {
             # au calendrier et sa journée ne coûte rien.
             "TROIS-ONGLETS", "COMPTEUR-DIT-LATTENTE", "FIXES-SANS-LES-VARIABLES",
             "RESUME-DIT-LA-COMPOSITION", "RESUME-BIEN-NOMME", "ONGLET-BASCULE", "MOIS-EN-CLAIR", "PAS-DE-LOYER-ICI", "CHAMP-DE-SAISIE",
-            "VARIABLES-HORS-DES-FIXES",
+            "VARIABLES-HORS-DES-FIXES", "UN-POINT-SANS-GRAPHE",
+            "GRAPHE-ANNONCE", "FENETRE-OUVRE", "SELECTEUR-DE-MOIS",
+            "MOIS-PROPOSE-LE-RETARD", "CORRECTION-ANNONCEE",
             "CHAMP-TAUX", "TAUX-REPRIS", "OUVRIR-NE-MODIFIE-PAS",
             "TAUX-ENVOYE", "EXTRA-SANS-CARTE-REPAS", "EXTRA-SANS-MENSUEL-ACCEPTE",
             "CARTE-REPAS-MASQUEE", "REFUS-LISIBLE",
@@ -676,7 +678,13 @@ CAS = {
         "interdit": [
             "ONGLET-MANQUANT", "COMPTEUR-MUET", "FIXES-MELANGEES", "ONGLET-FIGE",
             "RESUME-TROMPEUR", "RESUME-MAL-NOMME", "poste(s)", "employee(s)",
-            "MOIS-EN-CODE", "LOYER-EN-DOUBLE", "PAS-DE-CHAMP", "VARIABLES-DANS-LES-FIXES",
+            "MOIS-EN-CODE", "LOYER-EN-DOUBLE", "PAS-DE-CHAMP",
+            # ⚠️ PAS « GRAPHE-SUR-UN-POINT » : c'était une sous-chaîne du marqueur
+            # attendu, donc le contrôle rougissait sur un rendu correct. Deuxième
+            # fois de la session — un marqueur interdit ne doit jamais être contenu
+            # dans celui qu'on espère.
+            "UN-POINT-AVEC-GRAPHE", "GRAPHE-MUET", "FENETRE-FERMEE",
+            "SELECTEUR-DE-JOUR", "MOIS-PROPOSE-AUTRE", "CORRECTION-SILENCIEUSE", "VARIABLES-DANS-LES-FIXES",
             "CHAMP-ABSENT", "TAUX-PERDU", "OUVRIR-RECLAME-UN-MOTIF",
             "TAUX-PERDU-A-LENVOI", "EXTRA-AVEC-CARTE-REPAS", "EXTRA-REFUSE-SANS-MENSUEL",
             "CARTE-REPAS-VISIBLE", "REFUS-UNDEFINED",
@@ -726,6 +734,27 @@ CAS = {
   trace(tf.indexOf('Électricité') < 0 && tf.indexOf('Loyer') >= 0
         ? 'VARIABLES-HORS-DES-FIXES' : 'VARIABLES-DANS-LES-FIXES ' + tf.slice(0,90));
   trace(E('fact-Électricité') ? 'CHAMP-DE-SAISIE' : 'PAS-DE-CHAMP');
+
+  /* ⚠️ MOINS DE DEUX FACTURES NE FONT PAS UNE ÉVOLUTION. Le bouchon n'en donne qu'une par
+     charge : une barre unique occuperait toute la largeur et se lirait comme un maximum, alors
+     qu'elle n'est comparée à rien. Même règle que `miniCourbe`. */
+  trace(vv.querySelectorAll('.var-barres').length === 0
+        ? 'UN-POINT-SANS-GRAPHE' : 'UN-POINT-AVEC-GRAPHE');
+  trace(tv.indexOf('deuxième facture') >= 0 ? 'GRAPHE-ANNONCE' : 'GRAPHE-MUET');
+
+  /* La fenêtre « + Facture » : choisir un mois, et corriger par le même chemin. */
+  ouvrirFacture('Électricité');
+  trace(E('fact-modal').classList.contains('open') ? 'FENETRE-OUVRE' : 'FENETRE-FERMEE');
+  trace(E('fact-mois').type === 'month' ? 'SELECTEUR-DE-MOIS' : 'SELECTEUR-DE-JOUR');
+  trace(E('fact-mois').value === '2026-09'
+        ? 'MOIS-PROPOSE-LE-RETARD' : 'MOIS-PROPOSE-AUTRE ' + E('fact-mois').value);
+  /* ⚠️ CHOISIR UN MOIS DÉJÀ SAISI N'EST PAS UNE ERREUR : la fenêtre le dit et change de verbe. */
+  E('fact-mois').value = '2026-08';
+  E('fact-mois').dispatchEvent(new Event('change', {bubbles:true}));
+  var av = E('fact-avis').textContent.replace(/\s+/g,' ');
+  trace((av.indexOf('porte déjà') >= 0 && E('fact-ok').textContent === 'Corriger')
+        ? 'CORRECTION-ANNONCEE' : 'CORRECTION-SILENCIEUSE ' + av.slice(0,70));
+  fermerFacture();
   switchTab('personnel');
 
   trace(E('emp-rate') ? 'CHAMP-TAUX' : 'CHAMP-ABSENT');
@@ -1182,6 +1211,43 @@ setTimeout(function(){
         "inatteignables, sans le moindre indice à l'écran")
     assert d["scroll"] <= 391, (
         f"{nom} : la page entière glisse ({d['scroll']} px pour 390), menu compris")
+
+
+@SANS
+def test_LES_TROIS_ONGLETS_DES_COUTS_TIENNENT_SUR_UN_TELEPHONE(tmp_path):
+    """
+    ⚠️ UN ONGLET HORS DU CADRE EST UN ONGLET QUI N'EXISTE PAS. Mesuré avant correction : les
+    trois libellés occupaient 453 px pour 390 px d'écran, donc « Personnel » commençait hors
+    champ. `.nav-seg` défile, ce qui sauvait l'accès mais pas la découverte : rien à l'écran ne
+    disait qu'il y avait un troisième onglet. Ce contrôle mesure les boutons, pas la feuille de
+    style — une règle qui cesserait de s'appliquer (cascade, point de bascule déplacé) le fait
+    rougir, un simple `grep` sur le CSS ne l'aurait pas vu.
+    """
+    binaire, env = NAVIGATEUR
+    chemin = _rendre("charges.html", CAS["charges.html"]["reponses"], tmp_path, """
+setTimeout(function(){
+  var large = document.documentElement.clientWidth;
+  var out = {large: large, hors: []};
+  document.querySelectorAll('.nav-seg [role=tab]').forEach(function(b){
+    var r = b.getBoundingClientRect();
+    if (r.right > large + 1) out.hors.push(b.textContent.trim().replace(/\s+/g,' ')
+                                           + ' → ' + Math.round(r.right) + 'px');
+  });
+  var d = document.createElement('div'); d.id = 'ONG';
+  d.textContent = JSON.stringify(out); document.body.appendChild(d);
+}, 800);
+""")
+    r = subprocess.run(
+        [binaire, "--headless", "--no-sandbox", "--disable-gpu", "--dump-dom",
+         "--window-size=390,900", "--virtual-time-budget=3000", "file://" + str(chemin)],
+        capture_output=True, text=True, timeout=90, env=env)
+    m = re.search(r'<div id="ONG">(.*?)</div>', r.stdout, re.S)
+    assert m, f"la mesure n'a pas été rendue\n{r.stderr[:300]}"
+    d = json.loads(m.group(1))
+    assert d["large"] <= 391, f"l'écran mesuré fait {d['large']} px, pas 390"
+    assert not d["hors"], (
+        f"{len(d['hors'])} onglet(s) hors de l'écran de {d['large']} px : {d['hors']} — "
+        "la barre défile, donc rien ne signale à l'écran qu'ils existent")
 
 
 @SANS

@@ -180,3 +180,55 @@ def test_une_charge_a_jour_nest_pas_en_attente(base, monkeypatch):
     base["lignes"].append(dict(ELEC_SEPT, id="c2", mois="2026-10-01", amount=86.40))
     d = base["client"].get("/api/charges").get_json()
     assert d["attente"] == {}
+
+
+# ══ CONVERTIR UNE CHARGE ════════════════════════════════════════════════════════════════════
+
+def test_LA_CONVERSION_TOUCHE_TOUTES_LES_LIGNES_DU_MEME_NOM(base):
+    """
+    ⚠️ UNE CHARGE AUGMENTÉE A PLUSIEURS LIGNES DATÉES. N'en convertir qu'une ferait apparaître
+    la même charge dans les DEUX onglets, avec deux gestes différents pour la même histoire.
+    """
+    d = base["client"].post("/api/charges/mode",
+                            json={"name": "Loyer", "mode": "facture"}).get_json()
+    assert d["ok"] is True
+    patch = next(e for e in base["ecrits"] if e[0] == "patch")
+    assert patch[1] == {"name": "eq.Loyer"}, "la conversion ne vise pas toutes les lignes"
+    assert patch[2] == {"mode": "facture"}
+
+
+def test_LA_CONVERSION_NE_POSE_AUCUN_MOIS(base):
+    """
+    ⚠️ ON NE SAIT PAS À QUEL MOIS CORRESPOND LE MONTANT DÉJÀ SAISI. L'inventer serait affirmer
+    une mesure qu'on n'a pas : la charge s'affiche « aucune facture saisie » et la première
+    facture prend le relais à partir de son propre mois.
+    """
+    base["client"].post("/api/charges/mode", json={"name": "Loyer", "mode": "facture"})
+    patch = next(e for e in base["ecrits"] if e[0] == "patch")
+    assert "mois" not in patch[2]
+
+
+def test_la_conversion_est_journalisee(base):
+    base["client"].post("/api/charges/mode", json={"name": "Loyer", "mode": "facture"})
+    assert any(e[0] == "journal" for e in base["ecrits"])
+
+
+def test_seul_ladmin_convertit(base, monkeypatch):
+    monkeypatch.setattr(flask_app, "_current_role", lambda: "staff")
+    assert base["client"].post("/api/charges/mode",
+                               json={"name": "Loyer", "mode": "facture"}).status_code == 403
+    assert base["ecrits"] == []
+
+
+@pytest.mark.parametrize("corps", [{"name": "", "mode": "facture"},
+                                   {"name": "Loyer", "mode": "autre"},
+                                   {"name": "Loyer", "mode": ""}])
+def test_une_conversion_mal_formee_est_refusee(base, corps):
+    assert base["client"].post("/api/charges/mode", json=corps).status_code == 400
+    assert base["ecrits"] == []
+
+
+def test_une_charge_inconnue_ne_se_convertit_pas(base, monkeypatch):
+    monkeypatch.setattr(flask_app, "_supa_get", lambda t, p=None: [])
+    assert base["client"].post("/api/charges/mode",
+                               json={"name": "Gaz", "mode": "facture"}).status_code == 404
