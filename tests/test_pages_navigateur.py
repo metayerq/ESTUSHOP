@@ -1224,7 +1224,7 @@ def test_LES_TROIS_ONGLETS_DES_COUTS_TIENNENT_SUR_UN_TELEPHONE(tmp_path):
     rougir, un simple `grep` sur le CSS ne l'aurait pas vu.
     """
     binaire, env = NAVIGATEUR
-    chemin = _rendre("charges.html", CAS["charges.html"]["reponses"], tmp_path, """
+    chemin = _rendre("charges.html", CAS["charges.html"]["reponses"], tmp_path, r"""
 setTimeout(function(){
   var large = document.documentElement.clientWidth;
   var out = {large: large, hors: []};
