@@ -20,7 +20,8 @@ import app as flask_app
 
 ELEC_SEPT = {"id": "c1", "name": "Électricité", "mode": "facture", "mois": "2026-09-01",
              "amount": 77.10, "frequency": "monthly", "category": "Energy & utilities",
-             "notes": "", "valid_from": "2026-09-01", "valid_to": None, "active": True}
+             "notes": "", "periode_debut": "2026-09-01", "periode_fin": "2026-09-30",
+             "valid_from": "2026-09-01", "valid_to": None, "active": True}
 LOYER = {"id": "c9", "name": "Loyer", "mode": "stable", "mois": None, "amount": 700.0,
          "frequency": "monthly", "category": "Real estate", "notes": "",
          "valid_from": None, "valid_to": None, "active": True}
@@ -45,9 +46,21 @@ def base(monkeypatch):
     return etat
 
 
+import calendar
+
+
 def poser(base, mois="2026-10", montant=86.40, nom="Électricité"):
+    """
+    ⚠️ UNE FACTURE MENSUELLE EST UNE PÉRIODE DU 1er AU DERNIER JOUR. Il n'y a pas deux modèles
+    à choisir : le taux journalier × les jours du mois redonne exactement le montant. Ce helper
+    n'envoyait pas de fin, et la route la devinait — c'est ce pari qui s'est trompé d'un facteur
+    deux sur la première vraie facture d'eau.
+    """
+    a, m = int(mois[:4]), int(mois[5:7])
+    fin = f"{a:04d}-{m:02d}-{calendar.monthrange(a, m)[1]:02d}"
     return base["client"].post("/api/charges/facture",
-                               json={"name": nom, "mois": mois, "amount": montant})
+                               json={"name": nom, "mois": mois, "fin": fin,
+                                     "amount": montant})
 
 
 # ── La saisie ───────────────────────────────────────────────────────────────────────────────
@@ -92,22 +105,18 @@ def test_CORRIGER_UN_MOIS_DEJA_SAISI_EST_PERMIS_ET_TRACE(base):
     Une faute de frappe, ou un fournisseur qui réémet, doivent pouvoir se rattraper : vivre avec
     un chiffre faux pour toujours serait pire.
     """
-    d = base["client"].post("/api/charges/facture",
-                            json={"name": "Électricité", "mois": "2026-09",
-                                  "amount": 75.00}).get_json()
+    d = poser(base, mois="2026-09", montant=75.00).get_json()
     assert d["ok"] is True and d["corrige"] is True and d["ancien"] == 77.10
     # La période part avec le montant : corriger la fin change le taux, donc tous les mois
     # couverts — c'est le même geste, il s'écrit d'un bloc.
-    assert any(e[0] == "patch" and e[2] == {"amount": 75.00, "periode_fin": None}
+    assert any(e[0] == "patch" and e[2] == {"amount": 75.00, "periode_fin": "2026-09-30"}
                for e in base["ecrits"]), base["ecrits"]
     assert any(e[0] == "journal" for e in base["ecrits"]), "la correction n'est pas journalisée"
     assert not any(e[0] == "insert" for e in base["ecrits"]), "une ligne a été dupliquée"
 
 
 def test_un_montant_identique_nest_pas_une_correction(base):
-    d = base["client"].post("/api/charges/facture",
-                            json={"name": "Électricité", "mois": "2026-09",
-                                  "amount": 77.10}).get_json()
+    d = poser(base, mois="2026-09", montant=77.10).get_json()
     assert d.get("inchange") is True
     assert base["ecrits"] == [], "réenregistrer le même montant a écrit quelque chose"
 
@@ -120,17 +129,28 @@ def test_seul_ladmin_saisit_une_facture(base, monkeypatch):
     assert base["ecrits"] == []
 
 
-def test_UN_MOIS_NON_COMMENCE_EST_REFUSE(base):
-    """Imputer une mesure à une période qu'on n'a pas vécue."""
+def test_UNE_PERIODE_NON_VECUE_EST_REFUSEE(base):
+    """
+    ⚠️ UN SEUL CONTRÔLE SUFFIT, ET J'EN AVAIS ÉCRIT DEUX. Une période qui commence après
+    aujourd'hui se termine forcément après aussi : le refus « pas commencée » posé juste
+    au-dessus était inatteignable. Du code mort qui a l'air d'un garde-fou en est un faux.
+    """
     r = poser(base, mois="2026-12")
     assert r.status_code == 400
-    assert "commencé" in r.get_json()["error"]
+    assert "terminée" in r.get_json()["error"]
     assert base["ecrits"] == []
 
 
-def test_le_mois_courant_est_accepte(base):
-    """Il n'est pas réclamé tant qu'il n'est pas clos, mais rien n'interdit de l'anticiper."""
-    assert poser(base, mois="2026-11").get_json()["ok"] is True
+def test_une_periode_qui_sacheve_aujourdhui_est_acceptee(base):
+    """
+    ⚠️ LE MOIS COURANT NE S'ANTICIPE PLUS. L'ancien modèle permettait de saisir novembre le
+    5 novembre — un montant mensuel était une prévision comme une autre. Une PÉRIODE, non : son
+    taux se calcule sur des jours qu'on n'a pas vécus. La borne est aujourd'hui, pas plus loin.
+    """
+    r = poser_periode(base, "2026-10-01", "2026-11-05", 86.40, nom="Électricité")
+    assert r.get_json()["ok"] is True
+    r = poser_periode(base, "2026-10-01", "2026-11-06", 86.40, nom="Électricité")
+    assert r.get_json()["ok"] is False
 
 
 def test_UNE_FACTURE_A_ZERO_EST_REFUSEE(base):
@@ -381,10 +401,33 @@ def test_CORRIGER_LA_FIN_DE_PERIODE_EST_UNE_CORRECTION(base):
                for e in base["ecrits"]), base["ecrits"]
 
 
-def test_UNE_FACTURE_SANS_FIN_RESTE_ACCEPTEE(base):
-    """L'ancien geste — un mois, un montant — ne doit pas se mettre à refuser."""
+def test_UNE_FACTURE_SANS_FIN_EST_REFUSEE_PAS_DEVINEE(base):
+    """
+    ⚠️ ON REFUSE PLUTÔT QUE D'INTERPRÉTER. Sans la fin, il n'y a pas de taux journalier, et la
+    seule lecture possible du montant est « c'est un mensuel » — le pari qui s'est trompé d'un
+    facteur deux sur la première vraie facture d'eau. Le serveur ne peut pas distinguer « la
+    facture couvre un mois » de « je n'ai pas rempli la case », donc il ne choisit pas.
+
+    ⚠️ ET LE REFUS DIT POURQUOI. « Champ obligatoire » ferait chercher ce qui manque ; ici on
+    dit ce que l'absence produirait.
+    """
     base["lignes"] = [dict(ELEC_SEPT), dict(LOYER)]
-    r = poser(base, mois="2026-10", montant=86.40)
+    d = base["client"].post("/api/charges/facture",
+                            json={"name": "Électricité", "mois": "2026-10",
+                                  "amount": 86.40}).get_json()
+    assert d["ok"] is False
+    assert "obligatoire" in d["error"] and "mensuel" in d["error"], d["error"]
+    assert not any(e[0] == "insert" for e in base["ecrits"])
+
+
+def test_UNE_FACTURE_QUI_COUVRE_UN_MOIS_CIVIL_SE_SAISIT_COMME_LES_AUTRES(base):
+    """
+    ⚠️ IL N'Y A PAS DEUX MODÈLES À CHOISIR. Une facture mensuelle, c'est une période qui va du
+    1er au dernier jour du mois : le taux × les jours redonne exactement le montant. Exiger les
+    deux dates ne coûte donc rien et supprime le cas où l'on devinait.
+    """
+    base["lignes"] = [dict(ELEC_SEPT), dict(LOYER)]
+    r = poser_periode(base, "2026-10-01", "2026-10-31", 86.40, nom="Électricité")
     assert r.get_json()["ok"] is True
     ins = [e[1] for e in base["ecrits"] if e[0] == "insert"][0]
-    assert ins["periode_fin"] is None and ins["periode_debut"] == "2026-10-01"
+    assert ins["periode_debut"] == "2026-10-01" and ins["periode_fin"] == "2026-10-31"

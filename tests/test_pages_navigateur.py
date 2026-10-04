@@ -666,7 +666,8 @@ CAS = {
             "TROIS-ONGLETS", "COMPTEUR-DIT-LE-RETARD", "FIXES-SANS-LES-VARIABLES",
             "RESUME-DIT-LA-COMPOSITION", "RESUME-BIEN-NOMME", "ONGLET-BASCULE", "DATES-EN-CLAIR", "RETARD-EN-JOURS", "PAS-DE-LOYER-ICI",
             "PAS-DE-CHAMP-RAPIDE", "COUVERTURE-DITE", "DEUX-DATES",
-            "DEBUT-AU-LENDEMAIN", "MENSUEL-ANNONCE", "PERIODE-ENVOYEE",
+            "DEBUT-AU-LENDEMAIN", "MENSUEL-ANNONCE", "SANS-FIN-RIEN-NEST-ENVOYE", "REFUS-DIT-LES-DATES",
+            "PERIODE-ENVOYEE",
             "VARIABLES-HORS-DES-FIXES", "COLONNES-ORDONNEES", "UN-POINT-SANS-GRAPHE",
             "GRAPHE-ANNONCE", "FENETRE-OUVRE", "CORRECTION-ANNONCEE",
             "CHAMP-TAUX", "TAUX-REPRIS", "OUVRIR-NE-MODIFIE-PAS",
@@ -686,7 +687,7 @@ CAS = {
             "ONGLET-MANQUANT", "COMPTEUR-MUET", "FIXES-MELANGEES", "ONGLET-FIGE",
             "RESUME-TROMPEUR", "RESUME-MAL-NOMME", "poste(s)", "employee(s)",
             "DATES-EN-CODE", "RETARD-EN-MOIS", "LOYER-EN-DOUBLE", "CHAMP-RAPIDE-SURVIVANT",
-            "COUVERTURE-TUE", "UNE-SEULE-DATE", "DEBUT-AILLEURS", "MENSUEL-TU", "PERIODE-PERDUE",
+            "COUVERTURE-TUE", "UNE-SEULE-DATE", "DEBUT-AILLEURS", "MENSUEL-TU", "SANS-FIN-ENVOYE-QUAND-MEME", "REFUS-DATES-MUET", "PERIODE-PERDUE",
             # ⚠️ PAS « GRAPHE-SUR-UN-POINT » : c'était une sous-chaîne du marqueur
             # attendu, donc le contrôle rougissait sur un rendu correct. Deuxième
             # fois de la session — un marqueur interdit ne doit jamais être contenu
@@ -801,9 +802,18 @@ CAS = {
     if(String(u).indexOf('/api/charges/facture') === 0 && o && o.body) envoye = JSON.parse(o.body);
     return vraiFetch(u, o);
   };
+  /* ⚠️ SANS LA FIN, ON N'ENVOIE RIEN. Le champ portait une étoile et rien ne l'imposait :
+     le serveur aurait relu le montant comme un mensuel — l'erreur d'un facteur deux qu'on
+     venait de corriger, en silence. L'écran doit s'arrêter avant, et dire pourquoi. */
   E('fact-mois').value = '2026-09-01';
-  E('fact-fin').value = '2026-10-30';
+  E('fact-fin').value = '';
   E('fact-montant').value = '176.14';
+  validerFacture();
+  trace(envoye === null ? 'SANS-FIN-RIEN-NEST-ENVOYE' : 'SANS-FIN-ENVOYE-QUAND-MEME');
+  trace(E('toast').textContent.indexOf('deux dates') >= 0
+        ? 'REFUS-DIT-LES-DATES' : 'REFUS-DATES-MUET ' + E('toast').textContent.slice(0,50));
+
+  E('fact-fin').value = '2026-10-30';
   validerFacture();
   window.fetch = vraiFetch;
   trace((envoye && envoye.fin === '2026-10-30' && envoye.mois === '2026-09-01')

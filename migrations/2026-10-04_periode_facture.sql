@@ -5,9 +5,10 @@
 -- mensuel, elle pesait 176,14 €/mois au lieu de 89,36 € — 86,78 € de trop chaque mois dans le
 -- point mort. Les factures d'électricité portent une période elles aussi.
 --
--- Les deux colonnes sont NULL sur les lignes existantes, et une ligne sans période garde
--- exactement son comportement d'hier : les charges stables ne bougent pas d'un centime, et les
--- factures déjà saisies sont lues comme couvrant leur mois — ce qu'elles prétendaient être.
+-- Les deux colonnes sont NULL sur les lignes existantes. Les charges STABLES les gardent à NULL
+-- et ne bougent pas d'un centime. Les factures déjà saisies au mois reçoivent la période
+-- qu'elles prétendaient couvrir : le taux × les jours du mois redonne exactement leur montant,
+-- donc aucun chiffre ne change — on inscrit seulement ce qui était implicite.
 
 alter table charges_fixes
   add column if not exists periode_debut date,

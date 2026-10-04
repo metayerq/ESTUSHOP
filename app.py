@@ -4031,17 +4031,25 @@ def api_charge_facture():
     # mois civils ; l'électricité a sa propre fenêtre. Sans la fin, on ne connaît pas le taux
     # journalier, donc on ne sait pas ce que chaque mois a réellement consommé.
     brut_fin = str(data.get("fin") or "").strip()
-    fin_periode = None
-    if brut_fin:
-        try:
-            fin_periode = date.fromisoformat(brut_fin)
-        except ValueError:
-            return jsonify({"ok": False, "error": "date de fin illisible"}), 400
-        if fin_periode < debut:
-            return jsonify({"ok": False, "error": "la fin précède le début"}), 400
-        # On ne mesure pas une période qu'on n'a pas fini de vivre.
-        if fin_periode > today_lisbon():
-            return jsonify({"ok": False, "error": "cette période n'est pas terminée"}), 400
+    # ⚠️ ON REFUSE PLUTÔT QUE D'INTERPRÉTER. Sans la fin, il n'y a pas de taux journalier, et la
+    # seule lecture possible du montant est « c'est un mensuel » — un pari qui s'est trompé d'un
+    # facteur deux sur la première vraie facture d'eau. Le serveur ne peut pas distinguer « la
+    # facture couvre un mois » de « je n'ai pas rempli la case », donc il ne choisit pas.
+    if not brut_fin:
+        return jsonify({"ok": False,
+                        "error": "le dernier jour facturé est obligatoire — sans lui, le "
+                                 "montant serait lu comme un mensuel"}), 400
+    try:
+        fin_periode = date.fromisoformat(brut_fin)
+    except ValueError:
+        return jsonify({"ok": False, "error": "date de fin illisible"}), 400
+    if fin_periode < debut:
+        return jsonify({"ok": False, "error": "la fin précède le début"}), 400
+    # ⚠️ ON NE MESURE PAS UNE PÉRIODE QU'ON N'A PAS FINI DE VIVRE. Ce contrôle couvre aussi le
+    # début : une période qui commence après aujourd'hui se termine forcément après aussi. Un
+    # second refus « pas commencée » existait juste au-dessus — il était inatteignable.
+    if fin_periode > today_lisbon():
+        return jsonify({"ok": False, "error": "cette période n'est pas terminée"}), 400
     mois = _ch.mois_de(debut)
     try:
         montant = round(float(data.get("amount")), 2)
@@ -4051,11 +4059,6 @@ def api_charge_facture():
     # mort en se faisant passer pour une mesure — plus trompeur qu'un mois en attente.
     if montant <= 0:
         return jsonify({"ok": False, "error": "le montant doit être supérieur à zéro"}), 400
-
-    # ⚠️ ON NE RÉCLAME PAS LE FUTUR. Saisir la facture d'un mois qui n'est pas fini imputerait
-    # une mesure à une période qu'on n'a pas encore vécue.
-    if debut > today_lisbon():
-        return jsonify({"ok": False, "error": "cette période n'est pas commencée"}), 400
 
     lignes = _supa_get("charges_fixes", {"order": "name.asc"})
     siennes = [c for c in lignes if str(c.get("name") or "") == nom]

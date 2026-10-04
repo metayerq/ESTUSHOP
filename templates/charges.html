@@ -1104,6 +1104,15 @@ function majFacture() {
 
 async function validerFacture() {
   const v = (document.getElementById('fact-montant').value || '').trim().replace(',', '.');
+  /* ⚠️ LES DEUX DATES AVANT LE MONTANT. Le champ portait une étoile et rien ne l'imposait :
+   * le laisser vide faisait relire le montant comme un mensuel — l'erreur d'un facteur deux
+   * qu'on venait de corriger, en silence. Une facture qui couvre un mois se saisit du 1er au
+   * dernier jour : les deux dates ne coûtent rien et ne laissent rien à deviner. */
+  if (!document.getElementById('fact-mois').value
+      || !document.getElementById('fact-fin').value) {
+    showToast('Les deux dates sont obligatoires — elles sont sur la facture');
+    return;
+  }
   if (!(parseFloat(v) > 0)) { showToast('Saisis un montant supérieur à zéro'); return; }
   const r = await fetch('/api/charges/facture', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
