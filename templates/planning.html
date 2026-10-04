@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/static/icons/favicon-32.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Estudantina">
+<meta name="theme-color" content="#F7FAFC">
+<title>Estudantina · Planning</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<style>
+/* ══ /planning ═══════════════════════════════════════════════════════════════
+   ⚠️ UNE GRILLE CSS, PAS UN TABLEAU. Une semaine a sept colonnes, mais ses cases
+   ne sont pas des données tabulaires : elles contiennent des cartes empilées de
+   hauteur libre. Un `<td>` qu'on passe en flex sort du contexte tabulaire et
+   désaligne silencieusement toute la rangée — la panne du 28/09, et le garde qui
+   la surveille. La grille évite la question au lieu de la contourner. */
+
+.pl-barre { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+.pl-nav { display:flex; gap:4px; }
+.pl-nav button { font-family:inherit; font-size:14px; min-width:34px; height:32px;
+  border:1px solid var(--border); background:var(--bg-card); color:var(--text);
+  border-radius:var(--r-sm); cursor:pointer; }
+.pl-nav button:hover { background:var(--bg-hover); }
+.pl-nav button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.pl-periode { font-size:15px; font-weight:600; }
+.pl-total { margin-left:auto; font-size:13px; color:var(--muted); }
+.pl-total b { color:var(--text); font-variant-numeric:tabular-nums; }
+
+.pl-semaine { display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:10px;
+  align-items:start; }
+.pl-jour { border:1px solid var(--border); border-radius:var(--r); background:var(--bg-card);
+  padding:10px; display:flex; flex-direction:column; gap:8px; min-height:150px; }
+.pl-jour.ferme { background:var(--bg-page); border-style:dashed; }
+.pl-jour.aujourdhui { border-color:var(--accent); }
+.pl-tete { display:flex; align-items:baseline; justify-content:space-between; gap:6px; }
+.pl-nom { font-size:12px; font-weight:600; text-transform:capitalize; }
+.pl-date { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+
+.pl-chip { border:1px solid var(--border); border-radius:var(--r-sm); padding:6px 8px;
+  background:var(--bg-page); cursor:pointer; text-align:left; width:100%; font-family:inherit; }
+.pl-chip:hover { background:var(--bg-hover); }
+.pl-chip:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.pl-chip-nom { font-size:13px; font-weight:500; display:block; }
+.pl-chip-h { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.pl-chip-eur { font-size:12px; color:var(--muted); float:right; font-variant-numeric:tabular-nums; }
+
+.pl-ajout { font-family:inherit; font-size:12px; color:var(--muted); background:none;
+  border:1px dashed var(--border); border-radius:var(--r-sm); padding:5px; cursor:pointer;
+  width:100%; }
+.pl-ajout:hover { background:var(--bg-hover); color:var(--text); }
+.pl-ajout:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+.pl-pied { margin-top:auto; padding-top:8px; border-top:1px solid var(--border);
+  font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.pl-pied b { color:var(--text); }
+
+.pl-vide { font-size:12px; color:var(--muted); text-align:center; padding:10px 0; }
+.pl-note { font-size:13px; color:var(--muted); line-height:1.55; max-width:70ch;
+  margin:16px 0 0; }
+.pl-alerte { font-size:13px; color:var(--amber); line-height:1.55; max-width:70ch;
+  margin:10px 0 0; }
+.pl-panne { font-size:13px; color:var(--red); line-height:1.6; margin:14px 0;
+  padding:12px 14px; background:var(--red-soft); border-radius:var(--r-sm); }
+
+/* ⚠️ SOUS 1100 px, LA SEMAINE S'EMPILE. Sept colonnes sur un iPad donnent des cases de
+   90 px où un nom ne tient pas — et c'est sur l'iPad que le planning se consulte en salle. */
+@media (max-width:1100px){
+  .pl-semaine { grid-template-columns:repeat(2, minmax(0,1fr)); }
+}
+@media (max-width:620px){
+  .pl-semaine { grid-template-columns:1fr; }
+  .pl-jour { min-height:0; }
+}
+
+.pl-fond { position:fixed; inset:0; background:rgba(10,15,40,.45); display:none;
+  align-items:center; justify-content:center; padding:20px; z-index:80; }
+.pl-fond.ouvert { display:flex; }
+.pl-boite { background:var(--bg-card); border-radius:var(--r); padding:22px;
+  width:100%; max-width:420px; border:1px solid var(--border); }
+.pl-titre { font-size:16px; font-weight:600; margin-bottom:14px; }
+.pl-champ { display:flex; flex-direction:column; gap:4px; margin-bottom:12px; }
+.pl-champ label { font-size:13px; font-weight:500; color:var(--muted); }
+.pl-champ input, .pl-champ select { font-family:inherit; font-size:14px; padding:8px 10px;
+  border:1px solid var(--border); border-radius:var(--r-sm); background:var(--bg-page);
+  color:var(--text); }
+.pl-champ input:focus, .pl-champ select:focus { outline:2px solid var(--accent);
+  outline-offset:-1px; }
+.pl-deux { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.pl-actions { display:flex; gap:8px; align-items:center; margin-top:16px; }
+.pl-actions .droite { margin-left:auto; display:flex; gap:8px; }
+.pl-btn { font-family:inherit; font-size:13px; padding:8px 14px; border-radius:var(--r-sm);
+  border:1px solid var(--border); background:var(--bg-card); color:var(--text); cursor:pointer; }
+.pl-btn.primaire { background:var(--accent); border-color:var(--accent); color:#fff;
+  font-weight:600; }
+.pl-btn.danger { color:var(--red); border-color:transparent; }
+.pl-btn:disabled { opacity:.5; cursor:default; }
+.pl-refus { font-size:13px; color:var(--red); margin-top:10px; }
+</style>
+</head>
+<body>
+{% include "_rail.html" %}
+<div class="page">
+  <div class="header" style="margin-bottom:18px;">
+    <div>
+      <div class="header-title">Planning</div>
+      <div class="header-sub">Qui travaille quel jour — et ce que la journée coûte</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="pl-btn" onclick="charger()" title="Recharger">↻</button>
+      <a href="/logout" title="Log out"
+         style="font-size:12px;color:var(--faint);text-decoration:none;padding:5px 8px;">⎋</a>
+    </div>
+  </div>
+
+  <div id="pl-panne" class="pl-panne" hidden></div>
+
+  <div class="pl-barre">
+    <div class="pl-nav">
+      <button type="button" onclick="allerSemaine(-1)" aria-label="Semaine précédente">‹</button>
+      <button type="button" onclick="allerSemaine(0)">Cette semaine</button>
+      <button type="button" onclick="allerSemaine(1)" aria-label="Semaine suivante">›</button>
+    </div>
+    <span class="pl-periode" id="pl-periode">…</span>
+    <span class="pl-total" id="pl-total"></span>
+  </div>
+
+  <div class="pl-semaine" id="pl-semaine"></div>
+
+  <p class="pl-alerte" id="pl-passe" hidden></p>
+  <p class="pl-note" id="pl-note"></p>
+</div>
+
+<div class="pl-fond" id="pl-fond" onclick="if(event.target===this)fermer()">
+  <div class="pl-boite" role="dialog" aria-modal="true" aria-labelledby="pl-titre">
+    <div class="pl-titre" id="pl-titre">Ajouter un service</div>
+    <div class="pl-champ">
+      <label for="f-personne">Personne</label>
+      <select id="f-personne"></select>
+    </div>
+    <div class="pl-champ">
+      <label for="f-jour">Jour</label>
+      <input id="f-jour" type="date">
+    </div>
+    <div class="pl-deux">
+      <div class="pl-champ">
+        <label for="f-debut">Début</label>
+        <input id="f-debut" type="time" step="300" value="09:00">
+      </div>
+      <div class="pl-champ">
+        <label for="f-fin">Fin</label>
+        <input id="f-fin" type="time" step="300" value="17:00">
+      </div>
+    </div>
+    <div class="pl-champ">
+      <label for="f-note">Note</label>
+      <input id="f-note" placeholder="facultatif">
+    </div>
+    <div class="pl-refus" id="f-refus" hidden></div>
+    <div id="f-apercu" class="pl-note" style="margin:0"></div>
+    <div class="pl-actions">
+      <button class="pl-btn danger" id="f-supprimer" onclick="supprimer()" hidden>Supprimer</button>
+      <span class="droite">
+        <button class="pl-btn" onclick="fermer()">Annuler</button>
+        <button class="pl-btn primaire" id="f-ok" onclick="enregistrer()">Enregistrer</button>
+      </span>
+    </div>
+  </div>
+</div>
+
+{% include "_pied.html" %}
+<script>
+const E = id => document.getElementById(id);
+const EUR = new Intl.NumberFormat('fr-FR', {style:'currency', currency:'EUR'});
+const eur = v => (v === null || v === undefined) ? '—' : EUR.format(v);
+const echap = s => String(s === null || s === undefined ? '' : s)
+  .replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+/* « 1 service(s) » est un aveu, pas une traduction — même formule que _rail et marge. */
+const plur = (n, sing, pl) => `${n} ${n > 1 ? (pl || sing + 's') : sing}`;
+
+let LUNDI = null, DATA = {shifts:[], employees:[], couts:{}, bascule:null}, EDITE = null;
+
+/* ⚠️ LA SEMAINE COMMENCE LUNDI, ET `getDay()` DIT 0 POUR DIMANCHE. Sans ce décalage, la
+   semaine affichée commençait la veille un dimanche sur deux. */
+function lundiDe(d){
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const j = (x.getDay() + 6) % 7;
+  x.setDate(x.getDate() - j);
+  return x;
+}
+function iso(d){
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0')
+       + '-' + String(d.getDate()).padStart(2,'0');
+}
+function jours(){
+  const out = [];
+  for(let i=0;i<7;i++){
+    const d = new Date(LUNDI); d.setDate(d.getDate()+i); out.push(d);
+  }
+  return out;
+}
+
+function allerSemaine(n){
+  if(n === 0) LUNDI = lundiDe(new Date());
+  else { LUNDI = new Date(LUNDI); LUNDI.setDate(LUNDI.getDate() + 7*n); }
+  charger();
+}
+
+async function charger(){
+  const panne = E('pl-panne');
+  if(!LUNDI) LUNDI = lundiDe(new Date());
+  const js = jours();
+  try{
+    const r = await fetch(`/api/shifts?from=${iso(js[0])}&to=${iso(js[6])}`);
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    DATA = d; panne.hidden = true;
+  }catch(e){
+    /* ⚠️ « AUCUN SERVICE » ET « LA TABLE N'EXISTE PAS » MÈNENT À DEUX GESTES OPPOSÉS. Un
+       calendrier vide se lit « personne ne travaille » ; il faut dire l'autre. */
+    panne.hidden = false;
+    panne.innerHTML = `<b>Le planning n'a pas pu être chargé.</b><br>${echap(e.message||e)}
+      <br>Rien n'est perdu — aucun service n'a été modifié.`;
+    DATA = {shifts:[], employees:[], couts:{}, bascule:DATA.bascule};
+  }
+  rendre();
+}
+
+function fiche(personId, jour){
+  /* La version de la fiche en vigueur ce jour-là — même règle que le serveur. */
+  return (DATA.employees||[]).find(e=>{
+    if(String(e.person_id||'') !== String(personId)) return false;
+    if(e.valid_from && jour < e.valid_from) return false;
+    if(e.valid_to && jour >= e.valid_to) return false;
+    if(!e.valid_from && !e.valid_to && e.active === false) return false;
+    return true;
+  }) || null;
+}
+function nomDe(personId, jour){
+  const f = fiche(personId, jour);
+  return f ? f.name : '(fiche introuvable)';
+}
+function heures(debut, fin){
+  const m = t => { const p = String(t||'').split(':');
+                   return p.length < 2 ? null : (+p[0])*60 + (+p[1]); };
+  const a = m(debut), b = m(fin);
+  if(a === null || b === null || isNaN(a) || isNaN(b) || b <= a) return 0;
+  return (b - a) / 60;
+}
+function hhmm(t){ return String(t||'').slice(0,5); }
+
+function rendre(){
+  const js = jours();
+  const fmtJ = new Intl.DateTimeFormat('fr-FR', {weekday:'long'});
+  const fmtD = new Intl.DateTimeFormat('fr-FR', {day:'numeric', month:'short'});
+  E('pl-periode').textContent = fmtD.format(js[0]) + ' — ' + fmtD.format(js[6]);
+
+  const aujourdhui = iso(new Date());
+  let semaine = 0, nbServices = 0;
+
+  E('pl-semaine').innerHTML = js.map(d=>{
+    const j = iso(d);
+    const cout = DATA.couts ? DATA.couts[j] : null;
+    const ouvert = !!cout;
+    const duJour = (DATA.shifts||[]).filter(s=>String(s.day||'').slice(0,10) === j);
+    nbServices += duJour.length;
+    if(cout) semaine += cout.total;
+
+    const chips = duJour.map(s=>{
+      const f = fiche(s.person_id, j);
+      const h = heures(s.start_time, s.end_time);
+      /* Un permanent est déjà dans sa paie lissée : afficher un montant en face de son nom
+         laisserait croire qu'il s'ajoute. On montre les heures, pas un prix. */
+      const extra = f && f.type === 'extra';
+      const taux = extra ? parseFloat(f.hourly_rate || 0) : 0;
+      const prix = extra && taux ? eur(h * taux) : '';
+      return `<button class="pl-chip" onclick="ouvrir('${j}','${s.id}')"
+                aria-label="Modifier le service de ${echap(nomDe(s.person_id, j))}">
+          <span class="pl-chip-eur">${prix}</span>
+          <span class="pl-chip-nom">${echap(nomDe(s.person_id, j))}</span>
+          <span class="pl-chip-h">${hhmm(s.start_time)}–${hhmm(s.end_time)}</span>
+        </button>`;
+    }).join('');
+
+    return `<div class="pl-jour${ouvert ? '' : ' ferme'}${j === aujourdhui ? ' aujourdhui' : ''}">
+      <div class="pl-tete">
+        <span class="pl-nom">${fmtJ.format(d)}</span>
+        <span class="pl-date">${fmtD.format(d)}</span>
+      </div>
+      ${ouvert
+        ? (chips || '<div class="pl-vide">personne</div>') +
+          `<button class="pl-ajout" onclick="ouvrir('${j}', null)">+ ajouter</button>` +
+          `<div class="pl-pied">personnel <b>${eur(cout.personnel)}</b><br>
+             journée <b>${eur(cout.total)}</b></div>`
+        : '<div class="pl-vide">fermé</div>'}
+    </div>`;
+  }).join('');
+
+  E('pl-total').innerHTML = `${plur(nbServices,'service')} · semaine <b>${eur(semaine)}</b>`;
+
+  E('pl-note').textContent =
+    "Le permanent garde sa paie lissée : le planning dit qu'il est là, pas ce qu'il coûte ce "
+    + "jour-là — sa paie est la même qu'il fasse trois jours ou cinq. Un extra coûte ses heures, "
+    + "le jour où il les fait.";
+
+  /* ⚠️ MODIFIER UN JOUR DÉJÀ PASSÉ CHANGE UN COÛT DÉJÀ LU. Tu as choisi de pouvoir le faire ;
+     l'écran le dit au moment du geste plutôt que de l'interdire. */
+  const passe = js[6] < new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  E('pl-passe').hidden = !passe;
+  if(passe) E('pl-passe').textContent =
+    "Cette semaine appartient à un mois déjà clos : y toucher changera le coût et le point "
+    + "mort affichés pour ce mois, au dashboard comme en comptabilité.";
+}
+
+function ouvrir(jour, shiftId){
+  EDITE = shiftId || null;
+  const s = shiftId ? (DATA.shifts||[]).find(x=>String(x.id) === String(shiftId)) : null;
+  E('pl-titre').textContent = s ? 'Modifier le service' : 'Ajouter un service';
+  E('f-supprimer').hidden = !s;
+  E('f-refus').hidden = true;
+
+  const vues = new Set();
+  E('f-personne').innerHTML = (DATA.employees||[])
+    .filter(e=>{ if(vues.has(e.person_id)) return false; vues.add(e.person_id); return true; })
+    .map(e=>`<option value="${echap(e.person_id)}">${echap(e.name)}${
+      e.type === 'extra' ? ' · extra' : ''}</option>`).join('');
+
+  E('f-jour').value  = s ? String(s.day).slice(0,10) : jour;
+  E('f-debut').value = s ? hhmm(s.start_time) : '09:00';
+  E('f-fin').value   = s ? hhmm(s.end_time)   : '17:00';
+  E('f-note').value  = s ? (s.note || '') : '';
+  if(s) E('f-personne').value = s.person_id;
+  apercu();
+  E('pl-fond').classList.add('ouvert');
+  E('f-personne').focus();
+}
+function fermer(){ E('pl-fond').classList.remove('ouvert'); EDITE = null; }
+
+function apercu(){
+  const j = E('f-jour').value, p = E('f-personne').value;
+  const h = heures(E('f-debut').value, E('f-fin').value);
+  const f = fiche(p, j);
+  if(!f || h <= 0){ E('f-apercu').textContent = ''; return; }
+  if(f.type !== 'extra'){
+    E('f-apercu').textContent =
+      h.toFixed(2).replace('.',',') + " h — paie lissée, ce service n'ajoute rien au coût du jour.";
+    return;
+  }
+  const taux = parseFloat(f.hourly_rate || 0);
+  E('f-apercu').textContent = taux
+    ? `${h.toFixed(2).replace('.',',')} h × ${eur(taux)} = ${eur(h*taux)}`
+    : "aucun taux horaire sur cette fiche — ce service ne coûtera rien tant qu'il n'est pas posé.";
+}
+['f-personne','f-jour','f-debut','f-fin'].forEach(id=>{
+  const el = E(id); if(el) el.addEventListener('input', apercu);
+});
+
+async function enregistrer(){
+  const refus = E('f-refus');
+  if(heures(E('f-debut').value, E('f-fin').value) <= 0){
+    refus.hidden = false;
+    refus.textContent = "L'heure de fin doit suivre l'heure de début.";
+    return;
+  }
+  E('f-ok').disabled = true;
+  try{
+    const corps = {person_id: E('f-personne').value, day: E('f-jour').value,
+                   start_time: E('f-debut').value, end_time: E('f-fin').value,
+                   note: E('f-note').value};
+    if(EDITE) corps.id = EDITE;
+    const r = await fetch('/api/shifts', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(corps)});
+    const d = await r.json();
+    if(!d.ok) throw new Error(d.error || 'refus');
+    fermer(); await charger();
+  }catch(e){
+    refus.hidden = false; refus.textContent = String(e.message || e);
+  }finally{
+    E('f-ok').disabled = false;
+  }
+}
+
+async function supprimer(){
+  if(!EDITE) return;
+  E('f-supprimer').disabled = true;
+  try{
+    const r = await fetch('/api/shifts/' + encodeURIComponent(EDITE), {method:'DELETE'});
+    const d = await r.json();
+    if(!d.ok) throw new Error(d.error || 'refus');
+    fermer(); await charger();
+  }catch(e){
+    E('f-refus').hidden = false; E('f-refus').textContent = String(e.message || e);
+  }finally{
+    E('f-supprimer').disabled = false;
+  }
+}
+
+document.addEventListener('keydown', e=>{ if(e.key === 'Escape') fermer(); });
+charger();
+</script>
+</body>
+</html>

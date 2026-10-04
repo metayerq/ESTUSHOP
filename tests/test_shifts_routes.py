@@ -181,3 +181,56 @@ def test_une_table_absente_remonte_au_lieu_de_rendre_un_planning_vide(admin, mon
     monkeypatch.setattr(flask_app, "_supa_get", absente)
     with pytest.raises(flask_app.SupabaseSchemaError):
         admin.get("/api/shifts")
+
+
+# ── Le coût du jour, calculé côté serveur ───────────────────────────────────────────────────
+
+BARISTA = {"person_id": "p-bar", "name": "Barista", "type": "full_time",
+           "gross_monthly": 1200.0, "meal_card_daily": 10.20, "tsu_exempt": False,
+           "valid_from": "2026-05-01", "valid_to": None, "active": True}
+ANA = {"person_id": "p-ana", "name": "Ana", "type": "extra", "gross_monthly": 300.0,
+       "hourly_rate": 12.0, "valid_from": "2026-05-01", "valid_to": None, "active": True}
+
+
+@pytest.fixture
+def base_peuplee(monkeypatch):
+    """Un vendredi avec Ana de 9 h à 17 h, un lundi sans personne."""
+    tables = {
+        "shifts": [dict(SHIFT, id="s1", day="2026-10-09")],   # vendredi
+        "employees": [BARISTA, ANA],
+        "charges_fixes": [{"name": "Loyer", "amount": 700.0, "frequency": "monthly",
+                           "valid_from": None, "valid_to": None, "active": True}],
+    }
+    monkeypatch.setattr(flask_app, "_supa_get", lambda t, p=None: tables.get(t, []))
+    flask_app.app.config["TESTING"] = True
+    return tables
+
+
+def test_LE_COUT_DU_JOUR_EST_CALCULE_PAR_LE_SERVEUR(admin, base_peuplee):
+    """
+    ⚠️ RÉÉCRIRE LA RÈGLE EN JAVASCRIPT DONNERAIT DEUX CHIFFRES POUR UN SEUL COÛT. La paie
+    lissée, la TSU, la bascule et le diviseur du mois vivent dans `charges.py`, qui est pur et
+    testé. L'écran affiche, il ne recalcule pas.
+    """
+    d = admin.get("/api/shifts?from=2026-10-05&to=2026-10-11").get_json()
+    assert "couts" in d and d["couts"], "l'écran devrait recevoir le coût de chaque jour"
+    vendredi = d["couts"]["2026-10-09"]
+    assert set(vendredi) == {"fixes", "personnel", "total"}
+
+
+def test_le_jour_avec_un_extra_coute_plus_cher_que_le_jour_sans(admin, base_peuplee):
+    d = admin.get("/api/shifts?from=2026-10-05&to=2026-10-11").get_json()["couts"]
+    # Ana fait 8 h à 12 € le vendredi 9 ; le lundi 5 n'a personne en plus.
+    assert d["2026-10-09"]["personnel"] - d["2026-10-05"]["personnel"] == pytest.approx(96.0)
+
+
+def test_les_jours_fermes_nont_pas_de_cout(admin, base_peuplee):
+    """Mardi et mercredi : le café est fermé, il n'y a rien à répartir."""
+    d = admin.get("/api/shifts?from=2026-10-05&to=2026-10-11").get_json()["couts"]
+    assert "2026-10-06" not in d and "2026-10-07" not in d
+    assert "2026-10-08" in d
+
+
+def test_sans_fenetre_aucun_cout_nest_invente(admin, base_peuplee):
+    """Sans bornes, on ne sait pas quels jours répartir — on ne rend pas un chiffre au hasard."""
+    assert admin.get("/api/shifts").get_json()["couts"] == {}

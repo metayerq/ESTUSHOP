@@ -450,6 +450,137 @@ CAS = {
         # Ouvre directement la facture 6 : c'est aussi ce que fait un lien partagé.
         "suffixe": "?id=6",
     },
+    "planning.html": {
+        "reponses": {
+            "/api/statut": {"ca": None, "ca_texte": "—", "tickets": None, "moyen_texte": "",
+                            "ecarts": 0, "boissons_dues": 0, "caisse_ok": None},
+            # ⚠️ LA FENÊTRE EST IGNORÉE PAR LE BOUCHON : le scénario fixe la semaine lui-même.
+            "/api/shifts": {
+                "bascule": "2026-10-01",
+                "employees": [
+                    {"person_id": "p-bar", "name": "Marco", "type": "full_time",
+                     "gross_monthly": 1200.0, "hourly_rate": 11.0,
+                     "valid_from": "2026-05-01", "valid_to": None, "active": True},
+                    {"person_id": "p-ana", "name": "Ana", "type": "extra",
+                     "gross_monthly": 0, "hourly_rate": 12.0,
+                     "valid_from": "2026-05-01", "valid_to": None, "active": True},
+                    # Une version ANCIENNE de la même personne : l'écran ne doit proposer
+                    # qu'une seule « Ana », pas une par augmentation.
+                    {"person_id": "p-ana", "name": "Ana", "type": "extra",
+                     "gross_monthly": 0, "hourly_rate": 9.0,
+                     "valid_from": "2026-01-01", "valid_to": "2026-05-01", "active": False},
+                ],
+                "shifts": [
+                    {"id": "s1", "person_id": "p-ana", "day": "2026-10-09",
+                     "start_time": "09:00:00", "end_time": "17:00:00", "note": ""},
+                    {"id": "s2", "person_id": "p-bar", "day": "2026-10-09",
+                     "start_time": "08:00:00", "end_time": "16:00:00", "note": ""},
+                ],
+                "couts": {
+                    "2026-10-05": {"fixes": 30.43, "personnel": 76.52, "total": 106.95},
+                    "2026-10-08": {"fixes": 30.43, "personnel": 76.52, "total": 106.95},
+                    "2026-10-09": {"fixes": 30.43, "personnel": 172.52, "total": 202.95},
+                    "2026-10-10": {"fixes": 30.43, "personnel": 76.52, "total": 106.95},
+                    "2026-10-11": {"fixes": 30.43, "personnel": 76.52, "total": 106.95},
+                },
+            },
+        },
+        "attendu": [
+            "Planning", "Qui travaille quel jour",
+            # Les jours fermés sont dits, pas omis : une case vide se lit « personne ».
+            "FERME-DIT",
+            # ⚠️ LE COÛT DU JOUR VIENT DU SERVEUR, l'écran l'affiche sans le recalculer.
+            "COUT-AFFICHE", "COUT-DU-SERVEUR",
+            # ⚠️ UN PERMANENT N'AFFICHE PAS DE PRIX : sa paie est lissée, un montant en face de
+            # son nom laisserait croire qu'il s'ajoute au coût du jour.
+            "PERMANENT-SANS-PRIX", "EXTRA-AVEC-PRIX",
+            # Une personne = une entrée, quelles que soient ses versions de fiche.
+            "UNE-SEULE-ANA",
+            "LUNDI-JUSTE", "MODALE-OUVRE", "APERCU-EXTRA", "APERCU-PERMANENT",
+            "REFUS-HORAIRE", "SEMAINE-NAVIGUE",
+        ],
+        "interdit": [
+            "FERME-MUET", "COUT-ABSENT", "COUT-RECALCULE",
+            "PERMANENT-AVEC-PRIX", "EXTRA-SANS-PRIX", "ANA-EN-DOUBLE",
+            "MODALE-FERMEE", "APERCU-MUET", "REFUS-ABSENT", "SEMAINE-FIGEE", "LUNDI-FAUX",
+            "NaN", "undefined", "Invalid Date", "service(s)",
+        ],
+        "scenario": r"""
+(function attendre(n){
+  var E = function(i){ return document.getElementById(i); };
+  if((!E('pl-semaine') || !E('pl-semaine').children.length) && n < 80)
+    return setTimeout(function(){ attendre(n+1); }, 20);
+  var trace = function(t){ var d = document.createElement('div'); d.textContent = t;
+                           document.body.appendChild(d); };
+
+  /* ⚠️ `getDay()` DIT 0 POUR DIMANCHE. Sans le décalage, la semaine affichée commençait la
+     veille un dimanche sur deux — et le scénario ne le voyait pas, puisqu'il posait LUNDI à
+     la main. Trouvé par mutation. */
+  var dim = lundiDe(new Date(2026, 9, 11));
+  var sam = lundiDe(new Date(2026, 9, 10));
+  var lun = lundiDe(new Date(2026, 9, 5));
+  trace((iso(dim) === '2026-10-05' && iso(sam) === '2026-10-05' && iso(lun) === '2026-10-05')
+        ? 'LUNDI-JUSTE'
+        : 'LUNDI-FAUX dim=' + iso(dim) + ' sam=' + iso(sam) + ' lun=' + iso(lun));
+
+  /* On se place sur la semaine du bouchon : 5 au 11 octobre 2026. */
+  LUNDI = new Date(2026, 9, 5);
+  rendre();
+
+  var texte = E('pl-semaine').textContent.replace(/\s+/g,' ');
+  trace(texte.indexOf('fermé') >= 0 ? 'FERME-DIT' : 'FERME-MUET ' + texte.slice(0,80));
+
+  /* Le vendredi 9 porte 202,95 € — exactement ce que le serveur a envoyé. */
+  trace(texte.indexOf('202,95') >= 0 ? 'COUT-AFFICHE' : 'COUT-ABSENT ' + texte.slice(0,120));
+  trace((texte.indexOf('172,52') >= 0 && texte.indexOf('106,95') >= 0)
+        ? 'COUT-DU-SERVEUR' : 'COUT-RECALCULE');
+
+  var cases = E('pl-semaine').children;
+  var vendredi = null;
+  for(var i=0;i<cases.length;i++)
+    if((cases[i].textContent||'').indexOf('202,95') >= 0) vendredi = cases[i];
+  var puces = vendredi.querySelectorAll('.pl-chip');
+  var marco = null, ana = null;
+  for(var k=0;k<puces.length;k++){
+    var t = puces[k].textContent;
+    if(t.indexOf('Marco') >= 0) marco = puces[k];
+    if(t.indexOf('Ana') >= 0) ana = puces[k];
+  }
+  trace((marco && marco.textContent.indexOf('€') < 0)
+        ? 'PERMANENT-SANS-PRIX' : 'PERMANENT-AVEC-PRIX ' + (marco && marco.textContent));
+  trace((ana && ana.textContent.indexOf('96,00') >= 0)
+        ? 'EXTRA-AVEC-PRIX' : 'EXTRA-SANS-PRIX ' + (ana && ana.textContent));
+
+  /* La modale : une personne = une option, quelles que soient ses versions de fiche. */
+  vendredi.querySelector('.pl-ajout').click();
+  trace(E('pl-fond').classList.contains('ouvert') ? 'MODALE-OUVRE' : 'MODALE-FERMEE');
+  var opts = E('f-personne').options, nAna = 0;
+  for(var o=0;o<opts.length;o++) if(opts[o].textContent.indexOf('Ana') >= 0) nAna++;
+  trace(nAna === 1 ? 'UNE-SEULE-ANA' : 'ANA-EN-DOUBLE n=' + nAna);
+
+  /* L'aperçu dit ce que le service va coûter, AVANT d'enregistrer. */
+  E('f-personne').value = 'p-ana';
+  E('f-personne').dispatchEvent(new Event('input', {bubbles:true}));
+  var ap = E('f-apercu').textContent;
+  trace(ap.indexOf('96,00') >= 0 ? 'APERCU-EXTRA' : 'APERCU-MUET extra=' + ap);
+
+  E('f-personne').value = 'p-bar';
+  E('f-personne').dispatchEvent(new Event('input', {bubbles:true}));
+  var ap2 = E('f-apercu').textContent;
+  trace(ap2.indexOf('lissée') >= 0 ? 'APERCU-PERMANENT' : 'APERCU-MUET perm=' + ap2);
+
+  /* Une fin avant le début est refusée à l'écran AUSSI — pas seulement au serveur. */
+  E('f-debut').value = '17:00'; E('f-fin').value = '09:00';
+  E('f-ok').click();
+  trace(!E('f-refus').hidden ? 'REFUS-HORAIRE' : 'REFUS-ABSENT');
+
+  /* La navigation change bien de semaine. */
+  var avant = E('pl-periode').textContent;
+  LUNDI = new Date(2026, 9, 12); rendre();
+  trace(E('pl-periode').textContent !== avant ? 'SEMAINE-NAVIGUE' : 'SEMAINE-FIGEE');
+})(0);
+""",
+    },
     "inventario.html": {
         "reponses": {
             "/api/inventario": {

@@ -4389,7 +4389,28 @@ def api_shifts_get():
         params["and"] = f"(day.gte.{debut or '1970-01-01'},day.lte.{fin})"
     shifts = _supa_get("shifts", params)
     employes = _supa_get("employees", {"order": "name.asc"})
-    return jsonify({"shifts": shifts, "employees": employes,
+
+    # ⚠️ LE COÛT SE CALCULE ICI, PAS DANS LE NAVIGATEUR. Réécrire en JavaScript la paie lissée,
+    # la TSU, la bascule et le diviseur du mois donnerait deux règles pour un seul chiffre — et
+    # c'est exactement ce qui fait diverger le comptoir et le bureau. `charges.py` est pur et
+    # testé ; l'écran n'a qu'à afficher.
+    from config import count_open_days_raw
+    couts = {}
+    if debut and fin:
+        try:
+            d0, d1 = date.fromisoformat(debut[:10]), date.fromisoformat(fin[:10])
+        except ValueError:
+            d0 = d1 = None
+        if d0 and d1 and d0 <= d1:
+            ouvert = lambda j: count_open_days_raw(j, j) == 1
+            jours = _ch.jours_ouverts_entre(d0, d1, ouvert)
+            fixes_rows = _supa_get("charges_fixes", {})
+            _, _, par_jour = _ch.cout_periode_planning(
+                fixes_rows, employes, shifts, jours, ouvert, PLANNING_CUTOVER)
+            couts = {j.isoformat(): {k: round(v, 2) for k, v in d.items()}
+                     for j, d in par_jour.items()}
+
+    return jsonify({"shifts": shifts, "employees": employes, "couts": couts,
                     "bascule": PLANNING_CUTOVER.isoformat()})
 
 
