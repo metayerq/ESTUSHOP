@@ -413,7 +413,7 @@ select.field-input { cursor:pointer; }
                placeholder="12.00" oninput="updateEmpPreview()">
         <div class="db-s" id="emp-rate-hint" style="font-size:11px;color:var(--db-muted);margin-top:3px;"></div>
       </div>
-      <div>
+      <div id="emp-meal-wrap">
         <div class="db-l">Meal allowance (€/day)</div>
         <input class="db-champ" id="emp-meal" type="number" step="0.01" value="10.20" oninput="updateEmpPreview()">
       </div>
@@ -957,7 +957,7 @@ async function rouvrir(table, id) {
   const r = await fetch('/api/' + table, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const d = await r.json();
-  if (d.ok) { showToast('Restarted'); loadAll(); } else showToast('Error: ' + (d.error || ''));
+  if (d.ok) { showToast('Restarted'); loadAll(); } else showToast('Error: ' + (d.error || 'refus sans explication du serveur'));
 }
 
 /**
@@ -1013,7 +1013,7 @@ async function supprimerDefinitivement(table, id) {
   if (!confirm(`Delete "${src.name}" permanently?\n\n${e.texte}\n\nThis cannot be undone.`)) return;
   const r = await fetch(`/api/${table}/${id}/definitif`, { method: 'DELETE' });
   const d = await r.json();
-  if (d.ok) { showToast('Deleted'); loadAll(); } else showToast('Error: ' + (d.error || ''));
+  if (d.ok) { showToast('Deleted'); loadAll(); } else showToast('Error: ' + (d.error || 'refus sans explication du serveur'));
 }
 
 /**
@@ -1095,7 +1095,7 @@ async function saveCharge() {
   const r = await fetch('/api/charges', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
   const d = await r.json();
   if (d.ok) { document.getElementById('charge-modal').classList.remove('open'); showToast(messageEffet(d, 'Cost saved')); loadAll(); }
-  else showToast('Error: ' + d.error);
+  else showToast('Error: ' + (d.error || 'refus sans explication du serveur'));
 }
 async function deleteCharge(id) {
   const c = chargesData.find(x => x.id === id);
@@ -1163,6 +1163,9 @@ function updateEmpPreview() {
 
   // Afficher/masquer TSU checkbox
   document.getElementById('emp-tsu-wrap').style.display = type === 'extra' ? 'none' : '';
+  /* ⚠️ LA CARTE REPAS DISPARAÎT POUR UN EXTRA. Un prestataire aux recibos verdes n'en a pas :
+     la laisser affichée avec 10,20 € par défaut faisait saisir une charge qui n'existe pas. */
+  document.getElementById('emp-meal-wrap').style.display = type === 'extra' ? 'none' : '';
   document.getElementById('emp-gross-label').textContent = type === 'extra'
     ? 'Monthly invoice amount (€) — before planning only'
     : 'Gross monthly salary (€) *';
@@ -1242,14 +1245,39 @@ function updateEmpPreview() {
 async function saveEmployee() {
   const id    = document.getElementById('emp-id').value;
   const name  = document.getElementById('emp-name').value.trim();
+  const type  = document.getElementById('emp-type').value;
+  const extra = type === 'extra';
   const gross = parseFloat(document.getElementById('emp-gross').value);
-  if (!name || isNaN(gross)) { showToast('Nom et salaire requis'); return; }
+  const brutTaux = document.getElementById('emp-rate').value.trim();
+  const taux  = brutTaux === '' ? null : parseFloat(brutTaux);
+
+  /* ⚠️ CE QUI EST OBLIGATOIRE N'EST PAS LE MÊME SELON LE TYPE, et le message doit dire LEQUEL
+     manque. « Nom et salaire requis » réclamait un salaire mensuel à un extra — dont le coût
+     vient désormais de ses heures — et refusait donc une fiche parfaitement remplie, sans dire
+     que c'était le taux horaire qu'il fallait. */
+  if (!name) { showToast('Le nom est obligatoire'); return; }
+  if (extra && !(taux > 0)) {
+    showToast("Un extra a besoin d'un taux horaire : c'est lui qui chiffre ses services.");
+    return;
+  }
+  if (!extra && !(gross > 0)) {
+    showToast('Un permanent a besoin de son salaire mensuel brut.');
+    return;
+  }
+
   const body = {
-    name, gross_monthly: gross,
-    type:          document.getElementById('emp-type').value,
+    name, type,
+    // Un extra n'a plus de forfait mensuel : son coût vient du planning.
+    gross_monthly: isNaN(gross) ? 0 : gross,
+    /* ⚠️ IL MANQUAIT, ET LE CHAMP ÉTAIT DONC DÉCORATIF. Saisir un taux ne l'envoyait nulle
+       part : la fiche s'enregistrait sans lui et les services restaient à zéro. */
+    hourly_rate:   taux,
     hours_week:    parseFloat(document.getElementById('emp-hours').value) || 40,
-    meal_card_daily: parseFloat(document.getElementById('emp-meal').value) || 10.20,
-    tsu_exempt:    document.getElementById('emp-tsu-exempt').checked,
+    /* ⚠️ UN EXTRA AUX RECIBOS VERDES N'A PAS DE CARTE REPAS. Lui en poser une par défaut
+       inventait une charge sur quelqu'un qui n'en a pas — et le `|| 10.20` la remettait même
+       quand le champ disait 0. */
+    meal_card_daily: extra ? 0 : (parseFloat(document.getElementById('emp-meal').value) || 10.20),
+    tsu_exempt:    extra ? false : document.getElementById('emp-tsu-exempt').checked,
     notes:         document.getElementById('emp-notes').value.trim(),
   };
   if (id) body.id = id;
@@ -1257,7 +1285,7 @@ async function saveEmployee() {
   const r = await fetch('/api/employees', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
   const d = await r.json();
   if (d.ok) { document.getElementById('emp-modal').classList.remove('open'); showToast(messageEffet(d, 'Employee saved')); loadAll(); }
-  else showToast('Error: ' + d.error);
+  else showToast('Error: ' + (d.error || 'refus sans explication du serveur'));
 }
 async function deleteEmployee(id) {
   const e = employeesData.find(x => x.id === id);

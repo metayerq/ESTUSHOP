@@ -642,6 +642,9 @@ CAS = {
             # ⚠️ LE TAUX HORAIRE EST CE QUI CHIFFRE LE PLANNING : sans lui, un extra apparaît
             # au calendrier et sa journée ne coûte rien.
             "CHAMP-TAUX", "TAUX-REPRIS", "OUVRIR-NE-MODIFIE-PAS",
+            "TAUX-ENVOYE", "EXTRA-SANS-CARTE-REPAS", "EXTRA-SANS-MENSUEL-ACCEPTE",
+            "CARTE-REPAS-MASQUEE", "REFUS-LISIBLE",
+            "EXTRA-SANS-TAUX-REFUSE", "REFUS-DIT-QUOI",
             # ⚠️ ET LA FICHE D'UN PERMANENT S'OUVRE APRÈS CELLE D'UN EXTRA. La branche « extra »
             # remplaçait l'aperçu et détruisait les éléments que l'autre remplissait : la
             # seconde ouverture levait, en silence.
@@ -652,7 +655,10 @@ CAS = {
             "TAUX-EXIGE-UN-MOTIF", "APERCU-PAR-SERVICE",
         ],
         "interdit": [
-            "CHAMP-ABSENT", "TAUX-PERDU", "OUVRIR-RECLAME-UN-MOTIF", "EXTRA-MUET", "EXTRA-SANS-TAUX-SILENCIEUX",
+            "CHAMP-ABSENT", "TAUX-PERDU", "OUVRIR-RECLAME-UN-MOTIF",
+            "TAUX-PERDU-A-LENVOI", "EXTRA-AVEC-CARTE-REPAS", "EXTRA-REFUSE-SANS-MENSUEL",
+            "CARTE-REPAS-VISIBLE", "REFUS-UNDEFINED",
+            "EXTRA-SANS-TAUX-ENREGISTRE", "REFUS-MUET", "EXTRA-MUET", "EXTRA-SANS-TAUX-SILENCIEUX",
             "PERMANENT-TAUX-COMPTE", "TAUX-SANS-CEREMONIE", "PERMANENT-APRES-EXTRA-CASSE", "APERCU-TROMPEUR",
             "NaN", "undefined", "Invalid Date",
         ],
@@ -703,6 +709,56 @@ CAS = {
   var ind2 = E('emp-rate-hint').textContent;
   trace(ind2.indexOf('aucun calcul') >= 0
         ? 'PERMANENT-TAUX-INDICATIF' : 'PERMANENT-TAUX-COMPTE ' + ind2);
+
+  /* ⚠️ ENREGISTRER DOIT ENVOYER LE TAUX. Il manquait au corps de la requête : saisir un taux
+     ne l'envoyait nulle part, la fiche s'enregistrait sans lui, et les services du planning
+     restaient à zéro. Le champ était décoratif. */
+  var envoye = null;
+  var vraiFetch = window.fetch;
+  window.fetch = function(u, o){
+    if(String(u).indexOf('/api/employees') === 0 && o && o.body) envoye = JSON.parse(o.body);
+    return vraiFetch(u, o);
+  };
+  openEmpModal();
+  E('emp-name').value = 'Carla';
+  E('emp-type').value = 'extra';
+  E('emp-type').dispatchEvent(new Event('change', {bubbles:true}));
+  E('emp-rate').value = '14';
+  E('emp-rate').dispatchEvent(new Event('input', {bubbles:true}));
+  saveEmployee();
+  trace((envoye && envoye.hourly_rate === 14)
+        ? 'TAUX-ENVOYE' : 'TAUX-PERDU-A-LENVOI ' + JSON.stringify(envoye));
+  /* ⚠️ UN EXTRA N'A PAS DE CARTE REPAS : lui en poser une invente une charge. */
+  trace((envoye && envoye.meal_card_daily === 0)
+        ? 'EXTRA-SANS-CARTE-REPAS' : 'EXTRA-AVEC-CARTE-REPAS ' + (envoye && envoye.meal_card_daily));
+  /* ⚠️ ET SON FORFAIT MENSUEL N'EST PLUS OBLIGATOIRE : le laisser vide refusait une fiche
+     parfaitement remplie, avec « Nom et salaire requis » pour seul message. */
+  trace((envoye && envoye.name === 'Carla')
+        ? 'EXTRA-SANS-MENSUEL-ACCEPTE' : 'EXTRA-REFUSE-SANS-MENSUEL');
+  /* La carte repas est masquée, pas seulement ignorée. */
+  trace(E('emp-meal-wrap').style.display === 'none'
+        ? 'CARTE-REPAS-MASQUEE' : 'CARTE-REPAS-VISIBLE');
+  /* ⚠️ UN REFUS SANS MESSAGE NE DOIT PAS AFFICHER « undefined ». Le bouchon répond {} : c'est
+     exactement le cas d'un serveur qui refuse sans expliquer, et l'écran disait « Error:
+     undefined » — ce qui se lit comme un bug du navigateur, pas comme un refus. */
+  trace(E('toast').textContent.indexOf('undefined') < 0
+        ? 'REFUS-LISIBLE' : 'REFUS-UNDEFINED ' + E('toast').textContent);
+
+  /* ⚠️ UN EXTRA SANS TAUX NE DOIT PAS PASSER — et le message doit dire QUOI manque. Sa fiche
+     s'enregistrerait sans rien pour chiffrer ses services : il apparaîtrait au planning et sa
+     journée coûterait zéro, en silence. */
+  envoye = null;
+  openEmpModal();
+  E('emp-name').value = 'Dora';
+  E('emp-type').value = 'extra';
+  E('emp-type').dispatchEvent(new Event('change', {bubbles:true}));
+  E('emp-rate').value = '';
+  saveEmployee();
+  trace(envoye === null ? 'EXTRA-SANS-TAUX-REFUSE'
+        : 'EXTRA-SANS-TAUX-ENREGISTRE ' + JSON.stringify(envoye));
+  trace(E('toast').textContent.indexOf('taux horaire') >= 0
+        ? 'REFUS-DIT-QUOI' : 'REFUS-MUET ' + E('toast').textContent);
+  window.fetch = vraiFetch;
 
   /* Changer un taux ouvre le bloc date d'effet + motif, comme une augmentation. */
   editEmployee('e2');
