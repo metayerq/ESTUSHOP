@@ -385,3 +385,70 @@ def test_LE_TOTAL_EST_LA_SOMME_DE_SES_JOURS(base):
     assert e["cout_perso_periode"] > 0, "sans personnel, ce contrôle ne garde rien"
     assert e["cout_total_periode"] == pytest.approx(
         e["cout_fixe_periode"] + e["cout_perso_periode"], abs=0.01)
+
+
+# ══ LE POINT MORT DIT QUAND IL SUPPOSE ══════════════════════════════════════════════════════
+#
+# ⚠️ `charges_mensuelles_detail` ÉTAIT ÉCRITE, COMMENTÉE, TESTÉE — ET APPELÉE PAR PERSONNE. Le
+# seuil continuait de se calculer avec `charges_mensuelles`, qui ne distingue pas une facture
+# arrivée d'une facture supposée. Ces cas-ci passent par `daily_economics` : c'est le seul
+# niveau où l'oubli se voyait.
+
+ELEC_SEPT = {"name": "Électricité", "mode": "facture", "mois": "2026-09-01", "amount": 77.10,
+             "frequency": "monthly", "valid_from": "2026-09-01", "valid_to": None,
+             "active": True}
+ELEC_OCT = {"name": "Électricité", "mode": "facture", "mois": "2026-10-01", "amount": 81.40,
+            "frequency": "monthly", "valid_from": "2026-10-01", "valid_to": None,
+            "active": True}
+
+
+def test_une_facture_non_arrivee_est_nommee_dans_le_resultat(base):
+    """Octobre tourne sur la facture de septembre : le résultat doit le dire, et dire laquelle."""
+    base["charges_fixes"] = [LOYER, ELEC_SEPT]
+    eco = V.daily_economics(docs(["2026-10-02"]), {}, from_date=date(2026, 10, 1),
+                            to_date=date(2026, 10, 5))
+    assert eco["charges_estimees"] == ["Électricité"]
+
+
+def test_la_facture_du_mois_arrivee_ne_laisse_aucune_estimation(base):
+    base["charges_fixes"] = [LOYER, {**ELEC_SEPT, "valid_to": "2026-10-01"}, ELEC_OCT]
+    eco = V.daily_economics(docs(["2026-10-02"]), {}, from_date=date(2026, 10, 1),
+                            to_date=date(2026, 10, 5))
+    assert eco["charges_estimees"] == []
+
+
+def test_sans_aucune_charge_sur_facture_rien_nest_estime(base):
+    eco = V.daily_economics(docs(["2026-10-02"]), {}, from_date=date(2026, 10, 1),
+                            to_date=date(2026, 10, 5))
+    assert eco["charges_estimees"] == []
+
+
+def test_lestimation_ne_change_pas_le_montant_du_seuil(base):
+    """
+    ⚠️ ON ANNONCE, ON NE CORRIGE PAS. La dernière facture connue reste le meilleur chiffre
+    disponible ; la remplacer par zéro, ou par une moyenne, rendrait le seuil faux pour de bon.
+    Ce contrôle existe pour qu'une « amélioration » future ne confonde pas annoncer et modifier.
+    """
+    base["charges_fixes"] = [LOYER, ELEC_SEPT]
+    avec = V.daily_economics(docs(["2026-10-02"]), {}, from_date=date(2026, 10, 1),
+                             to_date=date(2026, 10, 5))
+    base["charges_fixes"] = [LOYER, {**ELEC_SEPT, "mois": "2026-10-01"}]
+    sans = V.daily_economics(docs(["2026-10-02"]), {}, from_date=date(2026, 10, 1),
+                             to_date=date(2026, 10, 5))
+    assert avec["charges_estimees"] == ["Électricité"] and sans["charges_estimees"] == []
+    assert avec["cout_total_periode"] == sans["cout_total_periode"]
+    assert avec["seuil_ca_ttc"] == sans["seuil_ca_ttc"]
+
+
+def test_la_mention_survit_au_passage_des_commissions():
+    """
+    ⚠️ ENTRE `daily_economics` ET L'ÉCRAN IL Y A UNE FONCTION QUI RÉÉCRIT LE RÉSULTAT.
+    `_apply_commissions` reconstruit une partie du dictionnaire ; un champ ajouté en amont peut
+    y disparaître sans qu'aucun test ne bouge — les deux bouts restent corrects, c'est le
+    passage qui perd. Le dashboard afficherait alors un seuil estimé sans le dire.
+    """
+    import app
+    eco = {"ebitda_ht": 100.0, "marge_totale_ht": 300.0, "cout_total_periode": 200.0,
+           "charges_estimees": ["Électricité"], "seuil_ca_ttc": 1430.0}
+    sorti = app._apply_commissions(eco, "2026-10-01", "2026-10-05", deja_integrees=True)
+    assert sorti.get("charges_estimees") == ["Électricité"]

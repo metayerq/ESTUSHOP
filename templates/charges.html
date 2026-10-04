@@ -850,12 +850,13 @@ function renderVariables() {
   b.textContent = enAttente ? String(enAttente) : String(noms.length);
   b.style.color = enAttente ? 'var(--db-amber)' : '';
 
-  /* ⚠️ CETTE PHRASE NE PROMET QUE CE QUI EXISTE. Elle annonçait que le tableau de bord
-   * affiche « estimé » — c'est l'étape suivante, pas encore en place. Un écran qui décrit un
-   * comportement absent est pire qu'un écran muet : on cesse de vérifier. */
+  /* ⚠️ CETTE PHRASE NE PROMET QUE CE QUI EXISTE. Elle a passé un commit à annoncer un
+   * « estimé » que le tableau de bord n'affichait pas encore — un écran qui décrit un
+   * comportement absent est pire qu'un écran muet : on cesse de vérifier. La mention existe
+   * désormais à côté du point mort, sur la carte principale comme sur la carte Économie. */
   document.getElementById('note-variables').textContent = enAttente
-    ? "Un mois en attente est compté au tableau de bord avec la dernière facture connue. "
-      + "Le point mort de ce mois-là bougera quand tu saisiras la vraie facture."
+    ? "Un mois en attente est compté au tableau de bord avec la dernière facture connue, "
+      + "et le point mort y est annoncé « estimé » tant que la facture n'est pas saisie."
     : "Une facture couvre son mois, même saisie le mois suivant. Ni date d'effet ni motif : "
       + "son motif, c'est elle-même.";
 }

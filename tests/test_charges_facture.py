@@ -178,3 +178,61 @@ def test_les_factures_dune_autre_charge_ne_decalent_pas_les_bornes():
     debut, fin, a_cloturer = ch.bornes_dune_facture(lignes, "Électricité", date(2026, 10, 1))
     assert fin is None, "une facture d'eau de novembre a borné l'électricité d'octobre"
     assert a_cloturer[0]["name"] == "Électricité"
+
+
+# ── Dire « estimé » là où ça compte ─────────────────────────────────────────────────────────
+#
+# ⚠️ `charges_mensuelles_detail` EXISTAIT DEPUIS LE DÉBUT ET N'ÉTAIT APPELÉE PAR PERSONNE. Elle
+# était écrite, commentée, testée — et le point mort continuait de se calculer avec
+# `charges_mensuelles`, qui ne dit rien de ce qu'elle estime. Une fonction juste que rien
+# n'appelle ne corrige rien ; elle donne seulement l'impression que c'est fait.
+
+def test_un_mois_sans_facture_est_annonce_comme_estime():
+    jours = [date(2026, 10, d) for d in (1, 8, 15)]
+    assert ch.charges_estimees([facture("2026-09-01", 77.10)], jours) == ["Électricité"]
+
+
+def test_le_mois_de_la_facture_nest_pas_une_estimation():
+    jours = [date(2026, 10, d) for d in (1, 8, 15)]
+    assert ch.charges_estimees([facture("2026-10-01", 81.0)], jours) == []
+
+
+def test_une_charge_stable_nest_jamais_estimee():
+    assert ch.charges_estimees([LOYER], [date(2026, 10, 15)]) == []
+
+
+def test_un_seul_jour_estime_qualifie_toute_la_periode():
+    """
+    ⚠️ UNE SEMAINE À CHEVAL SUR DEUX MOIS. Septembre a sa facture, octobre pas encore : les
+    trois premiers jours sont mesurés, les quatre suivants supposés. Ne retenir que la
+    majorité, ou que le dernier jour, laisserait passer la moitié des semaines de l'année.
+    """
+    lignes = [facture("2026-09-01", 77.10, debut="2026-09-01", fin="2026-10-01"),
+              facture("2026-08-01", 71.0, debut="2026-10-01")]
+    jours = [date(2026, 9, 28), date(2026, 9, 29), date(2026, 10, 1), date(2026, 10, 2)]
+    assert ch.charges_estimees(lignes, jours) == ["Électricité"]
+
+
+def test_deux_charges_estimees_sont_toutes_les_deux_nommees():
+    lignes = [facture("2026-09-01", 77.10, nom="Électricité"),
+              facture("2026-08-01", 31.40, nom="Eau"), LOYER]
+    assert ch.charges_estimees(lignes, [date(2026, 10, 15)]) == ["Eau", "Électricité"]
+
+
+def test_sans_jour_il_ny_a_rien_a_estimer():
+    """Une période vide ne doit pas inventer une alerte — ni lever."""
+    assert ch.charges_estimees([facture("2026-09-01", 77.10)], []) == []
+    assert ch.charges_estimees(None, [date(2026, 10, 15)]) == []
+
+
+def test_une_ligne_deja_close_ne_rend_pas_la_charge_estimee():
+    """
+    ⚠️ CE CONTRÔLE MANQUAIT ET LA FONCTION PASSAIT QUAND MÊME. Mes deux premiers cas portaient
+    le même nom sur les deux lignes : retirer le filtre `applicable` donnait exactement le même
+    résultat, donc rien ne gardait la borne de validité. Ici l'ancienne ligne d'« Eau » est
+    close depuis septembre et sa facture est vieille ; la ligne en vigueur, elle, porte le mois
+    calculé. Sans le filtre, « Eau » serait annoncée estimée alors qu'elle est mesurée.
+    """
+    lignes = [facture("2026-07-01", 28.0, nom="Eau", debut="2026-07-01", fin="2026-10-01"),
+              facture("2026-10-01", 31.40, nom="Eau", debut="2026-10-01")]
+    assert ch.charges_estimees(lignes, [date(2026, 10, 15)]) == []

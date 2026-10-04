@@ -911,6 +911,7 @@ CAS = {
                     "seuil_ca_ttc": 5740.0, "seuil_ca_ttc_jour": 260.9,
                     "seuil_ca_ttc_par_jour": {}, "seuil_ca_ht": 5080.0,
                     "manque_seuil": 0.0, "pct_seuil": 216,
+                    "charges_estimees": ["Électricité"],
                     "charges_source": "supabase", "seuil_margin_src": "reelle",
                     "seuil_tva_src": "mesure", "seuil_tva_pct": 13.0,
                     "seuil_margin_pct": 70.9, "excludes_today": False,
@@ -942,12 +943,17 @@ CAS = {
             # ⚠️ LE GRAPHIQUE DE LA CARTE PRINCIPALE A ÉTÉ RETIRÉ, et la carte se referme.
             "PAS-DE-GRAPHE", "PAS-DE-LEGENDE", "TROIS-CHIFFRES", "CARTE-REFERMEE",
             "MINIS-INTACTES",
+            # ⚠️ ET LE POINT MORT DIT QUAND IL SUPPOSE. Octobre tourne sur la facture
+            # d'électricité de septembre : le chiffre reste le meilleur disponible, mais
+            # l'écran le présentait comme mesuré.
+            "SEUIL-QUALIFIE", "FACTURE-NOMMEE", "LIEN-VERS-LA-SAISIE",
         ],
         "interdit": [
             "FENETRE-FIGEE", "BLOC-CACHE", "PART-ABSENTE", "CARTES-MUETTES", "HABITUES-MUETS",
             "ESPECES-TUES", "VIDE-AFFIRME-ZERO",
             "GRAPHE-REVENU", "LEGENDE-REVENUE", "CHIFFRES-PERDUS", "CARTE-TROUEE",
             "MINIS-PERDUES",
+            "SEUIL-SANS-RESERVE", "FACTURE-TUE", "SAISIE-SANS-LIEN",
             "NaN", "undefined", "Invalid Date", "passage(s)",
         ],
         "scenario": r"""
@@ -1023,6 +1029,17 @@ CAS = {
           ? 'CARTE-REFERMEE' : 'CARTE-TROUEE ' + Math.round(filsBas - bas) + 'px');
     /* Les mini-courbes des autres cartes n'ont pas été emportées. */
     trace(document.getElementById('mini-tickets') ? 'MINIS-INTACTES' : 'MINIS-PERDUES');
+
+  /* ⚠️ LE POINT MORT DIT QUAND IL SUPPOSE. Le bouchon porte une facture d'électricité non
+     arrivée : le seuil doit être qualifié à côté du chiffre, la charge nommée sous la carte,
+     et le geste accessible — un avertissement sans chemin de correction fait relire deux fois
+     et agir zéro. */
+  var sub = document.getElementById('db-seuil-sub').textContent;
+  trace(sub.indexOf('estimé') >= 0 ? 'SEUIL-QUALIFIE' : 'SEUIL-SANS-RESERVE ' + sub);
+  var nt = document.getElementById('db-note');
+  trace((nt.style.display !== 'none' && nt.textContent.indexOf('Électricité') >= 0)
+        ? 'FACTURE-NOMMEE' : 'FACTURE-TUE ' + nt.textContent.slice(0, 70));
+  trace(nt.querySelector('a[href="/charges"]') ? 'LIEN-VERS-LA-SAISIE' : 'SAISIE-SANS-LIEN');
   }, 150);
 })(0);
 """,

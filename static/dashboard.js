@@ -374,9 +374,15 @@ function renderReponse(d) {
    * qu'on connaisse ; « 1 430 € » se compare à une journée de caisse. */
   if (eco.seuil_ca_ttc != null) {
     E('db-seuil').textContent = fmt(eco.seuil_ca_ttc);
-    E('db-seuil-sub').innerHTML = eco.manque_seuil > 0
+    /* ⚠️ UN SEUIL NOURRI D'UNE FACTURE QUI N'EST PAS ARRIVÉE N'EST PAS UN SEUIL MESURÉ. Le
+     * montant reste le meilleur disponible — la dernière facture connue — mais l'écran le
+     * présentait comme un fait. Le mot se pose à CÔTÉ du chiffre, en retrait : il qualifie,
+     * il n'alerte pas. L'alerte, c'est l'onglet « Charges variables » qui la porte. */
+    const estime = (eco.charges_estimees || []).length
+      ? ' <span class="db-badge flat">estimé</span>' : '';
+    E('db-seuil-sub').innerHTML = (eco.manque_seuil > 0
       ? `<span class="db-badge warn">${fmt(eco.manque_seuil)} manquants</span>`
-      : `<span class="db-badge up">dépassé</span>`;
+      : `<span class="db-badge up">dépassé</span>`) + estime;
   } else {
     E('db-seuil').textContent = '—';
     E('db-seuil-sub').textContent = '';
@@ -413,13 +419,22 @@ function renderReponse(d) {
   /* ⚠️ CE QUI EST ESTIMÉ SE DIT À CÔTÉ DU CHIFFRE. Sous la couverture complète des coûts, la
    * marge est extrapolée — donc le résultat ET le point mort le sont aussi. Le taire ferait
    * lire un résultat mesuré là où il y a une projection. */
+  const raisons = [];
   if (eco.marge_is_estimated === true) {
-    note.innerHTML = `Marge extrapolée sur <b>${eco.cogs_coverage_pct} %</b> des ventes — `
-      + 'le résultat et le point mort en héritent.';
-    note.style.display = '';
-  } else {
-    note.style.display = 'none';
+    raisons.push(`Marge extrapolée sur <b>${eco.cogs_coverage_pct} %</b> des ventes — `
+      + 'le résultat et le point mort en héritent.');
   }
+  /* ⚠️ ET LA FACTURE MANQUANTE EST UNE SECONDE SOURCE D'ESTIMATION, indépendante de la
+   * première. Les deux peuvent tomber le même jour : une note qui en écraserait une ferait
+   * disparaître la moitié de ce qu'on sait. D'où la liste, et non un `else`. */
+  const estimees = eco.charges_estimees || [];
+  if (estimees.length) {
+    raisons.push(`<b>${estimees.join(' et ')}</b> : facture du mois pas encore saisie — le `
+      + 'point mort reprend la dernière connue. '
+      + '<a href="/charges" class="db-link">Saisir la facture →</a>');
+  }
+  note.innerHTML = raisons.join('<br>');
+  note.style.display = raisons.length ? '' : 'none';
 }
 
 /* ══ Clients qui reviennent ═══════════════════════════════════════════════════════════════
@@ -758,10 +773,19 @@ function render(d) {
         : seuilEst
           ? ` <span style="color:var(--db-amber)">· sur une marge extrapolée de ${eco.seuil_margin_pct} %</span>`
           : ` <span style="color:var(--db-faint)">· marge réelle ${eco.seuil_margin_pct} %</span>`;
+      /* ⚠️ LA COMPTABILITÉ EST L'ÉCRAN OÙ L'ON CITE CES CHIFFRES AILLEURS. Un point mort dont
+       * une charge est reprise du mois précédent doit le dire ici aussi, et nommer laquelle —
+       * sinon le nombre part dans un tableur sans son réserve. C'est la même information que
+       * sur le tableau de bord ; la taire sur un seul des deux écrans, c'est la perdre. */
+      const chEst = eco.charges_estimees || [];
+      const chargeNote = chEst.length
+        ? ` <span style="color:var(--db-amber)">· ${chEst.join(' et ')} ${
+            chEst.length > 1 ? 'estimées' : 'estimée'}, facture du mois pas encore saisie</span>`
+        : '';
       if (eco.manque_seuil > 0) {
-        seuilSub.innerHTML = `<span style="color:var(--db-red)">${fmt(eco.manque_seuil)} manquants (TTC)</span>` + margeNote;
+        seuilSub.innerHTML = `<span style="color:var(--db-red)">${fmt(eco.manque_seuil)} manquants (TTC)</span>` + margeNote + chargeNote;
       } else {
-        seuilSub.innerHTML = `<span style="color:var(--db-green)">Point mort atteint${seuilEst ? '' : ' ✓'}</span>` + margeNote;
+        seuilSub.innerHTML = `<span style="color:var(--db-green)">Point mort atteint${seuilEst || chEst.length ? '' : ' ✓'}</span>` + margeNote + chargeNote;
       }
       /* ⚠️ UNE BARRE À 0 % SE LIT « TU N'AS RIEN ATTEINT ». Quand le seuil n'est pas
        * calculable, `pct_seuil` vaut `null` et non 0 : on laisse la barre vide ET on le dit,

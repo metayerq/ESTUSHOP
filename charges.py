@@ -148,6 +148,32 @@ def charges_mensuelles_detail(lignes, jour):
     return total, estimees
 
 
+def charges_estimees(lignes, jours):
+    """
+    Les charges dont le montant imputé sur CES jours-là n'est qu'une estimation.
+
+    ⚠️ C'EST L'INFORMATION QUI MANQUAIT AU POINT MORT. Le total était déjà juste au mieux de ce
+    qu'on sait — un mois sans facture reprend la dernière connue — mais l'écran le présentait
+    comme une mesure. Un seuil de rentabilité nourri d'une estimation et annoncé comme un fait
+    est pire qu'un seuil absent : on arrête de chercher la facture.
+
+    ⚠️ UN SEUL JOUR ESTIMÉ SUFFIT À QUALIFIER LA PÉRIODE. Une semaine à cheval sur deux mois
+    dont un seul manque reste une semaine dont le point mort est en partie supposé ; arrondir
+    au « la plupart des jours vont bien » reviendrait à taire ce qu'on sait.
+
+    Renvoie les noms, triés, sans doublon — pour que l'écran puisse les nommer.
+    """
+    vus = set()
+    for j in jours or []:
+        for c in lignes or []:
+            nom = str((c or {}).get("name") or "")
+            if nom in vus or not applicable(c, j):
+                continue
+            if facture_estimee(c, j):
+                vus.add(nom)
+    return sorted(vus)
+
+
 def bornes_dune_facture(lignes, nom, mois):
     """
     Où insérer la facture de `mois` pour `nom`, et quelle ligne clôturer.

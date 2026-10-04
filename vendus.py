@@ -703,6 +703,7 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         # changé au milieu, et l'écran doit montrer ce qui a réellement été imputé.
         cout_fixe_jour = total_fixes_periode / len(_ouverts)
         cout_perso_jour = total_perso_periode / len(_ouverts)
+        _jours_estimes = _ouverts
     else:
         # Sans bornes de dates (appels historiques), on résout à aujourd'hui.
         #
@@ -713,6 +714,14 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
             _ref, lambda j: count_open_days_raw(j, j) == 1) or JOURS_OUVERTS_MOIS
         cout_fixe_jour = _ch.charges_mensuelles(charges_rows, _ref) / _n_mois
         cout_perso_jour = _ch.personnel_mensuel(employee_rows, _ref) / _n_mois
+        _jours_estimes = [_ref]
+
+    # ⚠️ LE POINT MORT DOIT DIRE QUAND IL SUPPOSE. Un mois dont la facture d'eau ou
+    # d'électricité n'est pas encore arrivée reprend la dernière connue : c'est le meilleur
+    # chiffre disponible, et il reste une supposition. `charges_mensuelles_detail` savait déjà
+    # le dire et n'était appelée par personne — le seuil se calculait avec `charges_mensuelles`,
+    # qui ne distingue pas. Une fonction juste que rien n'appelle ne corrige rien.
+    charges_estimees = _ch.charges_estimees(charges_rows, _jours_estimes)
 
     _mois_ref = to_date or from_date or today_lisbon()
     _jours_mois = _ch.jours_ouverts_du_mois(
@@ -944,6 +953,8 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         "manque_seuil":     manque_seuil,   # en TTC
         "pct_seuil":        pct_seuil,      # basé sur TTC vs TTC
         "charges_source":   charges_source, # "supabase" ou "fallback_bp"
+        # Les charges dont le montant imputé est repris d'un mois précédent, nommées.
+        "charges_estimees": charges_estimees,
         # Fiabilité du COGS
         "cogs_coverage_pct": cogs_coverage_pct,   # % du CA avec coût connu
         "seuil_margin_src":  seuil_margin_src,    # "reelle" ou "bp"

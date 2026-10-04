@@ -174,6 +174,10 @@ def _executer(charges):
     tva: champs['db-tva'].textContent,
     jour: champs['db-wd-v'].textContent,
     couv: champs['db-couv'].textContent,
+    seuilSub: champs['db-seuil-sub'].innerHTML,
+    note: champs['db-note'].innerHTML,
+    noteVisible: champs['db-note'].style.display !== 'none',
+    ecoSeuilSub: champs['eco-seuil-sub'].innerHTML,
   }));
 """.replace("__CHARGES__", json.dumps(charges)))
     import tempfile
@@ -240,3 +244,103 @@ def test_les_chiffres_sont_bien_ecrits():
     assert r["tva"] != "—", "la TVA n'est pas écrite"
     assert r["jour"] == "samedi", r["jour"]
     assert r["couv"] == "96 %", r["couv"]
+
+
+# ══ LE POINT MORT DIT QUAND IL SUPPOSE ══════════════════════════════════════════════════════
+#
+# ⚠️ L'ÉCRAN PRÉSENTAIT COMME MESURÉ UN SEUIL NOURRI D'UNE FACTURE NON ARRIVÉE. Le montant était
+# le meilleur disponible — la dernière facture connue — mais rien ne le qualifiait. Le risque
+# n'est pas le chiffre, c'est qu'on cesse de chercher la facture.
+
+def test_une_facture_non_arrivee_qualifie_le_point_mort():
+    r = _executer([payload(economics={**payload()["economics"],
+                                      "charges_estimees": ["Électricité"]})])
+    assert r["erreurs"] == [], r["erreurs"]
+    assert "estimé" in r["seuilSub"], r["seuilSub"]
+    assert "Électricité" in r["note"], r["note"]
+    assert r["noteVisible"], "la note reste masquée"
+
+
+def test_sans_facture_manquante_le_point_mort_ne_sexcuse_pas():
+    """Un écran qui dit « estimé » tout le temps ne dit plus rien."""
+    r = _executer([payload()])
+    assert "estimé" not in r["seuilSub"], r["seuilSub"]
+    assert not r["noteVisible"], r["note"]
+
+
+def test_les_deux_sources_destimation_tiennent_ensemble():
+    """
+    ⚠️ MARGE EXTRAPOLÉE ET FACTURE MANQUANTE SONT INDÉPENDANTES, et peuvent tomber le même
+    jour. La note s'écrivait avec un `else` : la seconde aurait effacé la première, et l'écran
+    aurait affirmé connaître la marge.
+    """
+    r = _executer([payload(economics={**payload()["economics"],
+                                      "marge_is_estimated": True,
+                                      "cogs_coverage_pct": 72,
+                                      "charges_estimees": ["Eau", "Électricité"]})])
+    assert r["erreurs"] == [], r["erreurs"]
+    assert "72" in r["note"] and "Marge extrapolée" in r["note"], r["note"]
+    assert "Eau et Électricité" in r["note"], r["note"]
+
+
+def test_un_tableau_de_bord_sans_le_champ_ne_tombe_pas():
+    """
+    ⚠️ LE CHAMP PEUT MANQUER. Un onglet laissé ouvert avant déploiement, une réponse en cache :
+    le script tourne alors sur une charge utile d'avant. `undefined.length` suffirait à tuer le
+    rendu — et tout ce qui suit dans la fonction ne serait jamais écrit.
+    """
+    eco = {k: v for k, v in payload()["economics"].items()}
+    r = _executer([payload(economics=eco)])
+    assert r["erreurs"] == [], r["erreurs"]
+    assert r["seuil"] and r["seuil"] != "—"
+
+
+# ⚠️ LE POINT MORT S'AFFICHE À DEUX ENDROITS DE LA MÊME PAGE : la carte principale et la carte
+# « Économie », plus bas. Je croyais que le second était `/contabilidade` — vérification faite,
+# cette page-là n'affiche aucun seuil, c'est un export TVA. Qualifier un seul des deux endroits
+# laisserait le chiffre circuler sans sa réserve depuis l'autre.
+
+def test_la_carte_economie_dit_aussi_que_la_facture_manque():
+    r = _executer([payload(economics={**payload()["economics"],
+                                      "charges_estimees": ["Électricité"]})])
+    assert r["erreurs"] == [], r["erreurs"]
+    assert "Électricité" in r["ecoSeuilSub"], r["ecoSeuilSub"]
+    assert "estimée" in r["ecoSeuilSub"], r["ecoSeuilSub"]
+
+
+def test_la_carte_economie_accorde_le_pluriel():
+    r = _executer([payload(economics={**payload()["economics"],
+                                      "charges_estimees": ["Eau", "Électricité"]})])
+    assert "Eau et Électricité estimées" in r["ecoSeuilSub"], r["ecoSeuilSub"]
+
+
+def test_la_carte_economie_se_tait_quand_tout_est_mesure():
+    r = _executer([payload()])
+    assert "estimé" not in r["ecoSeuilSub"], r["ecoSeuilSub"]
+    assert "✓" in r["ecoSeuilSub"], r["ecoSeuilSub"]
+
+
+def test_le_point_mort_atteint_ne_porte_pas_de_coche_sil_est_estime():
+    """
+    ⚠️ LA COCHE EST UNE AFFIRMATION. « Point mort atteint ✓ » sur un seuil nourri d'une facture
+    supposée dit qu'on a vérifié. On garde la bonne nouvelle, on retire la certitude.
+    """
+    r = _executer([payload(economics={**payload()["economics"],
+                                      "manque_seuil": 0,
+                                      "charges_estimees": ["Électricité"]})])
+    assert "Point mort atteint" in r["ecoSeuilSub"]
+    assert "✓" not in r["ecoSeuilSub"], r["ecoSeuilSub"]
+
+
+def test_la_mention_tient_aussi_quand_le_point_mort_nest_pas_atteint():
+    """
+    ⚠️ DEUX BRANCHES, DEUX CHEMINS D'AFFICHAGE. « manquants » et « atteint » composent leur
+    sous-texte séparément : n'accrocher la mention qu'à l'une des deux la ferait disparaître
+    exactement les jours où le seuil n'est pas atteint — ceux où on le regarde.
+    """
+    r = _executer([payload(economics={**payload()["economics"],
+                                      "manque_seuil": 310.0,
+                                      "charges_estimees": ["Électricité"]})])
+    assert r["erreurs"] == [], r["erreurs"]
+    assert "manquants" in r["ecoSeuilSub"], r["ecoSeuilSub"]
+    assert "Électricité estimée" in r["ecoSeuilSub"], r["ecoSeuilSub"]
