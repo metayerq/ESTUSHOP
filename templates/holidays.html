@@ -15,10 +15,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css?v={{ v }}">
 <style>
-@media (max-width:760px) {
 
-  .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
-  .table-wrap table { min-width:520px; }
   .modal { padding:20px; }
   .modal-grid { grid-template-columns:1fr; }
 }
@@ -70,6 +67,21 @@ td.date { color:var(--muted); white-space:nowrap; }
   background:var(--text); color:var(--bg-card); padding:10px 18px; border-radius:8px; font-size:13px;
   opacity:0; transition:all .25s; z-index:200; }
 .toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
+
+/* ══ SOUS 760 px : LES TABLEAUX DÉFILENT ══════════════════════════════════════════════════
+   ⚠️ CE BLOC VIVAIT EN HAUT DU FICHIER ET NE S'APPLIQUAIT PAS. Il posait `overflow-x:auto`
+   AVANT la règle de base `.table-wrap { … overflow:hidden }` : même spécificité, la dernière
+   déclarée gagne. Les colonnes de droite étaient donc inatteignables sur téléphone — mesuré,
+   520 px de tableau dans un écran de 390. Déplacé APRÈS, il fait ce qu'il annonce.
+
+   ⚠️ DÉFILEMENT ET NON CARTES, ET C'EST UN CHOIX. `/reconciliation` est passée en cartes
+   parce que c'est la page qu'on consulte en mobilité ; celle-ci se consulte au bureau. Le
+   défilement rend les colonnes ATTEIGNABLES, ce qui est le minimum ; les cartes les rendraient
+   CONFORTABLES, ce qui ne se justifie pas ici. */
+@media (max-width:760px) {
+  .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .table-wrap table { min-width:520px; }
+}
 </style>
 </head>
 <body>

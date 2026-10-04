@@ -37,6 +37,16 @@
    L'OUVERTURE. Colorer les deux colonnes mettait au même niveau une fluctuation et un état. */
 .cum-neg { color:var(--db-red); font-weight:600; }
 .cum-pos { color:var(--db-muted); }
+
+/* ══ SOUS 760 px : LES TABLEAUX DÉFILENT ══════════════════════════════════════════════════
+   ⚠️ CES DEUX TABLEAUX N'AVAIENT AUCUN CONTENEUR DÉFILANT — contrairement aux autres pages,
+   ils vivent à même la carte. Mesuré : 452 px de tableau dans un écran de 390, et c'est la
+   SEULE page dont le corps glissait horizontalement, menu compris. Le défilement est contenu
+   dans la carte, il ne déplace plus la page. */
+@media (max-width:760px) {
+  .db-card { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .db-card table { min-width:440px; }
+}
 </style>
 </head>
 <body>

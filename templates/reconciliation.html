@@ -16,13 +16,6 @@
 <link rel="stylesheet" href="/static/style.css?v={{ v }}">
 <link rel="stylesheet" href="/static/dashboard.css?v={{ v }}">
 <style>
-@media (max-width:760px) {
-
-  .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
-  .table-wrap table { min-width:640px; }
-  /* La grille de résumé se replie toute seule : `.db-g4` passe à deux colonnes sous 900 px. */
-}
-
 
 .controls { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:18px; }
 
@@ -93,6 +86,45 @@ td.date { color:var(--db-muted); white-space:nowrap; }
 .detail-vide { font-size:12.5px; color:var(--db-muted); }
 tr.cliquable { cursor:pointer; }
 tr.cliquable:hover { background:var(--db-alt); }
+
+/* ══ SOUS 760 px : CHAQUE JOURNÉE DEVIENT UNE CARTE ═══════════════════════════════════════
+   ⚠️ CE BLOC ÉTAIT DÉJÀ ÉCRIT, EN HAUT DU FICHIER, ET IL NE S'APPLIQUAIT PAS. Il posait
+   `.table-wrap { overflow-x:auto }` AVANT la règle de base `overflow:hidden` : même
+   spécificité, la dernière déclarée gagne. Le correctif responsive existait, avait l'air juste,
+   et ne faisait rien — les colonnes de droite étaient inatteignables sur téléphone. Mesuré :
+   le tableau fait 758 px dans un écran de 390.
+
+   ⚠️ ET LE DÉFILEMENT LATÉRAL N'ÉTAIT PAS LA BONNE RÉPONSE NON PLUS. Huit colonnes qu'on
+   atteint par un geste que personne ne découvre, ce n'est pas mieux qu'invisible. C'est la
+   page où un écart de caisse se rattrape : chaque journée devient une carte, tout se lit sans
+   geste. Même idiome que `faturar.html`, qui a servi de modèle.
+
+   ⚠️ LE GARDE DE CONTEXTE TABULAIRE EXEMPTE LES `@media (max-width:…)`, et c'est raisonné :
+   sous cette largeur il n'y a PLUS de colonnes à aligner, donc plus rien à désaligner. */
+@media (max-width:760px) {
+  .table-wrap { overflow:visible; border:none; background:none; }
+  /* ⚠️ `style.css` POSE `min-width:560px` SUR CES TABLEAUX SOUS 768 px, pour leur donner un
+     défilement horizontal. En cartes, ce plancher n'a plus de sens — il forçait la page à
+     560 px dans un écran de 390, c'est-à-dire exactement le défaut qu'on vient corriger, par
+     la règle censée le corriger. */
+  .table-wrap table { width:100%; min-width:0; }
+  .table-wrap thead { display:none; }
+  .table-wrap table, .table-wrap tbody, .table-wrap tr, .table-wrap td { display:block;
+    width:auto; }
+  .table-wrap tr { border:1px solid var(--db-line); border-radius:var(--db-r-sm);
+    background:var(--db-card); padding:10px 12px; margin-bottom:10px; }
+  .table-wrap td { border:none; padding:5px 0; text-align:left; white-space:normal; }
+  /* ⚠️ UNE CELLULE VIDE NE DOIT PAS LAISSER SON LIBELLÉ ORPHELIN : « Pourboires » suivi de
+     rien se lit comme une donnée manquante, alors qu'il n'y a simplement pas eu de pourboire. */
+  .table-wrap td:empty { display:none; }
+  .table-wrap td::before { content:attr(data-libelle); display:inline-block; min-width:124px;
+    font-size:12px; font-weight:500; color:var(--db-muted); }
+  .table-wrap td[data-libelle=""]::before { content:none; }
+  .table-wrap td.date { font-weight:600; font-size:15px; margin-bottom:2px; }
+  .table-wrap td.date::before { content:none; }
+  /* La ligne vide d'un jour fermé tient sur une seule carte discrète. */
+  .table-wrap tr.jour-ferme { opacity:.55; }
+}
 </style>
 </head>
 <body>
@@ -535,8 +567,8 @@ function render(){
     const d = new Date(j.day + 'T12:00:00');
     const dow = d.toLocaleDateString('fr-FR', { weekday: 'short' });
     /* Une journée sans rien n'est pas une anomalie : le café ferme mardi et mercredi. */
-    if (vide) return `<tr class="jour-ferme"><td class="date">${dow} ${j.day.slice(8)}/${j.day.slice(5,7)}</td>` +
-      `<td class="num" colspan="6" style="text-align:left; color:var(--faint)">fermé</td><td></td></tr>`;
+    if (vide) return `<tr class="jour-ferme"><td class="date" data-libelle="Jour">${dow} ${j.day.slice(8)}/${j.day.slice(5,7)}</td>` +
+      `<td class="num" colspan="6" data-libelle="" style="text-align:left; color:var(--faint)">fermé</td><td data-libelle=""></td></tr>`;
     /* ⚠️ « EN COURS » N'EST PAS UN ÉTAT NEUTRE PARMI D'AUTRES : c'est l'absence de jugement.
      * La journée n'est pas finie — lui donner la pastille grise des jours sans donnée les
      * confondrait, alors que l'un sera jugé ce soir et l'autre jamais. */
@@ -544,18 +576,18 @@ function render(){
     const pastille = j.aujourdhui ? '<span class="db-badge iris">en cours</span>'
       : `<span class="db-badge ${TON[c] || 'flat'}">${c === 'ok' ? '\u2713' : c === 'doute' ? '\u00e0 v\u00e9rifier' : '\u00e9cart'}</span>`;
     return `<tr class="cliquable" data-jour="${j.day}">
-      <td class="date">${dow} ${j.day.slice(8)}/${j.day.slice(5,7)}</td>
-      <td class="num">${j.terminal_cents ? fmt(eu(j.terminal_cents)) : '<span style="color:var(--faint)">—</span>'}</td>
-      <td class="num" style="color:var(--green)">${j.pourboires_cents ? fmt(eu(j.pourboires_cents)) : ''}</td>
-      <td class="num ${j.frais_mesures ? '' : 'est'}">${j.frais_cents ? (j.frais_mesures ? '−' : '≈−') + fmt(eu(j.frais_cents)) : ''}</td>
-      <td class="num">${j.vendus ? fmt(eu(j.vendus.carte_cents)) : '<span style="color:var(--faint)">—</span>'}</td>
-      <td class="num">${j.vendus ? fmt(eu(j.vendus.especes_cents)) +
+      <td class="date" data-libelle="Jour">${dow} ${j.day.slice(8)}/${j.day.slice(5,7)}</td>
+      <td class="num" data-libelle="Ventes terminal">${j.terminal_cents ? fmt(eu(j.terminal_cents)) : '<span style="color:var(--faint)">—</span>'}</td>
+      <td class="num" data-libelle="Pourboires" style="color:var(--green)">${j.pourboires_cents ? fmt(eu(j.pourboires_cents)) : ''}</td>
+      <td class="num ${j.frais_mesures ? '' : 'est'}" data-libelle="Frais">${j.frais_cents ? (j.frais_mesures ? '−' : '≈−') + fmt(eu(j.frais_cents)) : ''}</td>
+      <td class="num" data-libelle="Facturé carte">${j.vendus ? fmt(eu(j.vendus.carte_cents)) : '<span style="color:var(--faint)">—</span>'}</td>
+      <td class="num" data-libelle="Espèces">${j.vendus ? fmt(eu(j.vendus.especes_cents)) +
         /* ⚠️ « AUTRE » S'AFFICHE QUAND IL EXISTE, sinon la ligne ne s'additionne pas et le
            lecteur croit à une erreur d'arrondi. */
         (j.vendus.autre_cents ? ` <span class="est">+${fmt(eu(j.vendus.autre_cents))} autre</span>` : '')
         : '<span style="color:var(--faint)">—</span>'}</td>
-      <td class="num">${j.ecart_cents === null ? '<span style="color:var(--faint)">—</span>' : fmt(eu(j.ecart_cents))}</td>
-      <td>${j.aujourdhui || !vide ? pastille : ''}</td>
+      <td class="num" data-libelle="Écart">${j.ecart_cents === null ? '<span style="color:var(--faint)">—</span>' : fmt(eu(j.ecart_cents))}</td>
+      <td data-libelle="">${j.aujourdhui || !vide ? pastille : ''}</td>
     </tr>`;
   });
   tbody.innerHTML = rows.join('');
@@ -734,10 +766,10 @@ function updateCashCalc(){
     ? m.detail.map(x => {
         const dow = new Date(x.day + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short' });
         return `<tr>
-          <td class="date">${dow} ${x.day.slice(8)}/${x.day.slice(5,7)}</td>
-          <td class="num">${x.vt ? fmt(x.vt) : '—'}</td>
-          <td class="num">${x.tc ? fmt(x.tc) : '—'}</td>
-          <td class="num" style="font-weight:600;">${fmt(x.cash)}</td>
+          <td class="date" data-libelle="Date">${dow} ${x.day.slice(8)}/${x.day.slice(5,7)}</td>
+          <td class="num" data-libelle="Vendus total">${x.vt ? fmt(x.vt) : '—'}</td>
+          <td class="num" data-libelle="Carte terminal">${x.tc ? fmt(x.tc) : '—'}</td>
+          <td class="num" data-libelle="Cash implicite" style="font-weight:600;">${fmt(x.cash)}</td>
         </tr>`;
       }).join('')
     : '<tr><td colspan="4" class="empty">Aucune donnée sur la période</td></tr>';

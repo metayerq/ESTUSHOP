@@ -1070,3 +1070,103 @@ setTimeout(function(){
     assert mesure <= largeur, (
         f"à {largeur} px, la page s'étale sur {mesure} px : elle glisse horizontalement, "
         "menu compris")
+
+
+# ══ AUCUNE COLONNE N'EST INATTEIGNABLE SUR TÉLÉPHONE ════════════════════════════════════════
+#
+# ⚠️ TROIS PAGES PERDAIENT LEURS COLONNES DE DROITE, et la règle qui devait l'empêcher était
+# DÉJÀ ÉCRITE. `style.css` donne `overflow-x:auto` aux `.table-wrap` sous 768 px ; chaque page
+# redéclarait ensuite `.table-wrap { … overflow:hidden }` dans son propre `<style>` — même
+# spécificité, la dernière déclarée gagne, et la feuille de page vient après la feuille globale.
+# Le correctif existait, avait l'air juste, et ne faisait rien.
+#
+# ⚠️ ET « ÇA DÉFILE » N'EST PAS « ÇA SE LIT ». Huit colonnes atteintes par un geste que personne
+# ne découvre valent à peine mieux qu'invisibles. `/reconciliation` est donc passée en CARTES —
+# c'est la page que Quentin consulte en mobilité, celle où un écart de caisse se rattrape. Les
+# deux autres se consultent au bureau : le défilement y suffit, et c'est un choix, pas un reste.
+
+TABLEAUX_MOBILES = ["reconciliation.html", "holidays.html", "cashflow.html"]
+
+
+@SANS
+@pytest.mark.parametrize("nom", TABLEAUX_MOBILES)
+def test_aucune_colonne_nest_hors_datteinte_sur_telephone(nom, tmp_path):
+    binaire, env = NAVIGATEUR
+    chemin = _rendre(nom, CAS.get(nom, {}).get("reponses", {}), tmp_path, """
+setTimeout(function(){
+  var out = {scroll: document.documentElement.scrollWidth, bloques: []};
+  document.querySelectorAll('table').forEach(function(t){
+    var r = t.getBoundingClientRect();
+    if (r.width <= 391) return;            // le tableau tient : rien à atteindre
+    var p = t.parentElement, ok = false;
+    for (var k = 0; k < 4 && p; k++) {
+      var ov = getComputedStyle(p).overflowX;
+      if (ov === 'auto' || ov === 'scroll') { ok = true; break; }
+      p = p.parentElement;
+    }
+    if (!ok) out.bloques.push(Math.round(r.width));
+  });
+  var d = document.createElement('div'); d.id = 'MOB';
+  d.textContent = JSON.stringify(out); document.body.appendChild(d);
+}, 800);
+""")
+    r = subprocess.run(
+        [binaire, "--headless", "--no-sandbox", "--disable-gpu", "--dump-dom",
+         "--window-size=390,900", "--virtual-time-budget=3000", "file://" + str(chemin)],
+        capture_output=True, text=True, timeout=90, env=env)
+    m = re.search(r'<div id="MOB">(.*?)</div>', r.stdout, re.S)
+    assert m, f"{nom} : la mesure n'a pas été rendue\n{r.stderr[:300]}"
+    d = json.loads(m.group(1))
+
+    assert not d["bloques"], (
+        f"{nom} : {len(d['bloques'])} tableau(x) plus larges que l'écran "
+        f"({d['bloques']} px) sans conteneur défilant — leurs colonnes de droite sont "
+        "inatteignables, sans le moindre indice à l'écran")
+    assert d["scroll"] <= 391, (
+        f"{nom} : la page entière glisse ({d['scroll']} px pour 390), menu compris")
+
+
+@SANS
+def test_LA_RECONCILIATION_PASSE_EN_CARTES_SUR_TELEPHONE(tmp_path):
+    """
+    ⚠️ C'EST LA PAGE QU'ON CONSULTE EN MOBILITÉ, et huit colonnes derrière un geste latéral n'y
+    sont pas utilisables. Chaque journée devient une carte : tout se lit sans geste à découvrir.
+
+    ⚠️ ET LE PLANCHER DE `style.css` DOIT ÊTRE NEUTRALISÉ. `.table-wrap table { min-width:560px }`
+    y est posé pour autoriser le défilement : en cartes, il forçait la page à 560 px dans un
+    écran de 390 — le défaut qu'on corrige, produit par la règle censée le corriger.
+    """
+    binaire, env = NAVIGATEUR
+    chemin = _rendre("reconciliation.html", {}, tmp_path, """
+setTimeout(function(){
+  var tb = document.getElementById('tbody');
+  tb.innerHTML = '<tr><td class="date" data-libelle="Jour">lun 28/09</td>'
+    + '<td class="num" data-libelle="Ventes terminal">412,30 &euro;</td>'
+    + '<td class="num" data-libelle="\\u00c9cart">0,00 &euro;</td></tr>';
+  tb.offsetHeight;
+  var t = document.querySelector('.table-wrap table'), tr = tb.querySelector('tr');
+  var td = tr.querySelectorAll('td')[1];
+  var d = document.createElement('div'); d.id = 'CARTES';
+  d.textContent = JSON.stringify({
+    tr: getComputedStyle(tr).display,
+    thead: getComputedStyle(t.querySelector('thead')).display,
+    libelle: getComputedStyle(td, '::before').content,
+    largeur: Math.round(t.getBoundingClientRect().width)
+  });
+  document.body.appendChild(d);
+}, 800);
+""")
+    r = subprocess.run(
+        [binaire, "--headless", "--no-sandbox", "--disable-gpu", "--dump-dom",
+         "--window-size=390,900", "--virtual-time-budget=3000", "file://" + str(chemin)],
+        capture_output=True, text=True, timeout=90, env=env)
+    m = re.search(r'<div id="CARTES">(.*?)</div>', r.stdout, re.S)
+    assert m, f"la mesure n'a pas été rendue\n{r.stderr[:300]}"
+    d = json.loads(m.group(1))
+
+    assert d["tr"] == "block", "les lignes n'ont pas pris la forme de cartes"
+    assert d["thead"] == "none", "l'en-tête de colonnes reste affiché au-dessus des cartes"
+    assert "Ventes terminal" in d["libelle"], (
+        "la carte n'affiche pas le nom de la donnée : un montant seul ne se lit pas")
+    assert d["largeur"] <= 391, (
+        f"la table fait {d['largeur']} px — le `min-width` de style.css n'est pas neutralisé")
