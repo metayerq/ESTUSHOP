@@ -632,3 +632,46 @@ def test_l_apercu_dit_quand_la_vignette_n_est_pas_cliquable():
     """Sinon on décoche, l'aperçu montre un chevron en moins, et rien n'explique pourquoi."""
     s = _lire("events.html")
     assert "Vignette non cliquable" in s
+
+
+def test_UNE_PILULE_N_EST_PAS_UN_RAYON_DE_BOITE():
+    """
+    ⚠️ `border-radius:999px` SUR UNE MODALE DE 500 px LA REND RONDE. Littéralement : les quatre
+    coins prennent 250 px de rayon et la boîte devient un disque, avec le formulaire qui déborde
+    de tous les côtés. C'était le cas de `/charges` et de `/expenses` depuis la migration à la
+    charte — deux écrans de saisie quotidienne, et personne ne l'avait signalé pendant des
+    semaines parce qu'on finit par ne plus voir ce qu'on voit tous les jours.
+
+    ⚠️ ET AUCUN CONTRÔLE NE POUVAIT LE DIRE. Le CSS est valide, le HTML aussi, la page se charge
+    sans un avertissement, et tous les jetons employés existent. C'est en REGARDANT le rendu
+    qu'on le trouve — jamais en relisant la règle, qui a l'air d'une pastille arrondie.
+
+    999 px est la valeur « pilule » : elle est juste sur un badge de 20 px de haut, absurde sur
+    une boîte. On la refuse donc dès que le bloc décrit un conteneur — une largeur d'au moins
+    200 px, ou un rembourrage d'au moins 16 px.
+    """
+    import glob
+    import os
+    import re
+
+    fautifs = []
+    for chemin in sorted(glob.glob(os.path.join(RACINE, "templates", "*.html"))
+                         + glob.glob(os.path.join(RACINE, "static", "*.css"))):
+        texte = open(chemin, encoding="utf-8").read()
+        blocs = (re.findall(r"<style[^>]*>(.*?)</style>", texte, re.S)
+                 if chemin.endswith(".html") else [texte])
+        for style in blocs:
+            style = re.sub(r"/\*.*?\*/", " ", style, flags=re.S)
+            for regle in re.finditer(r"([^{}]+)\{([^{}]*)\}", style):
+                sel, corps = regle.group(1).strip(), regle.group(2)
+                if not re.search(r"border-radius:\s*999px", corps):
+                    continue
+                largeur = re.search(r"(?<!max-)\bwidth:\s*(\d+)px", corps)
+                rembourrage = re.search(r"\bpadding:\s*(\d+)px", corps)
+                conteneur = ((largeur and int(largeur.group(1)) >= 200)
+                             or (rembourrage and int(rembourrage.group(1)) >= 16))
+                if conteneur:
+                    fautifs.append(f"{os.path.basename(chemin)} : {sel[:60]}")
+
+    assert not fautifs, (
+        "rayon « pilule » sur un conteneur — la boîte sera ronde : " + " · ".join(fautifs))

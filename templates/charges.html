@@ -97,7 +97,7 @@ select.field-input { cursor:pointer; }
 }
 .modal-overlay.open { opacity:1; pointer-events:auto; }
 .modal {
-  background:var(--db-card); border-radius:999px;
+  background:var(--db-card); border-radius:var(--db-r);
   padding:28px 32px; width:500px; max-width:95vw;
   box-shadow:var(--db-sh-pop);
   transform:translateY(8px); transition:transform .15s;
@@ -1128,12 +1128,21 @@ function editEmployee(id) {
   document.getElementById('emp-type').value = e.type;
   document.getElementById('emp-hours').value = e.hours_week || 40;
   document.getElementById('emp-gross').value = e.gross_monthly;
-  document.getElementById('emp-meal').value = e.meal_card_daily || 10.20;
+  /* ⚠️ ZÉRO N'EST PAS « ABSENT ». `|| 10.20` affichait 10,20 € pour un extra dont la carte
+     repas vaut 0 : la fiche réclamait un motif à la simple ouverture, et l'enregistrer aurait
+     VRAIMENT posé 10,20 € — une charge inventée sur quelqu'un qui n'en a pas. Même faute que
+     celle corrigée côté serveur pour le taux horaire, à l'autre bout de la chaîne. */
+  document.getElementById('emp-meal').value =
+    (e.meal_card_daily === null || e.meal_card_daily === undefined) ? 10.20 : e.meal_card_daily;
   document.getElementById('emp-rate').value = (e.hourly_rate === null || e.hourly_rate === undefined) ? '' : e.hourly_rate;
   document.getElementById('emp-tsu-exempt').checked = !!e.tsu_exempt;
   document.getElementById('emp-notes').value = e.notes || '';
+  /* ⚠️ TOUT CHAMP DE `VER_CHAMPS` DOIT FIGURER ICI. L'oubli de `hourly_rate` faisait croire à
+     un changement dès l'OUVERTURE d'une fiche : le bloc « date d'effet » s'ouvrait tout seul et
+     réclamait un motif pour n'avoir rien touché. */
   resetVer('emp', { gross_monthly: e.gross_monthly, type: e.type,
-                    tsu_exempt: e.tsu_exempt, meal_card_daily: e.meal_card_daily });
+                    tsu_exempt: e.tsu_exempt, meal_card_daily: e.meal_card_daily,
+                    hourly_rate: e.hourly_rate });
   document.getElementById('emp-modal-title').textContent = 'Edit employee';
   document.getElementById('emp-tsu-wrap').style.display = e.type === 'extra' ? 'none' : '';
   document.getElementById('emp-modal').classList.add('open');

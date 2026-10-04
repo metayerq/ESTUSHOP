@@ -641,7 +641,7 @@ CAS = {
             "Loyer", "Marco Silva", "Ana Dias",
             # ⚠️ LE TAUX HORAIRE EST CE QUI CHIFFRE LE PLANNING : sans lui, un extra apparaît
             # au calendrier et sa journée ne coûte rien.
-            "CHAMP-TAUX", "TAUX-REPRIS",
+            "CHAMP-TAUX", "TAUX-REPRIS", "OUVRIR-NE-MODIFIE-PAS",
             # ⚠️ ET LA FICHE D'UN PERMANENT S'OUVRE APRÈS CELLE D'UN EXTRA. La branche « extra »
             # remplaçait l'aperçu et détruisait les éléments que l'autre remplissait : la
             # seconde ouverture levait, en silence.
@@ -652,7 +652,7 @@ CAS = {
             "TAUX-EXIGE-UN-MOTIF", "APERCU-PAR-SERVICE",
         ],
         "interdit": [
-            "CHAMP-ABSENT", "TAUX-PERDU", "EXTRA-MUET", "EXTRA-SANS-TAUX-SILENCIEUX",
+            "CHAMP-ABSENT", "TAUX-PERDU", "OUVRIR-RECLAME-UN-MOTIF", "EXTRA-MUET", "EXTRA-SANS-TAUX-SILENCIEUX",
             "PERMANENT-TAUX-COMPTE", "TAUX-SANS-CEREMONIE", "PERMANENT-APRES-EXTRA-CASSE", "APERCU-TROMPEUR",
             "NaN", "undefined", "Invalid Date",
         ],
@@ -669,6 +669,15 @@ CAS = {
   /* La fiche d'Ana porte 12 €/h : ouvrir sa fiche doit le reprendre. */
   editEmployee('e2');
   trace(E('emp-rate').value === '12' ? 'TAUX-REPRIS' : 'TAUX-PERDU v=' + E('emp-rate').value);
+
+  /* ⚠️ OUVRIR UNE FICHE N'EST PAS LA MODIFIER. `resetVer` oubliait `hourly_rate` : l'écran
+     croyait à un changement dès l'ouverture, ouvrait le bloc « date d'effet » et réclamait un
+     motif pour n'avoir rien touché. Et mon marqueur suivant passait POUR CETTE RAISON — le
+     bloc était déjà ouvert avant que je change quoi que ce soit. Un test qui ne peut pas
+     échouer ne garde rien. */
+  trace(E('emp-ver').hidden
+        ? 'OUVRIR-NE-MODIFIE-PAS'
+        : 'OUVRIR-RECLAME-UN-MOTIF ' + E('emp-apercu').textContent.slice(0,80));
 
   /* ⚠️ L'ÉCRAN DOIT DIRE CE QUE LE TAUX PRODUIT, pas seulement l'accepter. */
   var ap = E('emp-preview').textContent.replace(/\s+/g,' ');
