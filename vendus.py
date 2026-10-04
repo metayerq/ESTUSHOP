@@ -621,7 +621,7 @@ def daily_breakdown(docs):
 
 
 def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_agg=None,
-                    open_days_override=None, revenue_deduct=None):
+                    open_days_override=None, revenue_deduct=None, marge_hors_ventes=0.0):
     """
     P&L entièrement en HT (hors taxes) — pour 1 jour ou une période.
     CA HT  = amount_net  (Vendus)
@@ -791,11 +791,23 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
     else:
         tva_factor, tva_src = 1 + TVA_MOYENNE_BLENDED, "hypothese"
 
+    # ⚠️ LES COMMISSIONS COUVRENT DES CHARGES, DONC ELLES BAISSENT LE POINT MORT. Une
+    # commission est de la marge sans coût en face : chaque euro encaissé ainsi est un euro de
+    # charges qui n'a plus besoin d'être couvert par les ventes. Les ajouter à l'EBITDA sans
+    # toucher au seuil produisait deux cartes contradictoires — « coûts couverts » en vert à
+    # côté de « 635,70 € de ventes manquantes ».
+    #
+    # ⚠️ ET LE PLANCHER EST ZÉRO. Des commissions supérieures aux charges ne donnent pas un
+    # point mort négatif : elles donnent un point mort nul, c'est-à-dire « la journée est déjà
+    # payée ». Un seuil négatif se lirait comme une cible, et il n'y en a plus.
+    _hors_ventes = max(0.0, float(marge_hors_ventes or 0))
+    _reste_jour = max(0.0, cout_jour - (_hors_ventes / open_days if open_days else 0.0))
+
     # Seuil calculable seulement si marge réelle mesurable ET charges connues
     if marge_rate_real is not None and 0 < marge_rate_real < 1 and cout_jour > 0:
         seuil_margin_rate = marge_rate_real
         seuil_margin_src  = "reelle"
-        seuil_ca_jour     = cout_jour / seuil_margin_rate
+        seuil_ca_jour     = _reste_jour / seuil_margin_rate
         seuil_ca_jour_ttc = seuil_ca_jour * tva_factor
     else:
         # Pas de COGS mesurable ou charges absentes → pas de seuil affichable
@@ -819,11 +831,14 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         seuil_ca_ttc = round(seuil_ca_jour_ttc * open_days, 2) if seuil_ca_jour_ttc is not None else None  # TTC
 
     # Le point mort de CHAQUE jour : son propre coût, le taux de marge de la période.
+    # La commission de la période est répartie sur ses journées : c'est un revenu de période,
+    # pas d'un jour. L'imputer à un seul ferait plonger son seuil et laisserait les autres faux.
     _seuil_par_jour = {}
-    if seuil_margin_rate:
-        for _j, _d in (_par_jour or {}).items():
+    if seuil_margin_rate and _par_jour:
+        _part = _hors_ventes / len(_par_jour)
+        for _j, _d in _par_jour.items():
             _seuil_par_jour[_j.isoformat()] = round(
-                _d["total"] / seuil_margin_rate * tva_factor, 2)
+                max(0.0, _d["total"] - _part) / seuil_margin_rate * tva_factor, 2)
 
     # Marge brute HT — 100 % basée sur le COGS réel mesuré.
     # Taux réel mesuré sur le CA couvert, extrapolé au CA total.
@@ -836,20 +851,34 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
     else:
         marge_ht = marge_ht_pct = None
 
+    # ⚠️ LA MARGE BRUTE RESTE CELLE DES VENTES, ET SON POURCENTAGE AUSSI. Y verser les
+    # commissions donnait 200 % de « marge brute » — un ratio dont le numérateur contient un
+    # revenu que le dénominateur ignore. `marginBadge` le peignait en vert, son seuil haut
+    # étant 80 %. Les commissions vivent dans `marge_hors_ventes_ht`, et c'est leur somme —
+    # `marge_totale_ht` — qui paie les charges.
+    marge_totale_ht = (round(marge_ht + _hors_ventes, 2)
+                       if marge_ht is not None else
+                       (round(_hors_ventes, 2) if _hors_ventes else None))
+
     # EBITDA HT = marge brute HT − charges totales HT de la période
     # cout_total vaut None quand la période n'a aucun jour ouvré : pas de charges à imputer,
     # donc pas d'EBITDA. Le soustraire produirait un TypeError ; le remplacer par 0 dirait
     # « la période a dégagé sa marge sans rien coûter ».
-    ebitda_ht = (round(marge_ht - cout_total, 2)
-                 if marge_ht is not None and cout_total is not None else None)
+    ebitda_ht = (round(marge_totale_ht - cout_total, 2)
+                 if marge_totale_ht is not None and cout_total is not None else None)
 
     # Seuil rentabilité — comparaison TTC vs TTC (ce que tu vois en caisse)
     if seuil_ca_ttc is not None:
         manque_seuil = round(max(0, seuil_ca_ttc - ca_ttc), 2)
-        pct_seuil    = round(ca_ttc / seuil_ca_ttc * 100) if seuil_ca_ttc else 0
+        # ⚠️ UN SEUIL NUL EST ATTEINT, PAS INATTEIGNABLE. Quand les commissions couvrent déjà
+        # tout, le point mort vaut 0 € : la journée est payée, le taux d'atteinte est de 100 %.
+        pct_seuil    = round(ca_ttc / seuil_ca_ttc * 100) if seuil_ca_ttc else 100
     else:
+        # ⚠️ « ON NE SAIT PAS » N'EST PAS « 0 % ». Un 0 dessinait une barre vide, qui se lit
+        # « tu n'as rien atteint » — une affirmation, là où il n'y a pas de mesure. C'est la
+        # règle que `manque_seuil` respecte déjà juste au-dessus.
         manque_seuil = None
-        pct_seuil    = 0
+        pct_seuil    = None
 
     return {
         # CA
@@ -860,7 +889,9 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         "cogs_ht":         round(cogs_ht, 2),
         # Marge brute HT
         "marge_brute_ht":          marge_ht,
-        "marge_brute_ht_pct":      marge_ht_pct,
+        "marge_brute_ht_pct":      marge_ht_pct,   # sur les VENTES, jamais > 100
+        "marge_hors_ventes_ht":    round(_hors_ventes, 2),
+        "marge_totale_ht":         marge_totale_ht,
         "marge_is_estimated":       is_estimated_margin,
         # Charges HT/période
         "open_days":        open_days,           # vrais jours ouvrés dans la période

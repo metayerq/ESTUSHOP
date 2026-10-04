@@ -1209,12 +1209,20 @@ def api_data():
         excludes_today = True
 
     eco_pop = _popup_split(eco_rows if excludes_today else period_rows)
+    # ⚠️ LES COMMISSIONS ENTRENT DANS LE CALCUL, PLUS APRÈS. Les ajouter au résultat une fois
+    # tout calculé laissait le point mort inchangé : l'écran annonçait « coûts couverts » en
+    # vert à côté de « 635,70 € de ventes manquantes ». Une commission couvre des charges —
+    # c'est une donnée du calcul, pas une retouche.
+    _com_saisies = _commissions_total(eco_from.isoformat(), eco_to.isoformat())
+    _com_popup   = round(float(eco_pop["com_ht"] or 0), 2)
     result["economics"] = _apply_commissions(
         daily_economics(eco_docs, catalog, (eco_to - eco_from).days + 1,
                         from_date=eco_from, to_date=eco_to,
                         cogs_agg=eco_agg,
-                        revenue_deduct=(eco_pop["chef_ttc"], eco_pop["chef_ht"])),
-        eco_from.isoformat(), eco_to.isoformat(), popup_com=eco_pop["com_ht"])
+                        revenue_deduct=(eco_pop["chef_ttc"], eco_pop["chef_ht"]),
+                        marge_hors_ventes=round(_com_saisies + _com_popup, 2)),
+        eco_from.isoformat(), eco_to.isoformat(), popup_com=eco_pop["com_ht"],
+        deja_integrees=True)
     result["economics"]["excludes_today"] = excludes_today
     # ⚠️ LE DÉNOMINATEUR AFFICHÉ DOIT ÊTRE CELUI DU CHIFFRE. `periode` décrit la période
     # DEMANDÉE ; quand la journée en cours est retirée du calcul — parce qu'une recette partielle
@@ -7104,25 +7112,32 @@ def _commissions_total(from_iso, to_iso):
     return round(sum(float(r.get("amount") or 0) for r in _commissions_rows()
                      if from_iso <= (r.get("date") or "") <= to_iso), 2)
 
-def _apply_commissions(eco, from_iso, to_iso, popup_com=0.0):
-    """Injecte les commissions de la période dans un dict daily_economics.
+def _apply_commissions(eco, from_iso, to_iso, popup_com=0.0, deja_integrees=False):
+    """
+    Renseigne le détail des commissions de la période.
 
-    Deux sources, même nature : les commissions virées par un chef qui a
-    encaissé lui-même (saisies à la main) et celles prélevées sur des ventes
-    popup passées par notre caisse. Aucune n'a de coût en face : c'est de la
-    marge brute, donc elles remontent la marge ET l'EBITDA."""
+    Deux sources, même nature : celles virées par un chef qui a encaissé lui-même (saisies à la
+    main) et celles prélevées sur des ventes popup passées par notre caisse. Aucune n'a de coût
+    en face — c'est de la marge sans achat.
+
+    ⚠️ ELLES NE SE RAJOUTENT PLUS APRÈS COUP. Cette fonction les ajoutait à la marge et à
+    l'EBITDA une fois tout calculé, et laissait le point mort intact : le résultat disait
+    « couvert » pendant que le seuil réclamait des ventes dont il n'avait plus besoin. Elles
+    sont désormais passées à `daily_economics` sous `marge_hors_ventes`, qui les déduit des
+    charges à couvrir — jour par jour comprise. Ici on ne fait plus que nommer les deux sources.
+
+    `deja_integrees=False` garde l'ancien comportement pour les appelants qui n'ont pas été
+    convertis : sans lui, leur EBITDA perdrait les commissions en silence.
+    """
     com   = _commissions_total(from_iso, to_iso)
     popup = round(float(popup_com or 0), 2)
     eco["commissions_ht"]       = com
     eco["popup_commission_ht"]  = popup
     total = round(com + popup, 2)
-    if not total:
+    if deja_integrees or not total:
         return eco
-    if eco.get("marge_brute_ht") is not None:
-        eco["marge_brute_ht"] = round(eco["marge_brute_ht"] + total, 2)
-        if eco.get("ca_ht"):
-            eco["marge_brute_ht_pct"] = round(
-                eco["marge_brute_ht"] / eco["ca_ht"] * 100, 1)
+    if eco.get("marge_totale_ht") is not None:
+        eco["marge_totale_ht"] = round(eco["marge_totale_ht"] + total, 2)
     if eco.get("ebitda_ht") is not None:
         eco["ebitda_ht"] = round(eco["ebitda_ht"] + total, 2)
     return eco

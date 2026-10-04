@@ -182,3 +182,119 @@ def test_sans_bornes_aucune_serie_par_jour_nest_inventee(base, monkeypatch):
     monkeypatch.setattr(config, "today_lisbon", lambda: date(2026, 10, 15))
     d = V.daily_economics(docs(["2026-10-15"]), {}, cogs_agg=(300.0, 1000.0, 1000.0))
     assert d["seuil_ca_ttc_par_jour"] == {}
+
+
+# ══ LES COMMISSIONS ═════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ ELLES ÉTAIENT AJOUTÉES APRÈS COUP, et le point mort ne les voyait pas. L'écran annonçait
+# « +297,39 € de résultat — coûts couverts » en vert, à côté de « 635,70 € de ventes
+# manquantes », et une marge brute de 200 %. Trois chiffres sur le même écran, tous faux
+# ensemble. Aucun test ne les gardait.
+
+CHARGES_LOURDES = {"name": "Loyer", "amount": 6000.0, "frequency": "monthly",
+                   "valid_from": None, "valid_to": None, "active": True}
+
+
+@pytest.fixture
+def maigre(monkeypatch):
+    """Trois journées à 200 € TTC, 6 000 € de loyer : le point mort est hors d'atteinte."""
+    etat = {"charges_fixes": [CHARGES_LOURDES], "employees": [], "shifts": []}
+    monkeypatch.setattr(V, "_supa_get_economics", lambda t, p=None: list(etat.get(t, [])))
+    return etat
+
+
+def _trois_jours(com=0.0):
+    docs = [{"local_time": f"2026-10-{j:02d} 12:00:00", "amount_gross": 200.0,
+             "amount_net": 180.0, "items": []} for j in (1, 2, 3)]
+    return V.daily_economics(docs, {}, from_date=date(2026, 10, 1), to_date=date(2026, 10, 3),
+                             cogs_agg=(160.0, 540.0, 540.0), marge_hors_ventes=com)
+
+
+def test_UNE_COMMISSION_BAISSE_LE_POINT_MORT(maigre):
+    """Chaque euro de commission est un euro de charges que les ventes n'ont plus à couvrir."""
+    sans, avec = _trois_jours(0.0), _trois_jours(700.0)
+    assert avec["seuil_ca_ttc"] < sans["seuil_ca_ttc"]
+    # 700 € de marge sans coût, au taux mesuré : le seuil baisse de 700/taux, converti en TTC.
+    baisse = sans["seuil_ca_ttc"] - avec["seuil_ca_ttc"]
+    attendu = 700.0 / (sans["seuil_margin_pct"] / 100) * (1 + sans["seuil_tva_pct"] / 100)
+    assert baisse == pytest.approx(attendu, rel=0.02)
+
+
+def test_LE_RESULTAT_ET_LE_POINT_MORT_NE_SE_CONTREDISENT_PLUS(maigre):
+    """
+    ⚠️ LE DÉFAUT EXACT SIGNALÉ. Un résultat positif et un manque de ventes non nul ne peuvent
+    pas coexister : si les coûts sont couverts, il ne manque rien.
+    """
+    for com in (0.0, 300.0, 700.0, 5000.0):
+        e = _trois_jours(com)
+        if e["ebitda_ht"] is not None and e["ebitda_ht"] >= 0:
+            assert e["manque_seuil"] == 0, (
+                f"commission {com} : résultat {e['ebitda_ht']} mais "
+                f"{e['manque_seuil']} € de ventes « manquantes »")
+
+
+def test_LA_MARGE_BRUTE_NE_DEPASSE_JAMAIS_CENT_POUR_CENT(maigre):
+    """Un ratio dont le numérateur contient un revenu que le dénominateur ignore."""
+    for com in (0.0, 700.0, 5000.0):
+        pct = _trois_jours(com)["marge_brute_ht_pct"]
+        assert pct is None or pct <= 100, f"commission {com} → marge brute {pct} %"
+
+
+def test_la_commission_apparait_a_part_et_dans_le_total(maigre):
+    e = _trois_jours(700.0)
+    assert e["marge_hors_ventes_ht"] == 700.0
+    assert e["marge_totale_ht"] == pytest.approx(e["marge_brute_ht"] + 700.0, abs=0.01)
+
+
+def test_LE_RESULTAT_INCLUT_LA_COMMISSION(maigre):
+    """
+    ⚠️ MON PREMIER TEST NE MORDAIT PAS ICI. Il n'exigeait la cohérence que lorsque l'EBITDA
+    était POSITIF : retirer la commission du résultat le rendait négatif, et l'assertion était
+    simplement sautée. Un test qui s'abstient dès que le code casse ne garde rien.
+    """
+    sans, avec = _trois_jours(0.0), _trois_jours(700.0)
+    assert avec["ebitda_ht"] - sans["ebitda_ht"] == pytest.approx(700.0, abs=0.01)
+
+
+def test_une_commission_superieure_aux_charges_ne_rend_pas_le_seuil_negatif(maigre):
+    """« La journée est déjà payée » se dit 0 €, pas −1 200 € : un seuil négatif serait une cible."""
+    e = _trois_jours(50000.0)
+    assert e["seuil_ca_ttc"] == 0
+    assert e["pct_seuil"] == 100, "un seuil nul est atteint, pas inatteignable"
+
+
+def test_la_commission_se_repartit_sur_les_journees(maigre):
+    """
+    ⚠️ CELUI-CI AUSSI ÉTAIT CREUX. Il vérifiait que les trois journées ont le même seuil — ce
+    qui reste vrai si on ne répartit RIEN du tout. Il faut exiger que la série baisse, et de
+    la bonne part.
+    """
+    sans = _trois_jours(0.0)["seuil_ca_ttc_par_jour"]
+    avec = _trois_jours(300.0)["seuil_ca_ttc_par_jour"]
+    assert set(sans) == set(avec) and len(avec) == 3
+
+    # Un revenu de période imputé à un seul jour ferait plonger son seuil et fausser les autres.
+    assert len(set(round(v, 2) for v in avec.values())) == 1, "les trois journées ont divergé"
+    for j in avec:
+        assert avec[j] < sans[j], f"{j} : le seuil n'a pas bougé"
+    # La somme des baisses journalières vaut la baisse de la période.
+    baisse_jours = sum(sans[j] - avec[j] for j in avec)
+    baisse_total = _trois_jours(0.0)["seuil_ca_ttc"] - _trois_jours(300.0)["seuil_ca_ttc"]
+    assert baisse_jours == pytest.approx(baisse_total, rel=0.01)
+
+
+# ── « On ne sait pas » n'est pas « zéro » ────────────────────────────────────────────────────
+
+def test_SANS_SEUIL_CALCULABLE_LE_TAUX_D_ATTEINTE_EST_INCONNU(maigre):
+    """
+    ⚠️ `pct_seuil = 0` DESSINAIT UNE BARRE VIDE, qui se lit « tu n'as rien atteint » — une
+    affirmation, là où il n'y a pas de mesure. C'est la règle que `manque_seuil` respectait
+    déjà deux lignes plus haut en valant `None`.
+    """
+    docs = [{"local_time": "2026-10-01 12:00:00", "amount_gross": 200.0,
+             "amount_net": 180.0, "items": []}]
+    e = V.daily_economics(docs, {}, from_date=date(2026, 10, 1), to_date=date(2026, 10, 1),
+                          cogs_agg=(0.0, 0.0, 0.0))      # aucun coût mesuré → pas de taux
+    assert e["seuil_ca_ttc"] is None
+    assert e["manque_seuil"] is None
+    assert e["pct_seuil"] is None, "0 % affirme un échec jamais mesuré"

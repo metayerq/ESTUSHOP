@@ -494,7 +494,12 @@ function renderReponse(d) {
    * diffèrent du taux de marge, et c'est le second qu'on peut viser. */
   E('db-res-sub').innerHTML = couvre
     ? '<span class="db-badge up">coûts couverts</span>'
-    : `<span class="db-badge down">${fmt(eco.manque_seuil || 0)} de ventes manquantes</span>`;
+    /* ⚠️ « INCONNU » N'EST PAS « 0 € ». `|| 0` affichait « 0,00 € de ventes manquantes » sous
+     * un résultat négatif quand le point mort n'est pas calculable — une cible atteinte à côté
+     * d'une perte. On dit alors ce qui manque VRAIMENT : de quoi calculer le seuil. */
+    : (eco.manque_seuil != null
+        ? `<span class="db-badge down">${fmt(eco.manque_seuil)} de ventes manquantes</span>`
+        : `<span class="db-badge down">point mort non calculable</span>`);
 
   /* ⚠️ CE QUI EST ESTIMÉ SE DIT À CÔTÉ DU CHIFFRE. Sous la couverture complète des coûts, la
    * marge est extrapolée — donc le résultat ET le point mort le sont aussi. Le taire ferait
@@ -661,9 +666,19 @@ function render(d) {
       const covStr = cov == null ? ''
         : est ? `<span style="color:${covColor}">mesurée sur ${cov} % des ventes, appliquée au reste</span>`
               : `<span style="color:${covColor}">couverture des coûts ${cov} %</span>`;
+      /* ⚠️ LES COMMISSIONS NE SONT PLUS DANS CE POURCENTAGE, ET ELLES NE DOIVENT PAS
+       * DISPARAÎTRE POUR AUTANT. Les verser au numérateur d'une marge SUR VENTES donnait
+       * jusqu'à 200 % — un ratio dont le haut contient un revenu que le bas ignore, peint en
+       * vert par `marginBadge` dont le palier haut est 80 %. Elles ont leur ligne. */
+      const hv = eco.marge_hors_ventes_ht || 0;
+      const ligneCom = hv > 0
+        ? ` <span style="color:var(--db-faint)">· + ${fmt(hv)} de commissions, sans coût`
+          + ` → ${fmt(eco.marge_totale_ht)} au total</span>`
+        : '';
       document.getElementById('eco-marge-pct').innerHTML =
         `${eco.marge_brute_ht_pct}%${est ? ' <span style="color:var(--db-amber)">est.</span>' : ''}` +
-        ` <span style="color:var(--db-faint)">· marchandise ${fmt(eco.cogs_ht)} · </span>${covStr}`;
+        ` <span style="color:var(--db-faint)">· marchandise ${fmt(eco.cogs_ht)} · </span>${covStr}`
+        + ligneCom;
       /* ⚠️ L'ÉTAT DE LA MARGE, C'EST SA COUVERTURE — pas sa valeur. Une marge de 75 % mesurée
          sur 96 % des ventes et la même mesurée sur 55 % ne sont pas la même information, et
          c'est la seconde qui appelle un geste. La bande le dit sans une ligne de texte de
@@ -760,7 +775,12 @@ function render(d) {
       } else {
         seuilSub.innerHTML = `<span style="color:var(--db-green)">Point mort atteint${seuilEst ? '' : ' ✓'}</span>` + margeNote;
       }
-      document.getElementById('eco-seuil-bar').style.width = Math.min(100, eco.pct_seuil) + '%';
+      /* ⚠️ UNE BARRE À 0 % SE LIT « TU N'AS RIEN ATTEINT ». Quand le seuil n'est pas
+       * calculable, `pct_seuil` vaut `null` et non 0 : on laisse la barre vide ET on le dit,
+       * au lieu d'affirmer un échec qu'on n'a pas mesuré. */
+      document.getElementById('eco-seuil-bar').style.width =
+        eco.pct_seuil != null ? Math.min(100, eco.pct_seuil) + '%' : '0%';
+      document.getElementById('eco-seuil-bar').style.opacity = eco.pct_seuil != null ? '' : '.3';
     } else {
       document.getElementById('eco-seuil').textContent = '—';
       seuilSub.innerHTML = '<span style="color:var(--db-muted)">Le point mort se calcule ' +
