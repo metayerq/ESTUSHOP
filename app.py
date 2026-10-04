@@ -43,7 +43,7 @@ from vendus import (
     calc_stats, hourly_breakdown, payment_breakdown, top_products, recent_docs,
     rush_detector, unsold_today, product_stats_from_docs,
     tva_breakdown, service_tempo, category_mix, ticket_median,
-    daily_economics, cumulative_curve, ticket_distribution,
+    daily_economics, ticket_distribution,
     daily_breakdown, create_category,
 )
 
@@ -1156,13 +1156,10 @@ def api_data():
         "seuil":         SEUIL_TRANSACTIONS,
         # Graphe temporel
         "daily":         daily_breakdown(docs_main),
-        # ⚠️ LA COMPARAISON EST UNE COURBE, PAS UN POURCENTAGE. « −9 % » dit de combien ;
-        # la série dit QUAND l'écart s'est creusé — un samedi creux et cinq jours identiques
-        # donnent le même pourcentage et appellent deux gestes opposés.
-        #
-        # ⚠️ ET ELLE EST DÉJÀ CHARGÉE. `docs_comp` sert au bandeau de comparaison depuis
-        # toujours ; l'agréger par jour ne coûte pas un appel de plus.
-        "daily_comp":    daily_breakdown(docs_comp),
+        # ⚠️ `daily_comp` EST PARTI AVEC LE GRAPHIQUE. Lui seul traçait la série de
+        # comparaison ; `docs_comp`, lui, RESTE chargé — c'est de là que vient `yesterday`,
+        # donc le badge de pourcentage sous « Encaissé ». Retirer la requête aurait emporté la
+        # comparaison elle-même, pas seulement sa courbe.
         # Paiements & TVA (données document-level — toujours disponibles)
         "payments":      payment_breakdown(docs_main),
         "tva":           tva_breakdown(docs_main),
@@ -1430,22 +1427,21 @@ def api_data():
     result["mix"]      = _mix_from_merged(merged_products, catalog)
 
     # ── Sections disponibles uniquement pour un jour unique ───────────────────
+    # ⚠️ `curve` ET `curve_prev` ONT ÉTÉ RETIRÉS le 04/10/2026 avec le graphique de la carte
+    # principale : ils n'étaient calculés que pour lui, et ne partaient plus que pour mourir
+    # dans le navigateur. `hourly`, `rush`, `tempo` et `unsold` restent calculés et toujours
+    # affichés par personne — ils attendent une décision, pas un oubli de plus.
     if is_single:
         result["hourly"] = hourly_breakdown(docs_main)
-        result["curve"]  = cumulative_curve(docs_main)
         result["rush"]   = rush_detector(docs_main)
         result["tempo"]  = service_tempo(docs_main)
         result["unsold"] = unsold_today(docs_main, catalog)
         # Référence : même jour de la semaine précédente (docs_comp est déjà
         # aligné dessus, et filtré à l'heure courante sur la vue "aujourd'hui").
-        # Sert de repère sur les barres horaires et de courbe fantôme sur le cumul.
         result["hourly_prev"] = hourly_breakdown(docs_comp) if docs_comp else None
-        result["curve_prev"]  = cumulative_curve(docs_comp) if docs_comp else None
     else:
         result["hourly"] = None
-        result["curve"]  = None
         result["hourly_prev"] = None
-        result["curve_prev"]  = None
         result["rush"]   = []
         result["tempo"]  = None
         result["unsold"] = []

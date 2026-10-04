@@ -846,16 +846,15 @@ CAS = {
             "ESPECES-DITES",
             # Aucun passage ≠ 0 % de retours.
             "VIDE-SE-TAIT",
-            # ⚠️ UN SEUL JOUR N'EST PAS UNE SÉRIE : le cumul de la journée contre son
-            # point mort, et le même jour de la semaine passée en pointillés.
-            "JOUR-TROIS-SERIES", "JOUR-CUMUL", "JOUR-POINT-MORT",
-            "JOUR-PLUSIEURS-POINTS", "JOUR-AXE-TEMPS", "LEGENDE-ADAPTEE",
+            # ⚠️ LE GRAPHIQUE DE LA CARTE PRINCIPALE A ÉTÉ RETIRÉ, et la carte se referme.
+            "PAS-DE-GRAPHE", "PAS-DE-LEGENDE", "TROIS-CHIFFRES", "CARTE-REFERMEE",
+            "MINIS-INTACTES",
         ],
         "interdit": [
             "FENETRE-FIGEE", "BLOC-CACHE", "PART-ABSENTE", "CARTES-MUETTES", "HABITUES-MUETS",
             "ESPECES-TUES", "VIDE-AFFIRME-ZERO",
-            "JOUR-SERIES-MANQUANTES", "JOUR-SANS-CUMUL", "JOUR-SANS-POINT-MORT",
-            "JOUR-UN-POINT", "JOUR-AXE-RANG", "LEGENDE-FIGEE",
+            "GRAPHE-REVENU", "LEGENDE-REVENUE", "CHIFFRES-PERDUS", "CARTE-TROUEE",
+            "MINIS-PERDUES",
             "NaN", "undefined", "Invalid Date", "passage(s)",
         ],
         "scenario": r"""
@@ -907,39 +906,30 @@ CAS = {
             + E('ret-pct-sub').textContent);
     window.fetch = vrai;
 
-    /* ══ LA VUE D'UN SEUL JOUR ═══════════════════════════════════════════════════════════
+    /* ══ PLUS DE GRAPHIQUE DANS LA CARTE PRINCIPALE ══════════════════════════════════════
      *
-     * ⚠️ « AUJOURD'HUI » TRAÇAIT UN POINT. La série des journées n'en contient qu'une : la
-     * plus grande surface de l'écran ne portait aucune information, le jour où on la regarde
-     * le plus. Le serveur calculait déjà `curve` et `curve_prev` — et personne ne les
-     * affichait.
-     *
-     * Chart.js vient d'un CDN, absent hors ligne : on le remplace par un espion qui retient
-     * la configuration construite. C'est elle qu'on vérifie, pas des pixels. */
-    var vuChart = null;
-    window.Chart = function(ctx, cfg){ vuChart = cfg; this.destroy = function(){}; };
-    renderCourbe({
-      is_single_day: true,
-      daily: [{date: '2026-09-30', ca_ttc: 410, nb: 70}],
-      curve: [{time: '08h00', ca_cum: 0}, {time: '09h12', ca_cum: 24.5},
-              {time: '12h40', ca_cum: 180.0}, {time: '15h05', ca_cum: 410.0}],
-      curve_prev: [{time: '08h30', ca_cum: 0}, {time: '13h00', ca_cum: 150.0}],
-      economics: {seuil_ca_ttc_jour: 310.0},
-    });
-    var jeux = (vuChart && vuChart.data && vuChart.data.datasets) || [];
-    var noms = jeux.map(function(x){ return x.label; }).join(' | ');
-    trace(jeux.length === 3 ? 'JOUR-TROIS-SERIES' : 'JOUR-SERIES-MANQUANTES ' + noms);
-    trace(noms.indexOf('cumulé') >= 0 ? 'JOUR-CUMUL' : 'JOUR-SANS-CUMUL ' + noms);
-    trace(noms.indexOf('Point mort du jour') >= 0
-          ? 'JOUR-POINT-MORT' : 'JOUR-SANS-POINT-MORT ' + noms);
-    /* La courbe doit porter plus d'un point : c'est tout le problème qu'on corrige. */
-    trace((jeux[0] && jeux[0].data.length >= 4)
-          ? 'JOUR-PLUSIEURS-POINTS' : 'JOUR-UN-POINT n=' + (jeux[0] && jeux[0].data.length));
-    /* L'axe est le temps, pas un rang : sinon deux journées aux heures différentes glissent. */
-    trace((vuChart.options.scales.x.type === 'linear' && jeux[0].data[1].x === 552)
-          ? 'JOUR-AXE-TEMPS' : 'JOUR-AXE-RANG');
-    trace(E('db-legende-comp').textContent.indexOf('même jour') >= 0
-          ? 'LEGENDE-ADAPTEE' : 'LEGENDE-FIGEE ' + E('db-legende-comp').textContent);
+     * ⚠️ RETIRÉ LE 04/10/2026, À LA DEMANDE DE QUENTIN. Le canvas et sa légende sont partis
+     * avec `renderCourbe` : ce qui est gardé ici, c'est qu'ils ne reviennent pas par un
+     * copier-coller, et que la carte se referme sous ses trois chiffres sans vide.
+     */
+    trace(!document.getElementById('chart-daily')
+          ? 'PAS-DE-GRAPHE' : 'GRAPHE-REVENU');
+    trace(!document.getElementById('db-legende-comp')
+          ? 'PAS-DE-LEGENDE' : 'LEGENDE-REVENUE');
+    /* Les trois chiffres, eux, sont bien là. */
+    trace((E('db-ca').textContent.indexOf('12,400') >= 0
+           && E('db-res').textContent.indexOf('4,200') >= 0
+           && E('db-seuil').textContent.indexOf('5,740') >= 0)
+          ? 'TROIS-CHIFFRES' : 'CHIFFRES-PERDUS ' + E('db-ca').textContent);
+    /* ⚠️ ET LA CARTE SE REFERME SOUS EUX. Un reste de hauteur se verrait ici : on mesure le
+       rectangle, on ne le relit pas. */
+    var carte = E('db-ca').closest('.db-card');
+    var bas = E('db-seuil-sub').getBoundingClientRect().bottom;
+    var filsBas = carte.getBoundingClientRect().bottom;
+    trace((filsBas - bas) < 60
+          ? 'CARTE-REFERMEE' : 'CARTE-TROUEE ' + Math.round(filsBas - bas) + 'px');
+    /* Les mini-courbes des autres cartes n'ont pas été emportées. */
+    trace(document.getElementById('mini-tickets') ? 'MINIS-INTACTES' : 'MINIS-PERDUES');
   }, 150);
 })(0);
 """,

@@ -115,8 +115,13 @@
   </label>
 
   <!-- ══ LA COURBE ══════════════════════════════════════════════════════════════════════ -->
+  {#
+    ⚠️ LE GRAPHIQUE A ÉTÉ RETIRÉ DE CETTE CARTE le 04/10/2026, à la demande de Quentin. Le
+    `padding-bottom` réduit n'avait de sens que pour serrer les KPI contre lui : le rendre à sa
+    valeur normale est ce qui referme la carte proprement sous la dernière ligne.
+  #}
   <div class="db-card db-mb">
-    <div class="db-card-p" style="padding-bottom:12px">
+    <div class="db-card-p">
       <div style="display:flex;gap:42px;flex-wrap:wrap;align-items:flex-start">
         <div>
           <div class="db-l">Encaiss&eacute;</div>
@@ -133,15 +138,7 @@
           <div class="db-v" id="db-seuil">&mdash;</div>
           <div class="db-s" id="db-seuil-sub"></div>
         </div>
-        <span class="db-sp"></span>
-        {#
-          ⚠️ LA LÉGENDE VIT AVEC LA COURBE QU'ELLE EXPLIQUE. Posée en haut de page, à côté du
-          sélecteur de dates, elle annonçait des pointillés qu'on ne voyait pas encore — et on
-          la lisait comme une option de période.
-        #}
-        <span class="db-compare"><span class="db-dash"></span><span id="db-legende-comp">p&eacute;riode pr&eacute;c&eacute;dente</span></span>
       </div>
-      <div style="height:210px;margin-top:18px"><canvas id="chart-daily"></canvas></div>
       <div class="db-reason" id="db-note" style="display:none"></div>
     </div>
   </div>

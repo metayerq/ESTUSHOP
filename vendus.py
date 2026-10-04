@@ -595,37 +595,9 @@ def ticket_distribution(docs):
     ]
 
 
-def cumulative_curve(docs):
-    """Courbe cumulative du CA TTC transaction par transaction."""
-    points = []
-    for d in docs:
-        lt = d.get("local_time", "")
-        try:
-            time_str = lt[11:16]  # "HH:MM"
-        except (TypeError, IndexError):
-            continue
-        points.append({
-            "time": time_str,
-            "ca":   float(d.get("amount_gross", 0)),
-            "nb":   d.get("number", ""),
-        })
-
-    # Trier par heure
-    points.sort(key=lambda p: p["time"])
-
-    # Construire la série cumulative
-    cumul = 0.0
-    result = [{"time": points[0]["time"][:2] + "h00", "ca_cum": 0.0, "ca_tx": 0.0, "nb": ""}] if points else []
-    for p in points:
-        cumul += p["ca"]
-        result.append({
-            "time":   p["time"].replace(":", "h"),
-            "ca_cum": round(cumul, 2),
-            "ca_tx":  p["ca"],
-            "nb":     p["nb"],
-        })
-    return result
-
+# ⚠️ `cumulative_curve` A ÉTÉ RETIRÉE le 04/10/2026 avec le graphique de la carte
+# principale, seul appelant. Elle construisait le cumul d'une journée transaction par
+# transaction ; `git log -S cumulative_curve` la retrouve si le besoin revient.
 
 def daily_breakdown(docs):
     """Agrège les docs par date — pour le graphe CA journalier (périodes multi-jours)."""

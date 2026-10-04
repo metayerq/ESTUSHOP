@@ -35,7 +35,7 @@
  * jours » — la seule tache de #2554C7 d'une page entièrement iris. Les couleurs de barre se
  * lisent désormais dans les jetons, au moment du tracé, comme les courbes. */
 let chartHourly = null, chartWeek = null;
-let chartCurve  = null, chartDaily = null;
+let chartCurve  = null;
 
 // ── Preset actif ──────────────────────────────────────────────────────────────
 let currentPreset = 'today';
@@ -234,221 +234,19 @@ function voile(ctx, couleur, h) {
   return g;
 }
 
-/* ══ UN SEUL JOUR N'EST PAS UNE SÉRIE ═════════════════════════════════════════════════════
+/* ⚠️ LE GRAPHIQUE PRINCIPAL A ÉTÉ RETIRÉ le 04/10/2026, à la demande de Quentin.
+ * `renderCourbe`, `renderCumulDuJour` et `heureDe` vivaient ici ; avec eux sont partis le
+ * cumul de la journée, la série des journées, la ligne de point mort et la comparaison en
+ * pointillés. La carte ne porte plus que ses trois chiffres.
  *
- * ⚠️ SUR « AUJOURD'HUI », LA COURBE DES JOURNÉES TRAÇAIT UN POINT. Un point ne dit ni une
- * tendance, ni un rythme, ni où l'on en est : la plus grande surface de l'écran ne portait
- * aucune information, le jour où on la regarde le plus souvent.
+ * ⚠️ CE QUI RESTE N'EST PAS DU RÉSIDU : `jetons()`, `voile()` et `d.daily` servent encore aux
+ * mini-courbes des cartes Tickets et Ticket moyen, et `chart-week` a son propre rendu. Les
+ * retirer avec le reste aurait vidé trois cartes qu'on ne voulait pas toucher.
  *
- * Le serveur calcule déjà `curve` — le cumul de la journée, transaction par transaction — et
- * `curve_prev`, le même jour de la semaine précédente. Personne ne les affichait : la charge
- * utile partait et mourait dans le navigateur.
- *
- * ⚠️ ET LE CUMUL EST LA BONNE FORME, parce qu'il se compare au POINT MORT. « 240 € à 15 h sur
- * 310 € à faire » est une phrase actionnable pendant le service ; « 40 € entre 14 h et 15 h »
- * ne l'est pas — on ne décide rien d'une tranche horaire déjà passée.
+ * ⚠️ ET LA PÉRIODE PRÉCÉDENTE SE CHARGE TOUJOURS : `d.yesterday` alimente le badge de
+ * comparaison en pourcentage. Seule la SÉRIE journalière de comparaison a disparu.
  */
-function renderCumulDuJour(d, j) {
-  const cv = document.getElementById('chart-daily');
-  const serie = d.curve || [];
-  const prev  = d.curve_prev || [];
-  if (!serie.length) return false;
 
-  /* Les deux journées n'ont pas les mêmes heures de passage : on les projette sur un axe
-     commun de minutes, sinon la comparaison glisse d'un cran à chaque transaction. */
-  const enMin = (t) => {
-    const m = String(t || '').match(/(\d{1,2})h(\d{2})/);
-    return m ? (+m[1]) * 60 + (+m[2]) : null;
-  };
-  const points = (xs) => xs.map((p) => ({ x: enMin(p.time), y: p.ca_cum }))
-                           .filter((p) => p.x != null);
-
-  const seuil = d.economics && d.economics.seuil_ca_ttc_jour;
-  const jeux = [
-    {
-      label: 'Encaissé cumulé', data: points(serie), borderColor: j.iris, borderWidth: 2.5,
-      pointRadius: 0, pointHoverRadius: 4, tension: .2, fill: true,
-      backgroundColor: (c) => voile(c.chart.ctx, j.iris, c.chart.height),
-      stepped: false, order: 1,
-    },
-  ];
-  if (prev.length) {
-    jeux.push({
-      label: 'Même jour, semaine précédente', data: points(prev), borderColor: j.slate,
-      borderWidth: 2, borderDash: [5, 5], pointRadius: 0, pointHoverRadius: 3,
-      tension: .2, fill: false, order: 2,
-    });
-  }
-  if (seuil > 0) {
-    /* La ligne de point mort est horizontale ICI, et c'est juste : c'est le coût d'UNE
-       journée, qui ne varie pas au fil des heures. */
-    const bornes = points(serie);
-    const x0 = Math.min(...bornes.map((p) => p.x));
-    const x1 = Math.max(...bornes.map((p) => p.x), x0 + 60);
-    jeux.push({
-      label: 'Point mort du jour', data: [{ x: x0, y: seuil }, { x: x1, y: seuil }],
-      borderColor: j.ink, borderWidth: 1.5, borderDash: [2, 5], pointRadius: 0,
-      pointHoverRadius: 0, fill: false, order: 3,
-    });
-  }
-
-  if (chartDaily) chartDaily.destroy();
-  chartDaily = new Chart(cv.getContext('2d'), {
-    type: 'line',
-    data: { datasets: jeux },
-    options: {
-      responsive: true, maintainAspectRatio: false, animation: false,
-      parsing: false,
-      interaction: { mode: 'nearest', axis: 'x', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: j.ink, padding: 10, displayColors: true, boxWidth: 8, boxHeight: 8,
-          callbacks: {
-            title: (cs) => heureDe(cs[0].parsed.x),
-            label: (c) => ` ${c.dataset.label} : ${fmt(c.parsed.y)}`,
-          },
-        },
-      },
-      scales: {
-        x: {
-          type: 'linear',
-          ticks: { color: j.faint, font: { size: 11 }, maxTicksLimit: 8,
-                   callback: (v) => heureDe(v) },
-          grid: { display: false },
-        },
-        y: {
-          beginAtZero: true,
-          ticks: { color: j.faint, font: { size: 11 }, callback: (v) => fmt(v) },
-          grid: { color: j.line, drawTicks: false },
-        },
-      },
-    },
-  });
-  return true;
-}
-
-function heureDe(min) {
-  const h = Math.floor(min / 60), m = Math.round(min % 60);
-  return String(h).padStart(2, '0') + 'h' + String(m).padStart(2, '0');
-}
-
-function renderCourbe(d) {
-  const cv = document.getElementById('chart-daily');
-  if (!cv || typeof Chart === 'undefined') return;
-  const j = jetons();
-
-  /* ⚠️ UN JOUR UNIQUE PREND L'AUTRE FORME. Sans ce branchement, la série des journées trace
-   * un point — et c'est ce que « Aujourd'hui » affichait. */
-  /* ⚠️ LA LÉGENDE SUIT LA COURBE QU'ELLE EXPLIQUE. Sur un jour unique les pointillés sont le
-   * MÊME JOUR de la semaine passée, pas « la période précédente » : un café ne se compare pas
-   * un samedi à un mardi, et la légende doit dire ce qui est tracé. */
-  const leg = document.getElementById('db-legende-comp');
-  if (leg) leg.textContent = d.is_single_day
-    ? 'même jour, semaine précédente' : 'période précédente';
-
-  if (d.is_single_day && renderCumulDuJour(d, j)) return;
-
-  const jours = (d.daily || []);
-  const comp = (d.daily_comp || []);
-
-  /* ⚠️ LA COMPARAISON EST ALIGNÉE SUR LE RANG, PAS SUR LA DATE. Les deux fenêtres n'ont pas les
-   * mêmes quantièmes — c'est tout l'intérêt d'une comparaison à nombre de services égal. On
-   * superpose donc le 1er service au 1er, le 2e au 2e. Les aligner par date ferait glisser la
-   * courbe d'un cran à chaque jour fermé. */
-  const n = Math.max(jours.length, comp.length);
-  const labels = [];
-  for (let i = 0; i < n; i++) {
-    const x = jours[i];
-    labels.push(x ? new Date(x.date + 'T12:00:00')
-      .toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' }) : '');
-  }
-  const serie = [], precedente = [];
-  for (let i = 0; i < n; i++) {
-    serie.push(jours[i] ? jours[i].ca_ttc : null);
-    precedente.push(comp[i] ? comp[i].ca_ttc : null);
-  }
-
-  const seuilJour = d.economics && d.economics.seuil_ca_ttc_jour;
-  const jeux = [
-    {
-      label: 'Encaissé', data: serie, borderColor: j.iris, borderWidth: 2.5,
-      pointRadius: 0, pointHoverRadius: 4, tension: .25, fill: true,
-      backgroundColor: (c) => voile(c.chart.ctx, j.iris, c.chart.height),
-      spanGaps: false, order: 1,
-    },
-  ];
-  if (precedente.some((v) => v != null)) {
-    jeux.push({
-      label: 'Période précédente', data: precedente, borderColor: j.slate, borderWidth: 2,
-      borderDash: [5, 5], pointRadius: 0, pointHoverRadius: 3, tension: .25, fill: false,
-      spanGaps: false, order: 2,
-    });
-  }
-  /* ⚠️ LE POINT MORT N'EST PLUS UNE LIGNE DROITE. Tant que le personnel coûtait la même chose
-   * tous les jours ouvrés, une horizontale disait vrai. Depuis le planning, un samedi à deux
-   * extras et un lundi en solo n'ont plus le même seuil : tracer la moyenne au-dessus des deux
-   * ferait croire que le lundi a manqué sa journée alors qu'il l'a payée, et que le samedi l'a
-   * atteinte alors qu'il lui manquait cent euros.
-   *
-   * La série vient du serveur (`seuil_ca_ttc_par_jour`), indexée par date. On retombe sur
-   * l'horizontale quand elle est absente — périodes sans bornes, anciennes réponses en cache. */
-  const parJour = (d.economics && d.economics.seuil_ca_ttc_par_jour) || null;
-  let serieSeuil = null;
-  if (parJour && Object.keys(parJour).length) {
-    serieSeuil = jours.map((x) => (x && parJour[x.date] != null) ? parJour[x.date] : null);
-    if (!serieSeuil.some((v) => v != null)) serieSeuil = null;
-  }
-  if (!serieSeuil && seuilJour > 0) serieSeuil = new Array(n).fill(seuilJour);
-
-  if (serieSeuil) {
-    jeux.push({
-      label: 'Point mort / service', data: serieSeuil,
-      borderColor: j.ink, borderWidth: 1.5, borderDash: [2, 5], pointRadius: 0,
-      pointHoverRadius: 0, fill: false, order: 3,
-      /* Un jour fermé n'a pas de seuil : on coupe le trait au lieu de l'interpoler par-dessus,
-       * ce qui dessinerait une pente entre deux services qu'aucune journée ne relie. */
-      spanGaps: false,
-    });
-  }
-
-  if (chartDaily) chartDaily.destroy();
-  chartDaily = new Chart(cv.getContext('2d'), {
-    type: 'line',
-    data: { labels, datasets: jeux },
-    options: {
-      responsive: true, maintainAspectRatio: false, animation: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: j.ink, padding: 10, displayColors: true, boxWidth: 8, boxHeight: 8,
-          callbacks: {
-            /* ⚠️ UN TROU N'EST PAS UN ZÉRO. Un jour fermé n'a pas de point ; l'infobulle doit
-             * le dire plutôt que d'afficher 0 €, qui se lirait « ouvert, personne n'est venu ». */
-            label: (c) => c.raw == null
-              ? ` ${c.dataset.label} : non mesuré`
-              : ` ${c.dataset.label} : ${fmt(c.raw)}`,
-          },
-        },
-      },
-      scales: {
-        y: {
-          beginAtZero: true, border: { display: false },
-          grid: { color: j.line },
-          ticks: { font: { size: 11 }, color: j.faint, maxTicksLimit: 5,
-                   callback: (v) => fmt(v) },
-        },
-        x: {
-          grid: { display: false }, border: { display: false },
-          ticks: { font: { size: 11 }, color: j.faint, maxRotation: 0, autoSkipPadding: 18 },
-        },
-      },
-    },
-  });
-}
-
-/** Une mini-courbe, sans axes : la forme suffit, le chiffre est au-dessus. */
 function miniCourbe(id, valeurs, couleur) {
   const cv = document.getElementById(id);
   if (!cv || typeof Chart === 'undefined') return;
@@ -1038,12 +836,6 @@ function render(d) {
     `<span${i === peakIdx && w.ca > 0 ? ' style="color:var(--db-ink);font-weight:600"' : ''}>${fmt(w.ca)}</span>`
   ).join('');
 
-  /* ⚠️ LE GRAPHIQUE PRINCIPAL EST DESSINÉ PAR `renderCourbe`, appelée depuis `renderOverview`.
-   * L'ancien aiguillage — barres horaires sur un jour, courbe sur plusieurs — a disparu avec le
-   * bloc « Par heure » : une seule forme désormais, le cumul ou la série selon la période, et la
-   * comparaison en pointillés par-dessus.
-   */
-
   /* ⚠️ LA RÉPARTITION DES PAIEMENTS EST PARTIE VERS `/reconciliation`. Celle d'ici venait de
    * ce que Vendus DÉCLARE ; celle de là-bas est MESURÉE sur le terminal Revolut, ligne à
    * ligne, avec l'écart entre les deux. Garder les deux, c'était offrir le choix entre une
@@ -1164,7 +956,6 @@ function renderPeriode(d) {
 function renderInsights(d) {
   renderReponse(d);
   renderPeriode(d);
-  renderCourbe(d);
   renderMinis(d);
   renderQuatre(d);
   const ins = d.insights;

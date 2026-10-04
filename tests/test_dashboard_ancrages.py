@@ -429,101 +429,44 @@ PAYLOAD = {"daily": JOURS, "daily_comp": COMP,
            "economics": {"seuil_ca_ttc_jour": 287.0}}
 
 
-def test_la_comparaison_est_tracee_en_pointilles():
-    """⚠️ « −9 % » DIT DE COMBIEN ; LA COURBE DIT QUAND l'écart s'est creusé."""
-    r = _courbe(PAYLOAD)
-    comp = [j for j in r["jeux"] if j["data"] == [350, 400, 410]]
-    assert comp, "la série de comparaison n'est pas tracée"
-    assert comp[0]["dash"], "la comparaison n'est pas en pointillés"
-
-
-def test_le_point_mort_est_une_ligne_sur_la_courbe():
+def test_LA_PERIODE_PRECEDENTE_EST_TOUJOURS_CHARGEE():
     """
-    ⚠️ IL MONTRE QUELS SERVICES ONT PAYÉ LEUR JOURNÉE. Un pourcentage de couverture donne le
-    total et cache la dispersion : trois jours au-dessus et deux très en dessous se lisent
-    comme cinq jours moyens.
+    ⚠️ LE GRAPHIQUE EST PARTI, PAS LA COMPARAISON. La série journalière `daily_comp` ne servait
+    qu'à tracer les pointillés et a été retirée avec eux ; `docs_comp`, lui, reste chargé —
+    c'est de là que vient `yesterday`, donc le badge de pourcentage sous « Encaissé ».
+
+    ⚠️ ET LA CONFUSION EST FACILE : les deux portent le mot « comparaison ». Retirer la requête
+    en même temps que sa courbe aurait emporté le badge, qui n'aurait plus rien eu à comparer —
+    et `delta()` se tait sur une base absente, donc la page aurait simplement cessé d'afficher
+    l'écart, sans une erreur.
     """
-    r = _courbe(PAYLOAD)
-    seuil = [j for j in r["jeux"] if j["data"] == [287.0, 287.0, 287.0]]
-    assert seuil, "le point mort n'est pas tracé"
-    assert seuil[0]["dash"], "le point mort n'est pas en tirets"
-
-
-def test_sans_point_mort_connu_aucune_ligne_nest_inventee():
-    r = _courbe({"daily": JOURS, "daily_comp": [], "economics": {}})
-    assert len(r["jeux"]) == 1, "une ligne est tracée sans seuil connu"
-
-
-def test_un_jour_ferme_nest_pas_relie_au_suivant():
-    """
-    ⚠️ RELIER DEUX JOURS SÉPARÉS PAR UNE FERMETURE DESSINE UNE PENTE QUI N'A PAS EU LIEU. Le
-    café ferme mardi et mercredi : la courbe traverserait le creux comme s'il avait été mesuré.
-    """
-    r = _courbe(PAYLOAD)
-    """
-    ⚠️ CE CONTRÔLE COMPTAIT LES SÉRIES, ET LE COMPTE A CHANGÉ LE 04/10/2026. Il affirmait que
-    la ligne du point mort « est une constante, sans trou » et exigeait donc exactement deux
-    porteurs. Depuis le planning, le point mort suit le coût du jour : il a des trous comme les
-    autres — les jours fermés — et il doit porter la même garde.
-
-    On n'exempte donc pas la troisième série : on remplace le COMPTE par l'INVARIANT. Toute
-    série qui contient un trou doit porter `spanGaps: false`. C'est plus fort qu'un nombre, et
-    ça ne se périme pas au prochain jeu de données.
-    """
-    assert len(r["jeux"]) >= 3, "les trois séries ne sont pas tracées"
-    for serie in r["jeux"]:
-        assert serie.get("spanGaps") is False, (
-            f"« {serie['label']} » relierait les deux bords d'un trou : "
-            "une pente qui n'a pas eu lieu")
-
-    # ⚠️ ET SUR UN JEU QUI A VRAIMENT UN TROU. Le jeu ci-dessus exprime la fermeture par une
-    # date ABSENTE, pas par un `null` : il ne prouve donc pas que la garde sert. Ici la
-    # comparaison est plus courte que la période, ce qui crée un vrai trou en fin de série.
-    court = {"daily": JOURS, "daily_comp": COMP[:1],
-             "economics": {"seuil_ca_ttc_jour": 287.0,
-                           "seuil_ca_ttc_par_jour": {"2026-09-18": 280.0,
-                                                     "2026-09-21": 310.0}}}
-    r2 = _courbe(court)
-    trous = [j for j in r2["jeux"] if any(v is None for v in j["data"])]
-    assert len(trous) >= 2, "ce jeu devrait porter des trous — comparaison courte, seuil partiel"
-    for serie in trous:
-        assert serie.get("spanGaps") is False, f"« {serie['label']} » comblerait son trou"
-
-
-def test_LE_POINT_MORT_S_ALIGNE_SUR_LA_DATE_PAS_SUR_LE_RANG():
-    """
-    ⚠️ LA COMPARAISON S'ALIGNE SUR LE RANG — c'est voulu, les deux fenêtres n'ont pas les mêmes
-    quantièmes. LE POINT MORT, LUI, APPARTIENT À UNE DATE : l'aligner sur le rang le décale
-    d'un cran à chaque jour fermé, et il irait annoncer à un lundi le seuil d'un samedi à deux
-    extras. Les deux séries se ressemblent, et la règle est l'inverse.
-    """
-    r = _courbe({"daily": JOURS, "daily_comp": [],
-                 "economics": {"seuil_ca_ttc_jour": 287.0,
-                               "seuil_ca_ttc_par_jour": {"2026-09-18": 280.0,
-                                                         "2026-09-21": 310.0}}})
-    seuil = [j for j in r["jeux"] if "mort" in j["label"]][0]
-    # JOURS = 18, 19, 21 ; le seuil n'est connu que pour le 18 et le 21.
-    assert seuil["data"] == [280.0, None, 310.0], (
-        "le seuil est aligné sur le rang : il annonce au 19 le chiffre du 21")
-
-
-def test_les_deux_series_sont_alignees_sur_le_rang_pas_sur_la_date():
-    """
-    ⚠️ LES DEUX FENÊTRES N'ONT PAS LES MÊMES QUANTIÈMES — c'est tout l'intérêt d'une
-    comparaison à nombre de services égal. Les aligner par date ferait glisser la courbe d'un
-    cran à chaque jour fermé.
-    """
-    r = _courbe(PAYLOAD)
-    assert len(r["labels"]) == 3
-    for j in r["jeux"]:
-        assert len(j["data"]) == 3
-
-
-def test_le_serveur_sert_bien_la_serie_de_comparaison():
-    """⚠️ SANS ELLE, LA COURBE EN POINTILLÉS DISPARAÎT SANS ERREUR : le jeu de données est
-    simplement absent, et la page perd sa comparaison en silence."""
     src = open(os.path.join(RACINE, "app.py"), encoding="utf-8").read()
-    assert '"daily_comp":    daily_breakdown(docs_comp),' in src
+    assert "docs_comp" in src, "la période précédente n'est plus chargée"
+    # ⚠️ ON VISE LA LIGNE, PAS LE MOT. « yesterday » apparaît aussi comme nom de preset et
+    # comme libellé de bouton : chercher la chaîne seule laissait passer la suppression de la
+    # statistique elle-même — mon premier contrôle ne mordait pas.
+    assert "_stats_net_popup(calc_stats(docs_comp)" in src, (
+        "le badge de comparaison n'a plus sa source")
+    assert '"daily_comp"' not in src.replace(
+        "# ⚠️ `daily_comp` EST PARTI AVEC LE GRAPHIQUE", ""), (
+        "la série du graphique est revenue alors que le graphique n'existe plus")
+
+
+def test_LA_CARTE_PRINCIPALE_N_A_PLUS_DE_GRAPHIQUE():
+    """
+    ⚠️ RETIRÉ LE 04/10/2026, À LA DEMANDE DE QUENTIN. Ce contrôle existe pour que le canvas ne
+    revienne pas par un copier-coller : il n'y a plus de `renderCourbe` pour le peupler, et un
+    canvas vide laisserait 210 px de blanc sous les trois chiffres.
+    """
+    html = open(os.path.join(RACINE, "templates", "index.html"), encoding="utf-8").read()
+    js = _js()
+    assert 'id="chart-daily"' not in html, "le canvas du graphique principal est revenu"
+    assert "db-legende-comp" not in html, "la légende du graphique est revenue"
+    assert "renderCourbe" not in js.replace(
+        "`renderCourbe`, `renderCumulDuJour` et `heureDe` vivaient ici", "")
+    # ⚠️ `chart-week` ET LES MINI-COURBES RESTENT : elles ne sont pas dans cette carte.
+    assert 'id="chart-week"' in html
+    assert "function miniCourbe(" in js
 
 
 def test_une_mini_courbe_refuse_de_tracer_un_seul_point():
