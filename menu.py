@@ -60,6 +60,10 @@ CATALOGUE = [
     # Faire tourner la maison.
     {"chemin": "/sop",            "libelle": "SOP — checklists", "groupe": "Exploitation"},
     {"chemin": "/holidays",       "libelle": "Congés",           "groupe": "Exploitation"},
+    # ⚠️ JUSTE À CÔTÉ DES CONGÉS, et pour la même raison qu'ils sont fermés à l'investisseur :
+    # les deux pages disent qui est là et qui ne l'est pas. Les séparer ferait chercher l'une
+    # dans le groupe de l'autre.
+    {"chemin": "/planning",       "libelle": "Planning",         "groupe": "Exploitation"},
     {"chemin": "/events",         "libelle": "Événements",       "groupe": "Exploitation"},
     {"chemin": "/parametres",     "libelle": "Réglages",         "groupe": "Exploitation"},
 ]

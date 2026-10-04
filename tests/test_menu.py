@@ -290,3 +290,50 @@ def test_lecran_de_reglage_ne_recopie_pas_la_liste_des_pages():
     for e in menu.CATALOGUE:
         assert f'"{e["chemin"]}"' not in zone, \
             f"{e['chemin']} est recopié dans l'écran de réglage"
+
+
+# ── Le garde qui manquait ───────────────────────────────────────────────────────────────────
+
+# Les seules pages qui n'ont rien à faire dans le menu, et pourquoi.
+HORS_MENU = {
+    "/login":        "on y arrive sans être connecté — il n'y a pas de rail à ce moment-là",
+    "/logout":       "une action, pas une destination",
+    "/tpa/<token>":  "page comptable ouverte par un jeton dans l'URL, hors du login dashboard",
+}
+
+
+def test_AUCUNE_PAGE_N_EXISTE_SANS_FIGURER_AU_MENU():
+    """
+    ⚠️ LE MODULE DÉCRIT CE PIÈGE EN TÊTE DE FICHIER, ET RIEN NE LE SURVEILLAIT. Les contrôles
+    existants vont du catalogue vers les routes — « cette entrée mène-t-elle quelque part ? ».
+    Le sens inverse manquait : une page ajoutée au code et absente du catalogue n'apparaît
+    nulle part, et personne ne cherche un écran dont il ignore l'existence.
+
+    ⚠️ CE N'EST PAS THÉORIQUE. `/planning` a été écrit, testé, committé et DÉPLOYÉ sans entrée
+    de menu le 04/10/2026. La page fonctionnait parfaitement et était introuvable.
+
+    Ajouter une page demande donc une ligne dans `CATALOGUE` — ou, si elle n'a rien à y faire,
+    une ligne dans `HORS_MENU` ci-dessus, avec sa raison.
+    """
+    import app as flask_app
+    import menu as m
+
+    connus = {e["chemin"] for e in m.CATALOGUE} | set(HORS_MENU)
+    orphelines = sorted(
+        str(r.rule) for r in flask_app.app.url_map.iter_rules()
+        if "GET" in (r.methods or set())
+        and not str(r.rule).startswith(("/api/", "/static"))
+        and str(r.rule) not in connus)
+
+    assert not orphelines, (
+        "ces pages existent et ne sont dans aucun menu — elles sont introuvables : "
+        + ", ".join(orphelines)
+        + ". Ajoute-les à CATALOGUE, ou à HORS_MENU avec la raison.")
+
+
+def test_le_garde_ne_couvre_pas_les_api():
+    """Une route d'API n'est pas une page : l'exiger au menu rendrait le contrôle inutilisable."""
+    import app as flask_app
+    api = [str(r.rule) for r in flask_app.app.url_map.iter_rules()
+           if str(r.rule).startswith("/api/")]
+    assert len(api) > 20, "le filtre des API ne trouve plus rien — le contrôle ci-dessus ment"
