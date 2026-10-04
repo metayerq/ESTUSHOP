@@ -287,15 +287,41 @@ def _fetch_balance():
 
 
 def calc_stats(docs):
+    """
+    Le chiffre d'affaires de la période, et la vente moyenne.
+
+    ⚠️ DEUX QUESTIONS, DEUX BASES, ET IL FAUT LES TENIR SÉPARÉES.
+
+    Le CA est NET des avoirs : c'est l'argent réellement encaissé, et un remboursement le
+    diminue. Le TICKET MOYEN, lui, répond à « combien dépense un client » : il se calcule sur
+    les ventes SEULES, des deux côtés de la division.
+
+    ⚠️ MÉLANGER LES DEUX DONNAIT UN CHIFFRE QUE RIEN NE DÉCRIT. Le numérateur était net des
+    avoirs et le dénominateur les excluait : dix ventes à 5 € et un remboursement de 20 €
+    affichaient un ticket de 3,00 €, alors qu'aucune vente de la journée n'avait changé. Le
+    remboursement déformait une moyenne à laquelle il n'appartient pas.
+
+    ⚠️ CE QUI RESTE, ET QUE CECI NE CORRIGE PAS : la vente REMBOURSÉE, elle, compte encore. Un
+    test suivi de son avoir laisse un ticket à zéro euro de recette dans la moyenne. Les lier
+    demanderait que l'avoir désigne sa vente d'origine, ce que ces documents ne portent pas ici.
+    """
     ca_ttc = sum(float(d.get("amount_gross", 0)) for d in docs)   # NC négatives → net
     ca_ht  = sum(float(d.get("amount_net",   0)) for d in docs)
-    nb     = sum(1 for d in docs if not d.get("_refund"))         # avoirs ≠ ventes
+
+    ventes = [d for d in docs if not d.get("_refund")]
+    nb     = len(ventes)
+    ventes_ttc = sum(float(d.get("amount_gross", 0)) for d in ventes)
+    ventes_ht  = sum(float(d.get("amount_net",   0)) for d in ventes)
+
     return {
-        "ca":         round(ca_ttc, 2),   # TTC net — affiché en principal
+        "ca":         round(ca_ttc, 2),   # TTC net des avoirs — affiché en principal
         "ca_ht":      round(ca_ht, 2),
         "nb":         nb,
-        "ticket":     round(ca_ttc / nb, 2) if nb else 0.0,   # TTC
-        "ticket_ht":  round(ca_ht  / nb, 2) if nb else 0.0,   # HT
+        # ⚠️ `ticket × nb` NE REDONNE PLUS `ca`, ET C'EST VOULU. Le premier décrit les ventes,
+        # le second l'encaissement : seuls les avoirs les séparent, et c'est justement ce
+        # qu'on voulait sortir de la moyenne.
+        "ticket":     round(ventes_ttc / nb, 2) if nb else 0.0,   # TTC, ventes seules
+        "ticket_ht":  round(ventes_ht  / nb, 2) if nb else 0.0,   # HT,  ventes seules
     }
 
 
