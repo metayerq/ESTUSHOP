@@ -666,7 +666,7 @@ CAS = {
             "TROIS-ONGLETS", "COMPTEUR-DIT-LE-RETARD", "FIXES-SANS-LES-VARIABLES",
             "RESUME-DIT-LA-COMPOSITION", "RESUME-BIEN-NOMME", "ONGLET-BASCULE", "DATES-EN-CLAIR", "RETARD-EN-JOURS", "PAS-DE-LOYER-ICI",
             "PAS-DE-CHAMP-RAPIDE", "COUVERTURE-DITE", "DEUX-DATES",
-            "DEBUT-AU-LENDEMAIN", "MENSUEL-ANNONCE", "SANS-FIN-RIEN-NEST-ENVOYE", "REFUS-DIT-LES-DATES",
+            "DEBUT-AU-LENDEMAIN", "MENSUEL-ANNONCE", "SAISIE-NON-ECRASEE", "SANS-FIN-RIEN-NEST-ENVOYE", "REFUS-DIT-LES-DATES",
             "PERIODE-ENVOYEE",
             "VARIABLES-HORS-DES-FIXES", "COLONNES-ORDONNEES", "UN-POINT-SANS-GRAPHE",
             "GRAPHE-ANNONCE", "FENETRE-OUVRE", "CORRECTION-ANNONCEE",
@@ -687,7 +687,7 @@ CAS = {
             "ONGLET-MANQUANT", "COMPTEUR-MUET", "FIXES-MELANGEES", "ONGLET-FIGE",
             "RESUME-TROMPEUR", "RESUME-MAL-NOMME", "poste(s)", "employee(s)",
             "DATES-EN-CODE", "RETARD-EN-MOIS", "LOYER-EN-DOUBLE", "CHAMP-RAPIDE-SURVIVANT",
-            "COUVERTURE-TUE", "UNE-SEULE-DATE", "DEBUT-AILLEURS", "MENSUEL-TU", "SANS-FIN-ENVOYE-QUAND-MEME", "REFUS-DATES-MUET", "PERIODE-PERDUE",
+            "COUVERTURE-TUE", "UNE-SEULE-DATE", "DEBUT-AILLEURS", "MENSUEL-TU", "SAISIE-ECRASEE", "SANS-FIN-ENVOYE-QUAND-MEME", "REFUS-DATES-MUET", "PERIODE-PERDUE",
             # ⚠️ PAS « GRAPHE-SUR-UN-POINT » : c'était une sous-chaîne du marqueur
             # attendu, donc le contrôle rougissait sur un rendu correct. Deuxième
             # fois de la session — un marqueur interdit ne doit jamais être contenu
@@ -779,6 +779,7 @@ CAS = {
   /* ⚠️ L'ÉCRAN CHIFFRE LE COÛT MENSUEL AVANT D'ENREGISTRER. C'est lui qui entrera dans le
      point mort, et c'est en le voyant qu'on sait si on s'est trompé de case. */
   E('fact-fin').value = '2026-10-30';
+  E('fact-fin').dispatchEvent(new Event('change', {bubbles:true}));
   E('fact-montant').value = '176.14';
   E('fact-montant').dispatchEvent(new Event('input', {bubbles:true}));
   var ap = E('fact-avis').textContent.replace(/\s+/g,' ');
@@ -786,6 +787,14 @@ CAS = {
         ? 'MENSUEL-ANNONCE' : 'MENSUEL-TU ' + ap.slice(0,80));
   /* ⚠️ RESAISIR UNE PÉRIODE DÉJÀ CONNUE N'EST PAS UNE ERREUR : la fenêtre le dit et change
      de verbe. La facture du bouchon commence le 1er août. */
+  /* ⚠️ UNE DATE TAPÉE N'EST PAS RÉÉCRITE. Le rythme propose tant qu'on n'a rien saisi ; dès
+     qu'on a corrigé la fin à la main, elle est à nous. Une date qu'on vient de taper et que
+     l'écran remplace tout seul, c'est la saisie qu'on cesse de relire. */
+  E('fact-mois').value = '2026-09-02';
+  E('fact-mois').dispatchEvent(new Event('change', {bubbles:true}));
+  trace(E('fact-fin').value === '2026-10-30'
+        ? 'SAISIE-NON-ECRASEE' : 'SAISIE-ECRASEE ' + E('fact-fin').value);
+
   E('fact-mois').value = '2026-08-01';
   E('fact-mois').dispatchEvent(new Event('change', {bubbles:true}));
   var av = E('fact-avis').textContent.replace(/\s+/g,' ');

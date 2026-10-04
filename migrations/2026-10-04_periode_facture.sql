@@ -33,3 +33,10 @@ select name,
   from charges_fixes
  where mode = 'facture'
  order by name, periode_debut;
+
+-- ── Le rythme de facturation ───────────────────────────────────────────────────────────────
+--
+-- ⚠️ IL NE DÉCIDE RIEN DU CALCUL. Il sert uniquement à PROPOSER la date de fin dans la fenêtre
+-- de saisie, pour ne pas retaper une date connue d'avance. Ce qui est stocké et ce qui compte
+-- reste la période imprimée sur la facture, que l'écran laisse corriger.
+alter table charges_fixes add column if not exists rythme text;

@@ -288,6 +288,32 @@ def bornes_dune_facture(lignes, nom, debut):
     return debut, fin, a_cloturer
 
 
+RYTHMES = {"mensuel", "bimestriel"}
+
+
+def fin_proposee(debut, rythme):
+    """
+    La fin de période à proposer pour une facture qui commence le `debut`.
+
+    ⚠️ C'EST UNE PROPOSITION, PAS UNE RÈGLE DE CALCUL. Le rythme ne sert qu'à éviter de retaper
+    une date qu'on connaît neuf fois sur dix ; ce qui est stocké et ce qui compte reste la
+    période réellement imprimée sur la facture, que l'écran laisse corriger. Confondre les deux
+    rouvrirait la porte qu'on vient de fermer : un rythme déclaré « mensuel » appliqué à une
+    facture de 60 jours redonnerait le montant doublé.
+
+      · mensuel     → le dernier jour du mois du début ;
+      · bimestriel  → soixante jours, bornes comprises. L'EPAL du 21/07 finit le 18/09, ce qui
+                      est exactement `debut + 59`.
+
+    Renvoie `None` si le rythme est inconnu : on ne propose rien plutôt que n'importe quoi.
+    """
+    if rythme == "mensuel":
+        return _fin_de_mois(mois_de(debut))
+    if rythme == "bimestriel":
+        return debut + timedelta(59)
+    return None
+
+
 def couverture(lignes, nom, aujourdhui):
     """
     Jusqu'à quel jour cette charge est MESURÉE, et combien de jours restent à facturer.

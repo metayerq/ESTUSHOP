@@ -465,3 +465,76 @@ def test_la_couverture_de_leau_ignore_les_factures_delectricite():
             "periode_fin": "2026-10-03"}
     c = ch.couverture([EPAL, elec], "Eau", date(2026, 10, 4))
     assert c["jusqua"] == date(2026, 9, 18) and c["jours"] == 16
+
+
+# ── Le rythme : une proposition, pas une règle de calcul ────────────────────────────────────
+#
+# ⚠️ LA DISTINCTION EST TOUT. Le rythme évite de retaper une date connue d'avance ; il ne décide
+# RIEN du calcul. Ce qui est stocké reste la période imprimée sur la facture. Les confondre
+# rouvrirait la porte qu'on vient de fermer : « mensuel » appliqué à une facture de 60 jours
+# redonnerait le montant doublé dans le point mort.
+
+def test_le_rythme_mensuel_propose_la_fin_du_mois():
+    assert ch.fin_proposee(date(2026, 10, 1), "mensuel") == date(2026, 10, 31)
+    assert ch.fin_proposee(date(2026, 2, 1), "mensuel") == date(2026, 2, 28)
+
+
+def test_un_debut_en_cours_de_mois_propose_quand_meme_la_fin_de_ce_mois():
+    assert ch.fin_proposee(date(2026, 10, 12), "mensuel") == date(2026, 10, 31)
+
+
+def test_le_rythme_bimestriel_propose_soixante_jours():
+    """⚠️ MESURÉ SUR LA VRAIE FACTURE EPAL : du 21/07 au 18/09, soit `debut + 59`."""
+    assert ch.fin_proposee(date(2026, 7, 21), "bimestriel") == date(2026, 9, 18)
+    d, f = date(2026, 7, 21), ch.fin_proposee(date(2026, 7, 21), "bimestriel")
+    assert (f - d).days + 1 == 60
+
+
+def test_sans_rythme_on_ne_propose_rien():
+    """On ne devine pas : une proposition fausse se fait valider sans qu'on la relise."""
+    assert ch.fin_proposee(date(2026, 10, 1), None) is None
+    assert ch.fin_proposee(date(2026, 10, 1), "trimestriel") is None
+
+
+# ══ LA RÈGLE DE PROPOSITION EXISTE EN DEUX EXEMPLAIRES ══════════════════════════════════════
+#
+# ⚠️ ET C'EST DÉLIBÉRÉ : la fenêtre doit proposer la date sans aller-retour serveur. Mais deux
+# copies d'une règle, c'est une règle dont on corrige un exemplaire sur deux — le dépôt porte
+# déjà cette garde pour `VERSIONNE` / `VER_CHAMPS`. On compare donc les deux sur une table de
+# dates, pas sur une relecture.
+
+def test_LES_DEUX_COPIES_DE_LA_PROPOSITION_SACCORDENT(tmp_path):
+    import json
+    import os
+    import re
+    import shutil
+    import subprocess
+
+    if not shutil.which("node"):
+        pytest.skip("node absent — vérifié en local et à la revue")
+
+    racine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    gabarit = open(os.path.join(racine, "templates", "charges.html"), encoding="utf-8").read()
+    m = re.search(r"function finProposee\(debut, rythme\) \{.*?\n\}", gabarit, re.S)
+    assert m, "`finProposee` est introuvable dans le gabarit — la garde ne garde plus rien"
+
+    cas = [(date(a, mo, j), r)
+           for a, mo, j in [(2026, 1, 1), (2026, 2, 1), (2026, 2, 15), (2024, 2, 1),
+                            (2026, 7, 21), (2026, 10, 31), (2026, 12, 15), (2026, 12, 31)]
+           for r in ("mensuel", "bimestriel", "libre")]
+    prog = m.group(0) + "\nconsole.log(JSON.stringify(%s.map(function(c){\n" % json.dumps(
+        [[d.isoformat(), r] for d, r in cas]) + "  return finProposee(c[0], c[1]) || null; })));"
+    chemin = tmp_path / "prop.js"
+    chemin.write_text(prog, encoding="utf-8")
+    r = subprocess.run(["node", str(chemin)], capture_output=True, text=True, timeout=25)
+    assert r.returncode == 0, r.stderr[-800:]
+    cote_js = json.loads(r.stdout)
+
+    cote_py = [(ch.fin_proposee(d, ry).isoformat() if ch.fin_proposee(d, ry) else None)
+               for d, ry in cas]
+    ecarts = [(cas[i][0].isoformat(), cas[i][1], cote_py[i], cote_js[i])
+              for i in range(len(cas)) if cote_py[i] != cote_js[i]]
+    assert not ecarts, f"python et javascript ne proposent pas la même date : {ecarts}"
+    # ⚠️ ET LA TABLE DOIT MORDRE : si les deux côtés renvoyaient None partout, l'égalité
+    # tiendrait sans rien prouver.
+    assert sum(1 for v in cote_py if v) >= 16, "la table n'exerce pas les deux rythmes"

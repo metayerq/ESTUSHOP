@@ -230,6 +230,8 @@ select.field-input { cursor:pointer; }
 .var-barres > button.alerte::after { content:""; position:absolute; top:-8px; left:50%;
   transform:translateX(-50%); width:5px; height:5px; border-radius:50%;
   background:var(--db-amber); }
+.var-rythme { margin-top:14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.var-rythme .db-champ { width:auto; padding:5px 8px; font-size:12.5px; }
 .var-stats { margin-top:9px; font-size:11.5px; color:var(--db-muted);
   font-variant-numeric:tabular-nums; }
 .var-stats b { color:var(--db-ink); font-weight:600; }
@@ -583,7 +585,8 @@ select.field-input { cursor:pointer; }
       </div>
       <div>
         <div class="db-l">Dernier jour facturé *</div>
-        <input class="db-champ" id="fact-fin" type="date" onchange="majFacture()">
+        <input class="db-champ" id="fact-fin" type="date"
+               onchange="this.dataset.saisi = '1'; majFacture()">
       </div>
       <div>
         <div class="db-l">Montant (€) *</div>
@@ -840,6 +843,41 @@ function serieFactures(fs) {
   return out;
 }
 
+/* ⚠️ MÊME RÈGLE QUE `fin_proposee` DANS `charges.py`, ET UN CONTRÔLE LES COMPARE SUR UNE TABLE
+ * DE DATES. Elle doit vivre ici pour que la fenêtre propose sans aller-retour serveur ; deux
+ * copies d'une règle, c'est une règle dont on corrige un exemplaire sur deux.
+ *
+ * ⚠️ ET CE N'EST QU'UNE PROPOSITION. Le rythme ne décide rien du calcul : ce qui est stocké
+ * reste la période imprimée sur la facture, que ce champ laisse corriger. Les confondre
+ * rouvrirait la porte qu'on vient de fermer — « mensuel » appliqué de force à une facture de
+ * 60 jours redonnerait le montant doublé dans le point mort. */
+function finProposee(debut, rythme) {
+  if (!debut) return '';
+  const [a, m, j] = debut.split('-').map(Number);
+  if (rythme === 'mensuel') {
+    return new Date(Date.UTC(a, m, 0)).toISOString().slice(0, 10);
+  }
+  if (rythme === 'bimestriel') {
+    const d = new Date(Date.UTC(a, m - 1, j));
+    d.setUTCDate(d.getUTCDate() + 59);
+    return d.toISOString().slice(0, 10);
+  }
+  return '';
+}
+
+const rythmeDe = (nom) => (chargesData.find((c) => c.name === nom && c.mode === 'facture')
+                           || {}).rythme || '';
+
+async function majRythme(nom, r) {
+  const rep = await fetch('/api/charges/rythme', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: nom, rythme: r }),
+  });
+  const d = await rep.json();
+  if (d.ok) { showToast('Rythme enregistré'); loadAll(); }
+  else showToast('Error: ' + (d.error || 'refus sans explication du serveur'));
+}
+
 /* Le survol réécrit le GRAND chiffre de la carte au lieu d'ouvrir une bulle : l'œil est déjà
  * là, et une infobulle du navigateur arrive avec une seconde de retard et sa propre police. */
 function survolBarre(el) {
@@ -915,6 +953,7 @@ function renderVariables() {
               ? `<span class="db-badge flat">${plurCh(jours, 'jour estimé', 'jours estimés')}</span>`
               : '<span class="db-badge up">à jour</span>'));
 
+    const rythme = rythmeDe(nom);
     const taux = derniere ? tauxJour(derniere) : null;
     /* ⚠️ LE GRAND CHIFFRE RESTE LE MONTANT PAYÉ, et son équivalent mensuel est dit juste en
      * dessous. L'un est ce qu'on a sorti de la banque, l'autre est ce qui entre dans le point
@@ -1011,6 +1050,16 @@ function renderVariables() {
       <div class="var-montant">${derniere ? fmt(derniere.amount) : '—'}</div>
       <div class="db-s var-sous">${sous}</div>
       ${graphe}${suite}
+      <div class="var-rythme">
+        <label class="db-s" for="ry-${escAttr(nom)}">Facturé</label>
+        <select class="db-champ" id="ry-${escAttr(nom)}"
+                onchange="majRythme('${escAttr(nom)}', this.value)">
+          <option value="mensuel"${rythme === 'mensuel' ? ' selected' : ''}>tous les mois</option>
+          <option value="bimestriel"${rythme === 'bimestriel' ? ' selected' : ''}>tous les 2 mois</option>
+          <option value=""${rythme ? '' : ' selected'}>à période variable</option>
+        </select>
+        <span class="db-s">— sert à proposer la date de fin, jamais à l'imposer.</span>
+      </div>
       <div style="margin-top:14px">
         <button class="db-btn fort" onclick="ouvrirFacture('${escAttr(nom)}')">+ Facture</button>
         <button class="db-btn" style="margin-left:6px"
@@ -1054,8 +1103,10 @@ function ouvrirFacture(nom, mois) {
   const couv = COUVERTURE[nom || noms[0]] || {};
   document.getElementById('fact-mois').value =
     mois ? String(mois).slice(0, 10) : String(couv.debut_suivant || AUJOURDHUI).slice(0, 10);
-  document.getElementById('fact-fin').value = '';
+  document.getElementById('fact-fin').value =
+    finProposee(document.getElementById('fact-mois').value, rythmeDe(nom || noms[0]));
   document.getElementById('fact-montant').value = '';
+  delete document.getElementById('fact-fin').dataset.saisi;
   majFacture();
   document.getElementById('fact-modal').classList.add('open');
   document.getElementById('fact-montant').focus();
@@ -1067,7 +1118,12 @@ function fermerFacture() {
 function majFacture() {
   const nom = document.getElementById('fact-nom').value;
   const debut = document.getElementById('fact-mois').value;
-  const fin = document.getElementById('fact-fin').value;
+  /* ⚠️ LA PROPOSITION NE REMPLACE JAMAIS UNE SAISIE. Changer le début repropose une fin tant
+   * qu'on n'y a pas touché ; dès qu'on l'a corrigée à la main, elle est à nous. Une date qu'on
+   * vient de taper et que l'écran réécrit tout seul, c'est la saisie qu'on cesse de relire. */
+  const champFin = document.getElementById('fact-fin');
+  if (!champFin.dataset.saisi) champFin.value = finProposee(debut, rythmeDe(nom));
+  const fin = champFin.value;
   const avis = document.getElementById('fact-avis');
   const ok = document.getElementById('fact-ok');
   const dejaLa = facturesDe(nom).find((f) => debutDe(f) === debut);

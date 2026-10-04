@@ -30,8 +30,21 @@ LOYER = {"id": "c9", "name": "Loyer", "mode": "stable", "mois": None, "amount": 
 @pytest.fixture
 def base(monkeypatch):
     etat = {"lignes": [dict(ELEC_SEPT), dict(LOYER)], "ecrits": []}
-    monkeypatch.setattr(flask_app, "_supa_get", lambda t, p=None:
-                        list(etat["lignes"]) if t == "charges_fixes" else [])
+    # ⚠️ LE BOUCHON HONORE LE FILTRE `name=eq.`. Sans lui, il renvoyait TOUTES les lignes quelle
+    # que soit la charge demandée : une route qui cherche « Gaz » trouvait l'électricité, et le
+    # refus « aucune charge nommée » ne pouvait pas être éprouvé. Un bouchon plus permissif que
+    # la base laisse passer exactement les fautes qu'il devait attraper.
+    def _lire(t, params=None):
+        if t != "charges_fixes":
+            return []
+        lignes = list(etat["lignes"])
+        filtre = (params or {}).get("name") or ""
+        if filtre.startswith("eq."):
+            cherche = filtre[3:]
+            lignes = [l for l in lignes if str(l.get("name") or "") == cherche]
+        return lignes
+
+    monkeypatch.setattr(flask_app, "_supa_get", _lire)
     monkeypatch.setattr(flask_app, "_supa_patch",
                         lambda t, f, d, dire_combien=False:
                             (etat["ecrits"].append(("patch", f, d)), (True, None))[1])
@@ -431,3 +444,55 @@ def test_UNE_FACTURE_QUI_COUVRE_UN_MOIS_CIVIL_SE_SAISIT_COMME_LES_AUTRES(base):
     assert r.get_json()["ok"] is True
     ins = [e[1] for e in base["ecrits"] if e[0] == "insert"][0]
     assert ins["periode_debut"] == "2026-10-01" and ins["periode_fin"] == "2026-10-31"
+
+
+# ── Le rythme de facturation ────────────────────────────────────────────────────────────────
+
+def rythmer(base, nom, rythme):
+    return base["client"].post("/api/charges/rythme", json={"name": nom, "rythme": rythme})
+
+
+def test_LE_RYTHME_SAPPLIQUE_A_TOUTES_LES_LIGNES_DU_MEME_NOM(base):
+    """Une charge a un rythme, pas chacune de ses lignes datées."""
+    base["lignes"] = [dict(ELEC_SEPT), dict(ELEC_SEPT, id="c5", mois="2026-08-01"), dict(LOYER)]
+    assert rythmer(base, "Électricité", "mensuel").get_json()["ok"] is True
+    patchs = [e for e in base["ecrits"] if e[0] == "patch"]
+    assert len(patchs) == 1 and patchs[0][1] == {"name": "eq.Électricité"}, base["ecrits"]
+    assert patchs[0][2] == {"rythme": "mensuel"}
+
+
+def test_UN_RYTHME_INCONNU_EST_REFUSE(base):
+    """⚠️ SANS CE CONTRÔLE, N'IMPORTE QUELLE CHAÎNE S'ÉCRIRAIT et ne proposerait jamais rien."""
+    d = rythmer(base, "Électricité", "trimestriel").get_json()
+    assert d["ok"] is False and "inconnu" in d["error"]
+    assert base["ecrits"] == []
+
+
+def test_ON_PEUT_RETIRER_LE_RYTHME(base):
+    """« Libre » est un état, pas une absence de choix : il s'écrit."""
+    assert rythmer(base, "Électricité", "").get_json()["ok"] is True
+    assert any(e[0] == "patch" and e[2] == {"rythme": None} for e in base["ecrits"])
+
+
+def test_LE_RYTHME_DUNE_CHARGE_INCONNUE_EST_REFUSE(base):
+    r = rythmer(base, "Gaz", "mensuel")
+    assert r.status_code == 404
+    assert base["ecrits"] == []
+
+
+def test_LE_RYTHME_EST_JOURNALISE(base):
+    rythmer(base, "Électricité", "bimestriel")
+    assert any(e[0] == "journal" for e in base["ecrits"])
+
+
+def test_LE_RYTHME_NE_CHANGE_RIEN_A_CE_QUI_EST_ENREGISTRE(base):
+    """
+    ⚠️ LE CONTRÔLE QUI COMPTE. Le rythme propose une date, il n'en impose aucune. Déclarer
+    « mensuel » puis saisir une facture de 60 jours doit enregistrer 60 jours — sinon le rythme
+    redeviendrait une règle de calcul, et le montant doublerait dans le point mort.
+    """
+    base["lignes"] = [dict(ELEC_SEPT, rythme="mensuel"), dict(LOYER)]
+    r = poser_periode(base, "2026-07-21", "2026-09-18", 176.14, nom="Électricité")
+    assert r.get_json()["ok"] is True
+    ins = [e[1] for e in base["ecrits"] if e[0] == "insert"][0]
+    assert ins["periode_debut"] == "2026-07-21" and ins["periode_fin"] == "2026-09-18"

@@ -3998,6 +3998,42 @@ def api_charge_mode():
     return jsonify({"ok": ok, "error": err})
 
 
+@app.route("/api/charges/rythme", methods=["POST"])
+def api_charge_rythme():
+    """
+    Le rythme de facturation d'une charge : mensuel, bimestriel, ou rien.
+
+    ⚠️ IL NE DÉCIDE RIEN DU CALCUL. Il sert uniquement à proposer la date de fin dans la fenêtre
+    de saisie, pour ne pas retaper une date connue d'avance. Ce qui est stocké et ce qui compte
+    reste la période imprimée sur la facture, que l'écran laisse corriger. Confondre les deux
+    rouvrirait la porte qu'on vient de fermer : un rythme « mensuel » appliqué de force à une
+    facture de 60 jours redonnerait le montant doublé dans le point mort.
+
+    ⚠️ ET IL S'APPLIQUE À TOUTES LES LIGNES DU MÊME NOM, comme le mode : une charge a un rythme,
+    pas chacune de ses lignes datées.
+    """
+    if _current_role() != "admin":
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    data = request.get_json(silent=True) or {}
+    nom = (data.get("name") or "").strip()
+    rythme = (data.get("rythme") or "").strip() or None
+    if not nom:
+        return jsonify({"ok": False, "error": "charge obligatoire"}), 400
+    if rythme is not None and rythme not in _ch.RYTHMES:
+        return jsonify({"ok": False, "error": f"rythme inconnu : {rythme}"}), 400
+
+    lignes = _supa_get("charges_fixes", {"name": f"eq.{nom}", "limit": 200})
+    if not lignes:
+        return jsonify({"ok": False, "error": f"aucune charge nommée « {nom} »"}), 404
+
+    ok, err = _supa_patch("charges_fixes", {"name": f"eq.{nom}"}, {"rythme": rythme})
+    if ok:
+        _journal_action(_current_role(), "charge-rythme", nom[:24],
+                        {"rythme": lignes[0].get("rythme")}, {"rythme": rythme},
+                        "rythme de facturation")
+    return jsonify({"ok": ok, "error": err})
+
+
 @app.route("/api/charges/facture", methods=["POST"])
 def api_charge_facture():
     """
