@@ -1,0 +1,180 @@
+# -*- coding: utf-8 -*-
+"""
+LES CHARGES SUR FACTURE — EAU ET ÉLECTRICITÉ.
+
+⚠️ CE FICHIER EXISTE POUR UN DÉFAUT QUE LA FRICTION CACHAIT. Quentin se plaignait de la lourdeur
+de saisie ; en lisant le code j'ai trouvé pire. `_date_effet` refuse toute date antérieure à
+demain — la règle qui empêche d'augmenter le loyer de juin depuis septembre, et elle est juste.
+Mais la facture d'électricité d'octobre arrive le 5 novembre : elle ne pouvait donc s'appliquer
+qu'à partir de novembre. OCTOBRE GARDAIT À JAMAIS LE MONTANT DE SEPTEMBRE, et novembre portait
+la facture d'octobre. Un décalage systématique, sur toutes les charges mesurées, que rien à
+l'écran n'annonçait.
+
+⚠️ UNE FACTURE N'EST PAS UN CHANGEMENT, C'EST UNE OBSERVATION. On ne retire pas la discipline
+des lignes datées — une facture en est l'expression la plus pure. On arrête seulement de
+demander une date d'effet et un motif dont la réponse est connue d'avance.
+"""
+from datetime import date
+
+import pytest
+
+import charges as ch
+
+
+def facture(mois, montant, nom="Électricité", debut=None, fin=None):
+    return {"name": nom, "mode": "facture", "mois": mois, "amount": montant,
+            "frequency": "monthly", "valid_from": debut or mois, "valid_to": fin,
+            "active": True}
+
+
+LOYER = {"name": "Loyer", "mode": "stable", "mois": None, "amount": 700.0,
+         "frequency": "monthly", "valid_from": None, "valid_to": None, "active": True}
+
+
+# ── Mesuré contre estimé ────────────────────────────────────────────────────────────────────
+
+def test_LE_MOIS_DE_LA_FACTURE_EST_MESURE():
+    total, estimees = ch.charges_mensuelles_detail([facture("2026-09-01", 77.10)],
+                                                   date(2026, 9, 15))
+    assert total == pytest.approx(77.10)
+    assert estimees == [], "le mois de la facture n'est pas une estimation"
+
+
+def test_LE_MOIS_SUIVANT_PORTE_LA_DERNIERE_FACTURE_ET_LE_DIT():
+    """
+    ⚠️ C'EST LE CŒUR DU MÉCANISME. Clore chaque ligne à la fin de son mois laisserait un TROU :
+    la charge disparaîtrait du point mort, qui paraîtrait plus bas qu'il n'est. Un trou est un
+    pire mensonge qu'une estimation annoncée.
+    """
+    total, estimees = ch.charges_mensuelles_detail([facture("2026-09-01", 77.10)],
+                                                   date(2026, 10, 15))
+    assert total == pytest.approx(77.10)
+    assert estimees == ["Électricité"]
+
+
+def test_une_charge_stable_nest_jamais_estimee():
+    """Le loyer ne s'estime pas : il vaut ce qu'il vaut tant qu'il n'a pas changé."""
+    _, estimees = ch.charges_mensuelles_detail([LOYER], date(2026, 10, 15))
+    assert estimees == []
+
+
+def test_la_facture_du_mois_chasse_lestimation():
+    lignes = [facture("2026-09-01", 77.10, fin="2026-10-01"),
+              facture("2026-10-01", 86.40)]
+    total, estimees = ch.charges_mensuelles_detail(lignes, date(2026, 10, 15))
+    assert total == pytest.approx(86.40)
+    assert estimees == []
+
+
+def test_LES_DEUX_CHARGES_COEXISTENT_SANS_SE_MELANGER():
+    lignes = [facture("2026-10-01", 86.40, nom="Électricité"),
+              facture("2026-09-01", 31.40, nom="Eau"), LOYER]
+    total, estimees = ch.charges_mensuelles_detail(lignes, date(2026, 10, 15))
+    assert total == pytest.approx(86.40 + 31.40 + 700.0)
+    assert estimees == ["Eau"], "seule l'eau manque ce mois-ci"
+
+
+def test_une_ligne_abimee_ne_fait_pas_tomber_le_total():
+    lignes = [facture("2026-10-01", "illisible"), LOYER]
+    total, _ = ch.charges_mensuelles_detail(lignes, date(2026, 10, 15))
+    assert total == pytest.approx(700.0)
+
+
+# ── Où poser une facture ────────────────────────────────────────────────────────────────────
+
+def test_une_facture_couvre_son_mois_pas_le_lendemain():
+    """⚠️ LE DÉFAUT D'ORIGINE. Reçue le 5 novembre, elle couvre quand même octobre."""
+    debut, fin, _ = ch.bornes_dune_facture([], "Électricité", date(2026, 10, 1))
+    assert debut == date(2026, 10, 1)
+    assert fin is None, "sans facture suivante, la ligne reste ouverte"
+
+
+def test_poser_une_facture_cloture_la_precedente():
+    lignes = [facture("2026-09-01", 77.10)]
+    _, _, a_cloturer = ch.bornes_dune_facture(lignes, "Électricité", date(2026, 10, 1))
+    assert a_cloturer is not None
+    ligne, quand = a_cloturer
+    assert ligne["mois"] == "2026-09-01" and quand == date(2026, 10, 1)
+
+
+def test_UNE_SAISIE_DANS_LE_DESORDRE_SE_PLACE_AU_BON_ENDROIT():
+    """
+    ⚠️ RATTRAPER DEUX MOIS, OU CORRIGER UN MOIS ANCIEN APRÈS AVOIR SAISI LES SUIVANTS, ne doit
+    pas écraser les voisines. On regarde les factures existantes ; on ne suppose jamais qu'on
+    est au bout de la série.
+    """
+    lignes = [facture("2026-09-01", 77.10), facture("2026-11-01", 92.00)]
+    debut, fin, a_cloturer = ch.bornes_dune_facture(lignes, "Électricité", date(2026, 10, 1))
+    assert debut == date(2026, 10, 1)
+    assert fin == date(2026, 11, 1), "octobre doit s'arrêter là où novembre commence"
+    assert a_cloturer[0]["mois"] == "2026-09-01"
+
+
+def test_une_facture_deja_close_au_bon_endroit_nest_pas_retouchee():
+    lignes = [facture("2026-09-01", 77.10, fin="2026-10-01")]
+    _, _, a_cloturer = ch.bornes_dune_facture(lignes, "Électricité", date(2026, 10, 1))
+    assert a_cloturer is None
+
+
+def test_les_factures_dune_autre_charge_ne_comptent_pas():
+    lignes = [facture("2026-09-01", 31.40, nom="Eau")]
+    _, fin, a_cloturer = ch.bornes_dune_facture(lignes, "Électricité", date(2026, 10, 1))
+    assert fin is None and a_cloturer is None
+
+
+# ── Ce qui manque ───────────────────────────────────────────────────────────────────────────
+
+def test_LE_MOIS_COURANT_NEST_JAMAIS_EN_ATTENTE():
+    """
+    ⚠️ IL N'EST PAS FINI. Crier sur un mois en cours apprend à ignorer le signal, et c'est
+    celui qui compte qu'on rate ensuite.
+    """
+    lignes = [facture("2026-09-01", 77.10)]
+    assert ch.mois_en_attente(lignes, "Électricité", date(2026, 10, 15)) == []
+
+
+def test_un_mois_clos_sans_facture_est_en_attente():
+    lignes = [facture("2026-09-01", 77.10)]
+    assert ch.mois_en_attente(lignes, "Électricité", date(2026, 11, 5)) == [date(2026, 10, 1)]
+
+
+def test_deux_mois_de_retard_sortent_du_plus_ancien_au_plus_recent():
+    """La saisie est séquentielle : le risque du rattrapage est d'inverser les montants."""
+    lignes = [facture("2026-08-01", 70.00)]
+    assert ch.mois_en_attente(lignes, "Électricité", date(2026, 11, 5)) == [
+        date(2026, 9, 1), date(2026, 10, 1)]
+
+
+def test_un_trou_au_milieu_est_signale():
+    lignes = [facture("2026-08-01", 70.00), facture("2026-10-01", 86.40)]
+    assert ch.mois_en_attente(lignes, "Électricité", date(2026, 11, 5)) == [date(2026, 9, 1)]
+
+
+def test_sans_aucune_facture_on_ne_reclame_rien():
+    """⚠️ ON NE SAIT PAS DEPUIS QUAND CETTE CHARGE EXISTE : réclamer serait inventer un retard."""
+    assert ch.mois_en_attente([], "Électricité", date(2026, 11, 5)) == []
+
+
+def test_UNE_CHARGE_RECONVERTIE_EN_STABLE_NEST_PAS_ESTIMEE():
+    """
+    ⚠️ LE `mois` PEUT SURVIVRE À LA RECONVERSION. Repasser une charge de « facture » à
+    « stable » laisse son dernier mois dans la ligne — rien ne l'efface. C'est le MODE qui
+    décide, jamais la présence d'un mois : sinon le loyer se mettrait à s'annoncer estimé.
+
+    Mon premier test utilisait `mois: None` et ne pouvait donc rien attraper.
+    """
+    reconvertie = {"name": "Électricité", "mode": "stable", "mois": "2026-09-01",
+                   "amount": 80.0, "frequency": "monthly", "valid_from": None,
+                   "valid_to": None, "active": True}
+    assert ch.facture_estimee(reconvertie, date(2026, 10, 15)) is False
+    _, estimees = ch.charges_mensuelles_detail([reconvertie], date(2026, 10, 15))
+    assert estimees == []
+
+
+def test_les_factures_dune_autre_charge_ne_decalent_pas_les_bornes():
+    """Eau et électricité vivent dans la même table : leurs séries ne doivent pas se croiser."""
+    lignes = [facture("2026-11-01", 33.00, nom="Eau"),
+              facture("2026-09-01", 77.10, nom="Électricité")]
+    debut, fin, a_cloturer = ch.bornes_dune_facture(lignes, "Électricité", date(2026, 10, 1))
+    assert fin is None, "une facture d'eau de novembre a borné l'électricité d'octobre"
+    assert a_cloturer[0]["name"] == "Électricité"

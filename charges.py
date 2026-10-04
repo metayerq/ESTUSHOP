@@ -74,6 +74,134 @@ def applicable(ligne, jour):
     return True
 
 
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# LES CHARGES SUR FACTURE — EAU ET ÉLECTRICITÉ
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ UNE FACTURE N'EST PAS UN CHANGEMENT, C'EST UNE OBSERVATION. La cérémonie — date d'effet au
+# plus tôt demain, motif écrit — existe pour forcer quelqu'un à ARTICULER un changement. Une
+# facture n'articule rien : son motif, c'est elle-même ; sa date, c'est son mois. On ne retire
+# donc pas la discipline des lignes datées — une facture en est l'expression la plus pure, une
+# ligne par mois, close par construction. On arrête seulement de poser deux questions dont la
+# réponse est connue d'avance.
+#
+# ⚠️ ET LE SYSTÈME MENTAIT D'UN MOIS, EN PERMANENCE. `_date_effet` refuse toute date antérieure
+# à demain : la facture d'électricité d'octobre, reçue le 5 novembre, ne pouvait s'appliquer
+# qu'à partir de novembre. Octobre gardait donc à jamais le montant de septembre. Ce n'était pas
+# une approximation — c'était un décalage systématique que rien n'annonçait.
+#
+# ⚠️ UNE LIGNE DE FACTURE S'OUVRE SANS BORNE HAUTE, et c'est le cœur du mécanisme. C'est la
+# facture du mois SUIVANT qui la clôt. Tant qu'elle n'est pas arrivée, le mois courant porte la
+# dernière facture connue — ESTIMÉE, et dite comme telle. L'alternative, clore chaque ligne à la
+# fin de son mois, laisserait un trou : la charge disparaîtrait du point mort, qui paraîtrait
+# plus bas qu'il n'est. Un trou est un pire mensonge qu'une estimation annoncée.
+
+
+def est_facture(ligne):
+    """Cette charge se saisit-elle facture par facture ?"""
+    return str((ligne or {}).get("mode") or "stable") == "facture"
+
+
+def mois_de(jour):
+    """Le premier du mois de `jour` — la clé d'une facture."""
+    return date(jour.year, jour.month, 1)
+
+
+def mois_suivant(mois):
+    return date(mois.year + 1, 1, 1) if mois.month == 12 else date(mois.year, mois.month + 1, 1)
+
+
+def facture_estimee(ligne, jour):
+    """
+    Cette ligne de facture couvre-t-elle un mois ANTÉRIEUR à celui qu'on calcule ?
+
+    ⚠️ C'EST LA SEULE DÉFINITION DE « ESTIMÉ », et elle doit rester unique. Une estimation n'est
+    pas un état qu'on pose à la main : c'est le constat qu'on impute à un mois la facture d'un
+    autre, faute de mieux. Un drapeau saisi séparément finirait par mentir.
+    """
+    if not est_facture(ligne):
+        return False
+    m = _jour(ligne.get("mois"))
+    return m is not None and m < mois_de(jour)
+
+
+def charges_mensuelles_detail(lignes, jour):
+    """
+    Le total mensuel en vigueur ce jour-là, ET ce qui dedans n'est qu'une estimation.
+
+    Renvoie `(total, estimees)` où `estimees` est la liste des noms dont la facture du mois
+    n'est pas encore arrivée. L'appelant doit pouvoir le DIRE : un point mort nourri d'une
+    estimation se lit autrement qu'un point mort mesuré, et le taire déplacerait le mensonge
+    au lieu de le supprimer.
+    """
+    total = 0.0
+    estimees = []
+    for c in lignes or []:
+        if not applicable(c, jour):
+            continue
+        try:
+            total += _mensuel(float(c.get("amount") or 0), c.get("frequency", "monthly"))
+        except (TypeError, ValueError):
+            continue    # une ligne abîmée ne doit pas faire tomber tout le calcul
+        if facture_estimee(c, jour):
+            estimees.append(str(c.get("name") or ""))
+    return total, estimees
+
+
+def bornes_dune_facture(lignes, nom, mois):
+    """
+    Où insérer la facture de `mois` pour `nom`, et quelle ligne clôturer.
+
+    Renvoie `(valid_from, valid_to, a_cloturer)` :
+      · `valid_from` est le 1er du mois — la facture couvre son mois, pas le lendemain ;
+      · `valid_to` est le 1er du mois de la facture SUIVANTE si elle existe déjà, sinon `None` ;
+      · `a_cloturer` est la ligne ouverte qui précède, et la date à laquelle la fermer.
+
+    ⚠️ LA SAISIE PEUT ARRIVER DANS LE DÉSORDRE. Rattraper deux mois de retard, ou corriger un
+    mois ancien après avoir saisi les suivants, doit poser la ligne au bon endroit sans écraser
+    ses voisines. On regarde donc les factures existantes, on ne suppose pas qu'on est au bout.
+    """
+    autres = sorted(
+        (f for f in (lignes or [])
+         if est_facture(f) and str(f.get("name") or "") == nom and _jour(f.get("mois"))
+         and _jour(f.get("mois")) != mois),
+        key=lambda f: _jour(f.get("mois")))
+
+    suivante = next((f for f in autres if _jour(f.get("mois")) > mois), None)
+    precedente = None
+    for f in autres:
+        if _jour(f.get("mois")) < mois:
+            precedente = f
+
+    fin = _jour(suivante.get("mois")) if suivante else None
+    a_cloturer = None
+    if precedente is not None and _jour(precedente.get("valid_to")) != mois:
+        a_cloturer = (precedente, mois)
+    return mois, fin, a_cloturer
+
+
+def mois_en_attente(lignes, nom, aujourdhui):
+    """
+    Les mois clos dont la facture manque, du plus ancien au plus récent.
+
+    ⚠️ LE MOIS COURANT N'EST JAMAIS EN ATTENTE. Il n'est pas fini : il n'y a rien à saisir, donc
+    rien à signaler. Crier sur un mois en cours apprend à ignorer le signal, et c'est celui qui
+    compte qu'on rate ensuite.
+    """
+    connus = {_jour(f.get("mois")) for f in (lignes or [])
+              if est_facture(f) and str(f.get("name") or "") == nom and _jour(f.get("mois"))}
+    if not connus:
+        return []
+    courant = mois_de(aujourdhui)
+    m = mois_suivant(min(connus))
+    manquants = []
+    while m < courant:
+        if m not in connus:
+            manquants.append(m)
+        m = mois_suivant(m)
+    return manquants
+
+
 def _mensuel(montant, frequence):
     """Ramène une charge à son équivalent mensuel."""
     if frequence == "quarterly":
