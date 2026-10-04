@@ -214,3 +214,64 @@ def test_un_shift_sans_date_est_ignore():
 def test_un_taux_illisible_ne_fait_pas_tomber_le_jour():
     casse = dict(EXTRA, hourly_rate="douze")
     assert ch.cout_shift(shift(), [casse]) == 0.0
+
+
+# ── Le diviseur, et la période ──────────────────────────────────────────────────────────────
+
+OUVERT = lambda j: j.weekday() in {0, 3, 4, 5, 6}    # lun, jeu, ven, sam, dim
+
+
+def test_le_diviseur_vient_du_calendrier_pas_dune_constante():
+    """
+    ⚠️ 21,25 ÉTAIT UNE SAISIE, PAS UNE MESURE. Le vrai compte oscille entre 20 et 23 selon le
+    mois — ±8 %, sur le diviseur de toute paie lissée et donc de tout le point mort.
+    """
+    assert ch.jours_ouverts_du_mois(date(2026, 10, 15), OUVERT) == 23
+    assert ch.jours_ouverts_du_mois(date(2027, 2, 15), OUVERT) == 20
+
+
+def test_decembre_ne_deborde_pas_sur_lannee_suivante():
+    """Le calcul du dernier jour du mois passe par janvier de l'année d'après."""
+    assert ch.jours_ouverts_du_mois(date(2026, 12, 15), OUVERT) == len(
+        ch.jours_ouverts_entre(date(2026, 12, 1), date(2026, 12, 31), OUVERT))
+
+
+def test_fevrier_bissextile_compte_son_29():
+    assert ch.jours_ouverts_du_mois(date(2028, 2, 10), OUVERT) == len(
+        ch.jours_ouverts_entre(date(2028, 2, 1), date(2028, 2, 29), OUVERT))
+
+
+def test_CHAQUE_JOUR_PORTE_LE_DIVISEUR_DE_SON_MOIS():
+    """
+    ⚠️ UNE PÉRIODE QUI ENJAMBE DEUX MOIS N'A PAS UN DIVISEUR UNIQUE. Octobre a 23 services,
+    février 20 : diviser tout par une moyenne ferait porter à l'un les charges de l'autre.
+    """
+    jours = [date(2026, 10, 30), date(2026, 11, 2)]
+    _, _, par_jour = ch.cout_periode_planning([], [BARISTA], [], jours, OUVERT, BASCULE)
+    oct_, nov = par_jour[date(2026, 10, 30)], par_jour[date(2026, 11, 2)]
+    assert oct_["personnel"] != nov["personnel"]
+    assert oct_["personnel"] == pytest.approx(
+        ch.cout_employe_mensuel(BARISTA) / ch.jours_ouverts_du_mois(date(2026, 10, 1), OUVERT))
+
+
+def test_le_detail_par_jour_est_rendu_pour_la_courbe():
+    """Sans lui, la ligne de point mort resterait horizontale sur un coût qui ne l'est plus."""
+    jours = [date(2026, 10, 2), date(2026, 10, 3)]
+    s = [shift(jour="2026-10-03")]
+    fixes, perso, par_jour = ch.cout_periode_planning([], [BARISTA, EXTRA], s, jours,
+                                                      OUVERT, BASCULE)
+    assert set(par_jour) == set(jours)
+    assert par_jour[date(2026, 10, 3)]["total"] > par_jour[date(2026, 10, 2)]["total"]
+    assert perso == pytest.approx(sum(v["personnel"] for v in par_jour.values()))
+    assert fixes == pytest.approx(sum(v["fixes"] for v in par_jour.values()))
+
+
+def test_une_periode_vide_ne_coute_rien_et_ne_tombe_pas():
+    assert ch.cout_periode_planning([], [BARISTA], [], [], OUVERT, BASCULE) == (0.0, 0.0, {})
+
+
+def test_un_mois_sans_aucune_ouverture_ne_divise_pas_par_zero():
+    ferme = lambda j: False
+    fixes, perso, par_jour = ch.cout_periode_planning(
+        [], [BARISTA], [], [date(2026, 10, 2)], ferme, BASCULE)
+    assert (fixes, perso, par_jour) == (0.0, 0.0, {})

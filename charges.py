@@ -268,6 +268,53 @@ def personnel_du_jour(employes, shifts, jour, jours_ouverts_mois, bascule=None):
     return total
 
 
+def jours_ouverts_du_mois(jour, est_ouvert):
+    """
+    Le nombre de jours réellement ouverts dans le mois de `jour`.
+
+    ⚠️ C'EST LE DIVISEUR DE TOUTE PAIE LISSÉE, ET IL ÉTAIT UNE CONSTANTE. `JOURS_OUVERTS_MOIS`
+    valait 21,25, saisi à la main depuis le business plan, alors que le calendrier d'ouverture
+    est connu et donne ~21,7. Deux réglages qui décrivent la même chose finissent toujours par
+    diverger — le fichier de config le disait déjà de lui-même.
+    """
+    premier = date(jour.year, jour.month, 1)
+    dernier = (date(jour.year + 1, 1, 1) if jour.month == 12
+               else date(jour.year, jour.month + 1, 1)) - timedelta(1)
+    return len(jours_ouverts_entre(premier, dernier, est_ouvert))
+
+
+def cout_periode_planning(charges, employes, shifts, jours_ouverts, est_ouvert, bascule):
+    """
+    Le coût d'une période, jour par jour, planning compris.
+
+    ⚠️ CHAQUE JOUR A SON PROPRE DIVISEUR. Une période qui enjambe deux mois n'a pas un nombre
+    de jours ouverts unique — février et mars n'en ont pas le même compte, et diviser tout par
+    une moyenne ferait porter à février des charges de mars.
+
+    Renvoie `(total_fixes, total_personnel, par_jour)` où `par_jour` donne, pour chaque date,
+    le coût du jour — c'est lui que la courbe du dashboard trace, et sans lui la ligne de point
+    mort resterait horizontale sur un coût qui ne l'est plus.
+    """
+    if not jours_ouverts:
+        return 0.0, 0.0, {}
+    fixes = perso = 0.0
+    par_jour = {}
+    ouverts_mois = {}
+    for j in jours_ouverts:
+        cle = (j.year, j.month)
+        if cle not in ouverts_mois:
+            ouverts_mois[cle] = jours_ouverts_du_mois(j, est_ouvert)
+        n = ouverts_mois[cle]
+        if not n:
+            continue
+        f = charges_mensuelles(charges, j) / n
+        p = personnel_du_jour(employes, shifts, j, n, bascule)
+        fixes += f
+        perso += p
+        par_jour[j] = {"fixes": f, "personnel": p, "total": f + p}
+    return fixes, perso, par_jour
+
+
 def jours_ouverts_entre(debut, fin, est_ouvert):
     """Les dates réellement ouvertes d'une période, bornes incluses."""
     out, j = [], debut
