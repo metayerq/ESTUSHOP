@@ -634,7 +634,7 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
     from datetime import date
     from config import (
         TVA_MOYENNE_BLENDED, AMORTISSEMENT_MOIS,
-        JOURS_OUVERTS_MOIS, count_open_days_raw, today_lisbon,
+        JOURS_OUVERTS_MOIS, count_open_days_raw, today_lisbon, PLANNING_CUTOVER,
     )
 
     # Jours d'ouverture effectifs dans la période.
@@ -665,9 +665,17 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
     try:
         charges_rows  = _supa_get_economics("charges_fixes", {})
         employee_rows = _supa_get_economics("employees",     {})
+        # ⚠️ ON NE RAPATRIE QUE LA FENÊTRE. Tout le planning à chaque appel du dashboard
+        # coûterait une liste qui grossit sans fin pour un chiffre qui ne regarde qu'un mois.
+        if from_date is not None and to_date is not None:
+            shift_rows = _supa_get_economics("shifts", {
+                "and": f"(day.gte.{from_date.isoformat()},day.lte.{to_date.isoformat()})"})
+        else:
+            shift_rows = []
     except Exception:
         charges_rows  = []
         employee_rows = []
+        shift_rows    = []
 
     # ── Le coût de la période, jour par jour ─────────────────────────────────
     #
@@ -685,9 +693,14 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         # qui sont ceux dont les charges s'appliquent encore.
         _ouverts = _ouverts[-open_days_override:] if open_days_override else []
 
+    _par_jour = {}
     if _ouverts:
-        total_fixes_periode, total_perso_periode = _ch.cout_periode(
-            charges_rows, employee_rows, _ouverts, JOURS_OUVERTS_MOIS)
+        # ⚠️ LE DIVISEUR VIENT DU CALENDRIER, PLUS D'UNE CONSTANTE. `JOURS_OUVERTS_MOIS` valait
+        # 21,25, saisi depuis le business plan ; le vrai compte oscille entre 20 (février) et
+        # 23 (octobre). C'est le diviseur de toute paie lissée, donc de tout le point mort.
+        _est_ouvert = lambda j: count_open_days_raw(j, j) == 1
+        total_fixes_periode, total_perso_periode, _par_jour = _ch.cout_periode_planning(
+            charges_rows, employee_rows, shift_rows, _ouverts, _est_ouvert, PLANNING_CUTOVER)
         # Le coût JOURNALIER affiché est la moyenne sur la période — il varie si un montant a
         # changé au milieu, et l'écran doit montrer ce qui a réellement été imputé.
         cout_fixe_jour = total_fixes_periode / len(_ouverts)
@@ -698,17 +711,26 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         # ⚠️ À L'HEURE DE LISBONNE. Vercel tourne en UTC : entre minuit et 1 h, `date.today()`
         # renvoie la veille, et la veille est peut-être de l'autre côté d'une hausse de loyer.
         _ref = to_date or today_lisbon()
-        cout_fixe_jour = _ch.charges_mensuelles(charges_rows, _ref) / JOURS_OUVERTS_MOIS
-        cout_perso_jour = _ch.personnel_mensuel(employee_rows, _ref) / JOURS_OUVERTS_MOIS
+        _n_mois = _ch.jours_ouverts_du_mois(
+            _ref, lambda j: count_open_days_raw(j, j) == 1) or JOURS_OUVERTS_MOIS
+        cout_fixe_jour = _ch.charges_mensuelles(charges_rows, _ref) / _n_mois
+        cout_perso_jour = _ch.personnel_mensuel(employee_rows, _ref) / _n_mois
 
-    total_charges_mois = (cout_fixe_jour + cout_perso_jour) * JOURS_OUVERTS_MOIS
+    _mois_ref = to_date or from_date or today_lisbon()
+    _jours_mois = _ch.jours_ouverts_du_mois(
+        _mois_ref, lambda j: count_open_days_raw(j, j) == 1) or JOURS_OUVERTS_MOIS
 
     # Source unique : Supabase. Pas de fallback BP — si vide/injoignable,
-    # charges = 0 et le front affiche un warning (charges_source).
-    charges_source = "supabase" if total_charges_mois > 0 else "indisponible"
+    # charges = 0 et le front affiche un avertissement (`charges_source`).
+    #
+    # ⚠️ C'EST UNE QUESTION DE PRÉSENCE, PAS UN MONTANT. Ce test passait par une variable
+    # nommée `total_charges_mois`, calculée avec un diviseur mensuel — un nombre que personne
+    # ne lit et qu'aucun test ne pouvait donc contredire. Un chiffre qui a l'air d'être une
+    # masse salariale et que rien ne vérifie finit par être cité comme s'il l'était.
+    charges_source = "supabase" if (cout_fixe_jour + cout_perso_jour) > 0 else "indisponible"
 
     cout_jour        = cout_fixe_jour + cout_perso_jour
-    amort_jour       = AMORTISSEMENT_MOIS / JOURS_OUVERTS_MOIS
+    amort_jour       = AMORTISSEMENT_MOIS / _jours_mois
 
     ca_ttc     = 0.0   # TTC  — affiché pour info
     ca_ht      = 0.0   # HT   — base des calculs de rentabilité
@@ -796,6 +818,13 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         seuil_ca     = round(seuil_ca_jour     * open_days, 2) if seuil_ca_jour     is not None else None  # HT
         seuil_ca_ttc = round(seuil_ca_jour_ttc * open_days, 2) if seuil_ca_jour_ttc is not None else None  # TTC
 
+    # Le point mort de CHAQUE jour : son propre coût, le taux de marge de la période.
+    _seuil_par_jour = {}
+    if seuil_margin_rate:
+        for _j, _d in (_par_jour or {}).items():
+            _seuil_par_jour[_j.isoformat()] = round(
+                _d["total"] / seuil_margin_rate * tva_factor, 2)
+
     # Marge brute HT — 100 % basée sur le COGS réel mesuré.
     # Taux réel mesuré sur le CA couvert, extrapolé au CA total.
     # is_estimated_margin = true si la couverture est partielle (extrapolation).
@@ -848,7 +877,16 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         "ebitda_ht":        ebitda_ht,
         # Seuil (TTC en principal — ce qu'on lit sur la caisse)
         "seuil_ca_ttc":     seuil_ca_ttc,
-        "seuil_ca_ttc_jour": round(seuil_ca_jour_ttc, 2) if seuil_ca_jour_ttc is not None else None,  # point mort / jour ouvré
+        "seuil_ca_ttc_jour": round(seuil_ca_jour_ttc, 2) if seuil_ca_jour_ttc is not None else None,  # point mort / jour ouvré (moyenne de la période)
+        # ⚠️ ET LE POINT MORT JOUR PAR JOUR. Tant que le coût était le même tous les jours, une
+        # moyenne suffisait et la ligne du graphe était horizontale — elle l'est restée alors
+        # que le coût ne l'est plus. Un samedi à deux extras et un lundi en solo n'ont pas le
+        # même seuil, et tracer la moyenne au-dessus des deux ferait croire que le lundi a
+        # manqué sa journée alors qu'il l'a payée.
+        #
+        # Le TAUX DE MARGE, lui, reste celui de la période : il se mesure sur le CA couvert et
+        # n'a pas de sens au jour le jour sur un seul service. Ce qui varie ici, c'est le coût.
+        "seuil_ca_ttc_par_jour": _seuil_par_jour,
         "seuil_ca_ht":      seuil_ca,       # HT gardé pour info
         "manque_seuil":     manque_seuil,   # en TTC
         "pct_seuil":        pct_seuil,      # basé sur TTC vs TTC

@@ -274,11 +274,30 @@ function renderCourbe(d) {
       spanGaps: false, order: 2,
     });
   }
-  if (seuilJour > 0) {
+  /* ⚠️ LE POINT MORT N'EST PLUS UNE LIGNE DROITE. Tant que le personnel coûtait la même chose
+   * tous les jours ouvrés, une horizontale disait vrai. Depuis le planning, un samedi à deux
+   * extras et un lundi en solo n'ont plus le même seuil : tracer la moyenne au-dessus des deux
+   * ferait croire que le lundi a manqué sa journée alors qu'il l'a payée, et que le samedi l'a
+   * atteinte alors qu'il lui manquait cent euros.
+   *
+   * La série vient du serveur (`seuil_ca_ttc_par_jour`), indexée par date. On retombe sur
+   * l'horizontale quand elle est absente — périodes sans bornes, anciennes réponses en cache. */
+  const parJour = (d.economics && d.economics.seuil_ca_ttc_par_jour) || null;
+  let serieSeuil = null;
+  if (parJour && Object.keys(parJour).length) {
+    serieSeuil = jours.map((x) => (x && parJour[x.date] != null) ? parJour[x.date] : null);
+    if (!serieSeuil.some((v) => v != null)) serieSeuil = null;
+  }
+  if (!serieSeuil && seuilJour > 0) serieSeuil = new Array(n).fill(seuilJour);
+
+  if (serieSeuil) {
     jeux.push({
-      label: 'Point mort / service', data: new Array(n).fill(seuilJour),
+      label: 'Point mort / service', data: serieSeuil,
       borderColor: j.ink, borderWidth: 1.5, borderDash: [2, 5], pointRadius: 0,
       pointHoverRadius: 0, fill: false, order: 3,
+      /* Un jour fermé n'a pas de seuil : on coupe le trait au lieu de l'interpoler par-dessus,
+       * ce qui dessinerait une pente entre deux services qu'aucune journée ne relie. */
+      spanGaps: false,
     });
   }
 

@@ -460,11 +460,51 @@ def test_un_jour_ferme_nest_pas_relie_au_suivant():
     café ferme mardi et mercredi : la courbe traverserait le creux comme s'il avait été mesuré.
     """
     r = _courbe(PAYLOAD)
-    # ⚠️ LA LIGNE DU POINT MORT N'A PAS DE `spanGaps` : c'est une constante, sans trou. Exiger
-    # la clé partout ferait échouer le test sur un jeu de données qui n'a pas le problème.
-    porteurs = [j for j in r["jeux"] if "spanGaps" in j and j["spanGaps"] is not None]
-    assert len(porteurs) == 2, "les deux séries mesurées ne portent pas la garde"
-    assert all(j["spanGaps"] is False for j in porteurs)
+    """
+    ⚠️ CE CONTRÔLE COMPTAIT LES SÉRIES, ET LE COMPTE A CHANGÉ LE 04/10/2026. Il affirmait que
+    la ligne du point mort « est une constante, sans trou » et exigeait donc exactement deux
+    porteurs. Depuis le planning, le point mort suit le coût du jour : il a des trous comme les
+    autres — les jours fermés — et il doit porter la même garde.
+
+    On n'exempte donc pas la troisième série : on remplace le COMPTE par l'INVARIANT. Toute
+    série qui contient un trou doit porter `spanGaps: false`. C'est plus fort qu'un nombre, et
+    ça ne se périme pas au prochain jeu de données.
+    """
+    assert len(r["jeux"]) >= 3, "les trois séries ne sont pas tracées"
+    for serie in r["jeux"]:
+        assert serie.get("spanGaps") is False, (
+            f"« {serie['label']} » relierait les deux bords d'un trou : "
+            "une pente qui n'a pas eu lieu")
+
+    # ⚠️ ET SUR UN JEU QUI A VRAIMENT UN TROU. Le jeu ci-dessus exprime la fermeture par une
+    # date ABSENTE, pas par un `null` : il ne prouve donc pas que la garde sert. Ici la
+    # comparaison est plus courte que la période, ce qui crée un vrai trou en fin de série.
+    court = {"daily": JOURS, "daily_comp": COMP[:1],
+             "economics": {"seuil_ca_ttc_jour": 287.0,
+                           "seuil_ca_ttc_par_jour": {"2026-09-18": 280.0,
+                                                     "2026-09-21": 310.0}}}
+    r2 = _courbe(court)
+    trous = [j for j in r2["jeux"] if any(v is None for v in j["data"])]
+    assert len(trous) >= 2, "ce jeu devrait porter des trous — comparaison courte, seuil partiel"
+    for serie in trous:
+        assert serie.get("spanGaps") is False, f"« {serie['label']} » comblerait son trou"
+
+
+def test_LE_POINT_MORT_S_ALIGNE_SUR_LA_DATE_PAS_SUR_LE_RANG():
+    """
+    ⚠️ LA COMPARAISON S'ALIGNE SUR LE RANG — c'est voulu, les deux fenêtres n'ont pas les mêmes
+    quantièmes. LE POINT MORT, LUI, APPARTIENT À UNE DATE : l'aligner sur le rang le décale
+    d'un cran à chaque jour fermé, et il irait annoncer à un lundi le seuil d'un samedi à deux
+    extras. Les deux séries se ressemblent, et la règle est l'inverse.
+    """
+    r = _courbe({"daily": JOURS, "daily_comp": [],
+                 "economics": {"seuil_ca_ttc_jour": 287.0,
+                               "seuil_ca_ttc_par_jour": {"2026-09-18": 280.0,
+                                                         "2026-09-21": 310.0}}})
+    seuil = [j for j in r["jeux"] if "mort" in j["label"]][0]
+    # JOURS = 18, 19, 21 ; le seuil n'est connu que pour le 18 et le 21.
+    assert seuil["data"] == [280.0, None, 310.0], (
+        "le seuil est aligné sur le rang : il annonce au 19 le chiffre du 21")
 
 
 def test_les_deux_series_sont_alignees_sur_le_rang_pas_sur_la_date():
