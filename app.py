@@ -365,7 +365,27 @@ def _comparaison(preset, from_date, to_date, today_real, is_single, n_days):
         comp_from, comp_to = from_date - timedelta(28), to_date - timedelta(28)
         comp_label = "vs les mêmes jours de semaine, 4 semaines plus tôt"
     else:
+        # ⚠️ CETTE BRANCHE ANNONÇAIT UNE COMPARAISON SANS JAMAIS POSER SES BORNES. Elle écrivait
+        # le libellé « vs les N jours précédents » et laissait `comp_from` à None : l'appelant
+        # recevait un intervalle vide avec une étiquette qui promettait le contraire, puis
+        # `_usable_comparison` levait un TypeError. Résultat : 500 sur « Dates… » et sur
+        # « Depuis l'ouverture » — les deux seules périodes qui tombent ici.
+        comp_to = from_date - timedelta(1)
+        comp_from = comp_to - timedelta(n_days - 1)
         comp_label = f"vs les {n_days} jours précédents"
+
+    # ⚠️ UN LIBELLÉ SANS BORNES EST UNE PROMESSE QUE PERSONNE NE TIENT : pas de bornes, pas de
+    # comparaison, et pas d'étiquette qui en annonce une.
+    #
+    # ⚠️ ET AUCUN TEST NE PEUT ATTEINDRE CE BLOC AUJOURD'HUI — je l'ai vérifié par mutation :
+    # chaque branche pose désormais les deux ensemble ou aucune. C'est un filet pour la branche
+    # qu'on ajoutera demain, pas une correction d'un cas vivant. Ce qui garantit vraiment la
+    # règle, c'est `test_DES_BORNES_SI_ET_SEULEMENT_SI_UN_LIBELLE`, qui l'exige sur TOUS les
+    # presets — y compris un preset inconnu.
+    if comp_from is None or comp_to is None:
+        comp_from = comp_to = None
+        comp_label = None
+        comp_is_sofar = False
 
     return comp_from, comp_to, comp_is_sofar, comp_label
 
@@ -848,6 +868,11 @@ def _usable_comparison(comp_from, comp_to, opening_iso=None):
     donc que la fenêtre ENTIÈRE soit postérieure à l'ouverture, sans quoi il n'y a pas de
     comparaison du tout. La règle de la maison : une fenêtre vide ne produit PAS de delta.
     """
+    # ⚠️ ABSENCE DE COMPARAISON N'EST PAS UNE ERREUR. Comparer `None` à une date levait un
+    # TypeError qui remontait en 500 : le tableau de bord entier disparaissait derrière une
+    # bannière rouge parce qu'il n'y avait pas de période antérieure à montrer.
+    if comp_from is None or comp_to is None:
+        return None, None, False
     ouverture = date.fromisoformat(opening_iso or OPENING_DAY)
     return comp_from, comp_to, (comp_from >= ouverture and comp_from <= comp_to)
 

@@ -312,3 +312,76 @@ def test_les_deux_comptes_de_lecran_viennent_de_la_meme_fenetre():
     code = re.sub(r"//[^\n]*", " ", code)
     assert "eco.open_days" in code, "la réponse ne compte pas les jours de la fenêtre calculée"
     assert "service" in code, "la réponse ne dit pas l'unité"
+
+
+# ══ LA PÉRIODE PERSONNALISÉE ════════════════════════════════════════════════════════════════
+#
+# ⚠️ « Dates… » ET « Depuis l'ouverture » RENVOYAIENT UN 500. Les deux tombent dans la même
+# branche de `_comparaison`, qui écrivait le libellé « vs les N jours précédents » et laissait
+# les bornes à `None`. `_usable_comparison` comparait alors `None` à une date, levait un
+# TypeError, et le tableau de bord entier disparaissait derrière une bannière rouge.
+#
+# ⚠️ ET AUCUN TEST NE POUVAIT LE DIRE. Les presets couverts — today, week, month — posent tous
+# leurs bornes ; la branche `else` n'était exercée par rien. Signalé par Quentin, pas par la
+# batterie.
+
+import app as _app
+from datetime import date as _date
+
+
+def _cmp(preset, debut, fin, aujourdhui=_date(2026, 10, 4)):
+    return _app._comparaison(preset, debut, fin, aujourdhui,
+                             debut == fin, (fin - debut).days + 1)
+
+
+def test_UNE_PERIODE_PERSONNALISEE_A_UNE_COMPARAISON():
+    debut, fin = _date(2026, 9, 1), _date(2026, 9, 30)
+    cf, ct, sofar, libelle = _cmp("custom", debut, fin)
+    assert cf is not None and ct is not None, "« Dates… » ne doit plus renvoyer un intervalle vide"
+    # Les 30 jours qui précèdent immédiatement, bornes incluses.
+    assert ct == _date(2026, 8, 31)
+    assert (ct - cf).days + 1 == 30
+    assert libelle == "vs les 30 jours précédents"
+
+
+def test_depuis_louverture_a_aussi_sa_comparaison():
+    cf, ct, _, _ = _cmp("sinceopen", _date(2026, 9, 1), _date(2026, 9, 30))
+    assert cf is not None and ct is not None
+
+
+def test_la_fenetre_comparee_a_la_meme_duree():
+    """Une fenêtre plus courte ferait lire une chute qui n'est qu'une différence de durée."""
+    for n in (1, 7, 30, 90):
+        debut = _date(2026, 9, 30) - _app.timedelta(n - 1)
+        cf, ct, _, _ = _cmp("custom", debut, _date(2026, 9, 30))
+        if debut == _date(2026, 9, 30):
+            continue   # un jour isolé suit la règle du même jour de semaine
+        assert (ct - cf).days + 1 == n, f"{n} jours comparés à {(ct - cf).days + 1}"
+
+
+@pytest.mark.parametrize("preset", ["today", "yesterday", "week", "lastweek", "services5",
+                                   "month", "custom", "sinceopen", "inconnu"])
+@pytest.mark.parametrize("duree", [1, 7, 30])
+def test_DES_BORNES_SI_ET_SEULEMENT_SI_UN_LIBELLE(preset, duree):
+    """
+    ⚠️ L'INVARIANT QUI AURAIT ATTRAPÉ LE BUG. Chaque branche de `_comparaison` était testée
+    séparément — sauf la dernière, que rien n'exerçait. En exigeant la règle sur TOUS les
+    presets, un preset neuf qui oublie ses bornes ne peut plus passer : une étiquette « vs les
+    N jours précédents » au-dessus d'un intervalle vide fait lever la route, et le tableau de
+    bord entier disparaît derrière une bannière rouge.
+
+    ⚠️ ET « AUCUNE COMPARAISON » RESTE PERMIS, à condition de se taire. Ce qui est interdit,
+    c'est de promettre sans fournir — ou de fournir sans le dire.
+    """
+    fin = _date(2026, 9, 30)
+    debut = fin - _app.timedelta(duree - 1)
+    cf, ct, _, libelle = _cmp(preset, debut, fin)
+    assert (cf is not None) == (ct is not None), "une seule borne sur deux"
+    assert (cf is not None) == (libelle is not None), (
+        f"{preset} sur {duree} j : bornes={cf}→{ct} mais libellé={libelle!r}")
+
+
+def test_SANS_COMPARAISON_LA_ROUTE_NE_LEVE_PAS():
+    """C'est ce TypeError qui renvoyait un 500 et vidait l'écran."""
+    assert _app._usable_comparison(None, None) == (None, None, False)
+    assert _app._usable_comparison(None, _date(2026, 9, 1)) == (None, None, False)
