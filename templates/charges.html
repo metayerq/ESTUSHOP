@@ -405,6 +405,14 @@ select.field-input { cursor:pointer; }
         <div class="db-l" id="emp-gross-label">Gross monthly salary (€) *</div>
         <input class="db-champ" id="emp-gross" type="number" step="0.01" placeholder="0.00" oninput="updateEmpPreview()">
       </div>
+      <div id="emp-rate-wrap">
+        <!-- ⚠️ C'EST CE CHAMP QUI CHIFFRE LE PLANNING. Sans lui, un extra apparaît au calendrier
+             et sa journée ne coûte rien : le point mort du samedi est faux sans un mot. -->
+        <div class="db-l" id="emp-rate-label">Hourly rate (€/h)</div>
+        <input class="db-champ" id="emp-rate" type="number" step="0.01" min="0"
+               placeholder="12.00" oninput="updateEmpPreview()">
+        <div class="db-s" id="emp-rate-hint" style="font-size:11px;color:var(--db-muted);margin-top:3px;"></div>
+      </div>
       <div>
         <div class="db-l">Meal allowance (€/day)</div>
         <input class="db-champ" id="emp-meal" type="number" step="0.01" value="10.20" oninput="updateEmpPreview()">
@@ -778,11 +786,15 @@ let VER_ORIG = { charge: null, emp: null };
 // Les champs qui touchent au coût, et eux seuls.
 //
 // ⚠️ `hours_week` N'EN FAIT PAS PARTIE : le coût mensuel ne lit que le brut, le type,
-// l'exemption TSU et la carte repas. Cette liste doit rester d'accord avec `VERSIONNE` dans
-// `app.py` — une divergence ferait apparaître le bloc sans que le serveur l'exige, ou l'inverse.
+// l'exemption TSU, la carte repas et le taux horaire. Cette liste doit rester d'accord avec
+// `VERSIONNE` dans `app.py` — une divergence ferait apparaître le bloc sans que le serveur
+// l'exige, ou l'inverse.
+//
+// ⚠️ `hourly_rate` Y EST ENTRÉ LE 04/10/2026 : il chiffre chaque service d'un extra au
+// planning. Le corriger sans date d'effet referait le coût de tous les samedis déjà passés.
 const VER_CHAMPS = {
   charge: ['amount', 'frequency'],
-  emp:    ['gross_monthly', 'type', 'tsu_exempt', 'meal_card_daily'],
+  emp:    ['gross_monthly', 'type', 'tsu_exempt', 'meal_card_daily', 'hourly_rate'],
 };
 
 function premierDuMoisProchain() {
@@ -796,11 +808,15 @@ function lireFormulaire(pfx) {
     amount:    parseFloat(document.getElementById('charge-amount').value),
     frequency: document.getElementById('charge-frequency').value,
   };
+  const brut = document.getElementById('emp-rate').value.trim();
   return {
     gross_monthly:   parseFloat(document.getElementById('emp-gross').value),
     type:            document.getElementById('emp-type').value,
     tsu_exempt:      document.getElementById('emp-tsu-exempt').checked,
     meal_card_daily: parseFloat(document.getElementById('emp-meal').value) || 0,
+    /* ⚠️ VIDE RESTE VIDE. Envoyer 0 pour un champ non rempli ferait dire à la fiche « il
+       travaille gratuitement » au lieu de « taux à renseigner ». */
+    hourly_rate:     brut === '' ? null : parseFloat(brut),
   };
 }
 
@@ -844,7 +860,25 @@ function majApercu(pfx) {
   const classe = d >= 0 ? 'hausse' : 'baisse';
   const dep = new Date(champEffet.value || premierDuMoisProchain())
     .toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  /* ⚠️ LE COÛT D'UN EXTRA NE VIENT PLUS DE SON FORFAIT MENSUEL. Depuis le planning, il vient
+     de ses heures : une hausse de taux laisse le « mensuel » à l'identique et l'aperçu
+     annonçait « 0,00 € → 0,00 € » — « rien ne change » au moment précis où l'on réclame un
+     motif pour un changement de coût. On montre donc ce qui bouge vraiment : le service. */
+  const vNeuf = lireFormulaire(pfx), vVieux = VER_ORIG[pfx] || {};
+  let parService = '';
+  if (pfx === 'emp' &&
+      Math.round((vNeuf.hourly_rate || 0) * 100) !== Math.round((vVieux.hourly_rate || 0) * 100)) {
+    const t0 = (vVieux.hourly_rate || 0), t1 = (vNeuf.hourly_rate || 0);
+    const dt = (t1 - t0) * 8;
+    const sg = dt >= 0 ? '+' : '−', cl = dt >= 0 ? 'hausse' : 'baisse';
+    parService =
+      `Hourly rate &nbsp;<b>${t0 ? fmt(t0) : '—'}</b> → <b>${t1 ? fmt(t1) : '—'}</b><br>` +
+      `Per 8 h service &nbsp;<b>${fmt(t0 * 8)}</b> → <b>${fmt(t1 * 8)}</b> ` +
+      `<span class="${cl}">(${sg}${fmt(Math.abs(dt))})</span><br>`;
+  }
+
   document.getElementById(pfx + '-apercu').innerHTML =
+    parService +
     `Monthly &nbsp;<b>${fmt(avant)}</b> → <b>${fmt(apres)}</b> ` +
     `<span class="${classe}">(${signe}${fmt(Math.abs(d))})</span><br>` +
     `Per open day &nbsp;<b>${fmt(avant / JOURS_MOIS)}</b> → <b>${fmt(apres / JOURS_MOIS)}</b> ` +
@@ -1076,6 +1110,7 @@ function openEmpModal() {
   document.getElementById('emp-hours').value = 40;
   document.getElementById('emp-gross').value = '';
   document.getElementById('emp-meal').value = 10.20;
+  document.getElementById('emp-rate').value = '';
   document.getElementById('emp-tsu-exempt').checked = false;
   document.getElementById('emp-notes').value = '';
   resetVer('emp', null);
@@ -1094,6 +1129,7 @@ function editEmployee(id) {
   document.getElementById('emp-hours').value = e.hours_week || 40;
   document.getElementById('emp-gross').value = e.gross_monthly;
   document.getElementById('emp-meal').value = e.meal_card_daily || 10.20;
+  document.getElementById('emp-rate').value = (e.hourly_rate === null || e.hourly_rate === undefined) ? '' : e.hourly_rate;
   document.getElementById('emp-tsu-exempt').checked = !!e.tsu_exempt;
   document.getElementById('emp-notes').value = e.notes || '';
   resetVer('emp', { gross_monthly: e.gross_monthly, type: e.type,
@@ -1119,16 +1155,47 @@ function updateEmpPreview() {
   // Afficher/masquer TSU checkbox
   document.getElementById('emp-tsu-wrap').style.display = type === 'extra' ? 'none' : '';
   document.getElementById('emp-gross-label').textContent = type === 'extra'
-    ? 'Monthly invoice amount (€) *'
+    ? 'Monthly invoice amount (€) — before planning only'
     : 'Gross monthly salary (€) *';
 
-  if (!gross) { preview.style.display = 'none'; return; }
+  /* ⚠️ LE TAUX HORAIRE NE VEUT PAS DIRE LA MÊME CHOSE SELON LE TYPE, et le taire est pire que
+     de le dire. Pour un EXTRA il chiffre chaque service du planning : sans lui, sa journée ne
+     coûte rien et le point mort du samedi est faux. Pour un PERMANENT il n'entre dans AUCUN
+     calcul — sa paie est lissée ; il ne sert qu'à suivre des heures. */
+  const tauxBrut = document.getElementById('emp-rate').value.trim();
+  const taux = parseFloat(tauxBrut) || 0;
+  const indice = document.getElementById('emp-rate-hint');
+  document.getElementById('emp-rate-label').textContent = type === 'extra'
+    ? 'Hourly rate (€/h) — chiffre le planning *'
+    : 'Hourly rate (€/h) — indicatif';
+  if (type === 'extra') {
+    indice.textContent = taux
+      ? `${fmt(taux * 8)} pour un service de 8 h.`
+      : 'Sans taux, ses services au planning ne coûtent rien et le point mort du jour est faux.';
+    indice.style.color = taux ? 'var(--db-muted)' : 'var(--db-amber)';
+  } else {
+    indice.textContent = "N'entre dans aucun calcul : la paie d'un permanent est lissée.";
+    indice.style.color = 'var(--db-muted)';
+  }
+
+  if (!gross && !taux) { preview.style.display = 'none'; return; }
   preview.style.display = '';
 
   if (type === 'extra') {
-    preview.innerHTML = `<div style="font-weight:600;font-size:13px;">Monthly cost — Extra</div>
-      <div class="tsu-row" style="margin-top:8px;"><span>Invoice amount</span><span>${fmt(gross)}</span></div>
-      <div class="tsu-row" style="color:var(--db-faint);font-size:11px;"><span>No employer TSU or 13th/14th</span><span></span></div>`;
+    /* ⚠️ DEUX RÉGIMES COHABITENT, ET L'ÉCRAN DOIT DIRE LEQUEL S'APPLIQUE. Avant la bascule du
+       planning, un extra coûtait son forfait mensuel lissé ; depuis, il coûte ses heures. Les
+       deux chiffres figurent sur la même fiche — les afficher sans les distinguer ferait croire
+       qu'ils s'additionnent. */
+    preview.innerHTML = `<div style="font-weight:600;font-size:13px;">Coût — Extra</div>
+      <div class="tsu-row" style="margin-top:8px;"><span>Taux horaire</span><span>${
+        taux ? fmt(taux) + ' /h' : '— à renseigner'}</span></div>
+      <div class="tsu-row"><span>Un service de 8 h</span><span>${
+        taux ? fmt(taux * 8) : '—'}</span></div>
+      <div class="tsu-row" style="color:var(--db-faint);font-size:11px;">
+        <span>Depuis le planning, c'est le taux qui chiffre ses journées — pas le forfait.</span><span></span></div>
+      <div class="tsu-row" style="color:var(--db-faint);font-size:11px;">
+        <span>Forfait mensuel ${fmt(gross)} : ne compte plus que pour les mois d'avant.</span><span></span></div>
+      <div class="tsu-row" style="color:var(--db-faint);font-size:11px;"><span>Ni TSU employeur ni 13e/14e</span><span></span></div>`;
     return;
   }
 
@@ -1141,12 +1208,24 @@ function updateEmpPreview() {
   const tsuM     = annualTsu / 12;
   const repasM   = annualRepas / 12;
 
-  document.getElementById('prev-brut').textContent = fmt(gross);
-  document.getElementById('prev-mois').textContent = `+${fmt(moisSup)}`;
-  document.getElementById('prev-tsu-label').textContent = exempt ? 'Employer TSU (exempt)' : `Employer TSU ${(tsuRate*100).toFixed(2)}%`;
-  document.getElementById('prev-tsu').textContent = exempt ? '0,00 €' : `+${fmt(tsuM)}`;
-  document.getElementById('prev-repas').textContent = `+${fmt(repasM)}`;
-  document.getElementById('prev-total').textContent = fmt(totalMonthly);
+  /* ⚠️ CETTE BRANCHE REMPLISSAIT DES ÉLÉMENTS QUE L'AUTRE AVAIT DÉTRUITS. La branche « extra »
+     écrit `preview.innerHTML` : les `prev-brut`, `prev-tsu`… du gabarit n'existent plus après
+     son passage. Ouvrir un extra PUIS un permanent levait donc « Cannot set properties of
+     null », et la fiche cessait de se mettre à jour — sans un mot à l'écran.
+
+     Les deux branches reconstruisent maintenant leur contenu. Trouvé par le scénario
+     navigateur le jour où cette page y est entrée ; le défaut était là depuis le début. */
+  preview.innerHTML = `
+    <div style="font-weight:600;margin-bottom:8px;font-size:13px;">Estimated smoothed monthly cost</div>
+    <div class="tsu-row"><span>Monthly gross</span><span>${fmt(gross)}</span></div>
+    <div class="tsu-row"><span>+ 13th &amp; 14th smoothed (+16.7%)</span><span>+${fmt(moisSup)}</span></div>
+    <div class="tsu-row"><span>${exempt ? 'Employer TSU (exempt)'
+      : `+ Employer TSU ${(tsuRate*100).toFixed(2)}%`}</span><span>${
+      exempt ? fmt(0) : '+' + fmt(tsuM)}</span></div>
+    <div class="tsu-row"><span>+ Meal allowance (~242d/yr)</span><span>+${fmt(repasM)}</span></div>
+    <div class="tsu-row" style="border-top:1px solid var(--db-line);margin-top:6px;padding-top:6px;font-weight:650;font-size:13px;color:var(--db-ink);">
+      <span>Total / month (employer)</span><span>${fmt(totalMonthly)}</span>
+    </div>`;
   preview.style.display = '';
   preview.className = 'tsu-box';
 }

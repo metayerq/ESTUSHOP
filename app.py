@@ -4058,7 +4058,10 @@ def _date_effet(brut):
 # un horaire indicatif ferait contourner le formulaire.
 VERSIONNE = {
     "charges_fixes": ("amount", "frequency"),
-    "employees":     ("gross_monthly", "type", "tsu_exempt", "meal_card_daily"),
+    # ⚠️ `hourly_rate` EST UN CHAMP DE COÛT, PAS UN HORAIRE INDICATIF. C'est lui qui chiffre
+    # chaque service d'un extra au planning : le corriger sans date d'effet changerait le coût
+    # de tous les samedis déjà passés, et avec eux le point mort de mois déjà lus.
+    "employees":     ("gross_monthly", "type", "tsu_exempt", "meal_card_daily", "hourly_rate"),
 }
 DESCRIPTIF = {
     "charges_fixes": ("name", "category", "notes"),
@@ -4100,7 +4103,7 @@ def _modifier_poste(table, poste_id, data):
         if champ not in data:
             continue
         neuf, ancien = data[champ], ligne.get(champ)
-        if champ in ("amount", "gross_monthly", "meal_card_daily"):
+        if champ in ("amount", "gross_monthly", "meal_card_daily", "hourly_rate"):
             try:
                 neuf = round(float(neuf), 2)
             except (TypeError, ValueError):
@@ -4286,6 +4289,11 @@ def api_employees_post():
         "hours_week":       float(data.get("hours_week", 40)),
         "tsu_exempt":       bool(data.get("tsu_exempt", False)),
         "meal_card_daily":  round(float(data.get("meal_card_daily", 10.20)), 2),
+        # ⚠️ ABSENT VEUT DIRE « PAS DE TAUX », PAS ZÉRO. Un extra sans taux ne coûte rien au
+        # planning, et l'écran doit pouvoir le DIRE — un 0 enregistré se lirait « il travaille
+        # gratuitement », ce qui est une affirmation, pas une absence d'information.
+        "hourly_rate":      (round(float(data["hourly_rate"]), 2)
+                             if str(data.get("hourly_rate") or "").strip() else None),
         "days_per_month":   float(data.get("days_per_month", 21.25)),
         "notes":            (data.get("notes") or "").strip(),
         "active":           data.get("active", True),

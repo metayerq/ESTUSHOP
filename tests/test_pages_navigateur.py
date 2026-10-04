@@ -617,6 +617,101 @@ CAS = {
 })(0);
 """,
     },
+    "charges.html": {
+        "reponses": {
+            "/api/statut": {"ca": None, "ca_texte": "—", "tickets": None, "moyen_texte": "",
+                            "ecarts": 0, "boissons_dues": 0, "caisse_ok": None},
+            "/api/charges": {
+                "charges": [{"id": "c1", "name": "Loyer", "amount": 700.0,
+                             "frequency": "monthly", "category": "local", "notes": "",
+                             "active": True, "valid_from": None, "valid_to": None}],
+                "employees": [
+                    {"id": "e1", "name": "Marco Silva", "type": "full_time",
+                     "gross_monthly": 1200.0, "meal_card_daily": 10.20, "tsu_exempt": False,
+                     "hourly_rate": None, "hours_week": 40, "days_per_month": 21.25,
+                     "notes": "", "active": True, "valid_from": None, "valid_to": None},
+                    {"id": "e2", "name": "Ana Dias", "type": "extra",
+                     "gross_monthly": 0.0, "meal_card_daily": 0.0, "tsu_exempt": False,
+                     "hourly_rate": 12.0, "hours_week": 12, "days_per_month": 4,
+                     "notes": "", "active": True, "valid_from": None, "valid_to": None},
+                ],
+            },
+        },
+        "attendu": [
+            "Loyer", "Marco Silva", "Ana Dias",
+            # ⚠️ LE TAUX HORAIRE EST CE QUI CHIFFRE LE PLANNING : sans lui, un extra apparaît
+            # au calendrier et sa journée ne coûte rien.
+            "CHAMP-TAUX", "TAUX-REPRIS",
+            # ⚠️ ET LA FICHE D'UN PERMANENT S'OUVRE APRÈS CELLE D'UN EXTRA. La branche « extra »
+            # remplaçait l'aperçu et détruisait les éléments que l'autre remplissait : la
+            # seconde ouverture levait, en silence.
+            "PERMANENT-APRES-EXTRA",
+            "EXTRA-ANNONCE-LE-SERVICE", "EXTRA-SANS-TAUX-AVERTIT",
+            "PERMANENT-TAUX-INDICATIF",
+            # Changer un taux est un changement de coût : date d'effet et motif obligatoires.
+            "TAUX-EXIGE-UN-MOTIF", "APERCU-PAR-SERVICE",
+        ],
+        "interdit": [
+            "CHAMP-ABSENT", "TAUX-PERDU", "EXTRA-MUET", "EXTRA-SANS-TAUX-SILENCIEUX",
+            "PERMANENT-TAUX-COMPTE", "TAUX-SANS-CEREMONIE", "PERMANENT-APRES-EXTRA-CASSE", "APERCU-TROMPEUR",
+            "NaN", "undefined", "Invalid Date",
+        ],
+        "scenario": r"""
+(function attendre(n){
+  var E = function(i){ return document.getElementById(i); };
+  if((!E('emp-cards') || !E('emp-cards').children.length) && n < 80)
+    return setTimeout(function(){ attendre(n+1); }, 20);
+  var trace = function(t){ var d = document.createElement('div'); d.textContent = t;
+                           document.body.appendChild(d); };
+
+  trace(E('emp-rate') ? 'CHAMP-TAUX' : 'CHAMP-ABSENT');
+
+  /* La fiche d'Ana porte 12 €/h : ouvrir sa fiche doit le reprendre. */
+  editEmployee('e2');
+  trace(E('emp-rate').value === '12' ? 'TAUX-REPRIS' : 'TAUX-PERDU v=' + E('emp-rate').value);
+
+  /* ⚠️ L'ÉCRAN DOIT DIRE CE QUE LE TAUX PRODUIT, pas seulement l'accepter. */
+  var ap = E('emp-preview').textContent.replace(/\s+/g,' ');
+  /* Cette page formate en en-IE : « €96.00 », pas « 96,00 ». Mon premier marqueur exigeait
+     le format de /faturar et rougissait sur un affichage parfaitement correct. */
+  trace(ap.indexOf('96.00') >= 0
+        ? 'EXTRA-ANNONCE-LE-SERVICE' : 'EXTRA-MUET ' + ap.slice(0,90));
+
+  /* Un extra SANS taux doit être averti : ses journées ne coûteront rien. */
+  E('emp-rate').value = '';
+  E('emp-rate').dispatchEvent(new Event('input', {bubbles:true}));
+  var ind = E('emp-rate-hint').textContent;
+  trace(ind.indexOf('ne coûtent rien') >= 0
+        ? 'EXTRA-SANS-TAUX-AVERTIT' : 'EXTRA-SANS-TAUX-SILENCIEUX ' + ind);
+
+  /* ⚠️ POUR UN PERMANENT LE TAUX N'ENTRE DANS AUCUN CALCUL, et le taire serait pire. */
+  editEmployee('e1');
+  var pv = E('emp-preview').textContent.replace(/\s+/g,' ');
+  trace(pv.indexOf('Total / month') >= 0
+        ? 'PERMANENT-APRES-EXTRA' : 'PERMANENT-APRES-EXTRA-CASSE ' + pv.slice(0,80));
+  E('emp-rate').value = '11';
+  E('emp-rate').dispatchEvent(new Event('input', {bubbles:true}));
+  var ind2 = E('emp-rate-hint').textContent;
+  trace(ind2.indexOf('aucun calcul') >= 0
+        ? 'PERMANENT-TAUX-INDICATIF' : 'PERMANENT-TAUX-COMPTE ' + ind2);
+
+  /* Changer un taux ouvre le bloc date d'effet + motif, comme une augmentation. */
+  editEmployee('e2');
+  E('emp-rate').value = '15';
+  E('emp-rate').dispatchEvent(new Event('input', {bubbles:true}));
+  var bloc = E('emp-ver');
+  trace((bloc && !bloc.hidden)
+        ? 'TAUX-EXIGE-UN-MOTIF' : 'TAUX-SANS-CEREMONIE');
+
+  /* ⚠️ ET L'APERÇU DOIT DIRE CE QUI CHANGE VRAIMENT. Le coût d'un extra ne vient plus de son
+     forfait mensuel : montrer « 0,00 € → 0,00 € » sur une hausse de taux dirait que rien ne
+     bouge, au moment précis où l'on demande un motif pour un changement de coût. */
+  var ap2 = E('emp-apercu').textContent.replace(/\s+/g,' ');
+  trace(ap2.indexOf('service') >= 0
+        ? 'APERCU-PAR-SERVICE' : 'APERCU-TROMPEUR ' + ap2.slice(0,110));
+})(0);
+""",
+    },
     "inventario.html": {
         "reponses": {
             "/api/inventario": {

@@ -580,3 +580,85 @@ def test_seul_ladmin_efface_ou_annule(monkeypatch, role):
     assert c.delete("/api/charges/c1/definitif").status_code in (401, 403)
     assert c.post("/api/employees/e1/annuler").status_code in (401, 403)
     assert c.post("/api/charges/c1/annuler").status_code in (401, 403)
+
+
+# ── Le taux horaire ──────────────────────────────────────────────────────────────────────────
+#
+# ⚠️ C'EST UN CHAMP DE COÛT, PAS UN HORAIRE INDICATIF. Il chiffre chaque service d'un extra au
+# planning. Le corriger sans date d'effet changerait le coût de tous les samedis déjà passés, et
+# avec eux le point mort de mois déjà lus — la faute que ce fichier entier combat.
+
+EXTRA = {"id": "e1", "name": "Ana", "type": "extra", "gross_monthly": 0.0,
+         "hourly_rate": 12.0, "tsu_exempt": False, "meal_card_daily": 0.0,
+         "hours_week": 12, "days_per_month": 4, "notes": "", "active": True,
+         "valid_from": None, "valid_to": None}
+
+
+@pytest.fixture
+def extra(monkeypatch):
+    ecrits = []
+    monkeypatch.setattr(flask_app, "_supa_get", lambda t, p: [dict(EXTRA)])
+    monkeypatch.setattr(flask_app, "_supa_patch",
+                        lambda t, f, d: (ecrits.append(("patch", t, f, d)), (True, None))[1])
+    monkeypatch.setattr(flask_app, "_supa_insert",
+                        lambda t, r: (ecrits.append(("insert", t, r)), (True, None))[1])
+    return ecrits
+
+
+def test_CHANGER_UN_TAUX_HORAIRE_CLOT_ET_REMPLACE(admin, extra):
+    """Sinon les samedis de septembre seraient facturés au taux de novembre."""
+    r = admin.patch("/api/employees/e1",
+                    json={"hourly_rate": 15, "reason": "augmentation convenue",
+                          "effective_from": "2026-11-01"})
+    assert r.get_json()["ok"] is True
+    assert [o[0] for o in extra] == ["patch", "insert"]
+    _, _, _, cloture = extra[0]
+    assert cloture["valid_to"] == "2026-11-01"
+    assert extra[1][2]["hourly_rate"] == 15 and extra[1][2]["valid_from"] == "2026-11-01"
+
+
+def test_un_taux_horaire_change_exige_un_motif(admin, extra):
+    r = admin.patch("/api/employees/e1", json={"hourly_rate": 15})
+    assert r.status_code == 400
+    assert extra == [], "un refus ne doit rien écrire"
+
+
+def test_un_taux_identique_nest_pas_un_changement(admin, extra):
+    """Réenregistrer le formulaire sans rien toucher ne doit pas couper l'historique."""
+    r = admin.patch("/api/employees/e1", json={"hourly_rate": 12.0})
+    assert r.get_json().get("inchange") is True
+    assert extra == []
+
+
+def test_douze_et_douze_virgule_zero_sont_le_meme_taux(admin, extra):
+    """Le formulaire renvoie des chaînes : sans arrondi, « 12 » différerait de 12.0."""
+    r = admin.patch("/api/employees/e1", json={"hourly_rate": "12"})
+    assert r.get_json().get("inchange") is True
+    assert extra == []
+
+
+def test_UN_TAUX_ABSENT_NEST_PAS_UN_TAUX_NUL(admin, extra):
+    """
+    ⚠️ UN 0 ENREGISTRÉ SE LIT « IL TRAVAILLE GRATUITEMENT ». C'est une affirmation, pas une
+    absence d'information — et l'écran ne peut plus dire « taux à renseigner ».
+    """
+    admin.post("/api/employees", json={"name": "Bob", "type": "extra"})
+    row = [o for o in extra if o[0] == "insert"][0][2]
+    assert row["hourly_rate"] is None
+
+
+def test_un_taux_saisi_a_la_creation_est_enregistre(admin, extra):
+    admin.post("/api/employees", json={"name": "Bob", "type": "extra", "hourly_rate": "13.5"})
+    row = [o for o in extra if o[0] == "insert"][0][2]
+    assert row["hourly_rate"] == 13.5
+
+
+def test_UN_TAUX_A_ZERO_EST_UNE_ABSENCE_DE_TAUX(admin, extra):
+    """
+    ⚠️ ZÉRO EURO DE L'HEURE N'EST PAS UN TARIF. L'écran envoie `null` pour un champ vide, mais
+    rien ne l'empêche d'envoyer 0 — et un 0 enregistré se lirait « il travaille gratuitement »,
+    une affirmation. Le serveur normalise, pour que la règle tienne quel que soit l'appelant.
+    """
+    admin.post("/api/employees", json={"name": "Bob", "type": "extra", "hourly_rate": 0})
+    row = [o for o in extra if o[0] == "insert"][0][2]
+    assert row["hourly_rate"] is None

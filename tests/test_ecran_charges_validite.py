@@ -165,7 +165,7 @@ def test_un_horaire_indicatif_ne_touche_pas_la_paie():
     liste doit rester d'accord avec `VERSIONNE` dans `app.py`.
     """
     js = _js()
-    assert "'gross_monthly', 'type', 'tsu_exempt', 'meal_card_daily'" in js
+    assert "'gross_monthly', 'type', 'tsu_exempt', 'meal_card_daily', 'hourly_rate'" in js
     assert "hours_week" not in js[js.index("const VER_CHAMPS"):js.index("function premierDuMoisProchain")]
 
 
