@@ -3944,7 +3944,106 @@ def api_charges_get():
             pass    # un rattrapage raté ne doit pas empêcher d'afficher la page
     charges   = _supa_get("charges_fixes",  {"order": "category.asc,name.asc"})
     employees = _supa_get("employees",       {"order": "name.asc"})
-    return jsonify({"charges": charges, "employees": employees})
+
+    # ⚠️ CE QUI MANQUE EST CALCULÉ ICI, PAS DANS LE NAVIGATEUR. La règle — le mois courant n'est
+    # jamais réclamé, les mois clos sans facture le sont du plus ancien au plus récent — vit
+    # dans `charges.py`, pure et testée. La réécrire en JavaScript donnerait deux définitions de
+    # « en retard », et l'écran finirait par réclamer un mois que le calcul ignore.
+    attente = {}
+    for nom in {str(c.get("name") or "") for c in charges if _ch.est_facture(c)}:
+        manquants = _ch.mois_en_attente(charges, nom, today_lisbon())
+        if manquants:
+            attente[nom] = [m.isoformat() for m in manquants]
+
+    return jsonify({"charges": charges, "employees": employees,
+                    "attente": attente, "mois_courant": _ch.mois_de(today_lisbon()).isoformat()})
+
+@app.route("/api/charges/facture", methods=["POST"])
+def api_charge_facture():
+    """
+    Enregistrer la facture d'un mois.
+
+    ⚠️ NI DATE D'EFFET NI MOTIF. Une facture n'articule pas un changement : son motif, c'est
+    elle-même, et sa date, c'est son mois. Les demander serait poser deux questions dont la
+    réponse est connue d'avance — et c'est ce qui rendait la saisie pénible au point d'être
+    repoussée.
+
+    ⚠️ ET ELLE S'APPLIQUE À SON MOIS, DONC RÉTROACTIVEMENT. La facture d'octobre reçue le
+    5 novembre couvrait octobre : la faire commencer le 6 novembre laissait octobre porter le
+    montant de septembre, à jamais. L'invariant n'est pas « jamais rétroactif », il est « jamais
+    en silence » — et une première écriture sur un mois vide n'écrase rien.
+    """
+    if _current_role() != "admin":
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    data = request.get_json(silent=True) or {}
+
+    nom = (data.get("name") or "").strip()
+    brut = str(data.get("mois") or "").strip()
+    if not nom or not brut:
+        return jsonify({"ok": False, "error": "charge et mois obligatoires"}), 400
+    try:
+        # « 2026-10 » comme « 2026-10-01 » : l'écran envoie un mois, pas un jour.
+        mois = date.fromisoformat(brut if len(brut) > 7 else brut + "-01").replace(day=1)
+    except ValueError:
+        return jsonify({"ok": False, "error": "mois illisible"}), 400
+    try:
+        montant = round(float(data.get("amount")), 2)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "montant illisible"}), 400
+    # ⚠️ UNE FACTURE À ZÉRO N'EST PAS UNE FACTURE. Elle ferait disparaître la charge du point
+    # mort en se faisant passer pour une mesure — plus trompeur qu'un mois en attente.
+    if montant <= 0:
+        return jsonify({"ok": False, "error": "le montant doit être supérieur à zéro"}), 400
+
+    # ⚠️ ON NE RÉCLAME PAS LE FUTUR. Saisir la facture d'un mois qui n'est pas fini imputerait
+    # une mesure à une période qu'on n'a pas encore vécue.
+    if mois > _ch.mois_de(today_lisbon()):
+        return jsonify({"ok": False, "error": "ce mois n'est pas commencé"}), 400
+
+    lignes = _supa_get("charges_fixes", {"order": "name.asc"})
+    siennes = [c for c in lignes if str(c.get("name") or "") == nom]
+    if not siennes:
+        return jsonify({"ok": False, "error": f"aucune charge nommée « {nom} »"}), 404
+    if not any(_ch.est_facture(c) for c in siennes):
+        return jsonify({"ok": False,
+                        "error": f"« {nom} » n'est pas une charge sur facture"}), 400
+
+    modele = next(c for c in siennes if _ch.est_facture(c))
+    existante = next((c for c in siennes if _ch.est_facture(c)
+                      and str(c.get("mois") or "")[:10] == mois.isoformat()), None)
+
+    if existante is not None:
+        # ⚠️ CORRIGER N'EST PAS INTERDIT, C'EST TRACÉ. Une faute de frappe ou un fournisseur qui
+        # réémet doivent pouvoir se rattraper ; vivre avec un chiffre faux serait pire. Mais
+        # l'écriture déplace un mois déjà lu, donc elle laisse une trace.
+        ancien = round(float(existante.get("amount") or 0), 2)
+        if ancien == montant:
+            return jsonify({"ok": True, "inchange": True})
+        ok, err = _supa_patch("charges_fixes", {"id": f"eq.{existante['id']}"},
+                              {"amount": montant})
+        if ok:
+            _journal_action(_current_role(), "facture-corrigee", nom[:24],
+                            {"amount": ancien}, {"amount": montant},
+                            f"correction de la facture de {mois.isoformat()[:7]}")
+        return jsonify({"ok": ok, "error": err, "corrige": True, "ancien": ancien})
+
+    debut, fin, a_cloturer = _ch.bornes_dune_facture(lignes, nom, mois)
+    if a_cloturer is not None:
+        precedente, quand = a_cloturer
+        ok, err = _supa_patch("charges_fixes", {"id": f"eq.{precedente['id']}"},
+                              {"valid_to": quand.isoformat(), "active": False})
+        if not ok:
+            return jsonify({"ok": False, "error": err or "clôture refusée"}), 502
+
+    neuve = {k: v for k, v in modele.items()
+             if k not in ("id", "valid_from", "valid_to", "created_at", "mois", "amount")}
+    neuve.update({"amount": montant, "mois": mois.isoformat(),
+                  "valid_from": debut.isoformat(),
+                  "valid_to": fin.isoformat() if fin else None,
+                  "active": True})
+    ok, err = _supa_insert("charges_fixes", neuve)
+    return jsonify({"ok": ok, "error": err})
+
 
 @app.route("/api/charges", methods=["POST"])
 def api_charges_post():
