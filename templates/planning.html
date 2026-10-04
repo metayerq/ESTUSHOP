@@ -66,6 +66,8 @@
 .pl-vide { font-size:12px; color:var(--muted); text-align:center; padding:10px 0; }
 .pl-note { font-size:13px; color:var(--muted); line-height:1.55; max-width:70ch;
   margin:16px 0 0; }
+.pl-trou { color:var(--amber); font-weight:600; }
+.pl-chip.sans-prix { box-shadow:inset 0 0 0 1px var(--amber); }
 .pl-alerte { font-size:13px; color:var(--amber); line-height:1.55; max-width:70ch;
   margin:10px 0 0; }
 .pl-panne { font-size:13px; color:var(--red); line-height:1.6; margin:14px 0;
@@ -406,6 +408,18 @@ function hhmm(t){ return String(t||'').slice(0,5); }
    endroits où elles peuvent diverger. */
 function servicesDe(j){ return (DATA.services && DATA.services[j]) || []; }
 
+/* ⚠️ UNE PUCE SANS PRIX VOULAIT DIRE DEUX CHOSES OPPOSÉES. Soit la personne est permanente —
+ * sa paie est lissée, son service n'ajoute rien, et c'est normal ; soit son service ne coûte
+ * rien parce qu'il MANQUE quelque chose. Les deux s'affichaient à l'identique : il fallait
+ * ouvrir la fiche pour savoir laquelle, et d'ici là le coût du jour était silencieusement
+ * amputé. C'est la question que Quentin a posée — « Savannah bosse, pourquoi tu ne comptes
+ * pas ? » — et l'écran ne pouvait pas y répondre. */
+function manque(f, extra, taux){
+  if (!f) return 'aucune fiche applicable ce jour-là';
+  if (extra && !taux) return 'aucun taux horaire sur sa fiche';
+  return '';
+}
+
 function puce(j, s){
   const f = fiche(s.person_id, j);
   const h = heures(s.start_time, s.end_time);
@@ -413,23 +427,38 @@ function puce(j, s){
      laisserait croire qu'il s'ajoute. On montre les heures, pas un prix. */
   const extra = f && f.type === 'extra';
   const taux = extra ? parseFloat(f.hourly_rate || 0) : 0;
-  const prix = extra && taux ? eur(h * taux) : '';
+  const trou = manque(f, extra, taux);
+  const prix = extra && taux ? eur(h * taux)
+             : (trou ? '<span class="pl-trou" aria-hidden="true">non chiffré</span>' : '');
   /* ⚠️ UN SERVICE DE RÈGLE SE DISTINGUE À L'ŒIL. Le supprimer ne fait pas la même chose : il
      pose une exception pour ce jour, il n'efface pas une ligne. */
   const marque = s.source === 'regle' ? ' ↻'
                : (s.source === 'regle-modifiee' ? ' ↻*' : '');
-  return `<button class="pl-chip" onclick="ouvrir('${j}','${s.id || ''}','${s.rule_id || ''}')"
-      aria-label="Modifier le service de ${echap(nomDe(s.person_id, j))} le ${j}">
+  return `<button class="pl-chip${trou ? ' sans-prix' : ''}"
+      onclick="ouvrir('${j}','${s.id || ''}','${s.rule_id || ''}')"
+      title="${trou ? echap(nomDe(s.person_id, j)) + ' — ' + trou
+                      + ', ce service ne compte pas dans le coût du jour' : ''}"
+      aria-label="Modifier le service de ${echap(nomDe(s.person_id, j))} le ${j}${
+        trou ? ', non chiffré : ' + trou : ''}">
       <span class="pl-chip-eur">${prix}</span>
       <span class="pl-chip-nom">${echap(nomDe(s.person_id, j))}${marque}</span>
       <span class="pl-chip-h">${hhmm(s.start_time)}–${hhmm(s.end_time)}</span>
     </button>`;
 }
 
-function pied(cout){
+function pied(cout, j){
   if(!cout) return '';
+  /* ⚠️ ET LE TOTAL DU JOUR DIT CE QU'IL NE COMPTE PAS. Un coût amputé qui s'affiche comme un
+   * coût complet est pire qu'un coût absent : on le lit, on le croit, et le point mort du jour
+   * est trop bas sans que rien ne le signale. */
+  const muets = servicesDe(j).filter(function(s){
+    const f = fiche(s.person_id, j), extra = f && f.type === 'extra';
+    return !!manque(f, extra, extra ? parseFloat(f.hourly_rate || 0) : 0);
+  }).length;
   return `<div class="pl-pied">personnel <b>${eur(cout.personnel)}</b><br>
-          journée <b>${eur(cout.total)}</b></div>`;
+          journée <b>${eur(cout.total)}</b>${muets
+            ? `<br><span class="pl-trou">${muets} service${muets > 1 ? 's' : ''} non chiffré${
+                muets > 1 ? 's' : ''}</span>` : ''}</div>`;
 }
 
 function rendre(){
@@ -490,7 +519,7 @@ function rendreSemaine(){
       ${ouvert
         ? (chips || '<div class="pl-vide">personne</div>')
           + `<button class="pl-ajout" onclick="ouvrir('${j}', null, null)">+ ajouter</button>`
-          + pied(cout)
+          + pied(cout, j)
         : '<div class="pl-vide">fermé</div>'}
     </div>`;
   }).join('') + '</div>';
@@ -509,7 +538,7 @@ function rendreJour(){
     ${cout
       ? (chips || '<div class="pl-vide">personne ce jour-là</div>')
         + `<button class="pl-ajout" onclick="ouvrir('${j}', null, null)">+ ajouter</button>`
-        + pied(cout)
+        + pied(cout, j)
       : '<div class="pl-vide">le café est fermé ce jour-là</div>'}
   </div>`;
 

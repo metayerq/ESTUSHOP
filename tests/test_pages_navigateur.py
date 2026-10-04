@@ -468,6 +468,12 @@ CAS = {
                     {"person_id": "p-ana", "name": "Ana Dias", "type": "extra",
                      "gross_monthly": 0, "hourly_rate": 9.0,
                      "valid_from": "2026-01-01", "valid_to": "2026-05-01", "active": False},
+                    # ⚠️ UN EXTRA SANS TAUX HORAIRE. Son service ne coûte rien, et la puce
+                    # l'affichait exactement comme celle d'un permanent — dont l'absence de
+                    # prix est NORMALE. Deux significations opposées, un seul rendu.
+                    {"person_id": "p-sav", "name": "Savannah", "type": "extra",
+                     "gross_monthly": 0, "hourly_rate": None,
+                     "valid_from": "2026-05-01", "valid_to": None, "active": True},
                 ],
                 "regles": [
                     {"id": "r1", "person_id": "p-ana", "weekday": 5,
@@ -481,10 +487,16 @@ CAS = {
                 ],
                 # Déjà déplié par le serveur — c'est le contrat de la route.
                 "services": {
+                    # ⚠️ LE MÊME JOUR PORTE LES DEUX CAS. Un permanent, dont l'absence de prix
+                    # est normale, et un extra sans taux, dont l'absence de prix est un trou.
+                    # Sur deux jours séparés, un rendu qui les confond passerait quand même.
                     "2026-10-09": [
                         {"id": "s2", "rule_id": None, "person_id": "p-bar",
                          "day": "2026-10-09", "start_time": "08:00:00",
                          "end_time": "16:00:00", "source": "ponctuel"},
+                        {"id": "s3", "rule_id": None, "person_id": "p-sav",
+                         "day": "2026-10-09", "start_time": "10:00:00",
+                         "end_time": "18:00:00", "source": "ponctuel"},
                     ],
                     "2026-10-10": [
                         {"id": None, "rule_id": "r1", "person_id": "p-ana",
@@ -507,6 +519,8 @@ CAS = {
             "chaque samedi", "Ana Dias",
             "FERME-DIT", "COUT-AFFICHE", "COUT-DU-SERVEUR",
             "PERMANENT-SANS-PRIX", "EXTRA-AVEC-PRIX", "UNE-SEULE-ANA",
+            "SAVANNAH-AU-PLANNING", "SANS-TAUX-SIGNALE", "SEUL-LE-TROU-EST-MARQUE",
+            "LA-CAUSE-EST-DITE", "TOTAL-AVOUE-LAMPUTATION",
             "LUNDI-JUSTE", "MODALE-OUVRE", "APERCU-EXTRA", "APERCU-PERMANENT",
             "REFUS-HORAIRE",
             # ⚠️ LES TROIS VUES, et la bascule entre elles.
@@ -519,6 +533,8 @@ CAS = {
         "interdit": [
             "FERME-MUET", "COUT-ABSENT", "COUT-RECALCULE",
             "PERMANENT-AVEC-PRIX", "EXTRA-SANS-PRIX", "ANA-EN-DOUBLE",
+            "SAVANNAH-ABSENTE", "SANS-TAUX-MUET", "MARQUAGE-INDISTINCT",
+            "CAUSE-TUE", "TOTAL-SE-DIT-COMPLET",
             "MODALE-FERMEE", "APERCU-MUET", "REFUS-ABSENT", "LUNDI-FAUX",
             "VUE-FIGEE", "MOIS-TRONQUE", "MOIS-SANS-TOTAL",
             "REGLE-NUE", "REGLE-SE-SUPPRIME", "PERSONNE-MODIFIABLE",
@@ -560,6 +576,28 @@ CAS = {
   var ana   = samedi.querySelector('.pl-chip');
   trace((marco && marco.textContent.indexOf('€') < 0)
         ? 'PERMANENT-SANS-PRIX' : 'PERMANENT-AVEC-PRIX ' + (marco && marco.textContent));
+
+  /* ⚠️ DEUX ABSENCES DE PRIX, DEUX SENS OPPOSÉS, LE MÊME JOUR. Marco est permanent : sa paie
+     est lissée, son service n'ajoute rien, et c'est normal. Savannah est extra SANS TAUX : son
+     service ne coûte rien parce qu'il manque une information, et le coût du jour est amputé en
+     silence. Les deux s'affichaient à l'identique — c'est la question que Quentin a posée, et
+     l'écran ne pouvait pas y répondre. */
+  var puces = vendredi.querySelectorAll('.pl-chip');
+  var sav = null;
+  for(var k=0;k<puces.length;k++) if(puces[k].textContent.indexOf('Savannah') >= 0) sav = puces[k];
+  trace(sav ? 'SAVANNAH-AU-PLANNING' : 'SAVANNAH-ABSENTE');
+  trace((sav && sav.textContent.indexOf('non chiffré') >= 0)
+        ? 'SANS-TAUX-SIGNALE' : 'SANS-TAUX-MUET ' + (sav && sav.textContent));
+  trace((sav && sav.classList.contains('sans-prix') && !marco.classList.contains('sans-prix'))
+        ? 'SEUL-LE-TROU-EST-MARQUE' : 'MARQUAGE-INDISTINCT');
+  /* ⚠️ ET LE SURVOL DIT LAQUELLE DES DEUX CAUSES. « non chiffré » ne dit pas quoi faire ;
+     « aucun taux horaire sur sa fiche » envoie au bon écran. */
+  trace((sav && (sav.getAttribute('title') || '').indexOf('taux horaire') >= 0)
+        ? 'LA-CAUSE-EST-DITE' : 'CAUSE-TUE ' + (sav && sav.getAttribute('title')));
+  /* ⚠️ ET LE TOTAL DU JOUR AVOUE CE QU'IL NE COMPTE PAS. Un coût amputé affiché comme un coût
+     complet est pire qu'un coût absent : on le lit, et le point mort du jour est trop bas. */
+  trace(vendredi.textContent.indexOf('1 service non chiffré') >= 0
+        ? 'TOTAL-AVOUE-LAMPUTATION' : 'TOTAL-SE-DIT-COMPLET');
   trace((ana && ana.textContent.indexOf('96,00') >= 0)
         ? 'EXTRA-AVEC-PRIX' : 'EXTRA-SANS-PRIX ' + (ana && ana.textContent));
   /* ⚠️ UN SERVICE DE RÈGLE SE DISTINGUE À L'ŒIL : le supprimer ne fait pas la même chose. */
