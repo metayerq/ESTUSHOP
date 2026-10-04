@@ -658,7 +658,7 @@ CAS = {
             # ⚠️ LE TAUX HORAIRE EST CE QUI CHIFFRE LE PLANNING : sans lui, un extra apparaît
             # au calendrier et sa journée ne coûte rien.
             "TROIS-ONGLETS", "COMPTEUR-DIT-LATTENTE", "FIXES-SANS-LES-VARIABLES",
-            "RESUME-DIT-LA-COMPOSITION", "ONGLET-BASCULE", "MOIS-EN-CLAIR", "PAS-DE-LOYER-ICI", "CHAMP-DE-SAISIE",
+            "RESUME-DIT-LA-COMPOSITION", "RESUME-BIEN-NOMME", "ONGLET-BASCULE", "MOIS-EN-CLAIR", "PAS-DE-LOYER-ICI", "CHAMP-DE-SAISIE",
             "VARIABLES-HORS-DES-FIXES",
             "CHAMP-TAUX", "TAUX-REPRIS", "OUVRIR-NE-MODIFIE-PAS",
             "TAUX-ENVOYE", "EXTRA-SANS-CARTE-REPAS", "EXTRA-SANS-MENSUEL-ACCEPTE",
@@ -675,7 +675,7 @@ CAS = {
         ],
         "interdit": [
             "ONGLET-MANQUANT", "COMPTEUR-MUET", "FIXES-MELANGEES", "ONGLET-FIGE",
-            "RESUME-TROMPEUR", "poste(s)", "employee(s)",
+            "RESUME-TROMPEUR", "RESUME-MAL-NOMME", "poste(s)", "employee(s)",
             "MOIS-EN-CODE", "LOYER-EN-DOUBLE", "PAS-DE-CHAMP", "VARIABLES-DANS-LES-FIXES",
             "CHAMP-ABSENT", "TAUX-PERDU", "OUVRIR-RECLAME-UN-MOTIF",
             "TAUX-PERDU-A-LENVOI", "EXTRA-AVEC-CARTE-REPAS", "EXTRA-REFUSE-SANS-MENSUEL",
@@ -707,6 +707,10 @@ CAS = {
   var ks = E('sum-fixes-sub').textContent.replace(/\s+/g,' ');
   trace((ks.indexOf('3 postes') >= 0 && ks.indexOf('2 sur facture') >= 0)
         ? 'RESUME-DIT-LA-COMPOSITION' : 'RESUME-TROMPEUR ' + ks);
+  /* Et le NOM de la carte doit avoir suivi : « Charges fixes » au-dessus d'un total qui
+     contient l'électricité, c'est le libellé qui ment, pas le montant. */
+  var titreKpi = E('sum-fixes').parentElement.querySelector('.db-l').textContent.trim();
+  trace(titreKpi === 'Charges' ? 'RESUME-BIEN-NOMME' : 'RESUME-MAL-NOMME ' + titreKpi);
 
   switchTab('variables');
   var vv = E('view-variables');
