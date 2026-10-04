@@ -21,8 +21,12 @@ def ecrits(monkeypatch):
     monkeypatch.setattr(flask_app, "_supa_get", lambda t, p=None: [])
     monkeypatch.setattr(flask_app, "_supa_insert",
                         lambda t, r: (out.append(("insert", t, r)), (True, None))[1])
+    # ⚠️ `dire_combien` REND LE NOMBRE DE LIGNES TOUCHÉES, pas `None`. Le bouchon doit le
+    # simuler, sinon il ment sur ce que fait vraiment PostgREST.
     monkeypatch.setattr(flask_app, "_supa_patch",
-                        lambda t, f, d: (out.append(("patch", t, f, d)), (True, None))[1])
+                        lambda t, f, d, dire_combien=False:
+                            (out.append(("patch", t, f, d)),
+                             (True, 0 if dire_combien else None))[1])
     monkeypatch.setattr(flask_app, "_supa_delete",
                         lambda t, c, v: (out.append(("delete", t, c, v)), True)[1])
     flask_app.app.config["TESTING"] = True
@@ -385,3 +389,93 @@ def test_une_annulation_retire_aussi_le_cout(admin, base_avec_regle):
                                   "end_time": "17:00", "annule": True}]
     d = admin.get("/api/shifts?from=2026-10-05&to=2026-10-11").get_json()["couts"]
     assert d["2026-10-10"]["personnel"] == pytest.approx(d["2026-10-09"]["personnel"])
+
+
+# ══ L'EXCEPTION D'UNE RÉCURRENCE ════════════════════════════════════════════════════════════
+#
+# ⚠️ CE CHEMIN N'ÉTAIT TESTÉ PAR RIEN, et c'est pour ça qu'il est parti cassé en production.
+# Il passait par `ON CONFLICT (rule_id, day)` — refusé par Postgres, parce que l'index unique
+# est PARTIEL : il porte `where rule_id is not null`, pour laisser coexister autant de services
+# ponctuels qu'on veut le même jour. PostgREST n'émet pas le prédicat qui permettrait de le
+# cibler, d'où « there is no unique or exclusion constraint matching the ON CONFLICT
+# specification » à chaque clic sur « Annuler ce jour-là ».
+#
+# ⚠️ ET AUCUN TEST UNITAIRE NE POUVAIT L'ATTRAPER : le refus vient de Postgres, pas du code.
+# Ce qu'on garde ici, c'est la FORME de l'écriture — mettre à jour, puis insérer si rien n'a
+# été touché — et l'absence de tout `on_conflict` sur cette table.
+
+EXCEPTION = {"person_id": "p-ana", "day": "2026-10-11", "rule_id": "r1",
+             "start_time": "09:00", "end_time": "17:00", "annule": True}
+
+
+def test_ANNULER_UN_JOUR_DE_RECURRENCE_N_UTILISE_PAS_ON_CONFLICT(admin, ecrits, monkeypatch):
+    """L'index est partiel : Postgres refuse `ON CONFLICT` tant qu'on ne reprend pas son prédicat."""
+    vus = []
+    monkeypatch.setattr(flask_app, "_supa_upsert",
+                        lambda t, r, on_conflict=None: (vus.append(on_conflict), (True, None))[1])
+    admin.post("/api/shifts", json=EXCEPTION)
+    assert not any(vus), "l'écriture passe encore par une fusion `ON CONFLICT`"
+
+
+def test_une_exception_neuve_est_inseree(admin, ecrits):
+    """Rien à mettre à jour : on insère."""
+    assert admin.post("/api/shifts", json=EXCEPTION).get_json()["ok"] is True
+    ops = [o[0] for o in ecrits]
+    assert ops == ["patch", "insert"], f"séquence inattendue : {ops}"
+    _, _, filtre, _ = ecrits[0]
+    assert filtre == {"rule_id": "eq.r1", "day": "eq.2026-10-11"}
+    assert ecrits[1][2]["annule"] is True and ecrits[1][2]["rule_id"] == "r1"
+
+
+def test_UNE_EXCEPTION_DEJA_POSEE_EST_MISE_A_JOUR_SANS_DOUBLON(admin, ecrits, monkeypatch):
+    """
+    ⚠️ ANNULER, RÉTABLIR, PUIS ANNULER À NOUVEAU doit retomber sur la même ligne. Un second
+    insert heurterait l'index unique, et l'écran annoncerait un échec pour une action qui a
+    parfaitement du sens.
+    """
+    monkeypatch.setattr(flask_app, "_supa_patch",
+                        lambda t, f, d, dire_combien=False:
+                            (ecrits.append(("patch", t, f, d)),
+                             (True, 1 if dire_combien else None))[1])
+    assert admin.post("/api/shifts", json=EXCEPTION).get_json()["ok"] is True
+    ops = [o[0] for o in ecrits]
+    assert ops == ["patch"], f"une ligne a été insérée alors qu'une existait déjà : {ops}"
+
+
+def test_un_service_ponctuel_ne_passe_pas_par_ce_chemin(admin, ecrits):
+    """Sans `rule_id`, c'est un simple ajout : pas de recherche préalable."""
+    admin.post("/api/shifts", json={"person_id": "p-ana", "day": "2026-10-11",
+                                    "start_time": "09:00", "end_time": "17:00"})
+    assert [o[0] for o in ecrits] == ["insert"]
+
+
+def test_un_echec_de_mise_a_jour_ne_declenche_pas_dinsertion(admin, ecrits, monkeypatch):
+    """
+    ⚠️ SINON UN RÉSEAU QUI HOQUETTE CRÉE UN DOUBLON. Un PATCH en échec ne dit pas « il n'y avait
+    rien à toucher » : il dit qu'on ne sait pas. Insérer sur ce doute pose une seconde exception
+    pour la même journée.
+
+    ⚠️ ET L'ÉCHEC EST MUET, DÉLIBÉRÉMENT. Avec un message d'erreur, `not touchees` vaut déjà
+    faux et le garde paraît tenu sans l'être — ma première version passait avec la faute. Un 500
+    au corps vide rend `(False, "")` : c'est là que « échec » et « rien à toucher » se
+    confondent, et c'est donc là qu'il faut mesurer.
+    """
+    monkeypatch.setattr(flask_app, "_supa_patch",
+                        lambda t, f, d, dire_combien=False: (False, ""))
+    r = admin.post("/api/shifts", json=EXCEPTION)
+    assert r.get_json()["ok"] is False
+    assert "insert" not in [o[0] for o in ecrits]
+
+
+def test_le_motif_du_refus_remonte_jusqua_lecran(admin, ecrits, monkeypatch):
+    """
+    ⚠️ UN ÉCHEC SANS MOTIF EST UN ÉCHEC QU'ON NE CORRIGE PAS. C'est ce bug-ci qui l'a montré :
+    « there is no unique or exclusion constraint matching the ON CONFLICT specification » est
+    une phrase qui dit exactement quoi réparer — l'avaler aurait laissé « impossible d'annuler »
+    sans rien de plus.
+    """
+    monkeypatch.setattr(flask_app, "_supa_patch",
+                        lambda t, f, d, dire_combien=False: (False, "réseau coupé"))
+    d = admin.post("/api/shifts", json=EXCEPTION).get_json()
+    assert d["ok"] is False
+    assert d["error"] == "réseau coupé", "le motif du refus n'arrive pas à l'écran"

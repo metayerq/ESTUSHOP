@@ -4508,10 +4508,24 @@ def api_shifts_post():
         ok, err = _supa_patch("shifts", {"id": f"eq.{data['id']}"}, row)
     elif rule_id:
         # ⚠️ UNE EXCEPTION SE REPOSE SANS DOUBLON. Annuler un mercredi, puis changer d'avis et
-        # l'annuler à nouveau après l'avoir rétabli, doit retomber sur la même ligne : l'index
-        # unique (règle, jour) refuserait un second insert, et l'écran annoncerait un échec
-        # pour une action qui a parfaitement du sens.
-        ok, err = _supa_upsert("shifts", row, on_conflict="rule_id,day")
+        # l'annuler à nouveau après l'avoir rétabli, doit retomber sur la même ligne.
+        #
+        # ⚠️ MAIS PAS PAR `ON CONFLICT` : l'index unique (règle, jour) est PARTIEL — il porte
+        # `where rule_id is not null`, pour laisser coexister autant de services ponctuels qu'on
+        # veut le même jour. Postgres refuse `ON CONFLICT` sur un index partiel tant que la
+        # requête ne reprend pas son prédicat, et PostgREST ne l'émet pas : « there is no unique
+        # or exclusion constraint matching the ON CONFLICT specification ». Le bouton « Annuler
+        # ce jour-là » échouait à tous les coups.
+        #
+        # On met donc à jour d'abord, on insère si rien n'a été touché. Deux appels, aucune
+        # migration, et jamais de ligne perdue entre les deux — contrairement à un
+        # supprimer-puis-insérer, qui laisse une fenêtre où l'exception n'existe plus.
+        filtre = {"rule_id": f"eq.{rule_id}", "day": f"eq.{row['day']}"}
+        ok, touchees = _supa_patch("shifts", filtre, row, dire_combien=True)
+        if ok and not touchees:
+            ok, err = _supa_insert("shifts", row)
+        else:
+            err = None if ok else touchees
     else:
         ok, err = _supa_insert("shifts", row)
     return jsonify({"ok": ok, "error": err})
@@ -6447,15 +6461,26 @@ def _supa_insert(table, data):
     return False, msg
 
 
-def _supa_patch(table, filtre, data):
+def _supa_patch(table, filtre, data, dire_combien=False):
     """
     Mise à jour ciblée. Ajoutée pour la fusion de cartes : réaffecter l'historique d'un membre à
     un autre demande un UPDATE, que `_supa_upsert` ne sait pas faire — il écrirait une ligne par
     événement au lieu de les déplacer.
+
+    ⚠️ `dire_combien` REND LE NOMBRE DE LIGNES TOUCHÉES, et sans lui on ne peut pas savoir si un
+    UPDATE a trouvé sa cible. PostgREST ne le dit qu'en rendant les lignes : un PATCH qui ne
+    correspond à rien répond 204 comme un PATCH qui a fonctionné. Il faut le demander.
     """
+    entetes = _supa_headers("return=representation") if dire_combien else _supa_headers()
     r = _req.patch(f"{SUPA_URL}/rest/v1/{table}", json=data,
-                   headers=_supa_headers(), params=filtre)
+                   headers=entetes, params=filtre)
     if r.ok:
+        if dire_combien:
+            try:
+                lignes = r.json()
+            except Exception:
+                lignes = []
+            return True, (len(lignes) if isinstance(lignes, list) else 0)
         return True, None
     try:
         msg = r.json().get("message") or r.text
