@@ -144,7 +144,8 @@ def count_open_days(from_date: date, to_date: date) -> int:
 #
 # ⚠️ LES CHARGES ET LES SALAIRES VIVENT EN BASE, PAS DANS CE FICHIER. Tables Supabase
 # `charges_fixes` et `employees`, éditées sur la page `/charges`, lues en direct par
-# `daily_economics` (vendus.py) et par la caisse Mesa (`lib/server/estushopCharges.ts`).
+# `daily_economics` (vendus.py) et par la caisse Mesa (`lib/server/estushopCharges.ts`),
+# qui depuis le 04/10/2026 ne calcule PLUS la même chose — voir l'entête de `charges.py`.
 #
 # ⚠️ CE FICHIER EN PORTAIT ENCORE UNE COPIE, ET ELLE MENTAIT. Quinze postes de charges et deux
 # salaires y étaient écrits en dur — loyer à 700 €, Julie à 1 000 € — et plus personne ne les

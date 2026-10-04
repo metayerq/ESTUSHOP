@@ -17,10 +17,16 @@ from datetime import date, timedelta
 
 # Le taux de Sécurité sociale portugaise part patronale, et le nombre de jours de carte repas.
 #
-# ⚠️ CETTE FORMULE EST RECOPIÉE DANS MESA (`lib/server/estushopCharges.ts`), et les deux doivent
-# rester d'accord : la caisse affiche le même point mort que le bureau. Une divergence ne casse
-# rien — elle fait simplement dire deux chiffres différents à deux écrans, et c'est le comptoir
-# qui a le dernier mot devant un client.
+# ⚠️ CETTE FORMULE EST RECOPIÉE DANS MESA (`lib/server/estushopCharges.ts`), ET LES DEUX ONT
+# DIVERGÉ LE 04/10/2026, DÉLIBÉRÉMENT. Mesa ignore le planning du personnel et garde le diviseur
+# constant de 21,25 jours ; ce fichier lit les services réels et le vrai calendrier. L'écran
+# `CostScreen` de la caisse annonce donc un point mort qui n'est plus celui du bureau — il reste
+# juste à l'ordre de grandeur, faux au détail, et il ne bouge pas quand on ajoute un extra.
+#
+# Le commentaire d'avant promettait l'inverse : « les deux doivent rester d'accord ». Décision de
+# Quentin de ne pas porter le changement côté caisse ; la promesse est donc retirée plutôt que
+# laissée à démentir par les chiffres. Le jour où quelqu'un voudra les réaccorder, il lui faut
+# porter `services_du_jour`, `personnel_du_jour`, `jours_ouverts_du_mois` et la bascule.
 TSU_RATE = 0.2375
 REPAS_JOURS = 242   # ~11 mois × 22 jours
 
