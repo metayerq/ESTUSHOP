@@ -3949,14 +3949,20 @@ def api_charges_get():
     # jamais réclamé, les mois clos sans facture le sont du plus ancien au plus récent — vit
     # dans `charges.py`, pure et testée. La réécrire en JavaScript donnerait deux définitions de
     # « en retard », et l'écran finirait par réclamer un mois que le calcul ignore.
-    attente = {}
+    # ⚠️ CE QUI MANQUE NE SE COMPTE PLUS EN MOIS. Une facture d'eau couvre du 21/07 au 18/09 :
+    # aucun mois n'est jamais « sans facture » ni jamais complet. On envoie donc jusqu'à quand
+    # la charge est MESURÉE, et depuis combien de jours on extrapole.
+    couv = {}
     for nom in {str(c.get("name") or "") for c in charges if _ch.est_facture(c)}:
-        manquants = _ch.mois_en_attente(charges, nom, today_lisbon())
-        if manquants:
-            attente[nom] = [m.isoformat() for m in manquants]
+        c = _ch.couverture(charges, nom, today_lisbon())
+        couv[nom] = {"jusqua": c["jusqua"].isoformat() if c["jusqua"] else None,
+                     "jours": c["jours"],
+                     "debut_suivant": (c["debut_suivant"].isoformat()
+                                       if c["debut_suivant"] else None)}
 
-    return jsonify({"charges": charges, "employees": employees,
-                    "attente": attente, "mois_courant": _ch.mois_de(today_lisbon()).isoformat()})
+    return jsonify({"charges": charges, "employees": employees, "couverture": couv,
+                    "aujourdhui": today_lisbon().isoformat(),
+                    "mois_courant": _ch.mois_de(today_lisbon()).isoformat()})
 
 @app.route("/api/charges/mode", methods=["POST"])
 def api_charge_mode():
@@ -4014,12 +4020,29 @@ def api_charge_facture():
     nom = (data.get("name") or "").strip()
     brut = str(data.get("mois") or "").strip()
     if not nom or not brut:
-        return jsonify({"ok": False, "error": "charge et mois obligatoires"}), 400
+        return jsonify({"ok": False, "error": "charge et période obligatoires"}), 400
     try:
-        # « 2026-10 » comme « 2026-10-01 » : l'écran envoie un mois, pas un jour.
-        mois = date.fromisoformat(brut if len(brut) > 7 else brut + "-01").replace(day=1)
+        # « 2026-10 » comme « 2026-10-01 » : un mois saisi vaut son premier jour.
+        debut = date.fromisoformat(brut if len(brut) > 7 else brut + "-01")
     except ValueError:
-        return jsonify({"ok": False, "error": "mois illisible"}), 400
+        return jsonify({"ok": False, "error": "date de début illisible"}), 400
+
+    # ⚠️ UNE FACTURE COUVRE UNE PÉRIODE, PAS UN MOIS. L'EPAL facture 60 jours à cheval sur trois
+    # mois civils ; l'électricité a sa propre fenêtre. Sans la fin, on ne connaît pas le taux
+    # journalier, donc on ne sait pas ce que chaque mois a réellement consommé.
+    brut_fin = str(data.get("fin") or "").strip()
+    fin_periode = None
+    if brut_fin:
+        try:
+            fin_periode = date.fromisoformat(brut_fin)
+        except ValueError:
+            return jsonify({"ok": False, "error": "date de fin illisible"}), 400
+        if fin_periode < debut:
+            return jsonify({"ok": False, "error": "la fin précède le début"}), 400
+        # On ne mesure pas une période qu'on n'a pas fini de vivre.
+        if fin_periode > today_lisbon():
+            return jsonify({"ok": False, "error": "cette période n'est pas terminée"}), 400
+    mois = _ch.mois_de(debut)
     try:
         montant = round(float(data.get("amount")), 2)
     except (TypeError, ValueError):
@@ -4031,8 +4054,8 @@ def api_charge_facture():
 
     # ⚠️ ON NE RÉCLAME PAS LE FUTUR. Saisir la facture d'un mois qui n'est pas fini imputerait
     # une mesure à une période qu'on n'a pas encore vécue.
-    if mois > _ch.mois_de(today_lisbon()):
-        return jsonify({"ok": False, "error": "ce mois n'est pas commencé"}), 400
+    if debut > today_lisbon():
+        return jsonify({"ok": False, "error": "cette période n'est pas commencée"}), 400
 
     lignes = _supa_get("charges_fixes", {"order": "name.asc"})
     siennes = [c for c in lignes if str(c.get("name") or "") == nom]
@@ -4043,25 +4066,32 @@ def api_charge_facture():
                         "error": f"« {nom} » n'est pas une charge sur facture"}), 400
 
     modele = next(c for c in siennes if _ch.est_facture(c))
+    # ⚠️ UNE FACTURE S'IDENTIFIE PAR SON PREMIER JOUR. Deux factures d'eau peuvent commencer le
+    # même mois sans être la même — et une facture de 60 jours n'a pas « un » mois.
     existante = next((c for c in siennes if _ch.est_facture(c)
-                      and str(c.get("mois") or "")[:10] == mois.isoformat()), None)
+                      and _ch.debut_dune_ligne(c) == debut), None)
 
     if existante is not None:
         # ⚠️ CORRIGER N'EST PAS INTERDIT, C'EST TRACÉ. Une faute de frappe ou un fournisseur qui
         # réémet doivent pouvoir se rattraper ; vivre avec un chiffre faux serait pire. Mais
         # l'écriture déplace un mois déjà lu, donc elle laisse une trace.
         ancien = round(float(existante.get("amount") or 0), 2)
-        if ancien == montant:
+        ancienne_fin = str(existante.get("periode_fin") or "")[:10] or None
+        neuve_fin = fin_periode.isoformat() if fin_periode else None
+        if ancien == montant and ancienne_fin == neuve_fin:
             return jsonify({"ok": True, "inchange": True})
+        # ⚠️ CORRIGER LA FIN CHANGE LE TAUX, DONC TOUS LES MOIS COUVERTS. C'est le même geste
+        # qu'un montant faux, et il se trace pareil.
         ok, err = _supa_patch("charges_fixes", {"id": f"eq.{existante['id']}"},
-                              {"amount": montant})
+                              {"amount": montant, "periode_fin": neuve_fin})
         if ok:
             _journal_action(_current_role(), "facture-corrigee", nom[:24],
-                            {"amount": ancien}, {"amount": montant},
-                            f"correction de la facture de {mois.isoformat()[:7]}")
+                            {"amount": ancien, "periode_fin": ancienne_fin},
+                            {"amount": montant, "periode_fin": neuve_fin},
+                            f"correction de la facture du {debut.isoformat()}")
         return jsonify({"ok": ok, "error": err, "corrige": True, "ancien": ancien})
 
-    debut, fin, a_cloturer = _ch.bornes_dune_facture(lignes, nom, mois)
+    debut, fin, a_cloturer = _ch.bornes_dune_facture(lignes, nom, debut)
     # ⚠️ IL PEUT Y EN AVOIR DEUX. La facture précédente, et la ligne héritée de la bascule en
     # mode facture — celle qui n'a pas de mois et que rien ne fermait : la charge comptait
     # alors double dès la première facture saisie.
@@ -4072,8 +4102,12 @@ def api_charge_facture():
             return jsonify({"ok": False, "error": err or "clôture refusée"}), 502
 
     neuve = {k: v for k, v in modele.items()
-             if k not in ("id", "valid_from", "valid_to", "created_at", "mois", "amount")}
+             if k not in ("id", "valid_from", "valid_to", "created_at", "mois", "amount",
+                          "periode_debut", "periode_fin")}
+    # `mois` reste écrit, mais ce n'est plus qu'une ÉTIQUETTE : la vérité est la période.
     neuve.update({"amount": montant, "mois": mois.isoformat(),
+                  "periode_debut": debut.isoformat(),
+                  "periode_fin": fin_periode.isoformat() if fin_periode else None,
                   "valid_from": debut.isoformat(),
                   "valid_to": fin.isoformat() if fin else None,
                   "active": True})

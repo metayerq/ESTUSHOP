@@ -96,7 +96,10 @@ def test_CORRIGER_UN_MOIS_DEJA_SAISI_EST_PERMIS_ET_TRACE(base):
                             json={"name": "Électricité", "mois": "2026-09",
                                   "amount": 75.00}).get_json()
     assert d["ok"] is True and d["corrige"] is True and d["ancien"] == 77.10
-    assert any(e[0] == "patch" and e[2] == {"amount": 75.00} for e in base["ecrits"])
+    # La période part avec le montant : corriger la fin change le taux, donc tous les mois
+    # couverts — c'est le même geste, il s'écrit d'un bloc.
+    assert any(e[0] == "patch" and e[2] == {"amount": 75.00, "periode_fin": None}
+               for e in base["ecrits"]), base["ecrits"]
     assert any(e[0] == "journal" for e in base["ecrits"]), "la correction n'est pas journalisée"
     assert not any(e[0] == "insert" for e in base["ecrits"]), "une ligne a été dupliquée"
 
@@ -163,23 +166,29 @@ def test_une_charge_inconnue_est_refusee(base):
 
 # ── Ce que la lecture annonce ───────────────────────────────────────────────────────────────
 
-def test_LA_LECTURE_DIT_LES_MOIS_EN_ATTENTE(base, monkeypatch):
+def test_LA_LECTURE_DIT_JUSQUOU_LA_CHARGE_EST_MESUREE(base, monkeypatch):
     """
     ⚠️ LA RÈGLE VIT DANS `charges.py`, PAS DANS LE NAVIGATEUR. La réécrire en JavaScript
-    donnerait deux définitions de « en retard », et l'écran finirait par réclamer un mois que le
-    calcul ignore.
+    donnerait deux définitions de « en retard », et l'écran finirait par réclamer une période
+    que le calcul ignore.
+
+    ⚠️ ET ELLE SE COMPTE EN JOURS. Elle réclamait les mois clos sans facture ; une facture
+    d'eau couvre du 21/07 au 18/09, donc aucun mois n'est jamais complet ni jamais vide.
     """
     monkeypatch.setattr(flask_app, "_resynchroniser_active", lambda t: None)
     d = base["client"].get("/api/charges").get_json()
-    assert d["attente"] == {"Électricité": ["2026-10-01"]}
-    assert d["mois_courant"] == "2026-11-01"
+    # La facture de septembre n'a pas de période : on la lit comme couvrant son mois.
+    assert d["couverture"]["Électricité"] == {
+        "jusqua": "2026-09-30", "jours": 36, "debut_suivant": "2026-10-01"}
+    assert d["aujourdhui"] == "2026-11-05"
 
 
-def test_une_charge_a_jour_nest_pas_en_attente(base, monkeypatch):
+def test_une_facture_qui_couvre_aujourdhui_nestime_aucun_jour(base, monkeypatch):
     monkeypatch.setattr(flask_app, "_resynchroniser_active", lambda t: None)
-    base["lignes"].append(dict(ELEC_SEPT, id="c2", mois="2026-10-01", amount=86.40))
+    base["lignes"].append(dict(ELEC_SEPT, id="c2", periode_debut="2026-10-01",
+                               periode_fin="2026-11-30", amount=86.40))
     d = base["client"].get("/api/charges").get_json()
-    assert d["attente"] == {}
+    assert d["couverture"]["Électricité"]["jours"] == 0
 
 
 # ══ CONVERTIR UNE CHARGE ════════════════════════════════════════════════════════════════════
@@ -283,3 +292,99 @@ def test_UNE_LIGNE_HERITEE_DEJA_FERMEE_NEST_PAS_RETOUCHEE(base):
     fermes = [e[1]["id"] for e in base["ecrits"]
               if e[0] == "patch" and e[2].get("valid_to") == "2026-10-01"]
     assert fermes == ["eq.c8"], base["ecrits"]
+
+
+# ── Une facture couvre une période ──────────────────────────────────────────────────────────
+
+def poser_periode(base, debut, fin, montant, nom="Eau"):
+    return base["client"].post("/api/charges/facture",
+                               json={"name": nom, "mois": debut, "fin": fin,
+                                     "amount": montant})
+
+
+EAU_HERITEE = {"id": "w0", "name": "Eau", "mode": "facture", "mois": None, "amount": 31.40,
+               "frequency": "monthly", "category": "Energy & utilities", "notes": "",
+               "valid_from": None, "valid_to": None, "active": True}
+
+
+def test_LA_PERIODE_EST_ENREGISTREE_AVEC_LA_FACTURE(base):
+    """
+    ⚠️ LA VRAIE FACTURE EPAL. 60 jours, 176,14 €, à cheval sur juillet, août et septembre.
+    Sans les deux dates, le système en faisait 176,14 €/mois — 86,78 € de trop chaque mois.
+    """
+    base["lignes"] = [dict(EAU_HERITEE), dict(LOYER)]
+    r = poser_periode(base, "2026-07-21", "2026-09-18", 176.14)
+    assert r.get_json()["ok"] is True
+    ins = [e[1] for e in base["ecrits"] if e[0] == "insert"]
+    assert len(ins) == 1, base["ecrits"]
+    assert ins[0]["periode_debut"] == "2026-07-21"
+    assert ins[0]["periode_fin"] == "2026-09-18"
+    assert ins[0]["valid_from"] == "2026-07-21"
+    assert ins[0]["valid_to"] is None, "la dernière facture reste ouverte"
+    assert ins[0]["mois"] == "2026-07-01", "le mois reste écrit, comme étiquette"
+
+
+def test_UNE_PERIODE_NON_TERMINEE_EST_REFUSEE(base):
+    """On ne mesure pas une période qu'on n'a pas fini de vivre. (On est le 05/11/2026.)"""
+    base["lignes"] = [dict(EAU_HERITEE)]
+    d = poser_periode(base, "2026-10-20", "2026-12-18", 150.0).get_json()
+    assert d["ok"] is False and "pas terminée" in d["error"]
+    assert not any(e[0] == "insert" for e in base["ecrits"])
+
+
+def test_UNE_PERIODE_A_LENVERS_EST_REFUSEE(base):
+    base["lignes"] = [dict(EAU_HERITEE)]
+    d = poser_periode(base, "2026-09-18", "2026-07-21", 176.14).get_json()
+    assert d["ok"] is False and "précède" in d["error"]
+
+
+def test_LA_FACTURE_SUIVANTE_BORNE_LA_PRECEDENTE_AU_JOUR(base):
+    """L'EPAL enchaîne sans trou : la précédente doit s'arrêter là où celle-ci commence."""
+    precedente = {"id": "w1", "name": "Eau", "mode": "facture", "mois": "2026-07-01",
+                  "amount": 176.14, "frequency": "monthly", "category": "", "notes": "",
+                  "periode_debut": "2026-07-21", "periode_fin": "2026-09-18",
+                  "valid_from": "2026-07-21", "valid_to": None, "active": True}
+    base["lignes"] = [precedente]
+    # ⚠️ LA PÉRIODE DOIT ÊTRE TERMINÉE : on est le 05/11 dans ce bouchon, et ma première
+    # version la faisait courir jusqu'au 18/11. La route avait raison de la refuser.
+    r = poser_periode(base, "2026-09-19", "2026-10-31", 168.0)
+    assert r.get_json()["ok"] is True
+    fermetures = [e for e in base["ecrits"]
+                  if e[0] == "patch" and e[2].get("valid_to") == "2026-09-19"]
+    assert len(fermetures) == 1 and fermetures[0][1] == {"id": "eq.w1"}, base["ecrits"]
+
+
+def test_RESAISIR_LA_MEME_PERIODE_CORRIGE_AU_LIEU_DE_DUPLIQUER(base):
+    precedente = {"id": "w1", "name": "Eau", "mode": "facture", "mois": "2026-07-01",
+                  "amount": 176.14, "frequency": "monthly", "category": "", "notes": "",
+                  "periode_debut": "2026-07-21", "periode_fin": "2026-09-18",
+                  "valid_from": "2026-07-21", "valid_to": None, "active": True}
+    base["lignes"] = [precedente]
+    d = poser_periode(base, "2026-07-21", "2026-09-18", 180.0).get_json()
+    assert d["ok"] is True and d["corrige"] is True and d["ancien"] == 176.14
+    assert not any(e[0] == "insert" for e in base["ecrits"]), "une ligne a été dupliquée"
+
+
+def test_CORRIGER_LA_FIN_DE_PERIODE_EST_UNE_CORRECTION(base):
+    """
+    ⚠️ CHANGER LA FIN CHANGE LE TAUX JOURNALIER, donc tous les mois couverts. Le montant seul
+    ne suffit pas à décider qu'il n'y a « rien à faire ».
+    """
+    precedente = {"id": "w1", "name": "Eau", "mode": "facture", "mois": "2026-07-01",
+                  "amount": 176.14, "frequency": "monthly", "category": "", "notes": "",
+                  "periode_debut": "2026-07-21", "periode_fin": "2026-09-18",
+                  "valid_from": "2026-07-21", "valid_to": None, "active": True}
+    base["lignes"] = [precedente]
+    d = poser_periode(base, "2026-07-21", "2026-09-20", 176.14).get_json()
+    assert d["ok"] is True and d.get("inchange") is not True
+    assert any(e[0] == "patch" and e[2].get("periode_fin") == "2026-09-20"
+               for e in base["ecrits"]), base["ecrits"]
+
+
+def test_UNE_FACTURE_SANS_FIN_RESTE_ACCEPTEE(base):
+    """L'ancien geste — un mois, un montant — ne doit pas se mettre à refuser."""
+    base["lignes"] = [dict(ELEC_SEPT), dict(LOYER)]
+    r = poser(base, mois="2026-10", montant=86.40)
+    assert r.get_json()["ok"] is True
+    ins = [e[1] for e in base["ecrits"] if e[0] == "insert"][0]
+    assert ins["periode_fin"] is None and ins["periode_debut"] == "2026-10-01"

@@ -296,3 +296,172 @@ def test_une_ligne_heritee_qui_commence_plus_tard_nest_pas_fermee_avant_son_debu
     tardive = {**CONVERTIE, "valid_from": "2026-11-01"}
     _, _, a_cloturer = ch.bornes_dune_facture([tardive], "Électricité", date(2026, 10, 1))
     assert a_cloturer == []
+
+
+# ══ UNE FACTURE COUVRE UNE PÉRIODE, PAS UN MOIS ═════════════════════════════════════════════
+#
+# ⚠️ L'HYPOTHÈSE S'EST CASSÉE SUR LA PREMIÈRE VRAIE FACTURE D'EAU. L'EPAL facture par période de
+# 60 jours : du 21/07/2026 au 18/09/2026, 176,14 €. À cheval sur TROIS mois civils. Saisie comme
+# un montant mensuel — ce que le modèle « une facture = un mois » en faisait — l'eau pesait
+# 176,14 €/mois au lieu de 89,36 €, soit 86,78 € de trop chaque mois dans le point mort.
+#
+# Les factures d'électricité portent une période elles aussi : ce n'est pas un cas particulier
+# de l'eau, c'est la forme normale d'une facture de fluide.
+
+EPAL = {"name": "Eau", "mode": "facture", "mois": "2026-09-01", "amount": 176.14,
+        "frequency": "monthly", "periode_debut": "2026-07-21", "periode_fin": "2026-09-18",
+        "valid_from": "2026-07-21", "valid_to": None, "active": True}
+
+
+def test_le_taux_journalier_vient_de_la_periode():
+    assert round(ch.taux_jour(EPAL), 4) == round(176.14 / 60, 4)
+
+
+def test_une_ligne_sans_periode_garde_son_equivalent_mensuel():
+    """Les charges stables et les lignes d'avant la migration ne bougent pas d'un centime."""
+    assert ch.taux_jour(LOYER) is None
+    assert ch.part_mensuelle(LOYER, date(2026, 9, 15)) == 700.0
+
+
+def test_chaque_mois_porte_les_jours_quil_a_consommes():
+    """
+    ⚠️ C'EST TOUT L'OBJET. Juillet n'a que 11 jours couverts, août les 31, septembre 18 — et la
+    somme des trois fait la facture. Imputer 176,14 € à un seul des trois mois serait faux dans
+    les trois.
+    """
+    close = {**EPAL, "valid_to": "2026-09-19"}
+    j = round(ch.part_mensuelle(close, date(2026, 7, 15)), 2)
+    a = round(ch.part_mensuelle(close, date(2026, 8, 15)), 2)
+    s = round(ch.part_mensuelle(close, date(2026, 9, 15)), 2)
+    assert (j, a, s) == (32.29, 91.01, 52.84)
+    assert round(j + a + s, 2) == 176.14, "la somme des trois mois doit faire la facture"
+
+
+def test_la_derniere_facture_prolonge_son_taux_sur_les_jours_suivants():
+    """
+    ⚠️ C'EST L'ESTIMATION, ET ELLE SORT DE LA MÊME RÈGLE. La ligne reste ouverte : octobre entier
+    est « en vigueur », donc 31 jours au taux de la dernière facture. Pas de second calcul à
+    tenir d'accord avec le premier.
+    """
+    assert round(ch.part_mensuelle(EPAL, date(2026, 10, 15)), 2) == round(176.14 / 60 * 31, 2)
+
+
+def test_le_mois_qui_precede_la_periode_ne_porte_rien():
+    """La ligne n'est pas encore en vigueur : zéro jour couvert, pas un prorata inventé."""
+    assert ch.part_mensuelle(EPAL, date(2026, 6, 15)) == 0.0
+
+
+def test_le_total_mensuel_additionne_les_deux_regimes():
+    close = {**EPAL, "valid_to": "2026-09-19"}
+    assert round(ch.charges_mensuelles([LOYER, close], date(2026, 8, 15)), 2) == round(700 + 91.01, 2)
+
+
+def test_une_periode_a_lenvers_est_ignoree_pas_negative():
+    """Une saisie inversée doit retomber sur l'ancien comportement, jamais produire un crédit."""
+    tordue = {**EPAL, "periode_debut": "2026-09-18", "periode_fin": "2026-07-21"}
+    assert ch.taux_jour(tordue) is None
+    assert ch.part_mensuelle(tordue, date(2026, 8, 15)) == 176.14
+
+
+def test_une_facture_dun_seul_jour_ne_divise_pas_par_zero():
+    court = {**EPAL, "periode_debut": "2026-08-10", "periode_fin": "2026-08-10", "amount": 5.0}
+    assert ch.taux_jour(court) == 5.0
+
+
+def test_estime_se_dit_au_jour_pres_quand_la_periode_est_connue():
+    """
+    ⚠️ UNE FACTURE DE 60 JOURS FINIT LE 18, PAS LE 30. Le 15 septembre est encore mesuré, le
+    19 ne l'est plus — raisonner par mois aurait déclaré septembre entier mesuré, alors que ses
+    douze derniers jours sont une prolongation.
+    """
+    assert ch.facture_estimee(EPAL, date(2026, 9, 15)) is False
+    assert ch.facture_estimee(EPAL, date(2026, 9, 18)) is False
+    assert ch.facture_estimee(EPAL, date(2026, 9, 19)) is True
+    assert ch.facture_estimee(EPAL, date(2026, 10, 2)) is True
+
+
+def test_sans_periode_le_raisonnement_par_mois_reste():
+    """Les lignes d'avant la migration gardent leur règle : rien ne change sous elles."""
+    assert ch.facture_estimee(facture("2026-09-01", 77.10), date(2026, 9, 20)) is False
+    assert ch.facture_estimee(facture("2026-09-01", 77.10), date(2026, 10, 2)) is True
+
+
+def test_deux_factures_dune_periode_se_suivent_sans_trou_ni_recouvrement():
+    """
+    ⚠️ LA FACTURE SUIVANTE BORNE LA PRÉCÉDENTE, AU JOUR. L'EPAL enchaîne : 21/07→18/09, puis
+    19/09→… La première doit s'arrêter exactement là où la seconde commence, sinon les deux
+    taux s'additionnent sur les jours partagés, ou aucun ne couvre les jours du trou.
+    """
+    debut, fin, a_cloturer = ch.bornes_dune_facture(
+        [EPAL], "Eau", date(2026, 9, 19))
+    assert (debut, fin) == (date(2026, 9, 19), None)
+    assert a_cloturer == [(EPAL, date(2026, 9, 19))]
+
+
+def test_rattraper_une_periode_anterieure_la_place_entre_ses_voisines():
+    precedente = {**EPAL, "periode_debut": "2026-05-22", "periode_fin": "2026-07-20",
+                  "valid_from": "2026-05-22", "valid_to": "2026-07-21", "amount": 160.0}
+    _, fin, a_cloturer = ch.bornes_dune_facture(
+        [precedente, EPAL], "Eau", date(2026, 3, 23))
+    assert fin == date(2026, 5, 22), "elle doit s'arrêter où la suivante commence"
+    assert a_cloturer == [], "aucune ligne n'était en vigueur ce jour-là"
+
+
+def test_resaisir_la_meme_periode_ne_se_cloture_pas_elle_meme():
+    """Sans ce garde-fou, corriger une facture la fermerait sur son propre premier jour."""
+    _, _, a_cloturer = ch.bornes_dune_facture([EPAL], "Eau", date(2026, 7, 21))
+    assert a_cloturer == []
+
+
+def test_une_ligne_sans_bornes_mais_avec_periode_commence_a_sa_periode():
+    """Posée hors de la route (import, correction à la main), elle garde un début lisible."""
+    sans_bornes = {k: v for k, v in EPAL.items() if k != "valid_from"}
+    assert ch.debut_dune_ligne(sans_bornes) == date(2026, 7, 21)
+
+
+def test_a_defaut_de_tout_le_mois_sert_de_debut():
+    """Les lignes d'avant la migration n'ont ni période ni bornes : leur mois les situe."""
+    assert ch.debut_dune_ligne({"name": "x", "mode": "facture", "mois": "2026-09-01"}) \
+        == date(2026, 9, 1)
+
+
+# ── Jusqu'à quand sait-on ───────────────────────────────────────────────────────────────────
+
+def test_la_couverture_sarrete_au_dernier_jour_facture():
+    c = ch.couverture([EPAL], "Eau", date(2026, 10, 4))
+    assert c["jusqua"] == date(2026, 9, 18)
+    assert c["jours"] == 16, "16 jours extrapolés depuis la fin de la facture"
+    assert c["debut_suivant"] == date(2026, 9, 19), "le lendemain, pour ne pas laisser de trou"
+
+
+def test_une_facture_sans_periode_est_lue_comme_couvrant_son_mois():
+    """Les lignes d'avant la migration prétendaient couvrir leur mois : on les prend au mot."""
+    c = ch.couverture([facture("2026-09-01", 77.10)], "Électricité", date(2026, 10, 4))
+    assert c["jusqua"] == date(2026, 9, 30) and c["jours"] == 4
+
+
+def test_sans_aucune_facture_il_ny_a_rien_a_extrapoler():
+    c = ch.couverture([], "Eau", date(2026, 10, 4))
+    assert c == {"jusqua": None, "jours": 0, "debut_suivant": None}
+
+
+def test_une_facture_qui_couvre_aujourdhui_ne_compte_aucun_jour_estime():
+    c = ch.couverture([EPAL], "Eau", date(2026, 9, 10))
+    assert c["jours"] == 0, "le jour calculé est dans la période : rien n'est extrapolé"
+
+
+def test_cest_la_facture_la_plus_recente_qui_fixe_la_couverture():
+    vieille = {**EPAL, "periode_debut": "2026-05-22", "periode_fin": "2026-07-20"}
+    c = ch.couverture([vieille, EPAL], "Eau", date(2026, 10, 4))
+    assert c["jusqua"] == date(2026, 9, 18)
+
+
+def test_la_couverture_de_leau_ignore_les_factures_delectricite():
+    """
+    ⚠️ LES DEUX CHARGES VIVENT DANS LA MÊME TABLE. Sans le filtre, une facture d'électricité
+    plus récente ferait croire l'eau à jour — et l'écran cesserait de réclamer celle qui manque.
+    """
+    elec = {**EPAL, "name": "Électricité", "periode_debut": "2026-09-19",
+            "periode_fin": "2026-10-03"}
+    c = ch.couverture([EPAL, elec], "Eau", date(2026, 10, 4))
+    assert c["jusqua"] == date(2026, 9, 18) and c["jours"] == 16

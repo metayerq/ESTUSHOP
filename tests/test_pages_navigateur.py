@@ -624,7 +624,13 @@ CAS = {
             "/api/charges": {
                 # ⚠️ TROIS ONGLETS DEPUIS LE 04/10 : fixes, variables, personnel. Le bouchon
                 # porte une charge de chaque sorte, sinon le troisième onglet n'est jamais rendu.
-                "attente": {"Électricité": ["2026-09-01"]},
+                # ⚠️ CE QUI MANQUE SE COMPTE EN JOURS. Une facture d'eau couvre 60 jours à
+                # cheval sur trois mois civils : « le mois en attente » n'a plus de sens.
+                "couverture": {"Électricité": {"jusqua": "2026-08-31", "jours": 34,
+                                               "debut_suivant": "2026-09-01"},
+                               "Eau": {"jusqua": "2026-09-30", "jours": 4,
+                                       "debut_suivant": "2026-10-01"}},
+                "aujourdhui": "2026-10-04",
                 "mois_courant": "2026-10-01",
                 "charges": [{"id": "c1", "name": "Loyer", "amount": 700.0,
                              "frequency": "monthly", "category": "local", "notes": "",
@@ -657,11 +663,12 @@ CAS = {
             "Loyer", "Marco Silva", "Ana Dias",
             # ⚠️ LE TAUX HORAIRE EST CE QUI CHIFFRE LE PLANNING : sans lui, un extra apparaît
             # au calendrier et sa journée ne coûte rien.
-            "TROIS-ONGLETS", "COMPTEUR-DIT-LATTENTE", "FIXES-SANS-LES-VARIABLES",
-            "RESUME-DIT-LA-COMPOSITION", "RESUME-BIEN-NOMME", "ONGLET-BASCULE", "MOIS-EN-CLAIR", "PAS-DE-LOYER-ICI", "CHAMP-DE-SAISIE",
+            "TROIS-ONGLETS", "COMPTEUR-DIT-LE-RETARD", "FIXES-SANS-LES-VARIABLES",
+            "RESUME-DIT-LA-COMPOSITION", "RESUME-BIEN-NOMME", "ONGLET-BASCULE", "DATES-EN-CLAIR", "RETARD-EN-JOURS", "PAS-DE-LOYER-ICI",
+            "PAS-DE-CHAMP-RAPIDE", "COUVERTURE-DITE", "DEUX-DATES",
+            "DEBUT-AU-LENDEMAIN", "MENSUEL-ANNONCE", "PERIODE-ENVOYEE",
             "VARIABLES-HORS-DES-FIXES", "COLONNES-ORDONNEES", "UN-POINT-SANS-GRAPHE",
-            "GRAPHE-ANNONCE", "FENETRE-OUVRE", "SELECTEUR-DE-MOIS",
-            "MOIS-PROPOSE-LE-RETARD", "CORRECTION-ANNONCEE",
+            "GRAPHE-ANNONCE", "FENETRE-OUVRE", "CORRECTION-ANNONCEE",
             "CHAMP-TAUX", "TAUX-REPRIS", "OUVRIR-NE-MODIFIE-PAS",
             "TAUX-ENVOYE", "EXTRA-SANS-CARTE-REPAS", "EXTRA-SANS-MENSUEL-ACCEPTE",
             "CARTE-REPAS-MASQUEE", "REFUS-LISIBLE",
@@ -678,13 +685,14 @@ CAS = {
         "interdit": [
             "ONGLET-MANQUANT", "COMPTEUR-MUET", "FIXES-MELANGEES", "ONGLET-FIGE",
             "RESUME-TROMPEUR", "RESUME-MAL-NOMME", "poste(s)", "employee(s)",
-            "MOIS-EN-CODE", "LOYER-EN-DOUBLE", "PAS-DE-CHAMP",
+            "DATES-EN-CODE", "RETARD-EN-MOIS", "LOYER-EN-DOUBLE", "CHAMP-RAPIDE-SURVIVANT",
+            "COUVERTURE-TUE", "UNE-SEULE-DATE", "DEBUT-AILLEURS", "MENSUEL-TU", "PERIODE-PERDUE",
             # ⚠️ PAS « GRAPHE-SUR-UN-POINT » : c'était une sous-chaîne du marqueur
             # attendu, donc le contrôle rougissait sur un rendu correct. Deuxième
             # fois de la session — un marqueur interdit ne doit jamais être contenu
             # dans celui qu'on espère.
             "COLONNES-AU-HASARD", "UN-POINT-AVEC-GRAPHE", "GRAPHE-MUET", "FENETRE-FERMEE",
-            "SELECTEUR-DE-JOUR", "MOIS-PROPOSE-AUTRE", "CORRECTION-SILENCIEUSE", "VARIABLES-DANS-LES-FIXES",
+            "CORRECTION-SILENCIEUSE", "VARIABLES-DANS-LES-FIXES",
             "CHAMP-ABSENT", "TAUX-PERDU", "OUVRIR-RECLAME-UN-MOTIF",
             "TAUX-PERDU-A-LENVOI", "EXTRA-AVEC-CARTE-REPAS", "EXTRA-REFUSE-SANS-MENSUEL",
             "CARTE-REPAS-VISIBLE", "REFUS-UNDEFINED",
@@ -706,7 +714,7 @@ CAS = {
    * visibilité, et c'est le seul endroit de l'écran qui porte une couleur d'alerte. */
   trace(E('tab-variables') ? 'TROIS-ONGLETS' : 'ONGLET-MANQUANT');
   trace(E('badge-variables').textContent === '1'
-        ? 'COMPTEUR-DIT-LATTENTE' : 'COMPTEUR-MUET ' + E('badge-variables').textContent);
+        ? 'COMPTEUR-DIT-LE-RETARD' : 'COMPTEUR-MUET ' + E('badge-variables').textContent);
   trace(E('badge-charges').textContent === '1'
         ? 'FIXES-SANS-LES-VARIABLES' : 'FIXES-MELANGEES ' + E('badge-charges').textContent);
   /* ⚠️ LA CARTE DU HAUT ADDITIONNE TOUT, et ne doit donc plus s'appeler « Charges fixes » :
@@ -724,16 +732,24 @@ CAS = {
   var vv = E('view-variables');
   trace(vv.style.display !== 'none' ? 'ONGLET-BASCULE' : 'ONGLET-FIGE');
   var tv = vv.textContent.replace(/\s+/g,' ');
-  /* Le mois en attente s'affiche en toutes lettres, pas en 2026-09. */
-  trace(tv.indexOf('septembre 2026') >= 0
-        ? 'MOIS-EN-CLAIR' : 'MOIS-EN-CODE ' + tv.slice(0,90));
+  /* Les dates s'affichent en toutes lettres, pas en 2026-08-31. */
+  trace(tv.indexOf('2026-08') < 0 && tv.indexOf('août 2026') >= 0
+        ? 'DATES-EN-CLAIR' : 'DATES-EN-CODE ' + tv.slice(0,110));
+  /* ⚠️ « EN RETARD » SE DIT EN JOURS. 34 jours depuis la dernière facture d'électricité :
+     dire « 1 mois » arrondirait une mesure qu'on a exacte. */
+  trace(tv.indexOf('34 jours estimés') >= 0
+        ? 'RETARD-EN-JOURS' : 'RETARD-EN-MOIS ' + tv.slice(0,110));
   trace(tv.indexOf('Loyer') < 0 ? 'PAS-DE-LOYER-ICI' : 'LOYER-EN-DOUBLE');
   /* ⚠️ ET L'INVERSE AUSSI : une charge variable ne doit pas rester dans le tableau des fixes.
      L'y laisser la montrerait deux fois, avec deux gestes différents pour la même ligne. */
   var tf = E('view-charges').textContent.replace(/\s+/g,' ');
   trace(tf.indexOf('Électricité') < 0 && tf.indexOf('Loyer') >= 0
         ? 'VARIABLES-HORS-DES-FIXES' : 'VARIABLES-DANS-LES-FIXES ' + tf.slice(0,90));
-  trace(E('fact-Électricité') ? 'CHAMP-DE-SAISIE' : 'PAS-DE-CHAMP');
+  /* ⚠️ LE CHAMP RAPIDE « UN MOIS, UN MONTANT » A DISPARU, et c'est voulu : il ne pouvait pas
+     deviner la fin de période, et sans elle il n'y a pas de taux journalier. Ce qui reste à
+     sa place dit jusqu'où on mesure. */
+  trace(!E('fact-Électricité') ? 'PAS-DE-CHAMP-RAPIDE' : 'CHAMP-RAPIDE-SURVIVANT');
+  trace(tv.indexOf('Mesuré jusqu') >= 0 ? 'COUVERTURE-DITE' : 'COUVERTURE-TUE ' + tv.slice(0,110));
 
   /* ⚠️ MOINS DE DEUX FACTURES NE FONT PAS UNE ÉVOLUTION. Le bouchon n'en donne qu'une par
      charge : une barre unique occuperait toute la largeur et se lirait comme un maximum, alors
@@ -751,15 +767,47 @@ CAS = {
   /* La fenêtre « + Facture » : choisir un mois, et corriger par le même chemin. */
   ouvrirFacture('Électricité');
   trace(E('fact-modal').classList.contains('open') ? 'FENETRE-OUVRE' : 'FENETRE-FERMEE');
-  trace(E('fact-mois').type === 'month' ? 'SELECTEUR-DE-MOIS' : 'SELECTEUR-DE-JOUR');
-  trace(E('fact-mois').value === '2026-09'
-        ? 'MOIS-PROPOSE-LE-RETARD' : 'MOIS-PROPOSE-AUTRE ' + E('fact-mois').value);
-  /* ⚠️ CHOISIR UN MOIS DÉJÀ SAISI N'EST PAS UNE ERREUR : la fenêtre le dit et change de verbe. */
-  E('fact-mois').value = '2026-08';
+  /* ⚠️ DEUX DATES, PAS UN MOIS. Un sélecteur de mois ne peut pas décrire une facture du
+     21/07 au 18/09 — et la lire comme un montant mensuel gonflait l'eau de 86,78 €/mois. */
+  trace((E('fact-mois').type === 'date' && E('fact-fin') && E('fact-fin').type === 'date')
+        ? 'DEUX-DATES' : 'UNE-SEULE-DATE');
+  /* ⚠️ LE DÉBUT PROPOSÉ EST LE LENDEMAIN DE LA DERNIÈRE FACTURE : c'est ce que fait le
+     fournisseur, et c'est ce qui garantit qu'aucun jour ne reste non facturé. */
+  trace(E('fact-mois').value === '2026-09-01'
+        ? 'DEBUT-AU-LENDEMAIN' : 'DEBUT-AILLEURS ' + E('fact-mois').value);
+  /* ⚠️ L'ÉCRAN CHIFFRE LE COÛT MENSUEL AVANT D'ENREGISTRER. C'est lui qui entrera dans le
+     point mort, et c'est en le voyant qu'on sait si on s'est trompé de case. */
+  E('fact-fin').value = '2026-10-30';
+  E('fact-montant').value = '176.14';
+  E('fact-montant').dispatchEvent(new Event('input', {bubbles:true}));
+  var ap = E('fact-avis').textContent.replace(/\s+/g,' ');
+  trace((ap.indexOf('60 jours') >= 0 && ap.indexOf('89.3') >= 0)
+        ? 'MENSUEL-ANNONCE' : 'MENSUEL-TU ' + ap.slice(0,80));
+  /* ⚠️ RESAISIR UNE PÉRIODE DÉJÀ CONNUE N'EST PAS UNE ERREUR : la fenêtre le dit et change
+     de verbe. La facture du bouchon commence le 1er août. */
+  E('fact-mois').value = '2026-08-01';
   E('fact-mois').dispatchEvent(new Event('change', {bubbles:true}));
   var av = E('fact-avis').textContent.replace(/\s+/g,' ');
-  trace((av.indexOf('porte déjà') >= 0 && E('fact-ok').textContent === 'Corriger')
+  trace((av.indexOf('commence déjà') >= 0 && E('fact-ok').textContent === 'Corriger')
         ? 'CORRECTION-ANNONCEE' : 'CORRECTION-SILENCIEUSE ' + av.slice(0,70));
+
+  /* ⚠️ LA FIN DE PÉRIODE DOIT PARTIR DANS LA REQUÊTE. Un champ ajouté à l'écran et absent du
+     corps envoyé est décoratif : la facture s'enregistrerait sans sa fin, donc sans taux
+     journalier, et on retomberait sur « une facture = un mois ». C'est exactement la faute du
+     taux horaire, deux écrans plus loin, qui avait passé une relecture. */
+  var envoye = null;
+  var vraiFetch = window.fetch;
+  window.fetch = function(u, o){
+    if(String(u).indexOf('/api/charges/facture') === 0 && o && o.body) envoye = JSON.parse(o.body);
+    return vraiFetch(u, o);
+  };
+  E('fact-mois').value = '2026-09-01';
+  E('fact-fin').value = '2026-10-30';
+  E('fact-montant').value = '176.14';
+  validerFacture();
+  window.fetch = vraiFetch;
+  trace((envoye && envoye.fin === '2026-10-30' && envoye.mois === '2026-09-01')
+        ? 'PERIODE-ENVOYEE' : 'PERIODE-PERDUE ' + JSON.stringify(envoye));
   fermerFacture();
   switchTab('personnel');
 
@@ -1078,6 +1126,23 @@ window.fetch = function (u) {
 </script>"""
 
 
+# ⚠️ TROIS FACTURES EPAL TELLES QUE LA ROUTE LES ÉCRIT. `valid_to` est le début de la SUIVANTE,
+# pas la fin de la période : entre le 21 et le 31 juillet, personne ne facture, mais la ligne de
+# juillet reste en vigueur et porte ces jours à son taux. Fermer au dernier jour facturé
+# laisserait l'eau absente du point mort pendant onze jours — un trou ment plus qu'une
+# estimation annoncée. Le graphe, lui, montre le trou de FACTURATION.
+def _epal(i, deb, fin, montant, jusqua):
+    return {"id": f"w{i}", "name": "Eau", "amount": montant, "frequency": "monthly",
+            "category": "Energy & utilities", "notes": "", "mode": "facture",
+            "mois": deb[:7] + "-01", "periode_debut": deb, "periode_fin": fin,
+            "active": jusqua is None, "valid_from": deb, "valid_to": jusqua}
+
+
+EPAL_1 = _epal(1, "2026-03-23", "2026-05-21", 160.0, "2026-05-22")
+EPAL_2 = _epal(2, "2026-05-22", "2026-07-20", 170.0, "2026-08-01")
+EPAL_3 = _epal(3, "2026-08-01", "2026-09-29", 220.0, None)
+
+
 LIGNE_JUIN = {"id": "e06", "name": "Électricité", "amount": 70.0, "frequency": "monthly", "category": "Energy & utilities", "notes": "", "mode": "facture", "mois": "2026-06-01", "active": True, "valid_from": "2026-06-01", "valid_to": None}
 LIGNE_AOUT = {"id": "e08", "name": "Électricité", "amount": 75.0, "frequency": "monthly", "category": "Energy & utilities", "notes": "", "mode": "facture", "mois": "2026-08-01", "active": True, "valid_from": "2026-08-01", "valid_to": None}
 LIGNE_SEPT = {"id": "e09", "name": "Électricité", "amount": 120.0, "frequency": "monthly", "category": "Energy & utilities", "notes": "", "mode": "facture", "mois": "2026-09-01", "active": True, "valid_from": "2026-09-01", "valid_to": None}
@@ -1281,26 +1346,27 @@ setTimeout(function(){
 @SANS
 def test_LE_GRAPHE_DES_CHARGES_VARIABLES_SE_LIT_ET_SE_CORRIGE(tmp_path):
     """
-    ⚠️ LE GRAPHE COLLAIT LES FACTURES BOUT À BOUT. Avec juin, août et septembre, les trois
-    barres se touchaient : l'absence de JUILLET était invisible, et la pente juin→août se
-    lisait comme une variation d'un mois sur l'autre. Un graphe qui tait ce qu'il ne sait pas
-    ment plus qu'un graphe absent.
+    ⚠️ UNE FACTURE COUVRE UNE PÉRIODE, PAS UN MOIS. L'EPAL facture 60 jours à cheval sur trois
+    mois civils. Le graphe empilait des mois ; il empile désormais des factures, à la hauteur de
+    leur TAUX JOURNALIER — seule grandeur comparable entre une facture de 30 jours et une de 60,
+    dont les totaux diffèrent du simple au double sans rien dire de la consommation.
 
-    ⚠️ ET IL NE SE LISAIT PAS. Les valeurs n'étaient accessibles que par l'infobulle native —
-    une seconde d'attente, la police du système — et pas du tout au clavier : le lecteur
-    d'écran n'entendait qu'« Évolution sur 4 mois », sans une seule valeur.
+    ⚠️ ET UN TROU SE COMPTE EN JOURS. Entre la facture qui finit le 20/07 et celle qui commence
+    le 01/08, onze jours ne sont facturés par personne. Les barres se touchaient : personne ne
+    les voyait.
 
-    Les montants sont choisis pour que septembre dépasse de plus de 30 % la moyenne des mois
-    renseignés qui précèdent, et août non : le repère doit apparaître sur l'un et pas l'autre.
+    Les montants sont choisis pour que la troisième facture dépasse de plus de 30 % la moyenne
+    des taux précédents, et la deuxième non : le repère doit apparaître sur l'une et pas l'autre.
     """
     binaire, env = NAVIGATEUR
     reponses = {
         "/api/statut": {"ca": None, "ca_texte": "—", "tickets": None, "moyen_texte": "",
                         "ecarts": 0, "boissons_dues": 0, "caisse_ok": None},
         "/api/charges": {
-            "attente": {"Électricité": ["2026-07-01"]},
-            "mois_courant": "2026-10-01",
-            "charges": [LIGNE_JUIN, LIGNE_AOUT, LIGNE_SEPT],
+            "couverture": {"Eau": {"jusqua": "2026-09-29", "jours": 5,
+                                   "debut_suivant": "2026-09-30"}},
+            "aujourdhui": "2026-10-04", "mois_courant": "2026-10-01",
+            "charges": [EPAL_1, EPAL_2, EPAL_3],
             "employees": [],
         },
     }
@@ -1312,71 +1378,95 @@ setTimeout(function(){
   var carte = document.querySelector('.var-carte');
   var barres = carte.querySelectorAll('.var-barres > button');
 
-  /* Quatre emplacements pour trois factures : juillet manque et DOIT occuper le sien. */
-  trace(barres.length === 4 ? 'QUATRE-EMPLACEMENTS' : 'MOIS-COLLES ' + barres.length);
+  /* Quatre emplacements pour trois factures : les onze jours non facturés occupent le leur. */
+  trace(barres.length === 4 ? 'QUATRE-EMPLACEMENTS' : 'FACTURES-COLLEES ' + barres.length);
   var creux = carte.querySelectorAll('.var-barres > button.creux');
-  trace((creux.length === 1 && creux[0].dataset.mois === '2026-07-01')
-        ? 'TROU-VISIBLE' : 'TROU-MASQUE ' + creux.length);
+  trace((creux.length === 1 && creux[0].dataset.jours === '11')
+        ? 'TROU-COMPTE-EN-JOURS'
+        : 'TROU-MASQUE ' + creux.length + '/' + (creux[0] || {dataset:{}}).dataset.jours);
 
-  /* Un mois sans facture n'est pas une barre à zéro : zéro dirait que le compteur n'a rien
-     relevé. L'emplacement n'a pas de hauteur calculée. */
-  trace(creux[0].style.height === '' ? 'TROU-SANS-VALEUR' : 'TROU-VALORISE ' + creux[0].style.height);
+  /* ⚠️ LA HAUTEUR EST LE TAUX, PAS LE TOTAL. Les trois factures durent 60 jours chacune ici ;
+     la plus chère au total est aussi la plus chère au taux, mais c'est le taux qui est stocké
+     et c'est lui qu'on compare. */
+  var b3 = carte.querySelector('[data-mois="2026-08-01"]');
+  trace(Math.abs(parseFloat(b3.dataset.taux) - 220 / 60) < 0.001
+        ? 'HAUTEUR-SUR-LE-TAUX' : 'HAUTEUR-SUR-LE-TOTAL ' + b3.dataset.taux);
 
-  /* Le repère d'anomalie : septembre oui, août non. */
+  /* ⚠️ UNE FACTURE D'AVANT LA MIGRATION N'A PAS DE PÉRIODE. Elle est lue comme couvrant son
+     mois — ce qu'elle prétendait être, et ce que le serveur en fait déjà. Sans ce repli, son
+     taux était nul : le graphe la dessinait à hauteur minimale et l'historique se lisait comme
+     une consommation nulle. */
+  chargesData.push({id:'v9', name:'Eau', amount:90.0, frequency:'monthly', mode:'facture',
+                    mois:'2026-11-01', periode_debut:null, periode_fin:null,
+                    valid_from:'2026-11-01', valid_to:null, active:true});
+  renderVariables();
+  var vieille = document.querySelector('[data-mois="2026-11-01"]');
+  trace((vieille && Math.abs(parseFloat(vieille.dataset.taux) - 90 / 30) < 0.001)
+        ? 'SANS-PERIODE-LUE-SUR-SON-MOIS'
+        : 'SANS-PERIODE-SANS-TAUX ' + (vieille || {dataset:{}}).dataset.taux);
+  chargesData.pop();
+  renderVariables();
+  carte = document.querySelector('.var-carte');
+  creux = carte.querySelectorAll('.var-barres > button.creux');
+  b3 = carte.querySelector('[data-mois="2026-08-01"]');
+
+  /* Le repère d'anomalie : la troisième oui, la deuxième non. */
   var alertes = [].slice.call(carte.querySelectorAll('.var-barres > button.alerte'))
                   .map(function(b){ return b.dataset.mois; });
-  trace(JSON.stringify(alertes) === '["2026-09-01"]'
+  trace(JSON.stringify(alertes) === '["2026-08-01"]'
         ? 'ANORMAL-SIGNALE' : 'ANORMAL-MUET ' + JSON.stringify(alertes));
 
-  /* Le survol réécrit le grand chiffre de la carte, pas une bulle du navigateur. */
+  /* Le survol réécrit le grand chiffre de la carte, et dit la PÉRIODE, pas un mois. */
   var avant = carte.querySelector('.var-montant').textContent;
-  var aout = carte.querySelector('[data-mois="2026-08-01"]');
-  aout.dispatchEvent(new MouseEvent('mouseenter', {bubbles:false}));
-  var pendant = carte.querySelector('.var-montant').textContent;
-  var sous = carte.querySelector('.var-sous').textContent;
-  trace(pendant.indexOf('75') >= 0 ? 'SURVOL-DIT-LE-MONTANT' : 'SURVOL-MUET ' + pendant);
-  trace(sous.indexOf('août 2026') >= 0 ? 'SURVOL-DIT-LE-MOIS' : 'SURVOL-SANS-MOIS ' + sous);
+  var b2 = carte.querySelector('[data-mois="2026-05-22"]');
+  b2.dispatchEvent(new MouseEvent('mouseenter', {bubbles:false}));
+  var sous = carte.querySelector('.var-sous').textContent.replace(/\s+/g,' ');
+  trace(carte.querySelector('.var-montant').textContent.indexOf('170') >= 0
+        ? 'SURVOL-DIT-LE-MONTANT' : 'SURVOL-MUET');
+  trace((sous.indexOf('22 mai 2026') >= 0 && sous.indexOf('20 juil 2026') >= 0)
+        ? 'SURVOL-DIT-LA-PERIODE' : 'SURVOL-SANS-PERIODE ' + sous);
+  /* ⚠️ ET LE COÛT MENSUEL À CÔTÉ : 170 € sur 60 jours font 86 €/mois, et c'est ce chiffre-là
+     qui entre dans le point mort. Montrer le total seul le faisait lire comme un mensuel. */
+  trace(sous.indexOf('86.2') >= 0 ? 'SURVOL-DIT-LE-MENSUEL' : 'SURVOL-SANS-MENSUEL ' + sous);
 
-  /* Et il REND la carte à son état : un écran qui reste sur la dernière barre survolée fait
-     lire un mois ancien comme s'il était le dernier. */
   carte.querySelector('.var-barres').dispatchEvent(new MouseEvent('mouseleave', {bubbles:false}));
   trace(carte.querySelector('.var-montant').textContent === avant
-        ? 'SURVOL-REND-LA-CARTE' : 'SURVOL-COLLE ' + carte.querySelector('.var-montant').textContent);
+        ? 'SURVOL-REND-LA-CARTE' : 'SURVOL-COLLE');
 
-  /* Survoler le trou doit dire qu'il n'y a RIEN, pas afficher un zéro. */
+  /* Survoler le trou doit dire combien de jours, pas afficher un zéro. */
   creux[0].dispatchEvent(new MouseEvent('mouseenter', {bubbles:false}));
   var st = carte.querySelector('.var-sous').textContent;
-  var sm = carte.querySelector('.var-montant').textContent;
-  trace((sm === '—' && st.indexOf('aucune facture') >= 0)
-        ? 'TROU-SE-DIT' : 'TROU-CHIFFRE ' + sm + ' / ' + st);
+  trace((carte.querySelector('.var-montant').textContent === '—'
+         && st.indexOf('11 jours non facturés') >= 0)
+        ? 'TROU-SE-DIT' : 'TROU-CHIFFRE ' + st.slice(0,60));
 
-  /* Le clavier atteint les valeurs : l'étiquette porte le mois ET le montant. */
-  var et = aout.getAttribute('aria-label') || '';
-  trace((et.indexOf('août 2026') >= 0 && et.indexOf('75') >= 0)
+  /* Le clavier atteint les valeurs. */
+  var et = b2.getAttribute('aria-label') || '';
+  trace((et.indexOf('22 mai 2026') >= 0 && et.indexOf('170') >= 0)
         ? 'CLAVIER-ENTEND-LA-VALEUR' : 'CLAVIER-SOURD ' + et);
 
-  /* Cliquer une barre ouvre la fenêtre SUR CE MOIS, en mode correction. */
-  aout.click();
-  var ok = document.getElementById('fact-ok').textContent;
-  trace((document.getElementById('fact-mois').value === '2026-08' && ok === 'Corriger')
-        ? 'BARRE-CORRIGE-SON-MOIS' : 'BARRE-OUVRE-AUTRE-CHOSE ' +
-          document.getElementById('fact-mois').value + '/' + ok);
+  /* Cliquer une barre ouvre la fenêtre SUR CETTE FACTURE, en mode correction. */
+  b2.click();
+  trace((document.getElementById('fact-mois').value === '2026-05-22'
+         && document.getElementById('fact-ok').textContent === 'Corriger')
+        ? 'BARRE-CORRIGE-SA-FACTURE' : 'BARRE-OUVRE-AUTRE-CHOSE ' +
+          document.getElementById('fact-mois').value);
   fermerFacture();
 
-  /* Cliquer le trou ouvre la MÊME fenêtre, sur juillet, en saisie. */
+  /* Cliquer le trou ouvre la même fenêtre au premier jour non facturé. */
   creux[0].click();
-  trace((document.getElementById('fact-mois').value === '2026-07'
+  trace((document.getElementById('fact-mois').value === '2026-07-21'
          && document.getElementById('fact-ok').textContent === 'Enregistrer')
         ? 'TROU-SE-SAISIT' : 'TROU-INERTE ' + document.getElementById('fact-mois').value);
   fermerFacture();
 
-  /* Le total dit sur combien de mois il porte, et combien manquent. */
+  /* Le total dit combien de factures, et combien de jours manquent. */
   var stats = (carte.querySelector('.var-stats') || {}).textContent || '';
-  trace(stats.indexOf('3 mois') >= 0 ? 'TOTAL-DIT-SA-PORTEE' : 'TOTAL-SANS-PORTEE ' + stats);
-  trace(stats.indexOf('265') >= 0 ? 'TOTAL-JUSTE' : 'TOTAL-FAUX ' + stats);
-  trace(stats.indexOf('1 mois sans facture') >= 0
+  stats = stats.replace(/\s+/g,' ');
+  trace(stats.indexOf('3 factures') >= 0 ? 'TOTAL-DIT-SA-PORTEE' : 'TOTAL-SANS-PORTEE ' + stats);
+  trace(stats.indexOf('550') >= 0 ? 'TOTAL-JUSTE' : 'TOTAL-FAUX ' + stats);
+  trace(stats.indexOf('11 jours non facturés') >= 0
         ? 'TOTAL-AVOUE-LE-TROU' : 'TOTAL-TAIT-LE-TROU ' + stats);
-  trace(stats.indexOf('septembre 2026') >= 0 ? 'PLUS-CHER-NOMME' : 'PLUS-CHER-TU ' + stats);
 }, 400);
 """)
     r = subprocess.run(
@@ -1385,16 +1475,17 @@ setTimeout(function(){
         capture_output=True, text=True, timeout=90, env=env)
     rendu = re.sub(r"<script[\s\S]*?</script>", " ", r.stdout, flags=re.I)
 
-    for m in ["QUATRE-EMPLACEMENTS", "TROU-VISIBLE", "TROU-SANS-VALEUR", "ANORMAL-SIGNALE",
-              "SURVOL-DIT-LE-MONTANT", "SURVOL-DIT-LE-MOIS", "SURVOL-REND-LA-CARTE",
-              "TROU-SE-DIT", "CLAVIER-ENTEND-LA-VALEUR", "BARRE-CORRIGE-SON-MOIS",
-              "TROU-SE-SAISIT", "TOTAL-DIT-SA-PORTEE", "TOTAL-JUSTE", "TOTAL-AVOUE-LE-TROU",
-              "PLUS-CHER-NOMME"]:
+    for m in ["QUATRE-EMPLACEMENTS", "TROU-COMPTE-EN-JOURS", "HAUTEUR-SUR-LE-TAUX", "SANS-PERIODE-LUE-SUR-SON-MOIS",
+              "ANORMAL-SIGNALE", "SURVOL-DIT-LE-MONTANT", "SURVOL-DIT-LA-PERIODE",
+              "SURVOL-DIT-LE-MENSUEL", "SURVOL-REND-LA-CARTE", "TROU-SE-DIT",
+              "CLAVIER-ENTEND-LA-VALEUR", "BARRE-CORRIGE-SA-FACTURE", "TROU-SE-SAISIT",
+              "TOTAL-DIT-SA-PORTEE", "TOTAL-JUSTE", "TOTAL-AVOUE-LE-TROU"]:
         assert m in rendu, f"« {m} » absent — {rendu[-900:]}"
-    for m in ["MOIS-COLLES", "TROU-MASQUE", "TROU-VALORISE", "ANORMAL-MUET", "SURVOL-MUET",
-              "SURVOL-SANS-MOIS", "SURVOL-COLLE", "TROU-CHIFFRE", "CLAVIER-SOURD",
-              "BARRE-OUVRE-AUTRE-CHOSE", "TROU-INERTE", "TOTAL-SANS-PORTEE", "TOTAL-FAUX",
-              "TOTAL-TAIT-LE-TROU", "PLUS-CHER-TU", "NaN", "undefined", "Invalid Date"]:
+    for m in ["FACTURES-COLLEES", "TROU-MASQUE", "HAUTEUR-SUR-LE-TOTAL", "SANS-PERIODE-SANS-TAUX", "ANORMAL-MUET",
+              "SURVOL-MUET", "SURVOL-SANS-PERIODE", "SURVOL-SANS-MENSUEL", "SURVOL-COLLE",
+              "TROU-CHIFFRE", "CLAVIER-SOURD", "BARRE-OUVRE-AUTRE-CHOSE", "TROU-INERTE",
+              "TOTAL-SANS-PORTEE", "TOTAL-FAUX", "TOTAL-TAIT-LE-TROU",
+              "NaN", "undefined", "Invalid Date"]:
         assert m not in rendu, f"« {m} » apparaît à l'écran"
 
 

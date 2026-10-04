@@ -236,7 +236,10 @@ select.field-input { cursor:pointer; }
 .var-axe { display:flex; justify-content:space-between; font-size:10.5px; color:var(--db-muted);
   font-variant-numeric:tabular-nums; }
 .var-saisie { margin-top:16px; padding-top:14px; border-top:1px solid var(--db-line); }
-.var-mois { font-size:17px; font-weight:600; text-transform:capitalize; }
+/* ⚠️ PAS DE `capitalize` ICI. La règle datait du temps où ce bloc ne portait qu'un nom de
+   mois ; il porte maintenant une phrase, et `capitalize` frappe CHAQUE mot : « Mesuré Jusqu'au
+   18 Sept 2026 ». Une règle de style survit au contenu pour lequel elle a été écrite. */
+.var-mois { font-size:15px; font-weight:600; }
 .var-vide { color:var(--db-muted); font-size:13.5px; padding:26px 0; text-align:center; }
 </style>
 </head>
@@ -570,15 +573,22 @@ select.field-input { cursor:pointer; }
         <select class="db-champ" id="fact-nom" onchange="majFacture()"></select>
       </div>
       <div>
-        {# ⚠️ UN SÉLECTEUR DE MOIS NATIF, PAS UN SÉLECTEUR DE DATE. Une facture ne porte pas un
-           jour : demander un quantième obligerait à en inventer un. #}
-        <div class="db-l">Mois de la facture *</div>
-        <input class="db-champ" id="fact-mois" type="month" onchange="majFacture()">
+        {# ⚠️ DEUX DATES, PAS UN MOIS. J'avais mis un sélecteur de mois en écrivant qu'« une
+           facture ne porte pas un jour ». La première vraie facture d'eau m'a contredit : EPAL
+           facture du 21/07 au 18/09, 60 jours à cheval sur trois mois civils. Un mois ne peut
+           pas décrire ça, et le lire comme un montant mensuel gonflait l'eau de 86,78 €/mois.
+           Les deux dates sont imprimées sur la facture, sous « Período de Faturação ». #}
+        <div class="db-l">Premier jour facturé *</div>
+        <input class="db-champ" id="fact-mois" type="date" onchange="majFacture()">
+      </div>
+      <div>
+        <div class="db-l">Dernier jour facturé *</div>
+        <input class="db-champ" id="fact-fin" type="date" onchange="majFacture()">
       </div>
       <div>
         <div class="db-l">Montant (€) *</div>
         <input class="db-champ" id="fact-montant" type="number" step="0.01" min="0.01"
-               inputmode="decimal" placeholder="0.00">
+               inputmode="decimal" placeholder="0.00" oninput="majFacture()">
       </div>
       <div class="full" id="fact-avis" style="font-size:13px"></div>
     </div>
@@ -625,7 +635,8 @@ async function loadAll() {
     ]);
     chargesData   = c.charges   || [];
     employeesData = c.employees || [];
-    ATTENTE       = c.attente   || {};
+    COUVERTURE    = c.couverture || {};
+    AUJOURDHUI    = c.aujourdhui || '';
     MOIS_COURANT  = c.mois_courant || '';
     // merge employees from second call
     if (Array.isArray(e)) employeesData = e;
@@ -754,12 +765,12 @@ function calcEmpCost(e) {
 
 /* ══ CHARGES VARIABLES ═════════════════════════════════════════════════════════════════════
  *
- * ⚠️ CE QUI EST « EN ATTENTE » VIENT DU SERVEUR. La règle — le mois courant n'est jamais
- * réclamé, les mois clos sans facture le sont du plus ancien au plus récent — vit dans
- * `charges.py`, pure et testée. La réécrire ici donnerait deux définitions de « en retard »,
- * et l'écran finirait par réclamer un mois que le calcul ignore.
+ * ⚠️ CE QUI EST MESURÉ VIENT DU SERVEUR. La règle — jusqu'à quel jour une facture couvre,
+ * combien de jours sont extrapolés depuis — vit dans `charges.py`, pure et testée. La
+ * réécrire en JavaScript donnerait deux définitions de « en retard », et l'écran finirait par
+ * réclamer une période que le calcul ignore.
  */
-let ATTENTE = {}, MOIS_COURANT = '';
+let COUVERTURE = {}, AUJOURDHUI = '', MOIS_COURANT = '';
 
 const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre',
                  'octobre','novembre','décembre'];
@@ -769,31 +780,63 @@ const moisDit = (iso) => {
 };
 
 /** Les lignes de facture d'une charge, de la plus récente à la plus ancienne. */
-function facturesDe(nom) {
-  return chargesData
-    .filter((c) => c.mode === 'facture' && c.name === nom && c.mois)
-    .sort((a, b) => String(b.mois).localeCompare(String(a.mois)));
+/* Une facture est identifiée par son PREMIER JOUR, pas par son mois : deux factures d'eau
+ * peuvent commencer le même mois, et une facture de 60 jours n'a pas « un » mois. */
+const debutDe = (f) => String(f.valid_from || f.periode_debut || f.mois || '').slice(0, 10);
+/* ⚠️ UNE FACTURE SANS PÉRIODE EST LUE COMME COUVRANT SON MOIS — c'est exactement ce qu'elle
+ * prétendait être, et c'est déjà ce que le serveur en fait. Sans ce repli, les factures
+ * saisies avant la migration n'avaient pas de taux : le graphe les dessinait toutes à hauteur
+ * minimale, et l'historique se lisait comme une consommation nulle. */
+const finDe = (f) => {
+  if (f.periode_fin) return String(f.periode_fin).slice(0, 10);
+  const m = String(f.mois || '').slice(0, 7);
+  if (!m) return '';
+  const [a, mm] = m.split('-').map(Number);
+  return new Date(Date.UTC(a, mm, 0)).toISOString().slice(0, 10);
+};
+const jourDit = (iso) => {
+  const [a, m, j] = String(iso || '').split('-');
+  return j ? `${+j} ${MOIS_FR[(+m || 1) - 1].slice(0, 4)} ${a}` : '';
+};
+/* Le taux journalier est la SEULE grandeur comparable entre une facture de 30 jours et une de
+ * 60 : opposer leurs totaux ferait lire un doublement là où la durée a doublé. */
+function tauxJour(f) {
+  const d = debutDe(f), fin = finDe(f);
+  if (!d || !fin || fin < d) return null;
+  const n = Math.round((new Date(fin) - new Date(d)) / 86400000) + 1;
+  return n > 0 ? (parseFloat(f.amount) || 0) / n : null;
 }
 
-/* ⚠️ UN TROU DANS L'HISTORIQUE DOIT SE VOIR. Le graphe collait les factures bout à bout : avec
- * juin, juillet et septembre, les trois barres se touchaient et l'absence d'août était
- * INVISIBLE — la pente juillet→septembre se lisait comme une évolution d'un mois sur l'autre.
- * C'est la même faute que la barre unique : un graphe qui tait ce qu'il ne sait pas.
+function facturesDe(nom) {
+  return chargesData
+    .filter((c) => c.mode === 'facture' && c.name === nom && debutDe(c))
+    .sort((a, b) => debutDe(b).localeCompare(debutDe(a)));
+}
+
+/* ⚠️ UN TROU DANS L'HISTORIQUE DOIT SE VOIR, et il se compte en JOURS. Le graphe collait les
+ * factures bout à bout : si l'une finit le 18/09 et la suivante commence le 01/11, les deux
+ * barres se touchaient et personne ne voyait les 43 jours non facturés entre elles. C'est la
+ * même faute que la barre unique : un graphe qui tait ce qu'il ne sait pas.
  *
- * On construit donc la suite des mois du premier au dernier, un emplacement par mois, vide
- * quand la facture manque. Pas au-delà du dernier : les mois à venir ne sont pas des trous. */
-function serieMensuelle(fs) {
-  if (!fs.length) return [];
-  const parMois = new Map(fs.map((f) => [String(f.mois).slice(0, 7), f]));
-  const bornes = [...parMois.keys()].sort();
-  const [af, mf] = bornes[bornes.length - 1].split('-').map(Number);
-  let [a, m] = bornes[0].split('-').map(Number);
+ * On ne raisonne plus par mois : une facture d'eau couvre 60 jours à cheval sur trois mois
+ * civils, donc « le mois qui manque » n'a pas de sens. Un trou, c'est un intervalle de jours
+ * que personne ne facture. */
+function serieFactures(fs) {
+  const tri = fs.slice().reverse();          // du plus ancien au plus récent
   const out = [];
-  while (a < af || (a === af && m <= mf)) {
-    const k = a + '-' + String(m).padStart(2, '0');
-    out.push({ mois: k + '-01', facture: parMois.get(k) || null });
-    if (++m > 12) { m = 1; a += 1; }
-  }
+  tri.forEach((f, i) => {
+    const prec = tri[i - 1];
+    if (prec && finDe(prec) && debutDe(f)) {
+      const lendemain = new Date(finDe(prec));
+      lendemain.setDate(lendemain.getDate() + 1);
+      const attendu = lendemain.toISOString().slice(0, 10);
+      if (attendu < debutDe(f)) {
+        const n = Math.round((new Date(debutDe(f)) - lendemain) / 86400000);
+        out.push({ trou: true, debut: attendu, fin: debutDe(f), jours: n });
+      }
+    }
+    out.push({ trou: false, facture: f });
+  });
   return out;
 }
 
@@ -809,16 +852,21 @@ function survolBarre(el) {
   }
   if (el.dataset.manquant) {
     mt.textContent = '—';
-    ss.innerHTML = `<span style="color:var(--db-amber)">${esc(moisDit(el.dataset.mois))}`
-      + ' &mdash; aucune facture</span>'
-      + '<span class="db-s" style="margin-left:6px">cliquer pour la saisir</span>';
+    ss.innerHTML = `<span style="color:var(--db-amber)">${plurCh(+el.dataset.jours,
+          'jour non facturé', 'jours non facturés')}</span>`
+      + ` <span class="db-s">à partir du ${esc(jourDit(el.dataset.mois))}</span>`;
     return;
   }
   mt.textContent = fmt(el.dataset.montant);
-  const d = el.dataset.delta;
-  ss.innerHTML = esc(moisDit(el.dataset.mois))
+  const d = el.dataset.delta, t = el.dataset.taux;
+  /* L'écart se dit sur le TAUX, parce que c'est lui qu'on compare : deux factures de durées
+   * différentes ont des totaux qui ne se comparent pas. */
+  ss.innerHTML = esc(el.dataset.fin
+        ? jourDit(el.dataset.mois) + ' → ' + jourDit(el.dataset.fin)
+        : moisDit(el.dataset.mois))
+    + (t ? ` · <b>${fmt(+t * 30.44)}</b>/mois` : '')
     + (d ? ` <span class="db-badge ${+d > 0 ? 'down' : 'up'}">${+d > 0 ? '+' : ''}${d} %</span>`
-         + '<span class="db-s" style="margin-left:6px">vs mois précédent</span>' : '');
+         + '<span class="db-s" style="margin-left:6px">vs facture précédente</span>' : '');
 }
 
 function quitterBarres(zone) {
@@ -848,126 +896,121 @@ function renderVariables() {
     return;
   }
 
-  let enAttente = 0;
+  let enRetard = 0;
   zone.innerHTML = noms.map((nom) => {
-    const manquants = ATTENTE[nom] || [];
-    enAttente += manquants.length;
     const fs = facturesDe(nom);
     const derniere = fs[0];
-    const aSaisir = manquants[0]
-      || (fs.some((f) => String(f.mois).slice(0, 7) === MOIS_COURANT.slice(0, 7))
-            ? null : MOIS_COURANT);
+    const couv = COUVERTURE[nom] || {};
+    /* ⚠️ « EN RETARD » SE COMPTE EN JOURS, PLUS EN MOIS. Une facture de 60 jours ne rend aucun
+     * mois complet ; la question juste est « depuis combien de jours extrapole-t-on ». Une
+     * tolérance : l'EPAL émet quelques jours après la fin de période, crier le lendemain
+     * apprendrait à ignorer le signal. */
+    const jours = couv.jours || 0;
+    if (jours > 10) enRetard += 1;
+    const etat = !derniere
+      ? '<span class="db-badge flat">aucune facture</span>'
+      : (jours > 10
+          ? `<span class="db-badge warn">${plurCh(jours, 'jour estimé', 'jours estimés')}</span>`
+          : (jours > 0
+              ? `<span class="db-badge flat">${plurCh(jours, 'jour estimé', 'jours estimés')}</span>`
+              : '<span class="db-badge up">à jour</span>'));
 
-    const etat = manquants.length
-      ? `<span class="db-badge warn">${manquants.length > 1
-          ? plurCh(manquants.length, 'mois en attente', 'mois en attente') : 'à saisir'}</span>`
-      : (derniere && String(derniere.mois).slice(0, 7) === MOIS_COURANT.slice(0, 7)
-          ? '<span class="db-badge up">à jour</span>'
-          : '<span class="db-badge flat">en attente</span>');
+    const taux = derniere ? tauxJour(derniere) : null;
+    /* ⚠️ LE GRAND CHIFFRE RESTE LE MONTANT PAYÉ, et son équivalent mensuel est dit juste en
+     * dessous. L'un est ce qu'on a sorti de la banque, l'autre est ce qui entre dans le point
+     * mort : afficher le premier seul faisait lire 176,14 € comme un coût mensuel. */
+    const sous = !derniere ? 'en attente de la première facture'
+      : (finDe(derniere)
+          ? `${jourDit(debutDe(derniere))} → ${jourDit(finDe(derniere))}`
+            + ` · <b>${fmt(taux * 30.44)}</b>/mois`
+          : esc(moisDit(debutDe(derniere))));
 
-    /* ⚠️ LA COMPARAISON EST AU MÊME MOIS L'AN DERNIER. Terrasse l'été, chauffage l'hiver :
-     * opposer octobre à septembre fait lire une dérive là où il n'y a qu'une saison. */
-    const anDernier = derniere && fs.find((f) =>
-      String(f.mois).slice(0, 7) === (+String(derniere.mois).slice(0, 4) - 1)
-        + String(derniere.mois).slice(4, 7));
-    let ecart = '';
-    if (derniere && anDernier) {
-      const d = (parseFloat(derniere.amount) || 0) - (parseFloat(anDernier.amount) || 0);
-      const p = Math.round(d / (parseFloat(anDernier.amount) || 1) * 100);
-      ecart = `<span class="db-badge ${d > 0 ? 'down' : 'up'}">${d > 0 ? '+' : ''}${p} %</span>`
-        + `<span class="db-s" style="margin-left:6px">vs ${moisDit(anDernier.mois)}</span>`;
-    }
+    const serie = serieFactures(fs).slice(-13);
+    const tauxs = serie.filter((x) => !x.trou).map((x) => tauxJour(x.facture))
+      .filter((t) => t !== null);
+    const max = Math.max(...tauxs, 0.01);
+    const dernierPlein = serie.map((x) => !x.trou).lastIndexOf(true);
 
-    /* ⚠️ MOINS DE DEUX FACTURES NE FONT PAS UNE ÉVOLUTION. J'avais écrit l'inverse ici — « une
-     * barre seule dit déjà qu'une mesure existe » — et la capture m'a contredit : une barre
-     * unique occupe toute la largeur et se lit comme un maximum, alors qu'elle n'est comparée à
-     * rien. C'est la règle que `miniCourbe` applique déjà deux cents lignes plus bas. */
-    const histo = serieMensuelle(fs).slice(-13);
-    const pleins = histo.filter((s) => s.facture);
-    const max = Math.max(...pleins.map((s) => parseFloat(s.facture.amount) || 0), 1);
-    const dernierPlein = histo.map((s) => !!s.facture).lastIndexOf(true);
-
-    const barres = histo.map((s, i) => {
-      const mois = String(s.mois).slice(0, 7);
-      if (!s.facture) {
-        /* Un mois sans facture est un EMPLACEMENT, pas une barre à zéro : zéro voudrait dire
-         * que le compteur n'a rien relevé. Il occupe toute la hauteur, en pointillé. */
-        return `<button type="button" class="creux" data-manquant="1" data-mois="${s.mois}"
+    const barres = serie.map((x, i) => {
+      if (x.trou) {
+        /* Un intervalle non facturé est un EMPLACEMENT, pas une barre à zéro : zéro dirait que
+         * le compteur n'a rien relevé. */
+        return `<button type="button" class="creux" data-manquant="1"
+          data-mois="${x.debut}" data-fin="${x.fin}" data-jours="${x.jours}"
           onmouseenter="survolBarre(this)" onfocus="survolBarre(this)"
           onblur="quitterBarres(this.parentElement)"
-          onclick="ouvrirFacture('${escAttr(nom)}', '${mois}')"
-          aria-label="${esc(moisDit(s.mois))}, aucune facture — saisir"><i></i></button>`;
+          onclick="ouvrirFacture('${escAttr(nom)}', '${x.debut}')"
+          aria-label="${x.jours} jours non facturés à partir du ${esc(jourDit(x.debut))} — saisir"
+          ><i></i></button>`;
       }
-      const v = parseFloat(s.facture.amount) || 0;
-      /* L'écart se dit par rapport au mois PRÉCÉDENT RENSEIGNÉ : comparer à un trou donnerait
-       * une variation inventée. */
-      const avant = histo.slice(0, i).filter((x) => x.facture).pop();
-      const va = avant ? (parseFloat(avant.facture.amount) || 0) : 0;
-      const delta = (avant && va) ? Math.round((v - va) / va * 100) : '';
-      /* ⚠️ UNE FACTURE ANORMALE EST CE QU'ON VIENT CHERCHER ICI, et comparer des hauteurs à
-       * l'œil ne la donne pas. Repère au-dessus de la barre à partir de +30 % sur la moyenne
-       * des trois mois renseignés qui précèdent — pas sur le seul mois d'avant, qu'une saison
+      const f = x.facture, t = tauxJour(f);
+      const avant = serie.slice(0, i).filter((y) => !y.trou).pop();
+      const ta = avant ? tauxJour(avant.facture) : null;
+      const delta = (ta) ? Math.round((t - ta) / ta * 100) : '';
+      /* ⚠️ L'ANOMALIE SE JUGE SUR LE TAUX, PAS SUR LE TOTAL. Une facture de 60 jours vaut deux
+       * fois une de 30 sans rien dire de la consommation. Repère à partir de +30 % sur la
+       * moyenne des trois factures précédentes — pas sur la seule d'avant, qu'une saison
        * suffit à faire bouger. */
-      const trois = histo.slice(0, i).filter((x) => x.facture).slice(-3)
-        .map((x) => parseFloat(x.facture.amount) || 0);
+      const trois = serie.slice(0, i).filter((y) => !y.trou).slice(-3)
+        .map((y) => tauxJour(y.facture)).filter((v) => v !== null);
       const moy = trois.length ? trois.reduce((p, c) => p + c, 0) / trois.length : 0;
-      const alerte = (trois.length >= 2 && moy > 0 && v > moy * 1.3) ? ' alerte' : '';
+      const alerte = (trois.length >= 2 && moy > 0 && t > moy * 1.3) ? ' alerte' : '';
       return `<button type="button" class="${i === dernierPlein ? 'vif' : ''}${alerte}"
-        data-mois="${s.mois}" data-montant="${v}" data-delta="${delta}"
-        style="height:${Math.max(5, v / max * 100)}%"
+        data-mois="${debutDe(f)}" data-fin="${finDe(f)}" data-montant="${f.amount}"
+        data-taux="${t === null ? '' : t}" data-delta="${delta}"
+        style="height:${t === null ? 5 : Math.max(5, t / max * 100)}%"
         onmouseenter="survolBarre(this)" onfocus="survolBarre(this)"
         onblur="quitterBarres(this.parentElement)"
-        onclick="ouvrirFacture('${escAttr(nom)}', '${mois}')"
-        aria-label="${esc(moisDit(s.mois))}, ${fmt(v)}${alerte ? ', inhabituel' : ''} — corriger"
+        onclick="ouvrirFacture('${escAttr(nom)}', '${debutDe(f)}')"
+        aria-label="${esc(jourDit(debutDe(f)))}, ${fmt(f.amount)}${
+          alerte ? ', inhabituel' : ''} — corriger"
         ><i></i></button>`;
     }).join('');
 
-    /* ⚠️ LE TOTAL DIT SUR COMBIEN DE MOIS IL PORTE. Avec un trou, une somme présentée comme
-     * « 12 mois » serait fausse d'une facture entière — et c'est le nombre qui part chez le
+    /* ⚠️ LE TOTAL DIT SUR COMBIEN DE JOURS IL PORTE. Avec un trou, une somme présentée comme
+     * « l'année » serait fausse d'une facture entière — et c'est le nombre qui part chez le
      * comptable. */
-    const douze = histo.slice(-12).filter((s) => s.facture)
-      .map((s) => parseFloat(s.facture.amount) || 0);
-    const total = douze.reduce((p, c) => p + c, 0);
-    const trous = histo.slice(-12).length - douze.length;
-    const cher = pleins.slice(-12).reduce((p, c) =>
-      (!p || (parseFloat(c.facture.amount) || 0) > (parseFloat(p.facture.amount) || 0)) ? c : p, null);
-    const stats = douze.length >= 2 ? `
-      <div class="var-stats">Total ${plurCh(douze.length, 'mois', 'mois')}
-        <b>${fmt(total)}</b> · moyenne <b>${fmt(total / douze.length)}</b>
-        · plus cher ${esc(moisDit(cher.facture.mois))} <b>${fmt(cher.facture.amount)}</b>${
+    const recues = serie.filter((x) => !x.trou).map((x) => x.facture);
+    const total = recues.reduce((p, c) => p + (parseFloat(c.amount) || 0), 0);
+    const trous = serie.filter((x) => x.trou).reduce((p, c) => p + c.jours, 0);
+    const cher = recues.reduce((p, c) =>
+      (!p || (tauxJour(c) || 0) > (tauxJour(p) || 0)) ? c : p, null);
+    const moyenne = tauxs.length ? tauxs.reduce((p, c) => p + c, 0) / tauxs.length : null;
+    const stats = recues.length >= 2 ? `
+      <div class="var-stats">${plurCh(recues.length, 'facture', 'factures')}
+        <b>${fmt(total)}</b>${moyenne ? ` · moyenne <b>${fmt(moyenne * 30.44)}</b>/mois` : ''}${
+        cher && tauxJour(cher) ? ` · plus chère ${esc(jourDit(debutDe(cher)))}` : ''}${
         trous ? ` · <span style="color:var(--db-amber)">${
-          plurCh(trous, 'mois sans facture', 'mois sans facture')}</span>` : ''}</div>` : '';
+          plurCh(trous, 'jour non facturé', 'jours non facturés')}</span>` : ''}</div>` : '';
 
-    const graphe = histo.length >= 2 ? `
+    const graphe = serie.length >= 2 ? `
       <div class="var-barres" role="group" onmouseleave="quitterBarres(this)"
-           aria-label="Évolution de ${esc(nom)}, ${plurCh(histo.length, 'mois', 'mois')}">
+           aria-label="Évolution de ${esc(nom)}, ${plurCh(recues.length, 'facture', 'factures')}">
         ${barres}
       </div>
-      <div class="var-axe"><span>${esc(moisDit(histo[0].mois))}</span>
-        <span>${esc(moisDit(histo[histo.length - 1].mois))}</span></div>${stats}`
-      : `<div class="var-vide">${histo.length
+      <div class="var-axe"><span>${esc(jourDit(serie[0].trou ? serie[0].debut
+            : debutDe(serie[0].facture)))}</span>
+        <span>${esc(jourDit(finDe(derniere) || debutDe(derniere)))}</span></div>${stats}`
+      : `<div class="var-vide">${recues.length
             ? "L'évolution s'affichera à partir de la deuxième facture."
             : 'Aucune facture saisie'}</div>`;
 
-    /* La saisie en ligne sert à RATTRAPER ; le bouton « + » sert à CHOISIR un mois. */
-    const saisie = aSaisir ? `
-      <div class="var-saisie">
-        <div class="var-mois">${moisDit(aSaisir)}</div>
-        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
-          <input class="db-champ" style="max-width:150px" type="number" step="0.01" min="0.01"
-                 inputmode="decimal" placeholder="0,00 €" id="fact-${escAttr(nom)}"
-                 onkeydown="if(event.key==='Enter')saisirFacture('${escAttr(nom)}','${aSaisir}')">
-          <button class="db-btn fort"
-                  onclick="saisirFacture('${escAttr(nom)}','${aSaisir}')">Enregistrer</button>
-        </div>
-      </div>` : '';
+    /* ⚠️ PLUS DE CHAMP RAPIDE « UN MOIS, UN MONTANT ». Il ne pouvait pas deviner la fin de
+     * période, et une facture sans fin ne donne pas de taux journalier. Le raccourci est
+     * ailleurs : la fenêtre pré-remplit le début au lendemain de la dernière facture, donc il
+     * ne reste que la date de fin et le montant à taper. */
+    const suite = couv.debut_suivant && jours > 0
+      ? `<div class="var-saisie">
+           <div class="var-mois">Mesuré jusqu'au ${esc(jourDit(couv.jusqua))}</div>
+           <div class="db-s" style="margin-top:4px">${plurCh(jours, 'jour', 'jours')} depuis,
+             au taux de la dernière facture.</div>
+         </div>` : '';
 
     return `<div class="var-carte">
       <div class="var-tete"><span class="var-nom">${esc(nom)}</span>${etat}</div>
       <div class="var-montant">${derniere ? fmt(derniere.amount) : '—'}</div>
-      <div class="db-s var-sous">${derniere ? esc(moisDit(derniere.mois))
-          : 'en attente de la première facture'}${ecart ? ' · ' + ecart : ''}</div>
-      ${graphe}${saisie}
+      <div class="db-s var-sous">${sous}</div>
+      ${graphe}${suite}
       <div style="margin-top:14px">
         <button class="db-btn fort" onclick="ouvrirFacture('${escAttr(nom)}')">+ Facture</button>
         <button class="db-btn" style="margin-left:6px"
@@ -978,18 +1021,14 @@ function renderVariables() {
   }).join('');
 
   const b = document.getElementById('badge-variables');
-  b.textContent = enAttente ? String(enAttente) : String(noms.length);
-  b.style.color = enAttente ? 'var(--db-amber)' : '';
+  b.textContent = enRetard ? String(enRetard) : String(noms.length);
+  b.style.color = enRetard ? 'var(--db-amber)' : '';
 
-  /* ⚠️ CETTE PHRASE NE PROMET QUE CE QUI EXISTE. Elle a passé un commit à annoncer un
-   * « estimé » que le tableau de bord n'affichait pas encore — un écran qui décrit un
-   * comportement absent est pire qu'un écran muet : on cesse de vérifier. La mention existe
-   * désormais à côté du point mort, sur la carte principale comme sur la carte Économie. */
-  document.getElementById('note-variables').textContent = enAttente
-    ? "Un mois en attente est compté au tableau de bord avec la dernière facture connue, "
-      + "et le point mort y est annoncé « estimé » tant que la facture n'est pas saisie."
-    : "Une facture couvre son mois, même saisie le mois suivant. Ni date d'effet ni motif : "
-      + "son motif, c'est elle-même.";
+  document.getElementById('note-variables').textContent = enRetard
+    ? "Les jours qui suivent la dernière facture sont comptés au tableau de bord au taux de "
+      + "celle-ci, et le point mort y est annoncé « estimé »."
+    : "Une facture couvre sa période, pas un mois : chaque mois porte les jours qu'il a "
+      + "réellement consommés.";
 }
 
 /* ══ La fenêtre « + Facture » ══════════════════════════════════════════════════════════════
@@ -1008,11 +1047,14 @@ function ouvrirFacture(nom, mois) {
     noms.map((n) => `<option value="${escAttr(n)}">${esc(n)}</option>`).join('');
   if (nom) document.getElementById('fact-nom').value = nom;
 
-  /* Le mois proposé est le plus ancien en retard, sinon le mois courant : c'est celui qu'on
-     vient saisir neuf fois sur dix. */
-  const attente = ATTENTE[nom || noms[0]] || [];
+  /* ⚠️ LE DÉBUT PROPOSÉ EST LE LENDEMAIN DE LA DERNIÈRE FACTURE. C'est ce que fait le
+     fournisseur, et c'est ce qui garantit qu'aucun jour ne reste non facturé. Il ne reste donc
+     que la date de fin et le montant à taper — c'est le raccourci qui remplace l'ancien champ
+     « un mois, un montant », lequel ne pouvait pas deviner la fin de période. */
+  const couv = COUVERTURE[nom || noms[0]] || {};
   document.getElementById('fact-mois').value =
-    mois ? String(mois).slice(0, 7) : String(attente[0] || MOIS_COURANT).slice(0, 7);
+    mois ? String(mois).slice(0, 10) : String(couv.debut_suivant || AUJOURDHUI).slice(0, 10);
+  document.getElementById('fact-fin').value = '';
   document.getElementById('fact-montant').value = '';
   majFacture();
   document.getElementById('fact-modal').classList.add('open');
@@ -1024,22 +1066,39 @@ function fermerFacture() {
 
 function majFacture() {
   const nom = document.getElementById('fact-nom').value;
-  const mois = document.getElementById('fact-mois').value;
+  const debut = document.getElementById('fact-mois').value;
+  const fin = document.getElementById('fact-fin').value;
   const avis = document.getElementById('fact-avis');
   const ok = document.getElementById('fact-ok');
-  const dejaLa = facturesDe(nom).find((f) => String(f.mois).slice(0, 7) === mois);
+  const dejaLa = facturesDe(nom).find((f) => debutDe(f) === debut);
 
-  if (dejaLa) {
-    /* ⚠️ CORRIGER UN MOIS PASSÉ DÉPLACE UN CHIFFRE DÉJÀ LU. On ne l'interdit pas — une faute de
-     * frappe doit pouvoir se rattraper — mais on dit ce que ça déplace. */
-    avis.innerHTML = `<span style="color:var(--db-amber)">${moisDit(mois + '-01')} porte déjà `
-      + `<b>${fmt(dejaLa.amount)}</b>. Enregistrer le remplacera, et le point mort de ce `
-      + `mois-là bougera.</span>`;
-    ok.textContent = 'Corriger';
-  } else {
-    avis.innerHTML = '<span style="color:var(--db-muted)">La facture couvre ce mois, même '
-      + "saisie plus tard. Ni date d'effet ni motif : son motif, c'est elle-même.</span>";
+  if (fin && debut && fin < debut) {
+    avis.innerHTML = '<span style="color:var(--db-red)">La fin précède le début.</span>';
     ok.textContent = 'Enregistrer';
+    return;
+  }
+  if (dejaLa) {
+    /* ⚠️ CORRIGER DÉPLACE UN CHIFFRE DÉJÀ LU. On ne l'interdit pas — une faute de frappe doit
+     * pouvoir se rattraper — mais on dit ce que ça déplace. */
+    avis.innerHTML = `<span style="color:var(--db-amber)">Une facture commence déjà le `
+      + `${esc(jourDit(debut))} : <b>${fmt(dejaLa.amount)}</b>. Enregistrer la remplacera, et `
+      + `le point mort des mois qu'elle couvre bougera.</span>`;
+    ok.textContent = 'Corriger';
+    return;
+  }
+  ok.textContent = 'Enregistrer';
+  /* ⚠️ ON MONTRE LE COÛT MENSUEL AVANT D'ENREGISTRER. C'est le chiffre qui entrera dans le
+   * point mort, et c'est celui qu'on reconnaît ou pas — 176,14 € sur 60 jours font 89 €/mois,
+   * et c'est en voyant 89 qu'on sait qu'on n'a pas tapé une bêtise. */
+  const v = parseFloat((document.getElementById('fact-montant').value || '').replace(',', '.'));
+  if (debut && fin && v > 0) {
+    const n = Math.round((new Date(fin) - new Date(debut)) / 86400000) + 1;
+    avis.innerHTML = `<span style="color:var(--db-muted)">${plurCh(n, 'jour', 'jours')} · `
+      + `<b>${fmt(v / n)}</b>/jour · <b>${fmt(v / n * 30.44)}</b>/mois dans le point mort.`
+      + '</span>';
+  } else {
+    avis.innerHTML = '<span style="color:var(--db-muted)">Les deux dates sont sur la facture, '
+      + 'sous « Período de Faturação ». Chaque mois portera les jours qu\'il a consommés.</span>';
   }
 }
 
@@ -1050,6 +1109,7 @@ async function validerFacture() {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: document.getElementById('fact-nom').value,
                            mois: document.getElementById('fact-mois').value,
+                           fin: document.getElementById('fact-fin').value,
                            amount: parseFloat(v) }),
   });
   const d = await r.json();
@@ -1068,19 +1128,6 @@ async function basculerMode(nom, mode) {
     switchTab(mode === 'facture' ? 'variables' : 'charges');
     loadAll();
   } else showToast('Error: ' + (d.error || 'refus sans explication du serveur'));
-}
-
-async function saisirFacture(nom, mois) {
-  const champ = document.getElementById('fact-' + nom);
-  const v = (champ && champ.value || '').trim().replace(',', '.');
-  if (!v || !(parseFloat(v) > 0)) { showToast('Saisis un montant supérieur à zéro'); return; }
-  const r = await fetch('/api/charges/facture', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: nom, mois: mois, amount: parseFloat(v) }),
-  });
-  const d = await r.json();
-  if (d.ok) { showToast(d.corrige ? 'Facture corrigée' : 'Facture enregistrée'); loadAll(); }
-  else showToast('Error: ' + (d.error || 'refus sans explication du serveur'));
 }
 
 /* ⚠️ UN NOM DE CHARGE EST UNE SAISIE LIBRE, donc du texte non fiable dans du HTML. Cet écran

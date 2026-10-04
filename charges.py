@@ -121,8 +121,64 @@ def facture_estimee(ligne, jour):
     """
     if not est_facture(ligne):
         return False
+    # ⚠️ AVEC UNE PÉRIODE, « ESTIMÉ » SE DIT AU JOUR PRÈS. Un jour postérieur à la fin de la
+    # facture est couvert par prolongation de son taux, pas par une mesure — et une facture de
+    # 60 jours finit le 18 du mois, pas le 30 : la question ne se pose plus par mois.
+    fin = _jour(ligne.get("periode_fin"))
+    if fin is not None:
+        return jour > fin
     m = _jour(ligne.get("mois"))
     return m is not None and m < mois_de(jour)
+
+
+def _fin_de_mois(mois):
+    return mois_suivant(mois) - timedelta(1)
+
+
+def taux_jour(ligne):
+    """
+    Le coût journalier d'une facture, ou `None` si elle ne couvre pas de période connue.
+
+    ⚠️ UNE FACTURE NE COUVRE PAS UN MOIS, ELLE COUVRE UNE PÉRIODE. L'EPAL facture 60 jours à
+    cheval sur trois mois civils : la facture du 21/07 au 18/09 vaut 176,14 €, soit 2,94 € par
+    jour — et non 176,14 € par mois, ce que le modèle « une facture = un mois » en faisait. Sur
+    cette seule facture, l'eau pesait 86,78 € de trop par mois dans le point mort.
+    """
+    debut, fin = _jour(ligne.get("periode_debut")), _jour(ligne.get("periode_fin"))
+    if debut is None or fin is None or fin < debut:
+        return None
+    try:
+        montant = float(ligne.get("amount") or 0)
+    except (TypeError, ValueError):
+        return None
+    return montant / ((fin - debut).days + 1)
+
+
+def part_mensuelle(ligne, jour):
+    """
+    Ce que cette ligne pèse sur le mois de `jour`.
+
+    ⚠️ UNE SEULE RÈGLE, ET ELLE COUVRE LES DEUX RÉGIMES : taux journalier × nombre de jours du
+    mois où la ligne est EN VIGUEUR. Pour une facture close par la suivante, cela redonne
+    exactement sa période. Pour la dernière, restée ouverte, cela prolonge son taux sur les
+    jours qui suivent — c'est l'estimation d'aujourd'hui, inchangée, et c'est pourquoi il n'y a
+    pas deux calculs à tenir d'accord.
+
+    Une ligne sans période garde son équivalent mensuel : les charges stables, et les lignes
+    d'avant cette migration, se comportent exactement comme hier.
+    """
+    taux = taux_jour(ligne)
+    if taux is None:
+        try:
+            return _mensuel(float(ligne.get("amount") or 0), ligne.get("frequency", "monthly"))
+        except (TypeError, ValueError):
+            return 0.0
+    debut_m, fin_m = mois_de(jour), _fin_de_mois(mois_de(jour))
+    d, f = _jour(ligne.get("valid_from")), _jour(ligne.get("valid_to"))
+    bas = max(debut_m, d) if d else debut_m
+    # `valid_to` est EXCLUE : une ligne qui s'arrête le 1er octobre couvre le 30 septembre.
+    haut = min(fin_m, f - timedelta(1)) if f else fin_m
+    return taux * max(0, (haut - bas).days + 1)
 
 
 def charges_mensuelles_detail(lignes, jour):
@@ -140,7 +196,7 @@ def charges_mensuelles_detail(lignes, jour):
         if not applicable(c, jour):
             continue
         try:
-            total += _mensuel(float(c.get("amount") or 0), c.get("frequency", "monthly"))
+            total += part_mensuelle(c, jour)
         except (TypeError, ValueError):
             continue    # une ligne abîmée ne doit pas faire tomber tout le calcul
         if facture_estimee(c, jour):
@@ -174,51 +230,98 @@ def charges_estimees(lignes, jours):
     return sorted(vus)
 
 
-def bornes_dune_facture(lignes, nom, mois):
+def debut_dune_ligne(ligne):
     """
-    Où insérer la facture de `mois` pour `nom`, et quelle ligne clôturer.
+    Le jour où cette ligne commence à couvrir.
+
+    ⚠️ `valid_from` D'ABORD, ET C'EST LUI LA VÉRITÉ. J'avais mis `periode_debut` en tête ; aucun
+    cas ne distinguait les deux — la route pose `valid_from = periode_debut` à l'insertion, et
+    recouper une ligne ne touche que `valid_to`. Une priorité que rien ne peut contredire est
+    une branche morte, et c'est précisément là que les fautes s'installent. Les deux replis
+    servent aux lignes posées hors de la route, et à celles d'avant la migration.
+    """
+    return (_jour(ligne.get("valid_from")) or _jour(ligne.get("periode_debut"))
+            or _jour(ligne.get("mois")))
+
+
+def couvre(ligne, jour):
+    """Cette ligne est-elle en vigueur ce jour-là ? (`valid_to` exclue, comme partout.)"""
+    d, f = _jour(ligne.get("valid_from")), _jour(ligne.get("valid_to"))
+    return (d is None or d <= jour) and (f is None or f > jour)
+
+
+def bornes_dune_facture(lignes, nom, debut):
+    """
+    Où insérer une facture qui commence le `debut`, et quelles lignes recouper.
 
     Renvoie `(valid_from, valid_to, a_cloturer)` :
-      · `valid_from` est le 1er du mois — la facture couvre son mois, pas le lendemain ;
-      · `valid_to` est le 1er du mois de la facture SUIVANTE si elle existe déjà, sinon `None` ;
-      · `a_cloturer` est la LISTE des lignes ouvertes à fermer, chacune avec sa date.
+      · `valid_from` est le premier jour de la période facturée ;
+      · `valid_to` est le début de la facture SUIVANTE si elle existe déjà, sinon `None` —
+        la dernière reste ouverte, et c'est elle qui porte l'estimation des jours qui suivent.
+        ⚠️ CE N'EST PAS LA FIN DE LA PÉRIODE. Fermer la ligne au dernier jour facturé laisserait
+        les jours suivants SANS AUCUNE ligne : la charge disparaîtrait du point mort, qui
+        paraîtrait plus bas qu'il n'est. Un trou ment plus qu'une estimation annoncée — c'est
+        pourquoi cette fonction n'a pas besoin de connaître la fin de période, et pourquoi je
+        lui ai retiré le paramètre que je lui avais donné sans jamais le lire ;
+      · `a_cloturer` est la LISTE des lignes en vigueur ce jour-là, chacune avec sa date.
 
-    ⚠️ LA SAISIE PEUT ARRIVER DANS LE DÉSORDRE. Rattraper deux mois de retard, ou corriger un
-    mois ancien après avoir saisi les suivants, doit poser la ligne au bon endroit sans écraser
-    ses voisines. On regarde donc les factures existantes, on ne suppose pas qu'on est au bout.
+    ⚠️ ON RAISONNE EN DATES, PLUS EN MOIS. Une facture d'eau couvre du 21/07 au 18/09 : lui
+    chercher « le mois précédent » n'a pas de sens, et le mois de son début n'est pas le mois
+    qu'elle facture. La question n'a jamais été « quel mois » mais « quelle ligne était en
+    vigueur le jour où celle-ci commence » — ce que `couvre` répond directement.
 
-    ⚠️ ET LA LIGNE HÉRITÉE DE LA BASCULE N'A PAS DE MOIS. Passer une charge en mode facture
-    laisse son montant d'avant en place, sans mois — c'est voulu : on ignore à quel mois il
-    correspond. Mais cette ligne est OUVERTE, et on ne regardait que celles PORTANT un mois
-    pour décider laquelle clôturer : elle ne l'était donc jamais. Dès la première facture les
-    deux s'appliquaient et la charge comptait DOUBLE dans le point mort — 158,50 € d'électricité
-    au lieu de 81,40 €. D'où une liste et non une ligne unique : il peut y avoir la facture
-    précédente ET cet héritage à recouper.
+    ⚠️ LA SAISIE PEUT ARRIVER DANS LE DÉSORDRE, et rattraper une période ancienne après avoir
+    saisi les suivantes doit poser la ligne entre ses voisines sans les écraser.
+
+    ⚠️ ET LA LIGNE HÉRITÉE DE LA BASCULE N'A NI MOIS NI BORNES. Passer une charge en mode
+    facture laisse son montant d'avant, ouvert : on ne regardait que les lignes portant un mois
+    pour décider laquelle clôturer, elle ne l'était donc jamais et la charge comptait DOUBLE dès
+    la première facture. `couvre` la voit comme n'importe quelle autre.
     """
     siennes = [f for f in (lignes or [])
                if est_facture(f) and str(f.get("name") or "") == nom]
-    autres = sorted(
-        (f for f in siennes
-         if _jour(f.get("mois")) and _jour(f.get("mois")) != mois),
-        key=lambda f: _jour(f.get("mois")))
+    apres = sorted((d for d in (debut_dune_ligne(f) for f in siennes)
+                    if d is not None and d > debut))
+    fin = apres[0] if apres else None
+    a_cloturer = [(f, debut) for f in siennes
+                  if couvre(f, debut) and debut_dune_ligne(f) != debut]
+    return debut, fin, a_cloturer
 
-    suivante = next((f for f in autres if _jour(f.get("mois")) > mois), None)
-    precedente = None
-    for f in autres:
-        if _jour(f.get("mois")) < mois:
-            precedente = f
 
-    fin = _jour(suivante.get("mois")) if suivante else None
-    a_cloturer = []
-    if precedente is not None and _jour(precedente.get("valid_to")) != mois:
-        a_cloturer.append((precedente, mois))
-    for f in siennes:
-        if _jour(f.get("mois")) is not None:
+def couverture(lignes, nom, aujourdhui):
+    """
+    Jusqu'à quel jour cette charge est MESURÉE, et combien de jours restent à facturer.
+
+    Renvoie `{"jusqua": date|None, "jours": int, "debut_suivant": date|None}` :
+      · `jusqua` est le dernier jour couvert par une facture reçue ;
+      · `jours` est le nombre de jours écoulés depuis, donc estimés ;
+      · `debut_suivant` est le premier jour de la prochaine facture — le lendemain, celui que
+        l'écran propose pour ne pas laisser de trou.
+
+    ⚠️ CE QUI MANQUE NE SE COMPTE PLUS EN MOIS. `mois_en_attente` réclamait les mois clos sans
+    facture ; une facture d'eau couvre du 21/07 au 18/09, donc aucun mois n'est jamais « sans
+    facture » ni jamais complet. La question juste est : jusqu'à quand sait-on, et depuis
+    combien de jours extrapole-t-on.
+
+    ⚠️ ET UNE FACTURE SANS PÉRIODE NE DIT RIEN DE SA FIN. Les lignes d'avant cette migration
+    portent un mois : on les lit comme couvrant leur mois entier, ce qu'elles prétendaient être.
+    """
+    fins = []
+    for c in lignes or []:
+        if not est_facture(c) or str(c.get("name") or "") != nom:
             continue
-        debut_f, fin_f = _jour(f.get("valid_from")), _jour(f.get("valid_to"))
-        if (debut_f is None or debut_f < mois) and (fin_f is None or fin_f > mois):
-            a_cloturer.append((f, mois))
-    return mois, fin, a_cloturer
+        f = _jour(c.get("periode_fin"))
+        if f is None:
+            m = _jour(c.get("mois"))
+            f = _fin_de_mois(m) if m else None
+        if f is not None:
+            fins.append(f)
+    if not fins:
+        return {"jusqua": None, "jours": 0, "debut_suivant": None}
+    jusqua = max(fins)
+    return {"jusqua": jusqua,
+            "jours": max(0, (aujourdhui - jusqua).days),
+            "debut_suivant": jusqua + timedelta(1)}
 
 
 def mois_en_attente(lignes, nom, aujourdhui):
@@ -259,7 +362,7 @@ def charges_mensuelles(lignes, jour):
         if not applicable(c, jour):
             continue
         try:
-            total += _mensuel(float(c.get("amount") or 0), c.get("frequency", "monthly"))
+            total += part_mensuelle(c, jour)
         except (TypeError, ValueError):
             continue    # une ligne abîmée ne doit pas faire tomber tout le calcul
     return total
