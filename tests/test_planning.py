@@ -275,3 +275,142 @@ def test_un_mois_sans_aucune_ouverture_ne_divise_pas_par_zero():
     fixes, perso, par_jour = ch.cout_periode_planning(
         [], [BARISTA], [], [date(2026, 10, 2)], ferme, BASCULE)
     assert (fixes, perso, par_jour) == (0.0, 0.0, {})
+
+
+# ══ LES RÈGLES DE RÉCURRENCE ════════════════════════════════════════════════════════════════
+#
+# ⚠️ UNE RÈGLE EST VIVANTE : rien n'est recopié en base. Ce qui est gardé ici, c'est qu'elle
+# produise les bons jours, que l'exception prenne le dessus, et surtout que le COÛT la voie —
+# une règle que le planning affiche et que le point mort ignore donnerait deux écrans d'accord
+# sur l'horaire et en désaccord sur le prix.
+
+MERCREDI = {"id": "r1", "person_id": "p-ana", "weekday": 2,
+            "start_time": "09:00", "end_time": "17:00",
+            "valid_from": "2026-10-01", "valid_to": None, "note": ""}
+
+
+def test_une_regle_produit_son_jour_de_semaine():
+    # Le 7 octobre 2026 est un mercredi, le 8 un jeudi.
+    assert len(ch.services_du_jour(date(2026, 10, 7), [MERCREDI], [])) == 1
+    assert ch.services_du_jour(date(2026, 10, 8), [MERCREDI], []) == []
+
+
+def test_une_regle_ne_produit_rien_avant_son_debut():
+    assert ch.services_du_jour(date(2026, 9, 30), [MERCREDI], []) == []
+
+
+def test_une_regle_close_ne_produit_plus_rien():
+    close = dict(MERCREDI, valid_to="2026-10-15")
+    assert len(ch.services_du_jour(date(2026, 10, 14), [close], [])) == 1
+    assert ch.services_du_jour(date(2026, 10, 21), [close], []) == []
+
+
+def test_LA_BORNE_HAUTE_EST_EXCLUE():
+    """Même convention que les charges : clore au 15 veut dire que le 14 est le dernier jour."""
+    close = dict(MERCREDI, valid_to="2026-10-21")
+    assert ch.services_du_jour(date(2026, 10, 21), [close], []) == []
+
+
+def test_le_service_produit_porte_les_horaires_de_la_regle():
+    s = ch.services_du_jour(date(2026, 10, 7), [MERCREDI], [])[0]
+    assert (s["start_time"], s["end_time"]) == ("09:00", "17:00")
+    assert s["source"] == "regle" and s["id"] is None
+
+
+# ── Les exceptions ──────────────────────────────────────────────────────────────────────────
+
+def test_UNE_ANNULATION_FAIT_DISPARAITRE_LE_SERVICE():
+    """
+    ⚠️ ANNULÉ VEUT DIRE ABSENT, PAS « ZÉRO HEURE ». Rendre un service de durée nulle le ferait
+    apparaître au planning comme une case vide que personne ne saurait expliquer.
+    """
+    ex = {"id": "s9", "rule_id": "r1", "person_id": "p-ana", "day": "2026-10-07",
+          "start_time": "09:00", "end_time": "17:00", "annule": True}
+    assert ch.services_du_jour(date(2026, 10, 7), [MERCREDI], [ex]) == []
+
+
+def test_une_exception_remplace_les_horaires_de_la_regle():
+    ex = {"id": "s9", "rule_id": "r1", "person_id": "p-ana", "day": "2026-10-07",
+          "start_time": "14:00", "end_time": "20:00", "annule": False}
+    s = ch.services_du_jour(date(2026, 10, 7), [MERCREDI], [ex])
+    assert len(s) == 1
+    assert (s[0]["start_time"], s[0]["end_time"]) == ("14:00", "20:00")
+    assert s[0]["source"] == "regle-modifiee"
+
+
+def test_une_exception_ne_vaut_que_pour_son_jour():
+    ex = {"id": "s9", "rule_id": "r1", "person_id": "p-ana", "day": "2026-10-07",
+          "start_time": "09:00", "end_time": "17:00", "annule": True}
+    assert ch.services_du_jour(date(2026, 10, 7), [MERCREDI], [ex]) == []
+    assert len(ch.services_du_jour(date(2026, 10, 14), [MERCREDI], [ex])) == 1
+
+
+def test_un_ponctuel_et_une_regle_coexistent_le_meme_jour():
+    ponctuel = {"id": "s1", "person_id": "p-bob", "day": "2026-10-07",
+                "start_time": "18:00", "end_time": "22:00"}
+    s = ch.services_du_jour(date(2026, 10, 7), [MERCREDI], [ponctuel])
+    assert [x["source"] for x in s] == ["regle", "ponctuel"]
+
+
+def test_les_services_sortent_dans_lordre_des_horaires():
+    tot = {"id": "r2", "person_id": "p-bob", "weekday": 2, "start_time": "07:00",
+           "end_time": "12:00", "valid_from": "2026-10-01", "valid_to": None}
+    s = ch.services_du_jour(date(2026, 10, 7), [MERCREDI, tot], [])
+    assert [x["start_time"] for x in s] == ["07:00", "09:00"]
+
+
+# ── Et le coût la voit ──────────────────────────────────────────────────────────────────────
+
+def test_LE_COUT_DU_JOUR_COMPTE_LES_SERVICES_DUNE_REGLE():
+    """
+    ⚠️ LE PIÈGE CENTRAL DE LA RÈGLE VIVANTE. Ces services n'existent pas en base : un calcul qui
+    lit la table des shifts ne les voit pas. Le planning afficherait Ana, et le point mort
+    ferait comme si elle n'était pas là.
+    """
+    # Le mercredi n'est pas un jour d'ouverture du café, mais la fonction ne s'en occupe pas :
+    # elle répond « ce que coûte ce jour-là », et c'est l'appelant qui choisit les jours.
+    sans = ch.personnel_du_jour([BARISTA, EXTRA], [], date(2026, 10, 7), JOURS, BASCULE)
+    avec = ch.personnel_du_jour([BARISTA, EXTRA], [], date(2026, 10, 7), JOURS, BASCULE,
+                                [MERCREDI])
+    assert avec - sans == pytest.approx(8 * 12.0)
+
+
+def test_une_annulation_retire_aussi_le_cout():
+    ex = {"id": "s9", "rule_id": "r1", "person_id": "p-ana", "day": "2026-10-07",
+          "start_time": "09:00", "end_time": "17:00", "annule": True}
+    sans = ch.personnel_du_jour([BARISTA, EXTRA], [], date(2026, 10, 7), JOURS, BASCULE)
+    avec = ch.personnel_du_jour([BARISTA, EXTRA], [ex], date(2026, 10, 7), JOURS, BASCULE,
+                                [MERCREDI])
+    assert avec == pytest.approx(sans)
+
+
+def test_une_exception_dhoraire_change_le_cout():
+    ex = {"id": "s9", "rule_id": "r1", "person_id": "p-ana", "day": "2026-10-07",
+          "start_time": "14:00", "end_time": "20:00", "annule": False}
+    sans = ch.personnel_du_jour([BARISTA, EXTRA], [], date(2026, 10, 7), JOURS, BASCULE)
+    avec = ch.personnel_du_jour([BARISTA, EXTRA], [ex], date(2026, 10, 7), JOURS, BASCULE,
+                                [MERCREDI])
+    assert avec - sans == pytest.approx(6 * 12.0)
+
+
+def test_une_regle_sur_un_permanent_najoute_rien():
+    """Sa paie est lissée : une récurrence ne doit pas le faire payer deux fois non plus."""
+    regle = dict(MERCREDI, id="r3", person_id="p-barista")
+    sans = ch.personnel_du_jour([BARISTA, EXTRA], [], date(2026, 10, 7), JOURS, BASCULE)
+    avec = ch.personnel_du_jour([BARISTA, EXTRA], [], date(2026, 10, 7), JOURS, BASCULE, [regle])
+    assert avec == pytest.approx(sans)
+
+
+def test_avant_la_bascule_une_regle_najoute_rien():
+    """La promesse tient aussi pour les règles : septembre ne doit pas changer."""
+    avant = dict(MERCREDI, valid_from="2026-01-01")
+    a = ch.personnel_du_jour([BARISTA, EXTRA], [], date(2026, 9, 2), JOURS, BASCULE, [avant])
+    b = ch.personnel_mensuel([BARISTA, EXTRA], date(2026, 9, 2)) / JOURS
+    assert a == pytest.approx(b)
+
+
+def test_la_periode_voit_les_regles():
+    jours = [date(2026, 10, 7), date(2026, 10, 8)]
+    _, perso, par_jour = ch.cout_periode_planning(
+        [], [BARISTA, EXTRA], [], jours, lambda j: True, BASCULE, [MERCREDI])
+    assert par_jour[date(2026, 10, 7)]["personnel"] > par_jour[date(2026, 10, 8)]["personnel"]

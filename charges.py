@@ -226,11 +226,73 @@ def cout_shift(shift, employes):
     return heures(shift.get("start_time"), shift.get("end_time")) * taux
 
 
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# LES RÈGLES DE RÉCURRENCE — « Ana tous les mercredis de 9 h à 17 h »
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ UNE RÈGLE EST VIVANTE : RIEN N'EST RECOPIÉ. Les services qu'elle produit n'existent pas en
+# base ; ils sont calculés à la lecture. La contrepartie est assumée et choisie : corriger
+# l'horaire d'une règle qui couvrait septembre change le coût de septembre. L'écran l'annonce au
+# moment du geste — il n'interdit pas.
+#
+# ⚠️ ET UNE EXCEPTION N'EST PAS UN AUTRE CONCEPT. « Ana ne vient pas ce mercredi » et « Ana vient
+# de 14 h à 20 h ce mercredi-là » sont le même geste : une ligne de `shifts` qui porte le
+# `rule_id` et prend le dessus pour cette date. Une table de plus aurait fait trois endroits où
+# chercher pourquoi quelqu'un apparaît — ou n'apparaît pas — au planning.
+
+
+def services_du_jour(jour, regles, shifts):
+    """
+    Tout ce qui est prévu ce jour-là : les règles dépliées, leurs exceptions, et les ponctuels.
+
+    Chaque service rendu porte `source` — « regle », « regle-modifiee » ou « ponctuel » — parce
+    que l'écran doit pouvoir dire d'où vient une case, et qu'un service produit par une règle ne
+    se supprime pas comme un service posé à la main.
+    """
+    out = []
+    # Les exceptions, indexées par règle : une seule par règle et par jour.
+    par_regle = {}
+    for s in shifts or []:
+        if s.get("rule_id") and _jour(s.get("day")) == jour:
+            par_regle[str(s["rule_id"])] = s
+
+    for r in regles or []:
+        if r.get("weekday") is None or int(r["weekday"]) != jour.weekday():
+            continue
+        if not applicable(r, jour):
+            continue
+        ex = par_regle.get(str(r.get("id")))
+        if ex is not None:
+            # ⚠️ ANNULÉ VEUT DIRE ABSENT, PAS « ZÉRO HEURE ». Rendre un service de durée nulle
+            # le ferait apparaître au planning comme une case vide inexplicable.
+            if ex.get("annule"):
+                continue
+            out.append({**ex, "source": "regle-modifiee", "rule_id": r.get("id"),
+                        "person_id": r.get("person_id")})
+            continue
+        out.append({"id": None, "rule_id": r.get("id"), "person_id": r.get("person_id"),
+                    "day": jour.isoformat(), "start_time": r.get("start_time"),
+                    "end_time": r.get("end_time"), "note": r.get("note"),
+                    "source": "regle"})
+
+    for s in shifts or []:
+        if s.get("rule_id"):
+            continue
+        if _jour(s.get("day")) != jour:
+            continue
+        if s.get("annule"):
+            continue
+        out.append({**s, "source": "ponctuel"})
+
+    out.sort(key=lambda x: str(x.get("start_time") or ""))
+    return out
+
+
 def _est_extra(e):
     return str(e.get("type") or "") == "extra"
 
 
-def personnel_du_jour(employes, shifts, jour, jours_ouverts_mois, bascule=None):
+def personnel_du_jour(employes, shifts, jour, jours_ouverts_mois, bascule=None, regles=None):
     """
     Le coût du personnel pour CE jour : permanents lissés, extras réels.
 
@@ -257,9 +319,11 @@ def personnel_du_jour(employes, shifts, jour, jours_ouverts_mois, bascule=None):
     if not planning:
         return total
 
-    for s in shifts or []:
-        if _jour(s.get("day")) != jour:
-            continue
+    # ⚠️ ON PASSE PAR `services_du_jour`, PAS PAR LA LISTE BRUTE. Une règle produit des services
+    # qui n'existent pas en base : les ignorer ici ferait un planning qui affiche quelqu'un et
+    # un point mort qui ne le compte pas — deux écrans d'accord sur l'horaire et en désaccord
+    # sur le prix.
+    for s in services_du_jour(jour, regles, shifts):
         fiche = fiche_du_jour(employes, s.get("person_id"), jour)
         # ⚠️ SEULS LES EXTRAS SONT FACTURÉS À L'HEURE. Un permanent inscrit au planning est déjà
         # compté dans sa paie lissée : ajouter ses heures le paierait deux fois.
@@ -283,7 +347,8 @@ def jours_ouverts_du_mois(jour, est_ouvert):
     return len(jours_ouverts_entre(premier, dernier, est_ouvert))
 
 
-def cout_periode_planning(charges, employes, shifts, jours_ouverts, est_ouvert, bascule):
+def cout_periode_planning(charges, employes, shifts, jours_ouverts, est_ouvert, bascule,
+                          regles=None):
     """
     Le coût d'une période, jour par jour, planning compris.
 
@@ -308,7 +373,7 @@ def cout_periode_planning(charges, employes, shifts, jours_ouverts, est_ouvert, 
         if not n:
             continue
         f = charges_mensuelles(charges, j) / n
-        p = personnel_du_jour(employes, shifts, j, n, bascule)
+        p = personnel_du_jour(employes, shifts, j, n, bascule, regles)
         fixes += f
         perso += p
         par_jour[j] = {"fixes": f, "personnel": p, "total": f + p}
