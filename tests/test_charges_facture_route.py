@@ -232,3 +232,54 @@ def test_une_charge_inconnue_ne_se_convertit_pas(base, monkeypatch):
     monkeypatch.setattr(flask_app, "_supa_get", lambda t, p=None: [])
     assert base["client"].post("/api/charges/mode",
                                json={"name": "Gaz", "mode": "facture"}).status_code == 404
+
+
+# ── La ligne héritée de la bascule ──────────────────────────────────────────────────────────
+
+CONVERTIE = {"id": "c7", "name": "Eau", "mode": "facture", "mois": None, "amount": 31.40,
+             "frequency": "monthly", "category": "Energy & utilities", "notes": "",
+             "valid_from": None, "valid_to": None, "active": True}
+
+
+def test_LA_PREMIERE_FACTURE_FERME_LA_LIGNE_HERITEE_DE_LA_BASCULE(base):
+    """
+    ⚠️ TROUVÉ LE JOUR OÙ QUENTIN A BASCULÉ SES DEUX CHARGES, avant qu'il saisisse quoi que ce
+    soit. Passer « Eau » en mode facture garde sa ligne d'avant, sans mois et OUVERTE. La route
+    ne fermait que la facture PRÉCÉDENTE — il n'y en avait pas — donc la ligne héritée restait
+    ouverte à côté de la neuve : 31,40 + 29,80 imputés au même mois. Un point mort gonflé d'une
+    charge entière, et rien à l'écran pour le dire.
+    """
+    base["lignes"] = [dict(CONVERTIE), dict(LOYER)]
+    r = poser(base, mois="2026-10", montant=29.80, nom="Eau")
+    assert r.get_json()["ok"] is True
+
+    fermetures = [e for e in base["ecrits"]
+                  if e[0] == "patch" and e[2].get("valid_to") == "2026-10-01"]
+    assert len(fermetures) == 1, f"la ligne héritée n'est pas fermée : {base['ecrits']}"
+    assert fermetures[0][1] == {"id": "eq.c7"}, fermetures[0]
+    assert fermetures[0][2]["active"] is False
+
+
+def test_LES_DEUX_LIGNES_A_RECOUPER_SONT_FERMEES_TOUTES_LES_DEUX(base):
+    """
+    ⚠️ LA ROUTE N'EN FERMAIT QU'UNE. Avec une facture précédente ET l'héritage encore ouvert,
+    fermer la première laissait la seconde se superposer — exactement le défaut d'origine,
+    déplacé d'un cran.
+    """
+    base["lignes"] = [dict(CONVERTIE),
+                      {**ELEC_SEPT, "id": "c8", "name": "Eau", "amount": 30.0}]
+    r = poser(base, mois="2026-10", montant=29.80, nom="Eau")
+    assert r.get_json()["ok"] is True
+    fermes = sorted(e[1]["id"] for e in base["ecrits"]
+                    if e[0] == "patch" and e[2].get("valid_to") == "2026-10-01")
+    assert fermes == ["eq.c7", "eq.c8"], base["ecrits"]
+
+
+def test_UNE_LIGNE_HERITEE_DEJA_FERMEE_NEST_PAS_RETOUCHEE(base):
+    base["lignes"] = [{**CONVERTIE, "valid_to": "2026-09-01", "active": False},
+                      {**ELEC_SEPT, "id": "c8", "name": "Eau", "amount": 30.0}]
+    r = poser(base, mois="2026-10", montant=29.80, nom="Eau")
+    assert r.get_json()["ok"] is True
+    fermes = [e[1]["id"] for e in base["ecrits"]
+              if e[0] == "patch" and e[2].get("valid_to") == "2026-10-01"]
+    assert fermes == ["eq.c8"], base["ecrits"]

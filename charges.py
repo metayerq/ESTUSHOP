@@ -181,16 +181,25 @@ def bornes_dune_facture(lignes, nom, mois):
     Renvoie `(valid_from, valid_to, a_cloturer)` :
       · `valid_from` est le 1er du mois — la facture couvre son mois, pas le lendemain ;
       · `valid_to` est le 1er du mois de la facture SUIVANTE si elle existe déjà, sinon `None` ;
-      · `a_cloturer` est la ligne ouverte qui précède, et la date à laquelle la fermer.
+      · `a_cloturer` est la LISTE des lignes ouvertes à fermer, chacune avec sa date.
 
     ⚠️ LA SAISIE PEUT ARRIVER DANS LE DÉSORDRE. Rattraper deux mois de retard, ou corriger un
     mois ancien après avoir saisi les suivants, doit poser la ligne au bon endroit sans écraser
     ses voisines. On regarde donc les factures existantes, on ne suppose pas qu'on est au bout.
+
+    ⚠️ ET LA LIGNE HÉRITÉE DE LA BASCULE N'A PAS DE MOIS. Passer une charge en mode facture
+    laisse son montant d'avant en place, sans mois — c'est voulu : on ignore à quel mois il
+    correspond. Mais cette ligne est OUVERTE, et on ne regardait que celles PORTANT un mois
+    pour décider laquelle clôturer : elle ne l'était donc jamais. Dès la première facture les
+    deux s'appliquaient et la charge comptait DOUBLE dans le point mort — 158,50 € d'électricité
+    au lieu de 81,40 €. D'où une liste et non une ligne unique : il peut y avoir la facture
+    précédente ET cet héritage à recouper.
     """
+    siennes = [f for f in (lignes or [])
+               if est_facture(f) and str(f.get("name") or "") == nom]
     autres = sorted(
-        (f for f in (lignes or [])
-         if est_facture(f) and str(f.get("name") or "") == nom and _jour(f.get("mois"))
-         and _jour(f.get("mois")) != mois),
+        (f for f in siennes
+         if _jour(f.get("mois")) and _jour(f.get("mois")) != mois),
         key=lambda f: _jour(f.get("mois")))
 
     suivante = next((f for f in autres if _jour(f.get("mois")) > mois), None)
@@ -200,9 +209,15 @@ def bornes_dune_facture(lignes, nom, mois):
             precedente = f
 
     fin = _jour(suivante.get("mois")) if suivante else None
-    a_cloturer = None
+    a_cloturer = []
     if precedente is not None and _jour(precedente.get("valid_to")) != mois:
-        a_cloturer = (precedente, mois)
+        a_cloturer.append((precedente, mois))
+    for f in siennes:
+        if _jour(f.get("mois")) is not None:
+            continue
+        debut_f, fin_f = _jour(f.get("valid_from")), _jour(f.get("valid_to"))
+        if (debut_f is None or debut_f < mois) and (fin_f is None or fin_f > mois):
+            a_cloturer.append((f, mois))
     return mois, fin, a_cloturer
 
 

@@ -92,8 +92,8 @@ def test_une_facture_couvre_son_mois_pas_le_lendemain():
 def test_poser_une_facture_cloture_la_precedente():
     lignes = [facture("2026-09-01", 77.10)]
     _, _, a_cloturer = ch.bornes_dune_facture(lignes, "Électricité", date(2026, 10, 1))
-    assert a_cloturer is not None
-    ligne, quand = a_cloturer
+    assert len(a_cloturer) == 1
+    ligne, quand = a_cloturer[0]
     assert ligne["mois"] == "2026-09-01" and quand == date(2026, 10, 1)
 
 
@@ -107,19 +107,19 @@ def test_UNE_SAISIE_DANS_LE_DESORDRE_SE_PLACE_AU_BON_ENDROIT():
     debut, fin, a_cloturer = ch.bornes_dune_facture(lignes, "Électricité", date(2026, 10, 1))
     assert debut == date(2026, 10, 1)
     assert fin == date(2026, 11, 1), "octobre doit s'arrêter là où novembre commence"
-    assert a_cloturer[0]["mois"] == "2026-09-01"
+    assert a_cloturer[0][0]["mois"] == "2026-09-01"
 
 
 def test_une_facture_deja_close_au_bon_endroit_nest_pas_retouchee():
     lignes = [facture("2026-09-01", 77.10, fin="2026-10-01")]
     _, _, a_cloturer = ch.bornes_dune_facture(lignes, "Électricité", date(2026, 10, 1))
-    assert a_cloturer is None
+    assert a_cloturer == []
 
 
 def test_les_factures_dune_autre_charge_ne_comptent_pas():
     lignes = [facture("2026-09-01", 31.40, nom="Eau")]
     _, fin, a_cloturer = ch.bornes_dune_facture(lignes, "Électricité", date(2026, 10, 1))
-    assert fin is None and a_cloturer is None
+    assert fin is None and a_cloturer == []
 
 
 # ── Ce qui manque ───────────────────────────────────────────────────────────────────────────
@@ -177,7 +177,7 @@ def test_les_factures_dune_autre_charge_ne_decalent_pas_les_bornes():
               facture("2026-09-01", 77.10, nom="Électricité")]
     debut, fin, a_cloturer = ch.bornes_dune_facture(lignes, "Électricité", date(2026, 10, 1))
     assert fin is None, "une facture d'eau de novembre a borné l'électricité d'octobre"
-    assert a_cloturer[0]["name"] == "Électricité"
+    assert a_cloturer[0][0]["name"] == "Électricité"
 
 
 # ── Dire « estimé » là où ça compte ─────────────────────────────────────────────────────────
@@ -236,3 +236,63 @@ def test_une_ligne_deja_close_ne_rend_pas_la_charge_estimee():
     lignes = [facture("2026-07-01", 28.0, nom="Eau", debut="2026-07-01", fin="2026-10-01"),
               facture("2026-10-01", 31.40, nom="Eau", debut="2026-10-01")]
     assert ch.charges_estimees(lignes, [date(2026, 10, 15)]) == []
+
+
+# ── La ligne héritée de la bascule ──────────────────────────────────────────────────────────
+#
+# ⚠️ CE DÉFAUT EST APPARU LE JOUR OÙ QUENTIN A BASCULÉ SES DEUX CHARGES. Passer « Électricité »
+# en mode facture laisse sa ligne existante en place, SANS mois — c'est voulu : on ignore à quel
+# mois correspond le montant déjà saisi, et l'inventer serait affirmer une mesure qu'on n'a pas.
+# Mais cette ligne est OUVERTE. `bornes_dune_facture` ne regardait que les lignes PORTANT un
+# mois pour décider laquelle clôturer : la ligne héritée ne l'était donc jamais, et dès la
+# première facture les deux s'appliquaient. L'électricité comptait double dans le point mort.
+
+CONVERTIE = {"name": "Électricité", "mode": "facture", "mois": None, "amount": 77.10,
+             "frequency": "monthly", "valid_from": None, "valid_to": None, "active": True}
+
+
+def test_la_ligne_sans_mois_est_cloturee_par_la_premiere_facture():
+    _, _, a_cloturer = ch.bornes_dune_facture([CONVERTIE], "Électricité", date(2026, 9, 1))
+    assert a_cloturer == [(CONVERTIE, date(2026, 9, 1))]
+
+
+def test_la_charge_ne_compte_pas_double_apres_la_premiere_facture():
+    """Le contrôle qui compte vraiment : le total, pas la mécanique qui le produit."""
+    close = {**CONVERTIE, "valid_to": "2026-09-01", "active": False}
+    sept = facture("2026-09-01", 81.40)
+    assert ch.charges_mensuelles([close, sept], date(2026, 8, 15)) == 77.10
+    assert ch.charges_mensuelles([close, sept], date(2026, 9, 15)) == 81.40
+    assert ch.charges_mensuelles([close, sept], date(2026, 10, 2)) == 81.40
+
+
+def test_rattraper_un_mois_anterieur_recoupe_aussi_la_ligne_heritee():
+    """
+    ⚠️ ET DANS LE DÉSORDRE. Septembre saisi en premier clôture la ligne héritée au 1er septembre.
+    Saisir août ensuite crée une ligne du 1er août au 1er septembre — la ligne héritée, encore
+    ouverte sur août, s'y superposerait. Elle doit reculer jusqu'au premier mois mesuré.
+    """
+    close_sept = {**CONVERTIE, "valid_to": "2026-09-01"}
+    lignes = [close_sept, facture("2026-09-01", 81.40)]
+    debut, fin, a_cloturer = ch.bornes_dune_facture(lignes, "Électricité", date(2026, 8, 1))
+    assert (debut, fin) == (date(2026, 8, 1), date(2026, 9, 1))
+    assert a_cloturer == [(close_sept, date(2026, 8, 1))]
+
+
+def test_une_ligne_heritee_deja_recoupee_nest_pas_reclôturee():
+    """Clôturer deux fois au même endroit écrirait pour rien, et brouillerait le journal."""
+    close = {**CONVERTIE, "valid_to": "2026-09-01"}
+    lignes = [close, facture("2026-09-01", 81.40)]
+    _, _, a_cloturer = ch.bornes_dune_facture(lignes, "Électricité", date(2026, 10, 1))
+    assert a_cloturer == [(lignes[1], date(2026, 10, 1))]
+
+
+def test_une_ligne_heritee_qui_commence_plus_tard_nest_pas_fermee_avant_son_debut():
+    """
+    ⚠️ FERMER UNE LIGNE AVANT SA PROPRE OUVERTURE DONNE UN INTERVALLE À L'ENVERS — du 1er
+    novembre au 1er octobre. Elle ne disparaîtrait pas pour autant : `applicable` la lirait
+    comme une ligne sans fin utile, et le montant reviendrait là où on croyait l'avoir retiré.
+    Une ligne héritée ne se recoupe que si elle couvre déjà le mois saisi.
+    """
+    tardive = {**CONVERTIE, "valid_from": "2026-11-01"}
+    _, _, a_cloturer = ch.bornes_dune_facture([tardive], "Électricité", date(2026, 10, 1))
+    assert a_cloturer == []

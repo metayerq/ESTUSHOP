@@ -4062,8 +4062,10 @@ def api_charge_facture():
         return jsonify({"ok": ok, "error": err, "corrige": True, "ancien": ancien})
 
     debut, fin, a_cloturer = _ch.bornes_dune_facture(lignes, nom, mois)
-    if a_cloturer is not None:
-        precedente, quand = a_cloturer
+    # ⚠️ IL PEUT Y EN AVOIR DEUX. La facture précédente, et la ligne héritée de la bascule en
+    # mode facture — celle qui n'a pas de mois et que rien ne fermait : la charge comptait
+    # alors double dès la première facture saisie.
+    for precedente, quand in a_cloturer:
         ok, err = _supa_patch("charges_fixes", {"id": f"eq.{precedente['id']}"},
                               {"valid_to": quand.isoformat(), "active": False})
         if not ok:
