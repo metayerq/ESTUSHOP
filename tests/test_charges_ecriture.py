@@ -662,3 +662,95 @@ def test_UN_TAUX_A_ZERO_EST_UNE_ABSENCE_DE_TAUX(admin, extra):
     admin.post("/api/employees", json={"name": "Bob", "type": "extra", "hourly_rate": 0})
     row = [o for o in extra if o[0] == "insert"][0][2]
     assert row["hourly_rate"] is None
+
+
+# ══ UNE PREMIÈRE VALEUR N'EST PAS UN CHANGEMENT ═════════════════════════════════════════════
+#
+# ⚠️ TROUVÉ SUR UNE QUESTION DE QUENTIN : « il y a son taux mais ça ne marche pas ». Savannah
+# travaillait, son taux horaire était visible sur sa fiche, et sa journée ne coûtait rien.
+#
+# Remplir un taux jamais renseigné passait par la cérémonie du versionnement : motif obligatoire,
+# date d'effet au plus tôt demain, et par DÉFAUT le 1er du mois PROCHAIN. La ligne qui couvre
+# aujourd'hui gardait donc son taux vide, parfois quatre semaines durant, pendant que l'écran
+# affichait le taux neuf. C'est la faute des factures, à l'identique : « octobre gardait à jamais
+# le montant de septembre ». L'invariant n'est pas « jamais rétroactif », il est « jamais en
+# silence » — et une première écriture sur un champ vide n'écrase rien.
+
+EXTRA_SANS_TAUX = {"id": "e7", "name": "Savannah", "type": "extra", "gross_monthly": 0.0,
+                   "meal_card_daily": 0.0, "tsu_exempt": False, "hourly_rate": None,
+                   "notes": "", "active": True, "valid_from": None, "valid_to": None}
+
+
+@pytest.fixture
+def extra_sans_taux(monkeypatch):
+    """
+    ⚠️ PAS « extra » : CE NOM EXISTE DÉJÀ DANS CE FICHIER. Pytest résout les fixtures au niveau
+    du module, donc la seconde définition remplaçait la première pour TOUS les tests — quatre
+    cas sur le changement de taux se sont mis à échouer, et la cause n'était pas dans le code
+    qu'ils éprouvaient.
+    """
+    ecrits = []
+    monkeypatch.setattr(flask_app, "_supa_get", lambda t, p: [dict(EXTRA_SANS_TAUX)])
+    monkeypatch.setattr(flask_app, "_supa_patch",
+                        lambda t, f, d: (ecrits.append(("patch", t, f, d)), (True, None))[1])
+    monkeypatch.setattr(flask_app, "_supa_insert",
+                        lambda t, r: (ecrits.append(("insert", t, r)), (True, None))[1])
+    return ecrits
+
+
+def test_UN_TAUX_JAMAIS_RENSEIGNE_SECRIT_SUR_LA_LIGNE_EN_COURS(admin, extra_sans_taux):
+    d = admin.patch("/api/employees/e7", json={"hourly_rate": 12.0}).get_json()
+    assert d["ok"] is True and d.get("premiere_saisie") is True
+    assert d["effet"] is None, "il n'y a pas de date d'effet : rien n'est réécrit"
+    assert [e for e in extra_sans_taux if e[0] == "patch"] == [
+        ("patch", "employees", {"id": "eq.e7"}, {"hourly_rate": 12.0})]
+    assert not [e for e in extra_sans_taux if e[0] == "insert"], "une ligne neuve a été ouverte"
+
+
+def test_UNE_PREMIERE_SAISIE_NEXIGE_AUCUN_MOTIF(admin, extra_sans_taux):
+    """Un motif répond à « pourquoi ce changement ». Il n'y a pas de changement."""
+    assert admin.patch("/api/employees/e7", json={"hourly_rate": 12.0}).status_code == 200
+
+
+def test_CHANGER_UN_TAUX_DEJA_POSE_GARDE_TOUTE_LA_CEREMONIE(admin, monkeypatch):
+    """
+    ⚠️ LE CONTRÔLE QUI TIENT LA PORTE. Si la première saisie ouvrait la voie à toute écriture
+    de taux, on pourrait réécrire le coût d'un mois déjà lu — ce que le versionnement existe
+    pour empêcher.
+    """
+    ecrits = []
+    monkeypatch.setattr(flask_app, "_supa_get",
+                        lambda t, p: [dict(EXTRA_SANS_TAUX, hourly_rate=12.0)])
+    monkeypatch.setattr(flask_app, "_supa_patch",
+                        lambda t, f, d: (ecrits.append(("patch", d)), (True, None))[1])
+    monkeypatch.setattr(flask_app, "_supa_insert",
+                        lambda t, r: (ecrits.append(("insert", r)), (True, None))[1])
+    d = admin.patch("/api/employees/e7", json={"hourly_rate": 13.0}).get_json()
+    assert d["ok"] is False and "motif" in d["error"]
+    assert ecrits == []
+
+
+def test_UN_TAUX_A_ZERO_NEST_PAS_UNE_CASE_VIDE(admin, monkeypatch):
+    """⚠️ ZÉRO PEUT ÊTRE UN CHOIX ; `NULL` est une case jamais remplie. On ne confond pas."""
+    monkeypatch.setattr(flask_app, "_supa_get",
+                        lambda t, p: [dict(EXTRA_SANS_TAUX, hourly_rate=0.0)])
+    monkeypatch.setattr(flask_app, "_supa_patch", lambda t, f, d: (True, None))
+    monkeypatch.setattr(flask_app, "_supa_insert", lambda t, r: (True, None))
+    d = admin.patch("/api/employees/e7", json={"hourly_rate": 12.0}).get_json()
+    assert d["ok"] is False and "motif" in d["error"]
+
+
+def test_UNE_PREMIERE_SAISIE_ACCOMPAGNEE_DUN_VRAI_CHANGEMENT_GARDE_LA_CEREMONIE(admin, extra_sans_taux):
+    """
+    ⚠️ LES DEUX GESTES DANS LE MÊME ENVOI. Le taux se pose sur la ligne en cours, et le reste
+    passe par le versionnement — avec le taux neuf recopié sur la ligne de remplacement, sinon
+    la nouvelle fiche naîtrait sans lui.
+    """
+    d = admin.patch("/api/employees/e7",
+                    json={"hourly_rate": 12.0, "gross_monthly": 800.0,
+                          "reason": "passage en forfait mensuel",
+                          "effective_from": "2026-10-01"}).get_json()
+    assert d["ok"] is True and d["effet"] == "2026-10-01"
+    neuve = [e[2] for e in extra_sans_taux if e[0] == "insert"][0]
+    assert neuve["hourly_rate"] == 12.0, "la ligne de remplacement a perdu le taux"
+    assert neuve["gross_monthly"] == 800.0

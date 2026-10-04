@@ -4351,6 +4351,34 @@ def _modifier_poste(table, poste_id, data):
         if neuf != ancien:
             maj[champ] = neuf
 
+    # ⚠️ UNE PREMIÈRE VALEUR N'EST PAS UN CHANGEMENT. Un taux horaire jamais renseigné ne
+    # réécrit rien quand on le remplit : il n'y a pas de montant antérieur à préserver, et la
+    # personne a bien travaillé à ce taux-là. Le traiter comme une hausse de salaire exigeait un
+    # motif et repoussait l'effet au 1er du mois PROCHAIN — donc les services déjà au planning
+    # continuaient de ne rien coûter, parfois pendant quatre semaines, avec le taux visible à
+    # l'écran. C'est exactement la faute des factures : « octobre gardait à jamais le montant de
+    # septembre ». L'invariant n'est pas « jamais rétroactif », il est « jamais en silence », et
+    # une première écriture sur un champ vide n'écrase rien.
+    #
+    # ⚠️ SEULEMENT SI LE CHAMP ÉTAIT NUL, PAS ZÉRO. Zéro peut être un choix ; `NULL` est une
+    # case jamais remplie. Et seulement pour le taux horaire : un `gross_monthly` à 0 est
+    # l'état normal d'un extra, l'y porter à 1 200 € est bien un changement.
+    premiere = ("hourly_rate" in maj
+                and ligne.get("hourly_rate") in (None, "")
+                and maj["hourly_rate"] > 0)
+    if premiere:
+        taux = maj.pop("hourly_rate")
+        ok, err = _supa_patch(table, {"id": f"eq.{poste_id}"}, {"hourly_rate": taux})
+        if not ok:
+            return jsonify({"ok": False, "error": err or "écriture refusée"}), 502
+        _journal_action(_current_role(), f"{table}-taux-initial",
+                        str(ligne.get("name") or poste_id)[:24],
+                        {"hourly_rate": None}, {"hourly_rate": taux},
+                        "première saisie du taux horaire")
+        ligne = {**ligne, "hourly_rate": taux}
+        if not maj:
+            return jsonify({"ok": True, "effet": None, "premiere_saisie": True})
+
     if maj:
         motif = (data.get("reason") or "").strip()
         if len(motif) < 3:

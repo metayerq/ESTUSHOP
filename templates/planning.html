@@ -414,10 +414,21 @@ function servicesDe(j){ return (DATA.services && DATA.services[j]) || []; }
  * ouvrir la fiche pour savoir laquelle, et d'ici là le coût du jour était silencieusement
  * amputé. C'est la question que Quentin a posée — « Savannah bosse, pourquoi tu ne comptes
  * pas ? » — et l'écran ne pouvait pas y répondre. */
-function manque(f, extra, taux){
+function manque(f, extra, taux, personId, j){
   if (!f) return 'aucune fiche applicable ce jour-là';
-  if (extra && !taux) return 'aucun taux horaire sur sa fiche';
-  return '';
+  if (!extra || taux) return '';
+  /* ⚠️ LE CAS QUI A COÛTÉ LE PLUS CHER À COMPRENDRE : le taux est bien saisi, VISIBLE sur la
+   * fiche — mais sur une version qui ne commence que plus tard. Poser un taux passait par le
+   * versionnement, dont la date d'effet par défaut est le 1er du mois PROCHAIN : la ligne qui
+   * couvre aujourd'hui restait sans taux pendant des semaines. « Aucun taux horaire sur sa
+   * fiche » était alors FAUX et envoyait chercher au mauvais endroit. */
+  const futur = (DATA.employees || [])
+    .filter(function(e){ return String(e.person_id || '') === String(personId)
+                                && parseFloat(e.hourly_rate || 0) > 0
+                                && e.valid_from && e.valid_from > j; })
+    .sort(function(a, b){ return String(a.valid_from).localeCompare(String(b.valid_from)); })[0];
+  if (futur) return 'son taux ne prend effet que le ' + futur.valid_from;
+  return 'aucun taux horaire sur sa fiche';
 }
 
 function puce(j, s){
@@ -427,7 +438,7 @@ function puce(j, s){
      laisserait croire qu'il s'ajoute. On montre les heures, pas un prix. */
   const extra = f && f.type === 'extra';
   const taux = extra ? parseFloat(f.hourly_rate || 0) : 0;
-  const trou = manque(f, extra, taux);
+  const trou = manque(f, extra, taux, s.person_id, j);
   const prix = extra && taux ? eur(h * taux)
              : (trou ? '<span class="pl-trou" aria-hidden="true">non chiffré</span>' : '');
   /* ⚠️ UN SERVICE DE RÈGLE SE DISTINGUE À L'ŒIL. Le supprimer ne fait pas la même chose : il
@@ -453,7 +464,8 @@ function pied(cout, j){
    * est trop bas sans que rien ne le signale. */
   const muets = servicesDe(j).filter(function(s){
     const f = fiche(s.person_id, j), extra = f && f.type === 'extra';
-    return !!manque(f, extra, extra ? parseFloat(f.hourly_rate || 0) : 0);
+    return !!manque(f, extra, extra ? parseFloat(f.hourly_rate || 0) : 0,
+                    s.person_id, j);
   }).length;
   return `<div class="pl-pied">personnel <b>${eur(cout.personnel)}</b><br>
           journée <b>${eur(cout.total)}</b>${muets

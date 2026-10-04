@@ -471,7 +471,43 @@ CAS = {
                     # ⚠️ UN EXTRA SANS TAUX HORAIRE. Son service ne coûte rien, et la puce
                     # l'affichait exactement comme celle d'un permanent — dont l'absence de
                     # prix est NORMALE. Deux significations opposées, un seul rendu.
+                    # ⚠️ ET LA VERSION QUI PORTE LE TAUX NE COMMENCE QUE PLUS TARD. Poser un
+                    # taux passait par le versionnement, dont la date d'effet par défaut est le
+                    # 1er du mois PROCHAIN : le taux est visible sur la fiche et la ligne qui
+                    # couvre aujourd'hui ne l'a pas. « Aucun taux horaire » serait FAUX ici.
                     {"person_id": "p-sav", "name": "Savannah", "type": "extra",
+                     "gross_monthly": 0, "hourly_rate": None,
+                     "valid_from": "2026-05-01", "valid_to": "2026-11-01", "active": False},
+                    {"person_id": "p-sav", "name": "Savannah", "type": "extra",
+                     "gross_monthly": 0, "hourly_rate": 13.0,
+                     "valid_from": "2026-11-01", "valid_to": None, "active": False},
+                    # ⚠️ UNE VERSION À VENIR QUI N'A PAS DE TAUX NON PLUS. Sans le filtre sur le
+                    # montant, c'est ELLE qui serait annoncée — la date la plus proche, mais
+                    # celle qui ne changera rien.
+                    {"person_id": "p-sav", "name": "Savannah", "type": "extra",
+                     "gross_monthly": 0, "hourly_rate": None,
+                     "valid_from": "2026-10-20", "valid_to": "2026-11-01", "active": False},
+                    # ⚠️ ET UNE SECONDE VERSION À VENIR, PLUS LOIN, QUI PORTE AUSSI UN TAUX.
+                    # C'est la PLUS PROCHE qui dit quand le service recommencera à compter ;
+                    # sans tri croissant, la puce annoncerait décembre.
+                    {"person_id": "p-sav", "name": "Savannah", "type": "extra",
+                     "gross_monthly": 0, "hourly_rate": 14.0,
+                     "valid_from": "2026-12-01", "valid_to": None, "active": False},
+                    # ⚠️ NOA : un taux à venir AVANT celui de Savannah. Sans le filtre sur la
+                    # personne, la puce de Savannah annoncerait la date de Noa.
+                    {"person_id": "p-noa", "name": "Noa", "type": "extra",
+                     "gross_monthly": 0, "hourly_rate": None,
+                     "valid_from": "2026-05-01", "valid_to": "2026-10-15", "active": True},
+                    {"person_id": "p-noa", "name": "Noa", "type": "extra",
+                     "gross_monthly": 0, "hourly_rate": 10.0,
+                     "valid_from": "2026-10-15", "valid_to": None, "active": False},
+                    # ⚠️ TIMO : son SEUL taux est dans le PASSÉ, sur une version close. Sans le
+                    # filtre sur les versions à venir, sa puce annoncerait une prise d'effet au
+                    # 1er janvier — une date déjà passée, donc une phrase absurde.
+                    {"person_id": "p-tim", "name": "Timo", "type": "extra",
+                     "gross_monthly": 0, "hourly_rate": 8.0,
+                     "valid_from": "2026-01-01", "valid_to": "2026-05-01", "active": False},
+                    {"person_id": "p-tim", "name": "Timo", "type": "extra",
                      "gross_monthly": 0, "hourly_rate": None,
                      "valid_from": "2026-05-01", "valid_to": None, "active": True},
                 ],
@@ -497,6 +533,12 @@ CAS = {
                         {"id": "s3", "rule_id": None, "person_id": "p-sav",
                          "day": "2026-10-09", "start_time": "10:00:00",
                          "end_time": "18:00:00", "source": "ponctuel"},
+                        {"id": "s4", "rule_id": None, "person_id": "p-noa",
+                         "day": "2026-10-09", "start_time": "11:00:00",
+                         "end_time": "15:00:00", "source": "ponctuel"},
+                        {"id": "s5", "rule_id": None, "person_id": "p-tim",
+                         "day": "2026-10-09", "start_time": "12:00:00",
+                         "end_time": "14:00:00", "source": "ponctuel"},
                     ],
                     "2026-10-10": [
                         {"id": None, "rule_id": "r1", "person_id": "p-ana",
@@ -520,7 +562,8 @@ CAS = {
             "FERME-DIT", "COUT-AFFICHE", "COUT-DU-SERVEUR",
             "PERMANENT-SANS-PRIX", "EXTRA-AVEC-PRIX", "UNE-SEULE-ANA",
             "SAVANNAH-AU-PLANNING", "SANS-TAUX-SIGNALE", "SEUL-LE-TROU-EST-MARQUE",
-            "LA-CAUSE-EST-DITE", "TOTAL-AVOUE-LAMPUTATION",
+            "LA-DATE-DEFFET-EST-DITE", "NOA-A-SA-PROPRE-DATE",
+            "VERSION-SANS-TAUX-IGNOREE", "PASSE-NEST-PAS-UN-EFFET",
             "LUNDI-JUSTE", "MODALE-OUVRE", "APERCU-EXTRA", "APERCU-PERMANENT",
             "REFUS-HORAIRE",
             # ⚠️ LES TROIS VUES, et la bascule entre elles.
@@ -534,7 +577,8 @@ CAS = {
             "FERME-MUET", "COUT-ABSENT", "COUT-RECALCULE",
             "PERMANENT-AVEC-PRIX", "EXTRA-SANS-PRIX", "ANA-EN-DOUBLE",
             "SAVANNAH-ABSENTE", "SANS-TAUX-MUET", "MARQUAGE-INDISTINCT",
-            "CAUSE-TUE", "TOTAL-SE-DIT-COMPLET",
+            "CAUSE-TUE", "DATES-MELANGEES", "VERSION-SANS-TAUX-ANNONCEE",
+            "PASSE-ANNONCE", "TOTAL-SE-DIT-COMPLET",
             "MODALE-FERMEE", "APERCU-MUET", "REFUS-ABSENT", "LUNDI-FAUX",
             "VUE-FIGEE", "MOIS-TRONQUE", "MOIS-SANS-TOTAL",
             "REGLE-NUE", "REGLE-SE-SUPPRIME", "PERSONNE-MODIFIABLE",
@@ -592,11 +636,32 @@ CAS = {
         ? 'SEUL-LE-TROU-EST-MARQUE' : 'MARQUAGE-INDISTINCT');
   /* ⚠️ ET LE SURVOL DIT LAQUELLE DES DEUX CAUSES. « non chiffré » ne dit pas quoi faire ;
      « aucun taux horaire sur sa fiche » envoie au bon écran. */
-  trace((sav && (sav.getAttribute('title') || '').indexOf('taux horaire') >= 0)
-        ? 'LA-CAUSE-EST-DITE' : 'CAUSE-TUE ' + (sav && sav.getAttribute('title')));
+  /* ⚠️ ET LA CAUSE EXACTE : son taux EXISTE, mais sur une version qui commence le 1er
+     novembre. Dire « aucun taux horaire sur sa fiche » serait faux et enverrait chercher au
+     mauvais endroit — c'est précisément ce qui a fait perdre le plus de temps. */
+  trace((sav && (sav.getAttribute('title') || '').indexOf('2026-11-01') >= 0)
+        ? 'LA-DATE-DEFFET-EST-DITE' : 'CAUSE-TUE ' + (sav && sav.getAttribute('title')));
+
+  /* ⚠️ TROIS PERSONNES, TROIS CAUSES VOISINES. Noa a un taux à venir AVANT celui de Savannah :
+     sans le filtre sur la personne, la puce de Savannah annoncerait la date de Noa. Timo n'a de
+     taux que dans le PASSÉ, sur une version close : sans le filtre sur les versions à venir, sa
+     puce annoncerait une prise d'effet déjà écoulée. Et Savannah a une version à venir SANS
+     taux, plus proche : sans le filtre sur le montant, c'est elle qui serait annoncée. */
+  var noa = null, timo = null;
+  for(var q=0;q<puces.length;q++){
+    var t2 = puces[q].textContent;
+    if(t2.indexOf('Noa') >= 0) noa = puces[q];
+    if(t2.indexOf('Timo') >= 0) timo = puces[q];
+  }
+  trace((noa && (noa.getAttribute('title') || '').indexOf('2026-10-15') >= 0)
+        ? 'NOA-A-SA-PROPRE-DATE' : 'DATES-MELANGEES ' + (noa && noa.getAttribute('title')));
+  trace((sav && (sav.getAttribute('title') || '').indexOf('2026-10-20') < 0)
+        ? 'VERSION-SANS-TAUX-IGNOREE' : 'VERSION-SANS-TAUX-ANNONCEE');
+  trace((timo && (timo.getAttribute('title') || '').indexOf('aucun taux horaire') >= 0)
+        ? 'PASSE-NEST-PAS-UN-EFFET' : 'PASSE-ANNONCE ' + (timo && timo.getAttribute('title')));
   /* ⚠️ ET LE TOTAL DU JOUR AVOUE CE QU'IL NE COMPTE PAS. Un coût amputé affiché comme un coût
      complet est pire qu'un coût absent : on le lit, et le point mort du jour est trop bas. */
-  trace(vendredi.textContent.indexOf('1 service non chiffré') >= 0
+  trace(vendredi.textContent.indexOf('3 services non chiffrés') >= 0
         ? 'TOTAL-AVOUE-LAMPUTATION' : 'TOTAL-SE-DIT-COMPLET');
   trace((ana && ana.textContent.indexOf('96,00') >= 0)
         ? 'EXTRA-AVEC-PRIX' : 'EXTRA-SANS-PRIX ' + (ana && ana.textContent));
