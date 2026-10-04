@@ -800,8 +800,22 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
     cogs_coverage_pct = round(covered_ht / items_ht * 100, 1) if items_ht else None
 
     # ── Taux de marge : uniquement le réel mesuré (aucune hypothèse BP) ──────
-    # Marge réelle mesurée sur la partie couverte du CA.
-    marge_rate_real = (covered_ht - cogs_ht) / covered_ht if covered_ht > 0 else None
+    #
+    # ⚠️ ON EXTRAPOLE LE COÛT, PAS LA MARGE — ET CE N'EST PAS LA MÊME CHOSE DÈS QU'IL Y A UNE
+    # REMISE. Le taux était mesuré sur les LIGNES puis appliqué au CA du DOCUMENT. Une remise
+    # globale baisse le second sans toucher au premier : la marchandise, elle, a bien été
+    # consommée. Sur 100 € de lignes à 30 € de coût, une remise de 25 % annonçait 52,50 € de
+    # marge là où il en reste 45,00 — 7,50 € inventés, et un point mort d'autant trop bas.
+    #
+    # La mesure sûre est le COÛT : il se rapporte aux lignes, là où il a été relevé. On
+    # l'extrapole à toutes les lignes, puis on le retire du chiffre d'affaires RÉELLEMENT
+    # encaissé. Sans remise, `ca_ht == items_ht` et le résultat est identique à l'ancien.
+    if covered_ht > 0:
+        _cogs_estime = cogs_ht * ((items_ht or covered_ht) / covered_ht)
+        marge_rate_real = ((ca_ht - _cogs_estime) / ca_ht) if ca_ht > 0 else None
+    else:
+        _cogs_estime = None
+        marge_rate_real = None
 
     # ── Taux de TVA du passage HT → TTC ──────────────────────────────────────
     # ⚠️ MESURÉ SUR LA PÉRIODE, PAS SUPPOSÉ. Le seuil était converti en TTC avec
@@ -849,9 +863,19 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         cout_total = cout_fixe = cout_perso = amort = None
         seuil_ca = seuil_ca_ttc = None
     else:
-        cout_total   = round(cout_jour       * open_days, 2)
-        cout_fixe    = round(cout_fixe_jour  * open_days, 2)
-        cout_perso   = round(cout_perso_jour * open_days, 2)
+        # ⚠️ ON REND LA SOMME CALCULÉE, PAS UNE MOYENNE REMULTIPLIÉE. `cout_jour` est la
+        # moyenne des journées réellement parcourues ; la remultiplier par `open_days` donne un
+        # autre nombre dès que les deux comptes diffèrent — ce qui arrive quand l'appelant
+        # impose un nombre de jours observés supérieur aux journées trouvées. Le total affiché
+        # cessait alors d'être la somme de ses jours.
+        if _par_jour:
+            cout_fixe  = round(sum(v["fixes"]     for v in _par_jour.values()), 2)
+            cout_perso = round(sum(v["personnel"] for v in _par_jour.values()), 2)
+            cout_total = round(cout_fixe + cout_perso, 2)
+        else:
+            cout_total   = round(cout_jour       * open_days, 2)
+            cout_fixe    = round(cout_fixe_jour  * open_days, 2)
+            cout_perso   = round(cout_perso_jour * open_days, 2)
         amort        = round(amort_jour      * open_days, 2)
         seuil_ca     = round(seuil_ca_jour     * open_days, 2) if seuil_ca_jour     is not None else None  # HT
         seuil_ca_ttc = round(seuil_ca_jour_ttc * open_days, 2) if seuil_ca_jour_ttc is not None else None  # TTC

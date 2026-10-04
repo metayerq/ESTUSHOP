@@ -298,3 +298,90 @@ def test_SANS_SEUIL_CALCULABLE_LE_TAUX_D_ATTEINTE_EST_INCONNU(maigre):
     assert e["seuil_ca_ttc"] is None
     assert e["manque_seuil"] is None
     assert e["pct_seuil"] is None, "0 % affirme un échec jamais mesuré"
+
+
+# ══ LA BASE DE LA MARGE ═════════════════════════════════════════════════════════════════════
+#
+# ⚠️ LE TAUX ÉTAIT MESURÉ SUR LES LIGNES ET APPLIQUÉ AU CA DU DOCUMENT. Une remise globale
+# baisse le second sans toucher au premier : la marchandise a bien été consommée. Sur 100 € de
+# lignes à 30 € de coût, une remise de 25 % annonçait 52,50 € de marge là où il en reste
+# 45,00 — 7,50 € inventés, et un point mort d'autant trop bas.
+
+
+def _avec_remise(ca_ht, items_ht, cogs_ht, couvert=None):
+    """`ca_ht` est l'encaissé ; `items_ht` la somme des lignes. L'écart est la remise."""
+    docs = [{"local_time": "2026-10-01 12:00:00", "amount_gross": round(ca_ht * 1.13, 2),
+             "amount_net": ca_ht, "items": []}]
+    return V.daily_economics(docs, {}, from_date=date(2026, 10, 1), to_date=date(2026, 10, 1),
+                             cogs_agg=(cogs_ht, couvert if couvert is not None else items_ht,
+                                       items_ht))
+
+
+def test_SANS_REMISE_LA_REGLE_NE_DEPLACE_RIEN(maigre):
+    """La correction ne doit pas bouger les chiffres d'une journée ordinaire."""
+    e = _avec_remise(ca_ht=100.0, items_ht=100.0, cogs_ht=30.0)
+    assert e["marge_brute_ht"] == pytest.approx(70.0, abs=0.01)
+    assert e["marge_brute_ht_pct"] == pytest.approx(70.0, abs=0.1)
+
+
+def test_UNE_REMISE_GLOBALE_NE_REND_PAS_LA_MARCHANDISE(maigre):
+    """Ce qui est vendu 75 € et a coûté 30 € laisse 45 €, pas 52,50 €."""
+    e = _avec_remise(ca_ht=75.0, items_ht=100.0, cogs_ht=30.0)
+    assert e["marge_brute_ht"] == pytest.approx(45.0, abs=0.01)
+    assert e["marge_brute_ht_pct"] == pytest.approx(60.0, abs=0.1)
+
+
+def test_le_cout_sextrapole_depuis_la_part_couverte(maigre):
+    """
+    Le coût est mesuré sur la moitié des lignes seulement : on l'extrapole aux lignes, puis on
+    le retire de l'encaissé. 100 € de lignes, 50 € couvertes à 15 € de coût → 30 € pour tout.
+    """
+    e = _avec_remise(ca_ht=100.0, items_ht=100.0, cogs_ht=15.0, couvert=50.0)
+    assert e["marge_brute_ht"] == pytest.approx(70.0, abs=0.01)
+    assert e["cogs_coverage_pct"] == pytest.approx(50.0, abs=0.1)
+
+
+def test_UNE_REMISE_FAIT_MONTER_LE_POINT_MORT(maigre):
+    """
+    ⚠️ C'EST LA CONSÉQUENCE QUI COMPTE. Une marge surévaluée donne un point mort trop bas : on
+    croit la journée payée alors qu'elle ne l'est pas. Le sens de l'erreur est le pire des deux.
+    """
+    sans = _avec_remise(ca_ht=100.0, items_ht=100.0, cogs_ht=30.0)
+    avec = _avec_remise(ca_ht=75.0,  items_ht=100.0, cogs_ht=30.0)
+    assert avec["seuil_ca_ttc"] > sans["seuil_ca_ttc"]
+
+
+# ══ LE TOTAL DE PÉRIODE ═════════════════════════════════════════════════════════════════════
+
+def test_LE_TOTAL_EST_LA_SOMME_DE_SES_JOURS(base):
+    """
+    ⚠️ IL ÉTAIT RECONSTRUIT À PARTIR D'UNE MOYENNE : `cout_jour × open_days`. Tant que les deux
+    comptes coïncident, les deux chemins donnent le même nombre — et mon premier test ne
+    distinguait donc rien. Ils divergent quand l'appelant IMPOSE un nombre de jours observés
+    supérieur aux journées réellement trouvées : le total cesse alors d'être la somme des jours
+    qu'il prétend additionner.
+
+    ⚠️ ET IL FAUT DU PERSONNEL pour que la part salariale compte : sans salarié, retirer le
+    personnel du total ne change rien et le contrôle passe sans rien garder.
+    """
+    import charges as ch
+    from config import count_open_days_raw
+
+    docs = [{"local_time": f"2026-10-{j:02d} 12:00:00", "amount_gross": 200.0,
+             "amount_net": 180.0, "items": []} for j in (1, 2, 3)]
+    # La fenêtre du 1er au 7 octobre compte 5 journées de service ; on en impose 9.
+    e = V.daily_economics(docs, {}, from_date=date(2026, 10, 1), to_date=date(2026, 10, 7),
+                          cogs_agg=(160.0, 540.0, 540.0), open_days_override=9)
+
+    ouvert = lambda j: count_open_days_raw(j, j) == 1
+    jours = ch.jours_ouverts_entre(date(2026, 10, 1), date(2026, 10, 7), ouvert)
+    assert len(jours) < 9, "ce test suppose que le nombre imposé dépasse les journées trouvées"
+
+    f, p, _ = ch.cout_periode_planning([LOYER], [BARISTA, ANA], [], jours, ouvert,
+                                       V.PLANNING_CUTOVER if hasattr(V, "PLANNING_CUTOVER")
+                                       else date(2026, 10, 1))
+    assert e["cout_total_periode"] == pytest.approx(round(f + p, 2), abs=0.02), (
+        "le total n'est pas la somme de ses journées")
+    assert e["cout_perso_periode"] > 0, "sans personnel, ce contrôle ne garde rien"
+    assert e["cout_total_periode"] == pytest.approx(
+        e["cout_fixe_periode"] + e["cout_perso_periode"], abs=0.01)
