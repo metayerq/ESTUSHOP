@@ -73,6 +73,37 @@ def test_UN_JOUR_AVEC_UN_EXTRA_A_UN_POINT_MORT_PLUS_HAUT(base):
         "le vendredi n'a aucun service en plus : son seuil ne doit pas bouger")
 
 
+def test_UNE_REGLE_RECURRENTE_ENTRE_DANS_LE_POINT_MORT(base):
+    """
+    ⚠️ LE PLANNING L'AFFICHAIT ET LE TABLEAU DE BORD NE LA COMPTAIT PAS. `charges.py` savait
+    déplier une règle ; `daily_economics` ne chargeait jamais `shift_rules` et ne lui en passait
+    donc aucune. Lundi 5 octobre 2026 : 52 € d'extra au planning, un point mort de 186,15 €
+    annoncé « atteint » là où il en fallait environ 257.
+    """
+    sans = eco(date(2026, 10, 5), date(2026, 10, 5))
+    base["shift_rules"] = [{"id": "r-lundi", "person_id": "p-ana", "weekday": 0,
+                            "start_time": "09:00", "end_time": "17:00",
+                            "valid_from": "2026-10-01", "valid_to": None, "note": ""}]
+    avec = eco(date(2026, 10, 5), date(2026, 10, 5))
+
+    # Huit heures à 12 € : 96 € de personnel en plus, et le seuil monte d'autant ÷ marge × TVA.
+    assert avec["cout_perso_periode"] == pytest.approx(sans["cout_perso_periode"] + 96.0, abs=0.01)
+    assert avec["seuil_ca_ttc"] == pytest.approx(sans["seuil_ca_ttc"] + 96.0 / 0.7 * 1.13, abs=0.02)
+    assert avec["seuil_ca_ttc_par_jour"]["2026-10-05"] == pytest.approx(avec["seuil_ca_ttc"], abs=0.02)
+
+
+def test_une_exception_a_la_regle_prend_le_dessus_dans_le_cout(base):
+    """Une ligne de `shifts` qui porte le `rule_id` remplace l'horaire de la règle ce jour-là."""
+    base["shift_rules"] = [{"id": "r-lundi", "person_id": "p-ana", "weekday": 0,
+                            "start_time": "09:00", "end_time": "17:00",
+                            "valid_from": "2026-10-01", "valid_to": None, "note": ""}]
+    plein = eco(date(2026, 10, 5), date(2026, 10, 5))
+    base["shifts"] = [{"id": "s1", "rule_id": "r-lundi", "person_id": "p-ana",
+                       "day": "2026-10-05", "start_time": "09:00", "end_time": "13:00"}]
+    court = eco(date(2026, 10, 5), date(2026, 10, 5))
+    assert court["cout_perso_periode"] == pytest.approx(plein["cout_perso_periode"] - 48.0, abs=0.01)
+
+
 def test_les_jours_fermes_nont_pas_de_point_mort(base):
     """Mardi et mercredi : rien n'ouvre, il n'y a pas de journée à payer."""
     serie = eco(date(2026, 10, 5), date(2026, 10, 11))["seuil_ca_ttc_par_jour"]

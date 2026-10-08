@@ -670,10 +670,21 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
                 "and": f"(day.gte.{from_date.isoformat()},day.lte.{to_date.isoformat()})"})
         else:
             shift_rows = []
+        # ⚠️ LES RÈGLES SE LISENT ICI AUSSI, ET TOUTES. « Savannah tous les lundis » ne produit
+        # aucune ligne dans `shifts` : ses services sont dépliés à la lecture. Le planning
+        # chargeait `shift_rules`, ce calcul non — lundi 5 octobre 2026, 52 € d'extra affichés
+        # d'un côté et absents de l'autre, donc un point mort de 186 € au lieu d'environ 257.
+        # Une règle n'a pas de date mais des bornes de validité : on ne la filtre pas par la
+        # fenêtre, c'est `charges.applicable()` qui tranche jour par jour.
+        #
+        # ⚠️ DANS LE MÊME `try` QUE LES CHARGES, À DESSEIN. Des charges lues sans les règles
+        # donneraient un coût amputé qui a l'air entier ; mieux vaut « indisponible ».
+        rule_rows = _supa_get_economics("shift_rules", {})
     except Exception:
         charges_rows  = []
         employee_rows = []
         shift_rows    = []
+        rule_rows     = []
 
     # ── Le coût de la période, jour par jour ─────────────────────────────────
     #
@@ -698,7 +709,8 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         # 23 (octobre). C'est le diviseur de toute paie lissée, donc de tout le point mort.
         _est_ouvert = lambda j: count_open_days_raw(j, j) == 1
         total_fixes_periode, total_perso_periode, _par_jour = _ch.cout_periode_planning(
-            charges_rows, employee_rows, shift_rows, _ouverts, _est_ouvert, PLANNING_CUTOVER)
+            charges_rows, employee_rows, shift_rows, _ouverts, _est_ouvert, PLANNING_CUTOVER,
+            rule_rows)
         # Le coût JOURNALIER affiché est la moyenne sur la période — il varie si un montant a
         # changé au milieu, et l'écran doit montrer ce qui a réellement été imputé.
         cout_fixe_jour = total_fixes_periode / len(_ouverts)
