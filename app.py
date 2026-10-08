@@ -33,11 +33,12 @@ from programme import (build_accounts, conversion_series, journee, langues,
 from sms import campagne_apercu
 from campagnes import recap_depense
 import charges as _ch
+import mix as _mix
 import periodes as _per
 import segments as _seg
 import menu as _menu
 
-from flask import Flask, jsonify, render_template, request, redirect, make_response, g
+from flask import Flask, Response, jsonify, render_template, request, redirect, make_response, g
 from vendus import (
     DRINK_CAT_IDS,
     get_documents, get_documents_with_items, get_catalog, get_categories,
@@ -1217,8 +1218,7 @@ def api_data():
         daily_economics(eco_docs, catalog, (eco_to - eco_from).days + 1,
                         from_date=eco_from, to_date=eco_to,
                         cogs_agg=eco_agg,
-                        revenue_deduct=(eco_pop["chef_ttc"], eco_pop["chef_ht"]),
-                        marge_hors_ventes=round(_com_saisies + _com_popup, 2)),
+                        **_entrees_popup(eco_pop, _com_saisies)),
         eco_from.isoformat(), eco_to.isoformat(), popup_com=eco_pop["com_ht"],
         deja_integrees=True)
     result["economics"]["excludes_today"] = excludes_today
@@ -3212,6 +3212,95 @@ def api_inventario_post():
 @app.route("/marge")
 def marge_page():
     return render_template("marge.html", role=_current_role() or "admin")
+
+
+@app.route("/api/mix-jours")
+def api_mix_jours():
+    """
+    CE QU'UN PRODUIT RAPPORTE, JOUR DE SEMAINE PAR JOUR DE SEMAINE.
+
+    ⚠️ CETTE ROUTE RÉPOND À UNE DÉCISION, PAS À UNE CURIOSITÉ. « Garde-t-on le brunch en
+    semaine ? » se tranche sur ce qu'un lundi rapporte, pas sur une moyenne mensuelle qui
+    mélange les samedis et les mardis. Elle rend donc un tableau lisible plutôt que du JSON :
+    on le lit, on décide, on ferme.
+
+    ⚠️ ET ELLE DIT CE QU'ELLE NE SAIT PAS. Un article sans recette n'a pas de coût de revient :
+    sa marge est INCONNUE, pas nulle. Afficher « marge = chiffre d'affaires » ferait garder un
+    produit sur une absence de données.
+
+    Exemple : /api/mix-jours?debut=2026-09-01&fin=2026-09-30&q=sourdough,granola
+    """
+    from variance import consommation_theorique, valoriser
+    from vendus import get_documents_with_items
+
+    if _current_role() not in ("admin", "accountant"):
+        return jsonify({"ok": False, "error": "admin only"}), 403
+
+    try:
+        debut = date.fromisoformat((request.args.get("debut") or "")[:10])
+        fin = date.fromisoformat((request.args.get("fin") or "")[:10])
+    except ValueError:
+        return jsonify({"ok": False,
+                        "error": "debut et fin obligatoires, au format AAAA-MM-JJ"}), 400
+    if fin < debut:
+        return jsonify({"ok": False, "error": "la fin précède le début"}), 400
+    termes = [t.strip() for t in (request.args.get("q") or "").split(",") if t.strip()]
+    if not termes:
+        return jsonify({"ok": False, "error": "q obligatoire : les mots à chercher"}), 400
+
+    docs = get_documents_with_items(debut.isoformat(), fin.isoformat())
+    r = _mix.par_jour_de_semaine(docs, termes)
+
+    # Le coût de revient d'UNE unité, titre par titre. Un titre sans recette rend `None`.
+    recettes, ingr, preps = _load_recipes(), _load_ingredients(), _load_preparations()
+    cout_unitaire = {}
+    for titres in r["correspondances"].values():
+        for titre in titres:
+            theorique, sans_recette, _ = consommation_theorique({titre: 1}, recettes, ingr, preps)
+            if sans_recette:
+                cout_unitaire[titre] = None
+                continue
+            _, totaux = valoriser([], theorique, ingr)
+            cout_unitaire[titre] = round(float(totaux.get("cogs_theorique") or 0), 4)
+
+    lignes = [f"Du {debut} au {fin} — {len(docs)} documents lus.", ""]
+    for terme, titres in sorted(r["correspondances"].items()):
+        lignes.append(f"« {terme} » → " + (", ".join(titres) if titres
+                                           else "AUCUN ARTICLE TROUVÉ"))
+        inconnus = [t for t in titres if cout_unitaire.get(t) is None]
+        if inconnus:
+            lignes.append(f"    sans recette, donc marge inconnue : {', '.join(inconnus)}")
+    lignes += ["", f"{'Jour':<10}{'ouv.':>5}{'vendus':>8}{'u./jour':>9}"
+                   f"{'CA HT/j':>10}{'coût/j':>9}{'marge/j':>9}", "-" * 60]
+
+    for wd in range(7):
+        j = r["par_jour"][wd]
+        for terme in sorted(r["correspondances"]):
+            p = j["produits"][terme]
+            if j["jours_ouverts"] == 0:
+                lignes.append(f"{j['nom']:<10}{0:>5}   —  café fermé ce jour-là")
+                break
+            cout = 0.0
+            connu = True
+            for titre, q in p["par_titre"].items():
+                u = cout_unitaire.get(titre)
+                if u is None:
+                    connu = False
+                    break
+                cout += u * q
+            cj = cout / j["jours_ouverts"] if connu else None
+            marge = (p["rev_ht_par_jour"] - cj) if (connu and p["rev_ht_par_jour"] is not None) \
+                else None
+            lignes.append(
+                f"{j['nom']:<10}{j['jours_ouverts']:>5}{p['qty']:>8.0f}"
+                f"{p['qty_par_jour']:>9.1f}{p['rev_ht_par_jour']:>10.2f}"
+                + (f"{cj:>9.2f}{marge:>9.2f}" if cj is not None else f"{'?':>9}{'?':>9}")
+                + f"   {terme}")
+    lignes += ["", "u./jour, CA et marge sont des moyennes sur les jours OUVERTS de ce jour de",
+               "semaine — pas sur les jours où le produit s'est vendu. Un lundi ouvert sans",
+               "sourdough tire la moyenne vers le bas, et c'est l'information qu'on cherche.",
+               "Montants HT. « ? » = article sans recette, coût inconnu."]
+    return Response("\n".join(lignes), mimetype="text/plain; charset=utf-8")
 
 
 @app.route("/api/marge")
@@ -7565,6 +7654,27 @@ def _popup_split(rows):
             out["com_ttc"]   += ttc * pct / 100
             out["com_ht"]    += ht  * pct / 100
     return {k: round(v, 2) for k, v in out.items()}
+
+def _entrees_popup(pop, com_saisies=0.0):
+    """Ce que `daily_economics` reçoit d'un lot de ventes popup : la recette à sortir du
+    chiffre d'affaires, et la marge sans coût à compter à part.
+
+    ⚠️ TOUTE LA RECETTE POPUP SORT, COMMISSION COMPRISE. On ne retirait que la part du chef :
+    la commission restait dans le chiffre d'affaires, donc dans la marge sur ventes, et elle
+    était ajoutée une seconde fois sous `marge_hors_ventes`. 200 € de notre carte et 800 € de
+    popup à 20 % annonçaient 460 € de marge là où il y en a 300, un taux de 83 % pour une
+    carte à 70, et un point mort à 0 € un jour qui coûtait 114,70 €.
+
+    Une commission prélevée à notre caisse se traite donc comme une commission virée par le
+    chef : hors du chiffre d'affaires de gestion, entièrement dans `marge_hors_ventes`.
+    L'« Encaissé » de l'écran, lui, passe par `_stats_net_popup` et garde la commission —
+    elle a bien été encaissée."""
+    return {
+        "revenue_deduct": (round(pop["chef_ttc"] + pop["com_ttc"], 2),
+                           round(pop["chef_ht"] + pop["com_ht"], 2)),
+        "marge_hors_ventes": round(float(com_saisies or 0) + float(pop["com_ht"] or 0), 2),
+    }
+
 
 def _popup_adjust_rows(rows):
     """Réécrit COGS/couverture des lignes daily_summary pour les produits popup.
