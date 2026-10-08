@@ -181,3 +181,14 @@ def test_UNE_PERIODE_TRONQUEE_LE_DIT_ET_DONNE_LA_SUITE(admin, monkeypatch):
 def test_une_periode_complete_ne_sexcuse_pas(admin, monkeypatch):
     servir_liste(monkeypatch, [doc(LUNDIS[0], ("Sourdough toast", 2, 10.0))])
     assert "PÉRIODE INCOMPLÈTE" not in appel(admin).get_data(as_text=True)
+
+
+def test_UN_TITRE_CONTENANT_UNE_VIRGULE_NEST_PAS_COUPE_EN_DEUX(admin, monkeypatch):
+    """
+    ⚠️ « Sourdough, Egg à la coque & Butter » EST UN SEUL PRODUIT. La liste jointe par ", » le
+    montrait comme deux articles : les totaux restaient justes, la lecture non — et c'est la
+    lecture qui décide. Chaque titre est donc encadré.
+    """
+    servir(monkeypatch, [doc(LUNDIS[0], ("Sourdough, Egg à la coque & Butter", 1, 8.0))])
+    t = appel(admin).get_data(as_text=True)
+    assert "[Sourdough, Egg à la coque & Butter]" in t

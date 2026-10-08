@@ -3301,7 +3301,11 @@ def api_mix_jours():
                    f"   Relance avec debut={(couvert_jusqua + timedelta(1)).isoformat()} "
                    f"pour la suite, et additionne.", ""]
     for terme, titres in sorted(r["correspondances"].items()):
-        lignes.append(f"« {terme} » → " + (", ".join(titres) if titres
+        # ⚠️ CHAQUE TITRE EST ENTRE GUILLEMETS, PAS SÉPARÉ PAR UNE VIRGULE. « Sourdough, Egg à
+        # la coque & Butter » est UN produit dont le nom contient une virgule : la liste jointe
+        # par ", " le coupait en deux à l'écran, et on lisait deux articles là où il y en a un.
+        # Les totaux étaient justes, la lecture non — et c'est la lecture qui décide.
+        lignes.append(f"« {terme} » → " + (" · ".join(f"[{t}]" for t in titres) if titres
                                            else "AUCUN ARTICLE TROUVÉ"))
         inconnus = [t for t in titres if cout_unitaire.get(t) is None]
         if inconnus:
