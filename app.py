@@ -3248,7 +3248,36 @@ def api_mix_jours():
     if not termes:
         return jsonify({"ok": False, "error": "q obligatoire : les mots à chercher"}), 400
 
-    docs = get_documents_with_items(debut.isoformat(), fin.isoformat())
+    # ⚠️ UN MOIS NE TIENT PAS DANS UNE FONCTION SERVERLESS SI ON DESCEND AU DOCUMENT.
+    # `get_documents_with_items` fait UN APPEL PAR DOCUMENT — mille deux cents pour un mois à
+    # quarante tickets par jour, soit bien au-delà du délai. La page ne chargeait pas, et rien
+    # ne disait pourquoi : le navigateur attendait, puis abandonnait.
+    #
+    # On essaie donc d'abord la LISTE détaillée, qui coûte une poignée d'appels. Si elle porte
+    # déjà les lignes produits, c'est fini. Sinon on descend au document JOUR PAR JOUR, avec un
+    # budget de temps — et on dit jusqu'où on est allé.
+    from time import monotonic
+    from vendus import get_documents
+
+    depart = monotonic()
+    BUDGET = 40.0
+
+    liste = get_documents(debut.isoformat(), fin.isoformat(), detailed=True)
+    if any((d.get("items") or []) for d in liste):
+        docs, couvert_jusqua, complet = liste, fin, True
+    else:
+        docs, complet = [], True
+        couvert_jusqua = debut - timedelta(1)
+        jour_courant = debut
+        while jour_courant <= fin:
+            if monotonic() - depart > BUDGET:
+                complet = False
+                break
+            docs.extend(get_documents_with_items(jour_courant.isoformat(),
+                                                 jour_courant.isoformat()))
+            couvert_jusqua = jour_courant
+            jour_courant += timedelta(1)
+
     r = _mix.par_jour_de_semaine(docs, termes)
 
     # Le coût de revient d'UNE unité, titre par titre. Un titre sans recette rend `None`.
@@ -3264,6 +3293,13 @@ def api_mix_jours():
             cout_unitaire[titre] = round(float(totaux.get("cogs_theorique") or 0), 4)
 
     lignes = [f"Du {debut} au {fin} — {len(docs)} documents lus.", ""]
+    if not complet:
+        # ⚠️ UNE TRONCATURE NE SE TAIT JAMAIS. Un tableau partiel qui se présente comme complet
+        # ferait décider sur la moitié d'un mois sans que personne le sache.
+        lignes += [f"⚠ PÉRIODE INCOMPLÈTE : lu jusqu'au {couvert_jusqua} seulement, le temps "
+                   f"imparti étant écoulé.",
+                   f"   Relance avec debut={(couvert_jusqua + timedelta(1)).isoformat()} "
+                   f"pour la suite, et additionne.", ""]
     for terme, titres in sorted(r["correspondances"].items()):
         lignes.append(f"« {terme} » → " + (", ".join(titres) if titres
                                            else "AUCUN ARTICLE TROUVÉ"))

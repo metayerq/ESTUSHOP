@@ -34,7 +34,15 @@ def admin(monkeypatch):
 
 
 def servir(monkeypatch, docs, recettes=()):
+    """
+    ⚠️ LA LISTE DÉTAILLÉE EST BOUCHONNÉE AUSSI, parce que la route l'interroge EN PREMIER depuis
+    qu'un mois entier ne tient plus dans une fonction serverless. Mes quatre premiers cas ne
+    stubaient que le détail : ils se sont mis à appeler le vrai Vendus, et c'est l'absence de
+    clé qui les a arrêtés — pas une assertion.
+    """
     import vendus
+    monkeypatch.setattr(vendus, "get_documents",
+                        lambda a, b, detailed=False: list(docs))
     monkeypatch.setattr(vendus, "get_documents_with_items", lambda a, b: list(docs))
     monkeypatch.setattr(flask_app, "_load_recipes", lambda: list(recettes))
 
@@ -110,3 +118,66 @@ def test_elle_est_fermee_aux_roles_sans_les_chiffres(admin, monkeypatch):
     for role in ("investor", "staff", None):
         monkeypatch.setattr(flask_app, "_current_role", lambda r=role: r)
         assert appel(admin).status_code == 403, role
+
+
+# ── Le mois ne tient pas dans une fonction serverless ───────────────────────────────────────
+#
+# ⚠️ LA PREMIÈRE VERSION APPELAIT `get_documents_with_items` SUR LE MOIS ENTIER — un appel par
+# document, mille deux cents pour un mois à quarante tickets par jour. La page ne chargeait pas,
+# et rien ne disait pourquoi : le navigateur attendait, puis abandonnait.
+
+def servir_liste(monkeypatch, liste, par_jour=None):
+    """La liste détaillée, et éventuellement le détail document par document."""
+    import vendus
+    appels = {"liste": 0, "detail": []}
+
+    def _liste(a, b, detailed=False):
+        appels["liste"] += 1
+        return list(liste)
+
+    def _detail(a, b):
+        appels["detail"].append(a)
+        return list((par_jour or {}).get(a, []))
+
+    monkeypatch.setattr(vendus, "get_documents", _liste)
+    monkeypatch.setattr(vendus, "get_documents_with_items", _detail)
+    monkeypatch.setattr(flask_app, "_load_recipes", lambda: [])
+    return appels
+
+
+def test_SI_LA_LISTE_PORTE_DEJA_LES_ARTICLES_ON_NE_DESCEND_PAS_AU_DOCUMENT(admin, monkeypatch):
+    """⚠️ C'EST CE QUI FAIT LA DIFFÉRENCE ENTRE DEUX SECONDES ET UN DÉLAI DÉPASSÉ."""
+    appels = servir_liste(monkeypatch, [doc(LUNDIS[0], ("Sourdough toast", 2, 10.0))])
+    t = appel(admin).get_data(as_text=True)
+    assert appels["detail"] == [], "on a interrogé chaque document pour rien"
+    assert "lundi" in t
+
+
+def test_sinon_on_descend_jour_par_jour(admin, monkeypatch):
+    sans_items = [{"date": f"{LUNDIS[0]} 10:00:00", "items": []}]
+    appels = servir_liste(monkeypatch, sans_items,
+                          par_jour={LUNDIS[0]: [doc(LUNDIS[0], ("Sourdough toast", 2, 10.0))]})
+    t = appel(admin, debut="2026-09-07", fin="2026-09-09").get_data(as_text=True)
+    assert appels["detail"] == ["2026-09-07", "2026-09-08", "2026-09-09"]
+    assert "lundi" in t
+
+
+def test_UNE_PERIODE_TRONQUEE_LE_DIT_ET_DONNE_LA_SUITE(admin, monkeypatch):
+    """
+    ⚠️ UN TABLEAU PARTIEL QUI SE PRÉSENTE COMME COMPLET ferait décider sur la moitié d'un mois
+    sans que personne le sache. Il doit dire où il s'est arrêté ET comment reprendre.
+    """
+    import app as a
+    sans_items = [{"date": f"{LUNDIS[0]} 10:00:00", "items": []}]
+    servir_liste(monkeypatch, sans_items, par_jour={})
+    # On épuise le budget dès le premier jour.
+    faux_temps = iter([0.0] + [999.0] * 40)
+    monkeypatch.setattr("time.monotonic", lambda: next(faux_temps))
+    t = appel(admin, debut="2026-09-01", fin="2026-09-30").get_data(as_text=True)
+    assert "PÉRIODE INCOMPLÈTE" in t
+    assert "debut=2026-09-01" in t, "la reprise ne dit pas où redémarrer"
+
+
+def test_une_periode_complete_ne_sexcuse_pas(admin, monkeypatch):
+    servir_liste(monkeypatch, [doc(LUNDIS[0], ("Sourdough toast", 2, 10.0))])
+    assert "PÉRIODE INCOMPLÈTE" not in appel(admin).get_data(as_text=True)
