@@ -33,6 +33,7 @@ from programme import (build_accounts, conversion_series, journee, langues,
 from sms import campagne_apercu
 from campagnes import recap_depense
 import charges as _ch
+import cafe_marge as _cmg
 import mix as _mix
 import periodes as _per
 import segments as _seg
@@ -3212,6 +3213,105 @@ def api_inventario_post():
 @app.route("/marge")
 def marge_page():
     return render_template("marge.html", role=_current_role() or "admin")
+
+
+@app.route("/api/marge-cafe")
+def api_marge_cafe():
+    """
+    CE QUE LE CAFÉ A COÛTÉ, AU GRAIN RÉELLEMENT SERVI CHAQUE JOUR.
+
+    ⚠️ ON NE REMPLACE PAS LA RECETTE, ON REMPLACE LE PRIX DU GRAIN. « Un espresso, c'est 18 g »
+    ne change pas selon le lot ; ce que ces 18 g coûtent, si. Et le prix employé est celui FIGÉ
+    le matin du choix, pas celui d'aujourd'hui : relire le prix courant ferait bouger la marge
+    d'une journée déjà close chaque fois qu'un lot renchérit.
+
+    Exemple : /api/marge-cafe?debut=2026-10-01&fin=2026-10-12
+    """
+    from time import monotonic
+    from variance import consommation_theorique
+    from vendus import get_documents_with_items, product_stats_from_docs
+
+    if _current_role() not in ("admin", "accountant"):
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    try:
+        debut = date.fromisoformat((request.args.get("debut") or "")[:10])
+        fin = date.fromisoformat((request.args.get("fin") or "")[:10])
+    except ValueError:
+        return jsonify({"ok": False, "error": "debut et fin obligatoires (AAAA-MM-JJ)"}), 400
+    if fin < debut:
+        return jsonify({"ok": False, "error": "la fin précède le début"}), 400
+
+    choix_par_jour = {}
+    for ligne in _supa_get("cafe_du_jour", {"jour": f"gte.{debut.isoformat()}",
+                                            "limit": 400}) or []:
+        j = str(ligne.get("jour") or "")[:10]
+        if j and j <= fin.isoformat():
+            choix_par_jour.setdefault(j, {})[str(ligne.get("methode") or "")] = {
+                "ingredient": ligne.get("ingredient"),
+                "prix": (None if ligne.get("prix") is None else float(ligne["prix"])),
+            }
+
+    recettes, ingr, preps = _load_recipes(), _load_ingredients(), _load_preparations()
+
+    def conso(ventes):
+        quantites, _, _ = consommation_theorique(ventes, recettes, ingr, preps)
+        return quantites
+
+    depart, BUDGET = monotonic(), 40.0
+    lignes = [f"Du {debut} au {fin} — coût du café au grain du jour.", ""]
+    totaux = {m: {"jour": 0.0, "courant": 0.0, "unites": 0.0, "inconnu": 0}
+              for m in _cmg.METHODES}
+    hors = set()
+    jour, complet, dernier = debut, True, debut - timedelta(1)
+
+    while jour <= fin:
+        if monotonic() - depart > BUDGET:
+            complet = False
+            break
+        docs = get_documents_with_items(jour.isoformat(), jour.isoformat())
+        ventes = {p["name"]: p["qty"] for p in product_stats_from_docs(docs, {})}
+        r = _cmg.journee(ventes, choix_par_jour.get(jour.isoformat(), {}), conso, ingr)
+        hors.update(r["hors_methode"])
+        for m, l in r["methodes"].items():
+            if not l["unites"]:
+                continue
+            totaux[m]["unites"] += l["unites"]
+            totaux[m]["courant"] += l["cout_au_prix_courant"]
+            if l["cout_au_jour"] is None:
+                # ⚠️ UN JOUR SANS GRAIN POSÉ N'EST PAS UN JOUR À ZÉRO : on le compte à part,
+                # sinon le total paraîtrait complet alors qu'il lui manque des journées.
+                totaux[m]["inconnu"] += 1
+            else:
+                totaux[m]["jour"] += l["cout_au_jour"]
+        dernier = jour
+        jour += timedelta(1)
+
+    if not complet:
+        lignes += [f"⚠ PÉRIODE INCOMPLÈTE : lu jusqu'au {dernier} seulement.",
+                   f"   Relance avec debut={(dernier + timedelta(1)).isoformat()}.", ""]
+
+    lignes += [f"{'Méthode':<10}{'unités':>8}{'au grain':>11}{'au prix réf.':>14}"
+               f"{'écart':>10}{'jours sans grain':>19}", "-" * 72]
+    for m in _cmg.METHODES:
+        t = totaux[m]
+        if not t["unites"]:
+            lignes.append(f"{m:<10}{0:>8}   — aucune vente rattachée")
+            continue
+        ecart = t["jour"] - t["courant"] if not t["inconnu"] else None
+        lignes.append(
+            f"{m:<10}{t['unites']:>8.0f}{t['jour']:>11.2f}{t['courant']:>14.2f}"
+            + (f"{ecart:>10.2f}" if ecart is not None else f"{'?':>10}")
+            + f"{t['inconnu']:>19}")
+
+    if hors:
+        lignes += ["", "Produits qu'aucun mot ne rattache à une méthode — s'il y a du café "
+                   "parmi eux,", "son grain est compté au prix de référence, pas à celui du "
+                   "jour :", "  " + ", ".join(sorted(hors)[:25])]
+    lignes += ["", "« au grain » emploie le prix FIGÉ le matin du choix ; « au prix réf. » le "
+               "prix courant", "de l'ingrédient. L'écart est ce que le grain servi coûte de "
+               "plus — ou de moins.",
+               "« ? » : au moins une journée sans grain posé, donc aucun total honnête."]
+    return Response("\n".join(lignes), mimetype="text/plain; charset=utf-8")
 
 
 @app.route("/api/mix-jours")
