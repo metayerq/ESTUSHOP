@@ -9209,13 +9209,19 @@ def api_ingredients_post():
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"ok": False, "error": "name required"}), 400
+    # ⚠️ UN PRIX ABSENT N'EST PAS UN PRIX À ZÉRO. `round(float(data.get("price", 0)), 4)`
+    # faisait deux dégâts : un `null` explicite levait une TypeError — 500 muet après un
+    # renommage réussi — et un appel qui ne parle pas de prix écrasait le prix connu par zéro,
+    # ce qui annule le COGS de toute recette qui emploie l'ingrédient. Absent veut dire
+    # « inchangé » ; l'upsert laisse alors la colonne telle quelle.
     ingr = {
-        "price":    round(float(data.get("price", 0)), 4),
         "unit_ref": data.get("unit_ref", "unit"),
         "category": data.get("category", ""),
         "note":     data.get("note", ""),
         "supplier": data.get("supplier", ""),
     }
+    if data.get("price") is not None:
+        ingr["price"] = round(float(data["price"]), 4)
     _save_ingredient(name, ingr)
     return jsonify({"ok": True, "ingredient": {name: ingr}})
 
@@ -9227,11 +9233,25 @@ def api_ingredient_history(name):
     return jsonify(rows if isinstance(rows, list) else [])
 
 
+# ⚠️ CES COLONNES APPARTIENNENT À LA LIGNE, PAS À L'INGRÉDIENT. Les recopier dans une
+# nouvelle ligne la fait refuser par l'index unique de `id` — et c'est exactement comme ça
+# qu'un renommage a détruit un café : création refusée, échec non regardé, ancienne ligne
+# supprimée quand même, et la route répondait « ok ». Mesuré en reproduction.
+_COLONNES_DE_LIGNE = ("id", "created_at", "updated_at")
+
+
 @app.route("/api/ingredients/<path:name>/rename", methods=["POST"])
 def api_ingredient_rename(name):
     """Renomme un ingrédient en cascade : crée la nouvelle clé, met à jour
     toutes les recettes et préparations qui le référencent, puis supprime
-    l'ancienne. Le nom est la clé partout — d'où la propagation."""
+    l'ancienne. Le nom est la clé partout — d'où la propagation.
+
+    ⚠️ L'ORDRE N'EST PAS UN DÉTAIL, C'EST LE GARDE-FOU. On ne supprime l'ancienne ligne
+    qu'une fois la nouvelle CONFIRMÉE EN BASE et toute la cascade passée. Un renommage qui
+    échoue à mi-chemin doit laisser deux ingrédients — visible, réparable à la main — et
+    jamais zéro. Perdre l'ingrédient fait chuter le COGS de chaque recette qui l'employait,
+    en silence, et c'est le genre de perte qu'on ne découvre qu'en lisant une marge fausse.
+    """
     data     = request.get_json() or {}
     new_name = (data.get("new_name") or "").strip()
     if not new_name:
@@ -9244,21 +9264,34 @@ def api_ingredient_rename(name):
     if new_name in ingr:
         return jsonify({"ok": False, "error": "name_exists"}), 409
 
-    # 1. Nouvelle ligne ingrédient (mêmes données)
-    _save_ingredient(new_name, dict(ingr[name]))
+    # 1. Nouvelle ligne ingrédient — les mêmes données, sans les colonnes de l'ancienne ligne.
+    champs = {k: v for k, v in ingr[name].items() if k not in _COLONNES_DE_LIGNE}
+    if not _save_ingredient(new_name, champs):
+        return jsonify({"ok": False, "error": "create_failed",
+                        "detail": f"could not write \"{new_name}\""}), 502
 
-    # 2. Recettes qui le référencent
-    n_rec = 0
+    # 2. ⚠️ ON VÉRIFIE QU'ELLE EXISTE VRAIMENT. `_save_ingredient` retombe sur un second essai
+    #    quand une colonne manque ; une relecture est le seul fait qui autorise la suppression
+    #    de l'original. Sans elle, « ok » signifie seulement « la requête est partie ».
+    confirme = _supa_get("ingredients", {"name": f"eq.{new_name}", "select": "name"})
+    if not (isinstance(confirme, list) and confirme):
+        return jsonify({"ok": False, "error": "create_unconfirmed",
+                        "detail": f"\"{new_name}\" not readable after write"}), 502
+
+    # 3. Recettes qui le référencent
+    n_rec, rates = 0, []
     for title, r in _load_recipes().items():
         ings = r.get("ingredients") or []
         if any(i.get("name") == name for i in ings):
             for i in ings:
                 if i.get("name") == name:
                     i["name"] = new_name
-            _save_recipe(title, ings, r.get("notes", ""), r.get("waste_pct", 0))
-            n_rec += 1
+            if _save_recipe(title, ings, r.get("notes", ""), r.get("waste_pct", 0)):
+                n_rec += 1
+            else:
+                rates.append(f"recipe:{title}")
 
-    # 3. Préparations qui le référencent
+    # 4. Préparations qui le référencent
     n_prep = 0
     for pname, p in _load_preparations().items():
         ings = p.get("ingredients") or []
@@ -9266,22 +9299,37 @@ def api_ingredient_rename(name):
             for i in ings:
                 if i.get("name") == name:
                     i["name"] = new_name
-            _save_preparation(pname, ings, p.get("yield_qty", 1),
-                              p.get("yield_unit", "portion"), p.get("notes", ""),
-                              p.get("category", ""))
-            n_prep += 1
+            ok_prep, _ = _save_preparation(pname, ings, p.get("yield_qty", 1),
+                                           p.get("yield_unit", "portion"),
+                                           p.get("notes", ""), p.get("category", ""))
+            if ok_prep:
+                n_prep += 1
+            else:
+                rates.append(f"preparation:{pname}")
 
-    # 4. Historique prix + achats (best-effort, jamais bloquant)
+    # 5. ⚠️ UNE CASCADE INCOMPLÈTE ARRÊTE TOUT. Supprimer l'ancien nom alors qu'une recette le
+    #    cite encore la laisserait pointer vers un ingrédient inexistant : son COGS tomberait
+    #    sans un mot. Deux ingrédients valent mieux qu'une recette cassée.
+    if rates:
+        return jsonify({"ok": False, "error": "cascade_incomplete", "failed": rates,
+                        "recipes": n_rec, "preparations": n_prep,
+                        "detail": f"\"{name}\" kept — rename it again once fixed"}), 502
+
+    # 6. Historique prix + achats. Non bloquant, mais PLUS MUET : `dire_combien` dit si le
+    #    PATCH a trouvé sa cible — PostgREST répond 204 aussi bien pour zéro ligne touchée.
+    deplaces = {}
     for tbl in ("ingredient_price_history", "inventory_purchases"):
         try:
-            _req.patch(f"{SUPA_URL}/rest/v1/{tbl}", headers=_supa_headers(),
-                       params={"name": f"eq.{name}"}, json={"name": new_name})
+            ok_p, combien = _supa_patch(tbl, {"name": f"eq.{name}"},
+                                        {"name": new_name}, dire_combien=True)
+            deplaces[tbl] = combien if ok_p else None
         except Exception:
-            pass
+            deplaces[tbl] = None
 
-    # 5. Supprimer l'ancienne clé
+    # 7. Supprimer l'ancienne clé — la nouvelle est confirmée, la cascade est complète.
     _supa_delete("ingredients", "name", name)
-    return jsonify({"ok": True, "recipes": n_rec, "preparations": n_prep})
+    return jsonify({"ok": True, "recipes": n_rec, "preparations": n_prep,
+                    "moved": deplaces})
 
 
 @app.route("/api/ingredients/<path:name>", methods=["DELETE"])

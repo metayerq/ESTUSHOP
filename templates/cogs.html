@@ -2654,9 +2654,13 @@ async function addIngredient() {
   const unit  = document.getElementById('new-unit').value;
   const note  = document.getElementById('new-note').value.trim();
   const supplier = currentSupplier();
-  if (!name || isNaN(price)) { showToast('Name and price required'); return; }
   const wasEdit  = !!editingIngrName;
   const isRename = wasEdit && name !== editingIngrName;
+  // ⚠️ UN RENOMMAGE N'EXIGE PAS DE PRIX. Ce garde refusait de renommer un ingrédient dont le
+  // prix n'est pas encore connu — un grain reçu mais pas encore facturé — et le disait
+  // « Name and price required », ce qui envoyait chercher au mauvais endroit.
+  if (!name) { showToast('Name required'); return; }
+  if (!isRename && isNaN(price)) { showToast('Name and price required'); return; }
 
   // Renommage : cascade côté serveur (recettes + préparations), puis sauvegarde
   // des autres champs sous le nouveau nom, puis reload complet.
@@ -2671,9 +2675,15 @@ async function addIngredient() {
         body: JSON.stringify({ new_name: name }),
       });
       const d = await r.json();
-      if (!d.ok) { showToast('Rename failed: ' + (d.error || '')); return; }
-      // Sauver les autres champs édités sous le nouveau nom
-      await saveIngredient(name, { price, unit_ref: unit, category: cat, note, supplier });
+      // ⚠️ LE SERVEUR DIT CE QUI RESTE À FAIRE — on l'affiche. Un renommage arrêté à mi-chemin
+      // laisse DEUX ingrédients exprès, et son `detail` explique quoi réparer ; le masquer
+      // derrière un code laissait croire à une panne sans suite.
+      if (!d.ok) { showToast('Rename failed: ' + (d.detail || d.error || '')); return; }
+      // Sauver les autres champs édités sous le nouveau nom. ⚠️ PAS DE PRIX NaN : la route le
+      // recevrait en `null` et un prix inconnu n'est pas un prix à zéro.
+      const champs = { unit_ref: unit, category: cat, note, supplier };
+      if (!isNaN(price)) champs.price = price;
+      await saveIngredient(name, champs);
       closeIngrModal();
       showToast(`✓ Renamed → ${name} · ${d.recipes} recipe(s), ${d.preparations} prep(s) updated`);
       await loadCogs(true);
