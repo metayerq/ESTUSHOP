@@ -331,6 +331,78 @@ def test_SANS_SEUIL_CALCULABLE_LE_TAUX_D_ATTEINTE_EST_INCONNU(maigre):
     assert e["pct_seuil"] is None, "0 % affirme un échec jamais mesuré"
 
 
+# ══ LES VENTES POPUP PASSÉES PAR NOTRE CAISSE ═══════════════════════════════════════════════
+#
+# ⚠️ LA COMMISSION ÉTAIT COMPTÉE DEUX FOIS. On ne retirait du chiffre d'affaires que la part du
+# chef : la commission y restait, donc dans la marge sur ventes — puis elle était ajoutée une
+# seconde fois comme marge sans coût. 200 € de notre carte et 800 € de popup à 20 % annonçaient
+# 460 € de marge là où il y en a 300, et un point mort à 0 € un jour qui coûte 114,70 €.
+#
+# Ces tests passent par les VRAIES fonctions d'`app.py` — le partage, l'ajustement des lignes
+# et les entrées du moteur : rejouer la règle ici ne testerait que le test.
+
+@pytest.fixture
+def popup(maigre, monkeypatch):
+    import app
+    monkeypatch.setattr(app, "_load_popup_flags", lambda: {"Menu du chef": 20.0})
+    monkeypatch.setattr(app, "get_catalog", lambda: {"Café": {"cost": 0.3}})
+    return app
+
+
+def _journee_popup(app, ventes_ht=200.0, com_saisies=0.0):
+    """`ventes_ht` de notre carte à 30 % de coût, plus 800 € HT de popup à 20 % de commission."""
+    j = date(2026, 10, 5)
+    ligne = {"day": j.isoformat(), "cogs_ht": ventes_ht * 0.3,
+             "covered_ht": ventes_ht, "items_ht": ventes_ht + 800.0,
+             "products": {"Café": {"qty": ventes_ht, "rev_ttc": ventes_ht * 1.13,
+                                   "rev_ht": ventes_ht},
+                          "Menu du chef": {"qty": 40, "rev_ttc": 904.0, "rev_ht": 800.0}}}
+    lignes = app._popup_adjust_rows([ligne])
+    agg = (lignes[0]["cogs_ht"], lignes[0]["covered_ht"], lignes[0]["items_ht"])
+    brut_ht = ventes_ht + 800.0
+    return V.daily_economics(
+        [{"local_time": f"{j} 12:00:00", "amount_gross": brut_ht * 1.13,
+          "amount_net": brut_ht, "items": []}], {}, from_date=j, to_date=j, cogs_agg=agg,
+        **app._entrees_popup(app._popup_split([ligne]), com_saisies))
+
+
+def test_LA_COMMISSION_POPUP_NEST_COMPTEE_QUUNE_FOIS(popup):
+    d = _journee_popup(popup)
+    # 140 € de marge sur notre carte, 160 € de commission : 300 €, pas 460.
+    assert d["marge_brute_ht"] == pytest.approx(140.0, abs=0.01)
+    assert d["marge_hors_ventes_ht"] == pytest.approx(160.0, abs=0.01)
+    assert d["marge_totale_ht"] == pytest.approx(300.0, abs=0.01)
+    assert d["ebitda_ht"] == pytest.approx(300.0 - d["cout_total_periode"], abs=0.01)
+
+
+def test_le_taux_de_marge_reste_celui_de_notre_carte_un_jour_de_popup(popup):
+    """La commission dans le chiffre d'affaires le gonflait : 83,3 % annoncés pour une carte à 70."""
+    d = _journee_popup(popup)
+    assert d["marge_brute_ht_pct"] == pytest.approx(70.0, abs=0.1)
+    assert d["ca_ht"] == pytest.approx(200.0, abs=0.01), (
+        "le chiffre d'affaires de gestion est celui de NOTRE carte ; la commission vit à part")
+
+
+def test_AU_POINT_MORT_UN_JOUR_DE_POPUP_LE_RESULTAT_EST_NUL(popup, monkeypatch):
+    """
+    ⚠️ C'EST LA DÉFINITION, ET ELLE NE TENAIT PAS. 20 € de commission face à 200 € de loyer :
+    il reste des charges à couvrir, et une journée vendue exactement au seuil doit sortir à zéro.
+    """
+    # 800 € HT × 2,5 % = 20 € de commission
+    monkeypatch.setattr(popup, "_load_popup_flags", lambda: {"Menu du chef": 2.5})
+    seuil_ht = _journee_popup(popup)["seuil_ca_ht"]
+    assert seuil_ht and seuil_ht > 0
+    d = _journee_popup(popup, ventes_ht=seuil_ht)
+    assert d["ebitda_ht"] == pytest.approx(0.0, abs=0.02)
+    assert d["manque_seuil"] == pytest.approx(0.0, abs=0.02)
+
+
+def test_une_commission_saisie_a_la_main_sajoute_a_celle_du_popup(popup):
+    d = _journee_popup(popup, com_saisies=50.0)
+    assert d["marge_hors_ventes_ht"] == pytest.approx(210.0, abs=0.01)
+    assert d["marge_totale_ht"] == pytest.approx(350.0, abs=0.01)
+
+
 # ══ LA BASE DE LA MARGE ═════════════════════════════════════════════════════════════════════
 #
 # ⚠️ LE TAUX ÉTAIT MESURÉ SUR LES LIGNES ET APPLIQUÉ AU CA DU DOCUMENT. Une remise globale

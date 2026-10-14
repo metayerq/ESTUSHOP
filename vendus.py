@@ -781,8 +781,9 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
 
     # Recette encaissée pour le compte d'un tiers (produits popup) : elle transite
     # par la caisse et par la faturação, mais elle n'est pas à nous. Elle sort donc
-    # du CA de gestion — seule la commission reste, injectée comme marge pure par
-    # l'appelant. La trésorerie et la page comptable, elles, gardent le brut.
+    # ENTIÈREMENT du CA de gestion, commission comprise : celle-ci revient par
+    # `marge_hors_ventes`, et la laisser aussi dans le CA la compterait deux fois.
+    # La trésorerie et la page comptable, elles, gardent le brut.
     if revenue_deduct:
         ca_ttc = max(0.0, ca_ttc - float(revenue_deduct[0] or 0))
         ca_ht  = max(0.0, ca_ht  - float(revenue_deduct[1] or 0))
