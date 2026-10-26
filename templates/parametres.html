@@ -77,6 +77,25 @@
 .me-l label { font-size:11.5px; color:var(--muted); display:flex; gap:5px; align-items:center;
   white-space:nowrap; cursor:pointer; }
 @media (max-width:760px){ .me-l { grid-template-columns:1fr; } }
+
+/* ── Les jours et horaires d'ouverture ──────────────────────────────────────────────────── */
+.ca-regime { border:1px solid var(--border); border-radius:4px; padding:12px 14px; margin-top:12px; }
+.ca-regime.fige { background:var(--bg-page); }
+.ca-tete { display:flex; justify-content:space-between; align-items:baseline; gap:10px;
+  flex-wrap:wrap; font-size:12.5px; margin-bottom:8px; }
+.ca-tete b { font-size:13px; }
+.ca-note { font-size:11.5px; color:var(--muted); }
+.ca-j { display:grid; grid-template-columns:130px 110px 110px; gap:10px; align-items:center;
+  padding:4px 0; font-size:12.5px; }
+.ca-j label { display:flex; gap:7px; align-items:center; cursor:pointer; }
+.ca-j input[type=time] { font:inherit; font-size:12.5px; padding:4px 6px; border:1px solid var(--border);
+  border-radius:3px; background:var(--bg-card); color:var(--text); }
+.ca-j input:disabled, .ca-j.ferme input[type=time] { opacity:.35; }
+@media (max-width:520px){
+  .ca-j { grid-template-columns:minmax(0, .8fr) minmax(0, 1.1fr) minmax(0, 1.1fr); gap:6px; }
+  .ca-j input[type=time] { width:100%; box-sizing:border-box; min-width:0; }
+}
+.ca-pied { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-top:14px; }
 </style>
 </head>
 <body>
@@ -92,6 +111,7 @@
   <nav class="nav-seg" id="pa-onglets" role="tablist" aria-label="Sections des r&eacute;glages">
     <button role="tab" data-o="acces" aria-selected="true">Acc&egrave;s</button>
     <button role="tab" data-o="economie" aria-selected="false">&Eacute;conomie</button>
+    <button role="tab" data-o="horaires" aria-selected="false">Horaires</button>
     <button role="tab" data-o="menu" aria-selected="false">Menu</button>
     <button role="tab" data-o="systeme" aria-selected="false">Syst&egrave;me</button>
   </nav>
@@ -159,6 +179,35 @@
     Une catégorie fausse apprend à chercher au mauvais endroit, et on finit par ne plus ouvrir
     la page. Corriger demandait un déploiement ; le prochain désaccord aussi.
   -->
+  <!-- ⚠️ LES JOURS D'OUVERTURE DIVISENT LES CHARGES. Ils vivaient dans `config.py`, et ouvrir le
+       mardi demandait un déploiement — ou, pire, de modifier la liste et de rouvrir d'un coup
+       tous les mardis passés. Chaque régime a donc sa date de début. -->
+  <div class="pa-panneau" id="pa-horaires" role="tabpanel" hidden>
+    <div class="pa-bloc">
+      <h2 class="pa-titre">Jours et horaires d'ouverture</h2>
+      <p class="pa-aide" style="max-width:76ch">
+        Les jours coch&eacute;s sont ceux o&ugrave; le caf&eacute; ouvre. Ils r&eacute;partissent les
+        charges et les salaires du mois (un mois de 26 jours ouverts co&ucirc;te moins par jour
+        qu'un mois de 22), ouvrent les journ&eacute;es du planning, et servent de base aux moyennes
+        par jour ouvert.
+      </p>
+      <p class="pa-aide" style="max-width:76ch">
+        &#9888; <b>Un changement d'horaires est un nouveau r&eacute;gime, pas une correction.</b>
+        Ajoute un r&eacute;gime &agrave; partir du premier jour concern&eacute;&nbsp;: les jours
+        d'avant gardent leur calendrier. Les jours d'un mois clos ne peuvent plus changer
+        d'ouverture&nbsp;; leurs heures, si.
+      </p>
+      <div id="ca-liste"><p class="vide">Chargement&hellip;</p></div>
+      <div class="ca-pied">
+        <div><label class="pa-l" for="ca-date" style="margin-top:0">Nouveau r&eacute;gime &agrave; partir du</label>
+          <input class="pa-i" type="date" id="ca-date"></div>
+        <div><button class="pa-btn" type="button" id="ca-ajout">Ajouter</button></div>
+        <div><button class="pa-btn fort" type="button" id="ca-ok">Enregistrer</button></div>
+        <div><p class="pa-etat" id="ca-etat" style="margin:0"></p></div>
+      </div>
+    </div>
+  </div><!-- /horaires -->
+
   <div class="pa-panneau" id="pa-menu" role="tabpanel" hidden>
     <div class="pa-bloc">
       <h2 class="pa-titre">Organisation du menu</h2>
@@ -349,7 +398,7 @@
    * rechargement doit rester où l'on était — comme sur /loyalty, pour que les deux pages se
    * comportent pareil.
    */
-  var ONGLETS = ['acces', 'economie', 'menu', 'systeme'];
+  var ONGLETS = ['acces', 'economie', 'horaires', 'menu', 'systeme'];
 
   function activer(nom, pousser){
     if (ONGLETS.indexOf(nom) < 0) nom = 'acces';
@@ -360,6 +409,7 @@
     if (pousser && location.hash.slice(1) !== nom) history.replaceState(null, '', '#' + nom);
     if (nom === 'systeme' && !E('sys').dataset.charge) systeme();
     if (nom === 'menu' && !MENU.charge) chargerMenu();
+    if (nom === 'horaires' && !CAL.charge) chargerCalendrier();
   }
 
   E('pa-onglets').addEventListener('click', function(e){
@@ -418,11 +468,12 @@
 
       var c = d.calendrier || {};
       var b3 = bloc('Calendrier',
-        'Des faits, pas des r&eacute;glages. Se modifient dans <code>config.py</code>, ' +
-        'avec un d&eacute;ploiement.');
+        'Les jours et les heures d\'ouverture se r&egrave;glent dans l\'onglet ' +
+        '<a href="#horaires">Horaires</a>. Le reste vit dans <code>config.py</code>, avec un ' +
+        'd&eacute;ploiement.');
       b3.appendChild(ligne('Ouverture du caf&eacute;', 'Borne basse de tous les historiques.',
         c.ouverture));
-      b3.appendChild(ligne('Jours d\'ouverture', 'Sert &agrave; r&eacute;partir les charges ' +
+      b3.appendChild(ligne('Jours d\'ouverture (aujourd\'hui)', 'Sert &agrave; r&eacute;partir les charges ' +
         'sur les jours <b>r&eacute;ellement</b> ouverts, pas sur le calendrier.',
         (c.jours_ouverts || []).join(', ')));
       b3.appendChild(ligne('Jours ouverts / mois',
@@ -590,6 +641,98 @@
         if (d.ok) location.reload();
         else E('me-etat').textContent = 'Refusé.';
       });
+  });
+
+  /* ══ Les jours et horaires d'ouverture ═════════════════════════════════════════════════ */
+  var CAL = { charge: false, regimes: [], aujourdhui: null, bascule: null };
+  var NOMS_JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+
+  /* ⚠️ MÊME RÈGLE QUE LE SERVEUR : un régime commencé avant le mois en cours a des jours figés.
+   * Le serveur refuse de toute façon ; griser ici évite de saisir pour rien. */
+  function debutMois(){ return CAL.aujourdhui ? CAL.aujourdhui.slice(0, 8) + '01' : ''; }
+  function fige(r){ return r.depuis < debutMois(); }
+
+  function rendreCalendrier(){
+    var plusRecents = CAL.regimes.slice().sort(function(a, b){ return a.depuis < b.depuis ? 1 : -1; });
+    E('ca-liste').innerHTML = plusRecents.map(function(r){
+      var i = CAL.regimes.indexOf(r), f = fige(r), base = r.depuis === CAL.bascule;
+      var lignes = NOMS_JOURS.map(function(nom, wd){
+        var h = r.jours[String(wd)], ouvert = !!h;
+        return '<div class="ca-j' + (ouvert ? '' : ' ferme') + '">' +
+          '<label><input type="checkbox" data-r="' + i + '" data-j="' + wd + '" data-c="ouvert"' +
+            (ouvert ? ' checked' : '') + (f ? ' disabled' : '') + '> ' + nom + '</label>' +
+          '<input type="time" aria-label="' + nom + ' ouverture" data-r="' + i + '" data-j="' + wd +
+            '" data-c="ouvre" value="' + ((h && h.ouvre) || '') + '"' + (ouvert ? '' : ' disabled') + '>' +
+          '<input type="time" aria-label="' + nom + ' fermeture" data-r="' + i + '" data-j="' + wd +
+            '" data-c="ferme" value="' + ((h && h.ferme) || '') + '"' + (ouvert ? '' : ' disabled') + '>' +
+          '</div>';
+      }).join('');
+      return '<div class="ca-regime' + (f ? ' fige' : '') + '"><div class="ca-tete">' +
+        '<span>&Agrave; partir du <b>' + jour(r.depuis + 'T12:00:00') + '</b>' +
+        (r === plusRecents[0] ? ' &middot; <span class="ca-note">en vigueur</span>' : '') + '</span>' +
+        (f ? '<span class="ca-note">mois clos &mdash; jours fig&eacute;s</span>'
+           : (base ? '' : '<button class="pa-btn" type="button" data-suppr="' + i + '">Supprimer</button>')) +
+        '</div><div class="ca-j ca-note"><span></span><span>ouvre</span><span>ferme</span></div>' +
+        lignes + '</div>';
+    }).join('');
+  }
+
+  function chargerCalendrier(){
+    fetch('/api/parametres/calendrier').then(function(r){ return r.json(); }).then(function(d){
+      if (d.error){ E('ca-liste').innerHTML = '<p class="vide">' + d.error + '</p>'; return; }
+      CAL.regimes = d.regimes; CAL.aujourdhui = d.aujourdhui; CAL.bascule = d.bascule;
+      CAL.charge = true;
+      if (!E('ca-date').value) E('ca-date').value = d.aujourdhui;
+      rendreCalendrier();
+    }).catch(function(){ E('ca-liste').innerHTML = '<p class="vide">R&eacute;seau indisponible.</p>'; });
+  }
+
+  E('ca-liste').addEventListener('change', function(e){
+    var t = e.target, r = CAL.regimes[+t.dataset.r];
+    if (!r) return;
+    var wd = t.dataset.j;
+    if (t.dataset.c === 'ouvert') {
+      if (t.checked) r.jours[wd] = { ouvre: null, ferme: null };
+      else delete r.jours[wd];
+      rendreCalendrier();
+    } else if (r.jours[wd]) {
+      r.jours[wd][t.dataset.c] = t.value || null;
+    }
+    E('ca-etat').textContent = 'Modifications non enregistrées.';
+  });
+
+  E('ca-liste').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-suppr]');
+    if (!b) return;
+    CAL.regimes.splice(+b.dataset.suppr, 1);
+    rendreCalendrier();
+    E('ca-etat').textContent = 'Modifications non enregistrées.';
+  });
+
+  /* Le nouveau régime part du régime en vigueur à cette date : on coche le mardi, on ne
+   * ressaisit pas toute la semaine. */
+  E('ca-ajout').addEventListener('click', function(){
+    var dt = E('ca-date').value;
+    if (!dt) { E('ca-etat').textContent = 'Choisis une date.'; return; }
+    if (CAL.regimes.some(function(r){ return r.depuis === dt; })) {
+      E('ca-etat').textContent = 'Un régime commence déjà ce jour-là.'; return;
+    }
+    var avant = CAL.regimes.filter(function(r){ return r.depuis <= dt; })
+      .sort(function(a, b){ return a.depuis < b.depuis ? 1 : -1; })[0];
+    CAL.regimes.push({ depuis: dt, jours: JSON.parse(JSON.stringify(avant ? avant.jours : {})) });
+    rendreCalendrier();
+    E('ca-etat').textContent = 'Modifications non enregistrées.';
+  });
+
+  E('ca-ok').addEventListener('click', function(){
+    E('ca-etat').textContent = 'Enregistrement…';
+    fetch('/api/parametres/calendrier', { method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ regimes: CAL.regimes }) })
+      .then(function(r){ return r.json(); }).then(function(d){
+        if (d.ok) { CAL.regimes = d.regimes; rendreCalendrier(); E('ca-etat').textContent = 'Enregistré.'; }
+        else E('ca-etat').textContent = 'Refusé : ' + (d.error || '');
+      }).catch(function(){ E('ca-etat').textContent = 'Réseau indisponible.'; });
   });
 
   activer(location.hash.slice(1) || 'acces', false);

@@ -38,6 +38,7 @@ import mix as _mix
 import periodes as _per
 import segments as _seg
 import menu as _menu
+import calendrier as _cal
 
 from flask import Flask, Response, jsonify, render_template, request, redirect, make_response, g
 from vendus import (
@@ -4942,8 +4943,18 @@ def api_shifts_get():
                     services[j.isoformat()] = du_jour
                 j += timedelta(1)
 
+    # Les heures d'ouverture des jours ouverts, quand elles sont renseignées dans `/parametres` :
+    # c'est le cadre dans lequel on place les services.
+    horaires = {}
+    if couts:
+        _regs = _calendrier_courant()
+        for iso_j in couts:
+            h = _cal.horaires_du(date.fromisoformat(iso_j), _regs)
+            if h and (h.get("ouvre") or h.get("ferme")):
+                horaires[iso_j] = h
+
     return jsonify({"shifts": shifts, "employees": employes, "regles": regles,
-                    "services": services, "couts": couts,
+                    "services": services, "couts": couts, "horaires": horaires,
                     "bascule": PLANNING_CUTOVER.isoformat()})
 
 
@@ -6084,6 +6095,93 @@ def _reglage(cle, defaut=None):
     return defaut
 
 
+# ── Le calendrier d'ouverture ────────────────────────────────────────────────────────────────
+# ⚠️ MÊME CACHE COURT QUE LE MENU, ET POUR LA MÊME RAISON : `count_open_days_raw` est appelé
+# des centaines de fois par page (un appel par jour de chaque période), il ne peut pas payer un
+# aller-retour Supabase à chaque fois.
+#
+# ⚠️ EN CAS D'ÉCHEC, ON GARDE LA DERNIÈRE VALEUR LUE, PAS LE RÉGIME DU CODE. Un hoquet réseau qui
+# ferait retomber sur « fermé mardi » diviserait les charges d'octobre autrement pendant trente
+# secondes — un chiffre qui bouge sans que rien n'ait bougé. Le code ne fait foi que si la base
+# n'a jamais répondu.
+_CAL_CACHE = {"t": 0.0, "v": None}
+
+
+def _calendrier_courant():
+    maintenant = time.time()
+    if _CAL_CACHE["v"] is not None and maintenant - _CAL_CACHE["t"] < 30:
+        return _CAL_CACHE["v"]
+    from config import REGIME_USINE
+    try:
+        lignes = _supa_get("reglages", {"cle": "eq.calendrier", "limit": 1})
+    except Exception:
+        lignes = None
+    if lignes is None:
+        # ⚠️ L'ÉCHEC AUSSI SE MET EN CACHE. Sans quoi chaque jour compté relancerait une requête
+        # vers une base injoignable : des centaines d'essais par page, au pire moment.
+        repli = _CAL_CACHE["v"] or [REGIME_USINE]
+        _CAL_CACHE.update({"t": maintenant, "v": repli})
+        return repli
+    valeur = lignes[0].get("valeur") if lignes and isinstance(lignes[0], dict) else None
+    regimes = _cal.construire(valeur, REGIME_USINE)
+    _CAL_CACHE.update({"t": maintenant, "v": regimes})
+    return regimes
+
+
+import config as _config
+_config.brancher_calendrier(_calendrier_courant)
+
+
+@app.route("/api/parametres/calendrier", methods=["GET"])
+def api_calendrier_get():
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    from config import SCHEDULE_CUTOVER
+    _CAL_CACHE["v"] = None          # l'écran de réglage montre la base, pas le cache
+    return jsonify({**_cal.a_plat(_calendrier_courant()),
+                    "bascule": SCHEDULE_CUTOVER.isoformat(),
+                    "aujourdhui": today_lisbon().isoformat()})
+
+
+@app.route("/api/parametres/calendrier", methods=["PUT"])
+def api_calendrier_put():
+    """
+    Enregistre les régimes d'ouverture.
+
+    ⚠️ UN MOIS CLOS NE BOUGE PAS. Changer l'ouverture d'un jour d'un mois terminé redivise ses
+    charges, son point mort et son EBITDA — des chiffres déjà lus, peut-être déjà envoyés au
+    comptable. On refuse, en disant quels jours. Le mois en cours reste modifiable : on peut
+    enregistrer mercredi l'ouverture du mardi d'hier.
+    """
+    if _current_role() != "admin":
+        return jsonify({"ok": False, "error": "admin only"}), 403
+    from config import REGIME_USINE, SCHEDULE_CUTOVER
+    try:
+        apres = _cal.valider(request.get_json(silent=True) or {}, REGIME_USINE)
+    except _cal.CalendrierInvalide as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+    _CAL_CACHE["v"] = None
+    avant = _calendrier_courant()
+    debut_mois = today_lisbon().replace(day=1)
+    if debut_mois > SCHEDULE_CUTOVER:
+        figes = _cal.jours_changes(avant, apres, SCHEDULE_CUTOVER, debut_mois - timedelta(1))
+        if figes:
+            liste = ", ".join(j.isoformat() for j in figes[:5]) + ("…" if len(figes) > 5 else "")
+            return jsonify({"ok": False, "error":
+                            f"{len(figes)} jour(s) d'un mois clos changeraient d'ouverture "
+                            f"({liste}) — un régime doit commencer ce mois-ci ou plus tard"}), 409
+
+    propre = _cal.a_plat(apres)
+    ok, err = _supa_upsert("reglages", {"cle": "calendrier", "valeur": propre,
+                                        "maj_le": _utc_iso(), "maj_par": _identite()[1]})
+    _CAL_CACHE["v"] = None          # la page suivante doit voir le changement
+    if ok:
+        _journal_action(_current_role(), "calendrier-modifie", "calendrier",
+                        _cal.a_plat(avant), propre, "jours ou horaires d'ouverture modifiés")
+    return jsonify({"ok": ok, "error": err, **(propre if ok else {})})
+
+
 # ⚠️ LE MENU EST RELU À CHAQUE PAGE, ET IL EST EN CACHE COURT. Sans cache, chaque navigation
 # paierait un aller-retour Supabase avant d'afficher quoi que ce soit ; avec un cache long, un
 # réglage enregistré ne se verrait pas et on le ré-enregistrerait en boucle.
@@ -6213,7 +6311,10 @@ def api_parametres_systeme():
         },
         "calendrier": {
             "ouverture": OPENING_DAY,
-            "jours_ouverts": [JOURS[j] for j in sorted(OPEN_WEEKDAYS)],
+            # ⚠️ LE RÉGIME EN VIGUEUR, PLUS `OPEN_WEEKDAYS`. Celui-ci n'est que le régime
+            # d'origine : l'afficher ici dirait « fermé mardi » une fois le mardi ouvert.
+            "jours_ouverts": [JOURS[j] for j in sorted(
+                (_cal.regime_du(today_lisbon(), _calendrier_courant()) or {"jours": OPEN_WEEKDAYS})["jours"])],
             "bascule_horaires": SCHEDULE_CUTOVER.isoformat(),
             "jours_lancement": len(LAUNCH_OPEN_DAYS),
             "jours_ouverts_mois": JOURS_OUVERTS_MOIS,
@@ -8166,7 +8267,7 @@ def _tx_per_open_day(period_rows, from_date, to_date, today_real):
     dès qu'ils portent des tickets : sinon leur chiffre d'affaires gonflerait le numérateur sans
     que personne ne les compte comme journée travaillée.
     """
-    from config import count_open_days_raw, OPEN_WEEKDAYS
+    from config import count_open_days_raw
 
     full_end = min(to_date, today_real - timedelta(1))
     if from_date > full_end:
@@ -8180,7 +8281,7 @@ def _tx_per_open_day(period_rows, from_date, to_date, today_real):
     basis = count_open_days_raw(from_date, full_end)
     for r in full_rows:
         d = date.fromisoformat(r["day"])
-        if float(r.get("nb") or 0) > 0 and d.weekday() not in OPEN_WEEKDAYS:
+        if float(r.get("nb") or 0) > 0 and count_open_days_raw(d, d) == 0:
             basis += 1                      # journée travaillée hors calendrier
 
     if basis <= 0:

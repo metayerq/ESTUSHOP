@@ -4,6 +4,7 @@ Hypothèses BP Estudantina — BP_Estudantina_v3.xlsx
 """
 
 from datetime import date, datetime, timedelta, timezone
+import calendrier as _cal
 
 # ── Fuseau horaire du café ───────────────────────────────────────────────────
 # L'app tourne sur Vercel, dont l'horloge système est en UTC. Lisbonne est à
@@ -96,7 +97,8 @@ def today_lisbon() -> date:
 
 # ── Calendrier d'ouverture ───────────────────────────────────────────────────
 # weekday() : 0=lun, 1=mar, 2=mer, 3=jeu, 4=ven, 5=sam, 6=dim
-# Depuis le 12 juin 2026 : fermé mardi et mercredi.
+# Du 12 juin 2026 jusqu'au premier régime enregistré dans `/parametres` : fermé mardi et
+# mercredi. ⚠️ NE PAS MODIFIER POUR UN CHANGEMENT D'HORAIRES : ce serait réécrire tout le passé.
 OPEN_WEEKDAYS = frozenset({0, 3, 4, 5, 6})   # lun, jeu, ven, sam, dim
 
 # Période de lancement (horaires irréguliers, saisie manuelle) — jours réels
@@ -121,15 +123,48 @@ SCHEDULE_CUTOVER = date(2026, 6, 12)   # à partir d'ici : calendrier OPEN_WEEKD
 # EXACTEMENT celui d'hier.
 PLANNING_CUTOVER = date(2026, 10, 1)
 
+# ── Le calendrier réglable ───────────────────────────────────────────────────
+# ⚠️ `OPEN_WEEKDAYS` N'EST PLUS QUE LE RÉGIME D'ORIGINE, celui qui démarre à la bascule. Les
+# régimes suivants (« mardi ouvert à partir du 27/10 ») sont enregistrés depuis `/parametres`,
+# dans `reglages` (clé `calendrier`), et `app.py` les branche ici avec `brancher_calendrier`.
+# Sans branchement — un test, un script — le calcul est exactement celui d'avant.
+REGIME_USINE = {"depuis": SCHEDULE_CUTOVER,
+                "jours": {wd: {"ouvre": None, "ferme": None} for wd in sorted(OPEN_WEEKDAYS)}}
+
+_SOURCE_CALENDRIER = None
+
+
+def brancher_calendrier(source):
+    """`source()` rend les régimes à appliquer ; `None` revient au seul régime du code."""
+    global _SOURCE_CALENDRIER
+    _SOURCE_CALENDRIER = source
+
+
+def regimes_courants():
+    """
+    ⚠️ UNE SOURCE QUI LÈVE NE FAIT PAS TOMBER LE TABLEAU DE BORD. Toutes les pages passent par
+    ici ; une lecture ratée retombe sur le régime du code plutôt que sur une erreur 500.
+    """
+    if _SOURCE_CALENDRIER is not None:
+        try:
+            r = _SOURCE_CALENDRIER()
+            if r:
+                return r
+        except Exception:
+            pass
+    return [REGIME_USINE]
+
+
 def count_open_days_raw(from_date: date, to_date: date) -> int:
     """Nombre de jours d'ouverture effectifs entre deux dates incluses (peut être 0)."""
+    regimes = regimes_courants()
     n = 0
     cur = from_date
     while cur <= to_date:
         if cur < SCHEDULE_CUTOVER:
             if cur in LAUNCH_OPEN_DAYS:
                 n += 1
-        elif cur.weekday() in OPEN_WEEKDAYS:
+        elif _cal.ouvert_selon(cur, regimes):
             n += 1
         cur += timedelta(1)
     return n

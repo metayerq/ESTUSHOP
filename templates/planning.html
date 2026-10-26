@@ -44,6 +44,7 @@
 .pl-tete { display:flex; align-items:baseline; justify-content:space-between; gap:6px; }
 .pl-nom { font-size:12px; font-weight:600; text-transform:capitalize; }
 .pl-date { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.pl-heures { font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; margin-top:-4px; }
 
 .pl-chip { border:1px solid var(--border); border-radius:var(--r-sm); padding:6px 8px;
   background:var(--bg-page); cursor:pointer; text-align:left; width:100%; font-family:inherit; }
@@ -515,6 +516,15 @@ const FMT_LONG = new Intl.DateTimeFormat('fr-FR',
   {weekday:'long', day:'numeric', month:'long', year:'numeric'});
 const FMT_MOIS = new Intl.DateTimeFormat('fr-FR', {month:'long', year:'numeric'});
 
+/* Les heures d'ouverture réglées dans les paramètres ; rien tant qu'elles ne sont pas saisies.
+   ⚠️ PAS `heures()` : ce nom compte déjà la durée d'un service, et le redéfinir chiffrait
+   chaque extra à 0 €. */
+function horairesDuJour(j){
+  const h = DATA.horaires ? DATA.horaires[j] : null;
+  if(!h) return '';
+  return `<div class="pl-heures">ouvert ${h.ouvre || '?'} – ${h.ferme || '?'}</div>`;
+}
+
 function rendreSemaine(){
   const l = lundiDe(LUNDI), js = [];
   for(let i=0;i<7;i++){ const d = new Date(l); d.setDate(d.getDate()+i); js.push(d); }
@@ -529,6 +539,7 @@ function rendreSemaine(){
         <span class="pl-nom">${FMT_JOUR.format(d)}</span>
         <span class="pl-date">${FMT_DATE.format(d)}</span>
       </div>
+      ${horairesDuJour(j)}
       ${ouvert
         ? (chips || '<div class="pl-vide">personne</div>')
           + `<button class="pl-ajout" onclick="ouvrir('${j}', null, null)">+ ajouter</button>`
@@ -548,6 +559,7 @@ function rendreJour(){
   const chips = servicesDe(j).map(s=>puce(j, s)).join('');
 
   E('pl-vue').innerHTML = `<div class="pl-jourseul">
+    ${horairesDuJour(j)}
     ${cout
       ? (chips || '<div class="pl-vide">personne ce jour-là</div>')
         + `<button class="pl-ajout" onclick="ouvrir('${j}', null, null)">+ ajouter</button>`

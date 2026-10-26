@@ -136,9 +136,9 @@ def test_seul_ladmin_voit_linventaire(monkeypatch, role):
 # ── L'écran ──────────────────────────────────────────────────────────────────────────────────
 
 def test_les_trois_onglets_existent_et_sont_disjoints():
-    for o in ("acces", "economie", "systeme"):
+    for o in ("acces", "economie", "horaires", "menu", "systeme"):
         assert f'id="pa-{o}"' in GABARIT
-    pos = [GABARIT.index(f'id="pa-{o}"') for o in ("acces", "economie", "systeme")]
+    pos = [GABARIT.index(f'id="pa-{o}"') for o in ("acces", "economie", "horaires", "menu", "systeme")]
     assert pos == sorted(pos), "les panneaux s'imbriquent"
 
 
@@ -151,14 +151,26 @@ def test_le_panneau_masque_lest_vraiment():
     assert ".pa-panneau[hidden] { display: none !important; }" in commun
 
 
+def panneau(nom):
+    """
+    Le gabarit d'un onglet, jusqu'à l'onglet SUIVANT, quel qu'il soit.
+
+    ⚠️ PAS JUSQU'À UN ONGLET NOMMÉ. Couper l'onglet Économie à `pa-systeme` lui faisait avaler
+    chaque onglet ajouté entre les deux : d'abord Menu, puis Horaires, dont les champs de saisie
+    passaient pour un éditeur dupliqué dans Économie.
+    """
+    i = GABARIT.index(f'id="pa-{nom}"')
+    fin = GABARIT.find('class="pa-panneau"', i)
+    return GABARIT[i:fin if fin > 0 else len(GABARIT)]
+
+
 def test_longlet_economie_renvoie_et_ne_duplique_pas():
     """
     ⚠️ LA SIMULATION DES RÉGLAGES FIDÉLITÉ A BESOIN DES 2 500 VISITES déjà chargées par
     /loyalty. La refaire ici donnerait deux écrans qui écrivent la même ligne — et un jour deux
     réponses différentes à la même question.
     """
-    i = GABARIT.index('id="pa-economie"')
-    bloc = GABARIT[i:GABARIT.index('id="pa-systeme"')]
+    bloc = panneau("economie")
     assert 'href="/charges"' in bloc
     assert 'href="/loyalty#reglages"' in bloc
     assert "<input" not in bloc, "un éditeur a été dupliqué dans l'onglet Économie"
@@ -175,10 +187,7 @@ def test_lavertissement_sur_les_charges_ne_survit_pas_a_sa_correction():
     à `pa-systeme` ; l'onglet Menu s'est glissé entre les deux, et la tranche a silencieusement
     doublé de taille — le test cherchait alors ses mots dans un bloc qui n'était plus le sien.
     """
-    i = GABARIT.index('id="pa-economie"')
-    fin = min(j for j in (GABARIT.find('id="pa-menu"', i), GABARIT.find('id="pa-systeme"', i))
-              if j > 0)
-    bloc = GABARIT[i:fin]
+    bloc = panneau("economie")
     assert "réécrit" not in bloc and "r&eacute;&eacute;crit" not in bloc
     assert "date d'effet" in bloc, "l'écran ne dit pas ce qui protège désormais les mois passés"
 

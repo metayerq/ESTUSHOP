@@ -450,6 +450,70 @@ CAS = {
         # Ouvre directement la facture 6 : c'est aussi ce que fait un lien partagé.
         "suffixe": "?id=6",
     },
+    # ⚠️ L'ONGLET HORAIRES DIVISE LES CHARGES. Un régime saisi mais jamais envoyé, ou envoyé sans
+    # la case cochée, laisse le mardi fermé au planning — et rien à l'écran ne le dit.
+    "parametres.html": {
+        "reponses": {
+            "/api/comptes": {"roles": [], "comptes": [], "partages_actifs": []},
+            "/api/parametres/calendrier": {
+                "bascule": "2026-06-12", "aujourdhui": "2026-10-26",
+                "regimes": [
+                    {"depuis": "2026-06-12", "jours": {str(wd): {"ouvre": None, "ferme": None}
+                                                       for wd in (0, 3, 4, 5, 6)}},
+                    {"depuis": "2026-10-27", "jours": {str(wd): {"ouvre": "08:30", "ferme": "18:00"}
+                                                       for wd in (0, 1, 3, 4, 5, 6)}},
+                ],
+            },
+        },
+        "scenario": r"""
+(function attendre(n){
+  var E = function(i){ return document.getElementById(i); };
+  if(!document.querySelector('#ca-liste .ca-regime') && n < 80)
+    return setTimeout(function(){ attendre(n+1); }, 20);
+  var trace = function(t){ var d = document.createElement('div'); d.textContent = t;
+                           document.body.appendChild(d); };
+  var regs = document.querySelectorAll('#ca-liste .ca-regime');
+  trace(regs.length === 2 && regs[0].textContent.indexOf('27') >= 0
+        ? 'PLUS-RECENT-EN-HAUT' : 'ORDRE-FAUX ' + regs.length);
+  var mardi = regs[0].querySelector('input[data-j="1"][data-c="ouvert"]');
+  trace(mardi && mardi.checked ? 'MARDI-COCHE' : 'MARDI-DECOCHE');
+  var ouvre = regs[0].querySelector('input[data-j="1"][data-c="ouvre"]');
+  trace(ouvre && ouvre.value === '08:30' ? 'HEURES-AFFICHEES' : 'HEURES-ABSENTES');
+  /* Juin est un mois clos : ses jours ne se décochent plus, ses heures se saisissent. */
+  var juin = regs[1].querySelector('input[data-j="0"][data-c="ouvert"]');
+  var juinH = regs[1].querySelector('input[data-j="0"][data-c="ouvre"]');
+  trace(juin && juin.disabled && juinH && !juinH.disabled ? 'MOIS-CLOS-FIGE' : 'MOIS-CLOS-EDITABLE');
+
+  /* Un nouveau régime part de celui en vigueur : on ne ressaisit pas la semaine. */
+  E('ca-date').value = '2026-11-02';
+  E('ca-ajout').click();
+  regs = document.querySelectorAll('#ca-liste .ca-regime');
+  var neuf = regs[0];
+  trace(regs.length === 3 && neuf.querySelector('input[data-j="1"][data-c="ouvert"]').checked
+        ? 'COPIE-DU-REGIME' : 'REGIME-VIDE ' + regs.length);
+  neuf.querySelector('input[data-j="2"][data-c="ouvert"]').click();
+
+  var envoye = null;
+  window.fetch = function(u, o){
+    envoye = o && o.body ? JSON.parse(o.body) : null;
+    return Promise.resolve({ ok: true, json: function(){
+      return Promise.resolve({ ok: true, regimes: envoye.regimes }); } });
+  };
+  E('ca-ok').click();
+  setTimeout(function(){
+    var r = envoye && envoye.regimes.filter(function(x){ return x.depuis === '2026-11-02'; })[0];
+    trace(r && r.jours['2'] && r.jours['1'] && r.jours['1'].ouvre === '08:30'
+          ? 'ENVOI-COMPLET' : 'ENVOI-INCOMPLET ' + JSON.stringify(envoye));
+    trace(E('ca-etat').textContent.indexOf('Enregistré') >= 0 ? 'ENREGISTRE-DIT' : 'ETAT-MUET');
+  }, 50);
+})(0);
+""",
+        "attendu": ["Jours et horaires d'ouverture", "PLUS-RECENT-EN-HAUT", "MARDI-COCHE",
+                    "HEURES-AFFICHEES", "MOIS-CLOS-FIGE", "COPIE-DU-REGIME", "ENVOI-COMPLET",
+                    "ENREGISTRE-DIT", "mois clos"],
+        "interdit": ["NaN", "undefined", "[object Object]"],
+        "suffixe": "#horaires",
+    },
     "planning.html": {
         "reponses": {
             "/api/statut": {"ca": None, "ca_texte": "—", "tickets": None, "moyen_texte": "",
@@ -546,6 +610,8 @@ CAS = {
                          "end_time": "17:00:00", "source": "regle"},
                     ],
                 },
+                # Les heures d'ouverture réglées dans `/parametres`, pour un jour seulement.
+                "horaires": {"2026-10-09": {"ouvre": "08:30", "ferme": "18:00"}},
                 "couts": {
                     "2026-10-05": {"fixes": 30.43, "personnel": 76.52, "total": 106.95},
                     "2026-10-08": {"fixes": 30.43, "personnel": 76.52, "total": 106.95},
@@ -561,6 +627,9 @@ CAS = {
             "chaque samedi", "Ana Dias",
             "FERME-DIT", "COUT-AFFICHE", "COUT-DU-SERVEUR",
             "PERMANENT-SANS-PRIX", "EXTRA-AVEC-PRIX", "UNE-SEULE-ANA",
+            # ⚠️ ET LES HEURES DU JOUR, sans casser la durée des services : la première version
+            # redéfinissait `heures()` et chiffrait chaque extra à 0 €.
+            "HORAIRES-DU-JOUR",
             "SAVANNAH-AU-PLANNING", "SANS-TAUX-SIGNALE", "SEUL-LE-TROU-EST-MARQUE",
             "LA-DATE-DEFFET-EST-DITE", "NOA-A-SA-PROPRE-DATE",
             "VERSION-SANS-TAUX-IGNOREE", "PASSE-NEST-PAS-UN-EFFET",
@@ -608,6 +677,7 @@ CAS = {
   trace((texte.indexOf('172,52') >= 0 && texte.indexOf('106,95') >= 0)
         ? 'COUT-DU-SERVEUR' : 'COUT-RECALCULE');
   trace(E('pl-vue').querySelector('.pl-semaine') ? 'VUE-SEMAINE' : 'VUE-FIGEE semaine');
+  trace(texte.indexOf('ouvert 08:30 – 18:00') >= 0 ? 'HORAIRES-DU-JOUR' : 'HORAIRES-ABSENTS');
 
   var cases = E('pl-vue').querySelectorAll('.pl-jour');
   var samedi = null, vendredi = null;
