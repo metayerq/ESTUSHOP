@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/static/icons/favicon-32.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Estudantina">
+<meta name="theme-color" content="#F7FAFC">
+<title>Estudantina · Précommandes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<style>
+/* ══ /drops — les précommandes des chefs en résidence ═══════════════════════════════════════
+   Le bureau prépare (opération, soirées, menu, stocks) et compte (bilan du chef). La vente se
+   fait sur la vitrine, par la caisse Mesa, qui lit les mêmes tables. */
+.dr-grille { display:grid; grid-template-columns:260px minmax(0,1fr); gap:20px; align-items:start; }
+/* ⚠️ `minmax(0,1fr)`, PAS `1fr` : `1fr` ne descend pas sous la largeur de son contenu, et les
+   tableaux du menu poussaient toute la colonne hors de l'écran du téléphone. */
+@media (max-width:900px){ .dr-grille { grid-template-columns:minmax(0,1fr); } }
+.dr-bloc { background:var(--bg-card); border:1px solid var(--border); border-radius:4px;
+  padding:14px 16px; margin-bottom:14px; }
+.dr-titre { font-size:13px; font-weight:600; margin:0 0 10px; }
+.dr-aide { font-size:11.5px; color:var(--muted); line-height:1.5; margin:4px 0 0; }
+.dr-op { display:block; width:100%; text-align:left; font:inherit; padding:9px 10px; margin-bottom:6px;
+  border:1px solid var(--border); border-radius:4px; background:var(--bg-card); cursor:pointer; color:var(--text); }
+.dr-op[aria-current="true"] { border-color:var(--spec); }
+.dr-op small { display:block; color:var(--muted); font-size:11.5px; margin-top:2px; }
+.dr-statut { font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase;
+  padding:2px 6px; border-radius:3px; background:var(--bg-page); color:var(--muted); }
+.dr-statut.ouverte { background:var(--green-soft); color:var(--green); }
+.dr-statut.close { background:var(--bg-hover); }
+.dr-l { display:block; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--muted); margin:10px 0 4px; }
+.dr-i { width:100%; box-sizing:border-box; font:inherit; font-size:13px; padding:6px 8px;
+  border:1px solid var(--border); border-radius:4px; background:var(--bg-page); color:var(--text); }
+.dr-btn { font:inherit; font-size:12.5px; font-weight:600; padding:7px 12px; border-radius:4px; cursor:pointer;
+  border:1px solid var(--border); background:var(--bg-card); color:var(--text); white-space:nowrap; }
+.dr-btn:hover { background:var(--bg-hover); }
+.dr-btn.fort { background:var(--spec); color:#fff; border-color:transparent; }
+.dr-ligne { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; }
+.dr-ligne > div { flex:1 1 120px; }
+.dr-etat { font-size:12px; color:var(--muted); margin-top:8px; min-height:1em; }
+.dr-avert { border:1px solid var(--amber); background:var(--amber-soft); border-radius:4px; padding:10px 12px;
+  font-size:12.5px; line-height:1.55; margin-bottom:14px; }
+.dr-avert ul { margin:4px 0 0 18px; padding:0; }
+.dr-chiffres { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px,1fr)); gap:10px; }
+.dr-chiffres div { border:1px solid var(--border); border-radius:4px; padding:8px 10px; }
+.dr-chiffres b { display:block; font-size:16px; font-variant-numeric:tabular-nums; }
+.dr-chiffres span { font-size:11px; color:var(--muted); }
+.dr-table { width:100%; border-collapse:collapse; font-size:12.5px; }
+.dr-table th { text-align:left; font-weight:500; color:var(--muted); font-size:11px; padding:4px 6px;
+  border-bottom:1px solid var(--border); }
+.dr-table td { padding:4px 6px; border-bottom:1px solid var(--border); vertical-align:middle; }
+.dr-table input, .dr-table select { font:inherit; font-size:12.5px; padding:4px 6px; width:100%; box-sizing:border-box;
+  border:1px solid var(--border); border-radius:3px; background:var(--bg-page); color:var(--text); }
+.dr-table input[type=number] { width:72px; }
+.dr-table input[type=checkbox] { width:auto; }
+.dr-ecart { color:var(--red); font-size:11px; }
+.dr-vendu { color:var(--muted); font-size:11px; white-space:nowrap; }
+.dr-soiree { border:1px solid var(--border); border-radius:4px; padding:10px 12px; margin-top:10px; }
+.dr-soiree h3 { font-size:13px; margin:0 0 8px; }
+.dr-soiree h3.date::first-letter { text-transform:uppercase; }
+.dr-reglages { display:grid; grid-template-columns:repeat(auto-fit, minmax(96px,1fr)); gap:6px; margin-bottom:8px; }
+.dr-reglages label { font-size:10.5px; color:var(--muted); display:flex; flex-direction:column; gap:2px; }
+.dr-reglages input, .dr-reglages select { font:inherit; font-size:12.5px; padding:4px 6px;
+  border:1px solid var(--border); border-radius:3px; background:var(--bg-page); color:var(--text); }
+.dr-probleme td { background:var(--red-soft); }
+.dr-lien { font-family:var(--mono); font-size:11.5px; word-break:break-all; }
+.dr-scroll { overflow-x:auto; }
+</style>
+</head>
+<body>
+{% include "_rail.html" %}
+<div class="page">
+  <div class="header" style="margin-bottom:18px;">
+    <div>
+      <div class="header-title">Précommandes des chefs</div>
+      <div class="header-sub">Opérations, menus, stocks par soirée — et ce qui revient au chef</div>
+    </div>
+  </div>
+
+  <div class="dr-grille">
+    <div>
+      <div class="dr-bloc">
+        <h2 class="dr-titre">Opérations</h2>
+        <div id="dr-liste"><p class="dr-aide">Chargement&hellip;</p></div>
+      </div>
+      <div class="dr-bloc">
+        <h2 class="dr-titre">Nouvelle opération</h2>
+        <label class="dr-l" for="n-chef">Chef</label><input class="dr-i" id="n-chef" placeholder="Toro Toro">
+        <label class="dr-l" for="n-titre">Titre</label><input class="dr-i" id="n-titre" placeholder="Onigiri night">
+        <label class="dr-l" for="n-id">Identifiant (adresse de la vitrine)</label>
+        <input class="dr-i" id="n-id" placeholder="toro-toro-nov-2026">
+        <label class="dr-l" for="n-pct">Commission (% du TTC)</label><input class="dr-i" id="n-pct" type="number" value="20" min="0" max="100" step="0.5">
+        <label class="dr-l" for="n-kind">Durée</label>
+        <select class="dr-i" id="n-kind">
+          <option value="unique">Un soir</option>
+          <option value="hebdo">Certains jours chaque semaine</option>
+          <option value="plage">Tous les soirs d'une période</option>
+        </select>
+        <div id="n-dates"></div>
+        <button class="dr-btn fort" type="button" id="n-ok" style="margin-top:12px">Créer</button>
+        <p class="dr-etat" id="n-etat"></p>
+      </div>
+    </div>
+
+    <div id="dr-detail"><div class="dr-bloc"><p class="dr-aide">Choisis une opération, ou crée la première.</p></div></div>
+  </div>
+</div>
+{% include "_pied.html" %}
+<script>
+(function(){
+  var E = function(i){ return document.getElementById(i); };
+  var JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+  var D = null;            // l'opération ouverte, telle que le serveur l'a rendue
+  var COURANTE = null;
+
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function eur(c){ return (c / 100).toFixed(2).replace('.', ',') + ' €'; }
+  function hm(t){ return String(t || '').slice(0, 5); }
+  function jourLong(iso){
+    var d = new Date(iso + 'T12:00:00');
+    return d.toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'});
+  }
+  function slug(s){
+    return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+  }
+  async function appel(url, methode, corps){
+    var r = await fetch(url, { method: methode || 'GET',
+      headers: corps ? {'Content-Type': 'application/json'} : {},
+      body: corps ? JSON.stringify(corps) : undefined });
+    var d = await r.json().catch(function(){ return {}; });
+    return { ok: r.ok && d.ok !== false, d: d, status: r.status };
+  }
+
+  /* ── La durée : un soir, certains jours, une période ── */
+  function champsDuree(prefixe){
+    var kind = E(prefixe + '-kind').value, h = '';
+    if (kind === 'unique')
+      h = '<label class="dr-l">Date</label><input class="dr-i" type="date" id="' + prefixe + '-jour">';
+    else {
+      h = '<div class="dr-ligne"><div><label class="dr-l">Du</label><input class="dr-i" type="date" id="' + prefixe + '-debut"></div>' +
+          '<div><label class="dr-l">Au</label><input class="dr-i" type="date" id="' + prefixe + '-fin"></div></div>';
+      if (kind === 'hebdo')
+        h += '<label class="dr-l">Les</label><div class="dr-ligne">' + JOURS.map(function(j, i){
+          return '<label style="font-size:12px;flex:0 0 auto"><input type="checkbox" data-jour="' + i + '"> ' + j.slice(0, 3) + '</label>';
+        }).join('') + '</div>';
+    }
+    E(prefixe + '-dates').innerHTML = h;
+  }
+  function lireDuree(prefixe){
+    var kind = E(prefixe + '-kind').value;
+    if (kind === 'unique') return { kind: kind, jour: E(prefixe + '-jour').value };
+    var d = { kind: kind, debut: E(prefixe + '-debut').value, fin: E(prefixe + '-fin').value };
+    if (kind === 'hebdo')
+      d.jours = [].map.call(E(prefixe + '-dates').querySelectorAll('input[data-jour]:checked'),
+        function(c){ return +c.dataset.jour; });
+    return d;
+  }
+  E('n-kind').addEventListener('change', function(){ champsDuree('n'); });
+  champsDuree('n');
+  /* L'identifiant se propose depuis le chef ; on peut le reprendre à la main. */
+  var idTouche = false;
+  E('n-id').addEventListener('input', function(){ idTouche = true; });
+  E('n-chef').addEventListener('input', function(){ if (!idTouche) E('n-id').value = slug(E('n-chef').value); });
+
+  E('n-ok').addEventListener('click', async function(){
+    E('n-etat').textContent = 'Création…';
+    var r = await appel('/api/drops', 'POST', { id: E('n-id').value.trim(), chef: E('n-chef').value,
+      titre: E('n-titre').value, commission_pct: E('n-pct').value, duree: lireDuree('n') });
+    if (!r.ok) { E('n-etat').textContent = 'Refusé : ' + (r.d.error || r.status); return; }
+    E('n-etat').textContent = 'Créée.';
+    location.hash = 'op=' + r.d.id;
+    liste();
+  });
+
+  /* ── La liste ── */
+  async function liste(){
+    var r = await appel('/api/drops');
+    if (!r.ok) { E('dr-liste').innerHTML = '<p class="dr-aide">' + esc(r.d.error || 'Indisponible') + '</p>'; return; }
+    var ops = r.d.operations || [];
+    E('dr-liste').innerHTML = ops.length ? ops.map(function(o){
+      var s = o.soirees, quand = s.length ? (s.length === 1 ? s[0] : s[0] + ' → ' + s[s.length - 1] + ' · ' + s.length + ' soirées') : 'aucune soirée';
+      return '<button class="dr-op" data-op="' + esc(o.id) + '" aria-current="' + (o.id === COURANTE) + '">' +
+        esc(o.chef) + ' — ' + esc(o.titre) + ' <span class="dr-statut ' + esc(o.statut) + '">' + esc(o.statut) + '</span>' +
+        '<small>' + esc(quand) + '</small></button>';
+    }).join('') : '<p class="dr-aide">Aucune opération.</p>';
+  }
+  E('dr-liste').addEventListener('click', function(e){
+    var b = e.target.closest('[data-op]');
+    if (b) location.hash = 'op=' + b.dataset.op;
+  });
+
+  /* ── Une opération ── */
+  async function ouvrir(op){
+    COURANTE = op;
+    liste();
+    var r = await appel('/api/drops/' + encodeURIComponent(op));
+    if (!r.ok) { E('dr-detail').innerHTML = '<div class="dr-bloc">' + esc(r.d.error || 'Introuvable') + '</div>'; return; }
+    D = r.d;
+    rendre();
+  }
+
+  function rendre(){
+    var o = D.operation, b = D.bilan, h = '';
+    h += '<div class="dr-bloc"><div class="dr-ligne" style="justify-content:space-between;align-items:center">' +
+      '<h2 class="dr-titre" style="margin:0">' + esc(o.chef) + ' — ' + esc(o.titre) +
+      ' <span class="dr-statut ' + esc(o.statut) + '">' + esc(o.statut) + '</span></h2><div class="dr-ligne" style="flex:0 0 auto">' +
+      (o.statut !== 'ouverte' ? '<button class="dr-btn fort" data-statut="ouverte">Ouvrir les précommandes</button>' : '') +
+      (o.statut === 'ouverte' ? '<button class="dr-btn" data-statut="close">Fermer</button>' : '') +
+      (o.statut === 'close' ? '<button class="dr-btn" data-statut="brouillon">Repasser en brouillon</button>' : '') +
+      '</div></div><p class="dr-etat" id="st-etat"></p>';
+    if (D.empechements.length)
+      h += '<div class="dr-avert"><b>Pas encore ouvrable :</b><ul>' +
+        D.empechements.map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></div>';
+    h += '<span class="dr-l">Vitrine</span><a class="dr-lien" href="' + esc(D.liens.vitrine) + '" target="_blank" rel="noopener">' + esc(D.liens.vitrine) + '</a>' +
+      '<span class="dr-l">Lien du chef — saisie des stocks, commandes de la soirée</span><span class="dr-lien" id="lien-chef">' + esc(D.liens.chef) + '</span> ' +
+      '<button class="dr-btn" id="jeton" style="margin-left:6px">Nouveau lien</button>' +
+      '<p class="dr-aide">Le lien du chef ouvre ses stocks et ses commandes, sans compte. En générer un nouveau révoque l\'ancien.</p></div>';
+
+    h += '<div class="dr-bloc"><h2 class="dr-titre">Bilan</h2><div class="dr-chiffres">' +
+      '<div><b>' + eur(b.encaisse_cents) + '</b><span>encaissé TTC</span></div>' +
+      '<div><b>' + eur(b.en_ligne_cents) + '</b><span>en ligne</span></div>' +
+      '<div><b>' + eur(b.sur_place_cents) + '</b><span>sur place</span></div>' +
+      '<div><b>' + eur(b.commission_cents) + '</b><span>commission ' + (+o.commission_pct).toString().replace('.', ',') + ' %</span></div>' +
+      '<div><b>' + eur(b.part_chef_cents) + '</b><span>facture du chef</span></div></div>' +
+      '<p class="dr-aide">Le chef facture à Estudantina l\'encaissé moins la commission, prise sur le TTC. Les commandes remboursées ne comptent pas.</p></div>';
+
+    h += menuHtml() + soireesHtml() + commandesHtml();
+    E('dr-detail').innerHTML = h;
+  }
+
+  /* ── Le menu ── */
+  function optionsVendus(choisi){
+    var parCat = {};
+    (D.catalogue || []).forEach(function(p){ (parCat[p.categorie || '—'] = parCat[p.categorie || '—'] || []).push(p); });
+    return '<option value="">— aucun —</option>' + Object.keys(parCat).map(function(c){
+      return '<optgroup label="' + esc(c) + '">' + parCat[c].map(function(p){
+        return '<option value="' + p.id + '"' + (+choisi === p.id ? ' selected' : '') + '>' + esc(p.nom) + ' · ' + p.prix.toFixed(2) + ' €</option>';
+      }).join('') + '</optgroup>';
+    }).join('');
+  }
+  function ligneMenu(p){
+    var v = (D.catalogue || []).find(function(x){ return x.id === +p.vendus_product_id; });
+    var ecart = v && Math.round(v.prix * 100) !== Math.round(parseFloat(String(p.prix).replace(',', '.')) * 100);
+    return '<tr data-plat="' + esc(p.id || '') + '">' +
+      '<td><input data-c="nom" value="' + esc(p.nom) + '" placeholder="Salmon onigiri"></td>' +
+      '<td><input data-c="description" value="' + esc(p.description) + '"></td>' +
+      '<td><input data-c="prix" value="' + esc(p.prix) + '" style="width:70px"></td>' +
+      '<td><select data-c="vendus_product_id">' + optionsVendus(p.vendus_product_id) + '</select>' +
+      (ecart ? '<div class="dr-ecart">Vendus : ' + v.prix.toFixed(2) + ' €</div>' : '') + '</td>' +
+      '<td style="text-align:center"><input type="checkbox" data-c="actif"' + (p.actif !== false ? ' checked' : '') + '></td></tr>';
+  }
+  function menuHtml(){
+    var lignes = D.plats.map(function(p){
+      return { id: p.id, nom: p.nom, description: p.description, prix: (p.prix_cents / 100).toFixed(2),
+        vendus_product_id: p.vendus_product_id, actif: p.actif };
+    });
+    return '<div class="dr-bloc"><h2 class="dr-titre">Menu</h2><div class="dr-scroll"><table class="dr-table" id="menu">' +
+      '<thead><tr><th>Plat</th><th>Description</th><th>Prix TTC</th><th>Produit Vendus (pour la facture)</th><th>En vente</th></tr></thead><tbody>' +
+      lignes.map(ligneMenu).join('') + '</tbody></table></div>' +
+      '<div class="dr-ligne" style="margin-top:10px"><button class="dr-btn" id="plat-ajout">+ Plat</button>' +
+      '<button class="dr-btn fort" id="menu-ok">Enregistrer le menu</button></div>' +
+      '<p class="dr-etat" id="menu-etat"></p>' +
+      '<p class="dr-aide">Le prix du menu doit être celui du produit Vendus, au centime : le client paie l\'un, la facture porte l\'autre. ' +
+      'Crée les produits dans la caisse (Catalog), dans la catégorie du chef, à 13 %.</p></div>';
+  }
+  function lireMenu(){
+    return [].map.call(document.querySelectorAll('#menu tbody tr'), function(tr){
+      var v = function(c){ return tr.querySelector('[data-c="' + c + '"]'); };
+      return { id: tr.dataset.plat || '', nom: v('nom').value, description: v('description').value,
+        prix: v('prix').value, vendus_product_id: v('vendus_product_id').value || null, actif: v('actif').checked };
+    });
+  }
+
+  /* ── Les soirées et leurs stocks ── */
+  function stock(jour, plat){
+    return D.stocks.find(function(s){ return s.jour === jour && s.plat_id === plat; }) ||
+      { precommande: 0, sur_place: 0, vendu_precommande: 0, vendu_sur_place: 0 };
+  }
+  function soireesHtml(){
+    var actifs = D.plats.filter(function(p){ return p.actif; });
+    var h = '<div class="dr-bloc"><h2 class="dr-titre">Soirées et stocks</h2>' +
+      '<p class="dr-aide">Le chef saisit d\'avance, plat par plat : combien en précommande, combien au comptoir. ' +
+      'Après l\'heure limite, ce qui reste en précommande passe au comptoir si la case est cochée.</p>';
+    D.soirees.forEach(function(s){
+      h += '<div class="dr-soiree" data-jour="' + s.jour + '"><div class="dr-ligne" style="justify-content:space-between"><h3 class="date">' + esc(jourLong(s.jour)) + '</h3>' +
+        '<button class="dr-btn" data-suppr="' + s.jour + '" style="flex:0 0 auto">Supprimer la soirée</button></div>' +
+        '<div class="dr-reglages">' +
+        ['ouvre', 'ferme', 'retrait_debut', 'retrait_fin', 'limite'].map(function(k){
+          var lib = {ouvre:'ouvre', ferme:'ferme', retrait_debut:'retrait de', retrait_fin:'retrait à', limite:'commandes jusqu\'à'}[k];
+          return '<label>' + lib + '<input type="time" data-r="' + k + '" value="' + hm(s[k]) + '"></label>';
+        }).join('') +
+        '<label>créneau<select data-r="pas_minutes">' + [10, 15, 20, 30].map(function(m){
+          return '<option' + (m === s.pas_minutes ? ' selected' : '') + ' value="' + m + '">' + m + ' min</option>'; }).join('') + '</select></label>' +
+        '<label>commandes / créneau<input type="number" min="1" data-r="capacite_creneau" value="' + s.capacite_creneau + '"></label>' +
+        '<label>reste → comptoir<input type="checkbox" data-r="bascule_sur_place"' + (s.bascule_sur_place ? ' checked' : '') + '></label>' +
+        '</div><div class="dr-scroll"><table class="dr-table"><thead><tr><th>Plat</th><th>Précommande</th><th>Sur place</th></tr></thead><tbody>' +
+        actifs.map(function(p){
+          var st = stock(s.jour, p.id);
+          return '<tr data-stock="' + esc(p.id) + '"><td>' + esc(p.nom) + '</td>' +
+            '<td><input type="number" min="0" data-q="precommande" value="' + st.precommande + '"> <span class="dr-vendu">' + st.vendu_precommande + ' vendus</span></td>' +
+            '<td><input type="number" min="0" data-q="sur_place" value="' + st.sur_place + '"> <span class="dr-vendu">' + st.vendu_sur_place + ' vendus</span></td></tr>';
+        }).join('') + '</tbody></table></div>' +
+        '<div class="dr-ligne" style="margin-top:8px"><button class="dr-btn" data-copier="' + s.jour + '">Copier ces stocks sur toutes les soirées</button>' +
+        '<button class="dr-btn fort" data-enreg="' + s.jour + '">Enregistrer la soirée</button></div>' +
+        '<p class="dr-etat" data-etat="' + s.jour + '"></p></div>';
+    });
+    if (!actifs.length && D.soirees.length) h += '<p class="dr-aide">Ajoute des plats au menu pour saisir leurs stocks.</p>';
+    h += '<div class="dr-soiree"><h3>Ajouter des soirées</h3><select class="dr-i" id="a-kind" style="max-width:280px">' +
+      '<option value="unique">Un soir</option><option value="hebdo">Certains jours chaque semaine</option><option value="plage">Tous les soirs d\'une période</option></select>' +
+      '<div id="a-dates"></div><button class="dr-btn" id="a-ok" style="margin-top:8px">Ajouter</button><p class="dr-etat" id="a-etat"></p></div></div>';
+    return h;
+  }
+
+  /* ── Les commandes ── */
+  var LIB = { en_attente: 'en attente de paiement', payee: 'payée', refusee: 'refusée', remboursee: 'remboursée',
+    prete: 'prête', retiree: 'retirée', abandonnee: 'abandonnée' };
+  function commandesHtml(){
+    var cs = D.commandes.filter(function(c){ return c.statut !== 'abandonnee'; });
+    var h = '<div class="dr-bloc"><h2 class="dr-titre">Commandes</h2>';
+    if (!cs.length) h += '<p class="dr-aide">Aucune commande pour l\'instant.</p>';
+    else h += '<div class="dr-scroll"><table class="dr-table"><thead><tr><th>Soirée</th><th>N°</th><th>Retrait</th><th>Client</th><th>Commande</th><th>Total</th><th>Statut</th><th>Facture</th></tr></thead><tbody>';
+    cs.forEach(function(c){
+      /* ⚠️ CE QUI DEMANDE UN GESTE SE VOIT. Une facture « incertaine » se vérifie dans Vendus avant
+         toute réémission ; un remboursement « à faire » est de l'argent d'un client. */
+      var probleme = c.facture_etat === 'incertaine' || /remboursement à faire|facture/.test(c.motif || '');
+      h += '<tr' + (probleme ? ' class="dr-probleme"' : '') + '><td>' + esc(c.jour.slice(5).split('-').reverse().join('/')) + '</td>' +
+        '<td><b>' + esc(c.numero) + '</b></td><td>' + esc(hm(c.creneau)) + '</td>' +
+        '<td>' + esc(c.prenom) + '<br><span class="dr-vendu">' + esc(c.telephone) + (c.nif ? ' · NIF ' + esc(c.nif) : '') + '</span></td>' +
+        '<td>' + (c.lignes || []).map(function(l){ return l.qty + ' × ' + esc(l.nom); }).join('<br>') + '</td>' +
+        '<td>' + eur(c.total_cents) + '</td><td>' + esc(LIB[c.statut] || c.statut) + '</td>' +
+        '<td>' + esc(c.facture_numero || c.facture_etat || '—') + (c.motif ? '<br><span class="dr-ecart">' + esc(c.motif) + '</span>' : '') + '</td></tr>';
+    });
+    if (cs.length) h += '</tbody></table></div>';
+    return h + '</div>';
+  }
+
+  /* ── Les gestes ── */
+  E('dr-detail').addEventListener('click', async function(e){
+    var t = e.target, op = encodeURIComponent(COURANTE);
+    if (t.dataset.statut) {
+      var r = await appel('/api/drops/' + op + '/statut', 'POST', { statut: t.dataset.statut });
+      if (!r.ok) { E('st-etat').textContent = 'Refusé : ' + (r.d.empechements || [r.d.error]).join(' · '); return; }
+      return ouvrir(COURANTE);
+    }
+    if (t.id === 'jeton') {
+      if (!confirm('Générer un nouveau lien ? L\'ancien cesse de fonctionner aussitôt.')) return;
+      var j = await appel('/api/drops/' + op + '/jeton', 'POST', {});
+      if (j.ok) E('lien-chef').textContent = j.d.chef;
+      return;
+    }
+    if (t.id === 'plat-ajout') {
+      document.querySelector('#menu tbody').insertAdjacentHTML('beforeend',
+        ligneMenu({ id: '', nom: '', description: '', prix: '', vendus_product_id: null, actif: true }));
+      return;
+    }
+    if (t.id === 'menu-ok') {
+      E('menu-etat').textContent = 'Enregistrement…';
+      var m = await appel('/api/drops/' + op + '/plats', 'PUT', { plats: lireMenu() });
+      if (!m.ok) { E('menu-etat').textContent = 'Refusé : ' + (m.d.error || m.status); return; }
+      return ouvrir(COURANTE);
+    }
+    if (t.dataset.copier) {
+      var src = document.querySelector('.dr-soiree[data-jour="' + t.dataset.copier + '"]');
+      document.querySelectorAll('.dr-soiree[data-jour]').forEach(function(s){
+        if (s === src) return;
+        src.querySelectorAll('tr[data-stock]').forEach(function(tr){
+          var cible = s.querySelector('tr[data-stock="' + tr.dataset.stock + '"]');
+          if (!cible) return;
+          ['precommande', 'sur_place'].forEach(function(q){
+            cible.querySelector('[data-q="' + q + '"]').value = tr.querySelector('[data-q="' + q + '"]').value;
+          });
+        });
+      });
+      document.querySelector('[data-etat="' + t.dataset.copier + '"]').textContent =
+        'Copié sur les autres soirées — enregistre chacune, ou utilise « Enregistrer la soirée » sur chacune.';
+      return;
+    }
+    if (t.dataset.enreg) {
+      var jour = t.dataset.enreg, bloc = document.querySelector('.dr-soiree[data-jour="' + jour + '"]');
+      var etat = document.querySelector('[data-etat="' + jour + '"]');
+      var reg = {};
+      bloc.querySelectorAll('[data-r]').forEach(function(i){
+        reg[i.dataset.r] = i.type === 'checkbox' ? i.checked : i.value;
+      });
+      var stocks = [].map.call(bloc.querySelectorAll('tr[data-stock]'), function(tr){
+        return { jour: jour, plat_id: tr.dataset.stock,
+          precommande: tr.querySelector('[data-q="precommande"]').value,
+          sur_place: tr.querySelector('[data-q="sur_place"]').value };
+      });
+      etat.textContent = 'Enregistrement…';
+      var a = await appel('/api/drops/' + op + '/soirees/' + jour, 'PATCH', reg);
+      if (!a.ok) { etat.textContent = 'Refusé : ' + (a.d.error || a.status); return; }
+      var b = await appel('/api/drops/' + op + '/stocks', 'PUT', { stocks: stocks });
+      if (!b.ok) { etat.textContent = 'Réglages enregistrés, stocks refusés : ' + (b.d.error || b.status); return; }
+      return ouvrir(COURANTE);
+    }
+    if (t.dataset.suppr) {
+      if (!confirm('Supprimer cette soirée et ses stocks ?')) return;
+      var s = await appel('/api/drops/' + op + '/soirees/' + t.dataset.suppr, 'DELETE');
+      if (!s.ok) { alert(s.d.error || 'Refusé'); return; }
+      return ouvrir(COURANTE);
+    }
+    if (t.id === 'a-ok') {
+      var n = await appel('/api/drops/' + op + '/soirees', 'POST', { duree: lireDuree('a') });
+      if (!n.ok) { E('a-etat').textContent = 'Refusé : ' + (n.d.error || n.status); return; }
+      return ouvrir(COURANTE);
+    }
+  });
+  E('dr-detail').addEventListener('change', function(e){
+    if (e.target.id === 'a-kind') champsDuree('a');
+  });
+  /* Après chaque rendu, la zone « Ajouter des soirées » a besoin de ses champs. */
+  new MutationObserver(function(){ if (E('a-kind') && !E('a-dates').children.length) champsDuree('a'); })
+    .observe(E('dr-detail'), { childList: true });
+
+  function depuisAdresse(){
+    var m = /op=([a-z0-9-]+)/.exec(location.hash);
+    if (m) ouvrir(m[1]); else liste();
+  }
+  window.addEventListener('hashchange', depuisAdresse);
+  depuisAdresse();
+})();
+</script>
+</body>
+</html>

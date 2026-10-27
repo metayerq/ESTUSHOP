@@ -65,6 +65,9 @@ CATALOGUE = [
     # dans le groupe de l'autre.
     {"chemin": "/planning",       "libelle": "Planning",         "groupe": "Exploitation"},
     {"chemin": "/events",         "libelle": "Événements",       "groupe": "Exploitation"},
+    # Les chefs en résidence : leurs opérations, leurs stocks, ce qui leur revient. À côté des
+    # événements, parce qu'un pop-up en est un.
+    {"chemin": "/drops",          "libelle": "Précommandes",     "groupe": "Exploitation"},
     {"chemin": "/parametres",     "libelle": "Réglages",         "groupe": "Exploitation"},
 ]
 

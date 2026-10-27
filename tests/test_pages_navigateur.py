@@ -514,6 +514,98 @@ CAS = {
         "interdit": ["NaN", "undefined", "[object Object]"],
         "suffixe": "#horaires",
     },
+    # ⚠️ CE QUI EST ÉCRIT SUR CETTE PAGE SE VEND SUR LA VITRINE. Un écart de prix avec Vendus qui
+    # ne se voit pas, c'est une facture fausse ; un remboursement « à faire » qui ne se voit pas,
+    # c'est l'argent d'un client.
+    "drops.html": {
+        "reponses": {
+            # ⚠️ LE DÉTAIL AVANT LA LISTE : le bouchon compare par préfixe.
+            "/api/drops/toro-toro-nov": {
+                "operation": {"id": "toro-toro-nov", "chef": "Toro Toro", "titre": "Onigiri night",
+                              "statut": "brouillon", "commission_pct": 20, "jeton_chef": "j" * 22},
+                "plats": [
+                    {"id": "salmon", "nom": "Salmon onigiri", "description": "", "prix_cents": 450,
+                     "vendus_product_id": 101, "actif": True},
+                    {"id": "ume", "nom": "Umeboshi onigiri", "description": "", "prix_cents": 400,
+                     "vendus_product_id": 102, "actif": True},
+                ],
+                "soirees": [
+                    {"jour": "2026-11-15", "ouvre": "18:00:00", "ferme": "23:00:00",
+                     "retrait_debut": "18:30:00", "retrait_fin": "22:30:00", "pas_minutes": 15,
+                     "capacite_creneau": 6, "limite": "16:00:00", "bascule_sur_place": True},
+                    {"jour": "2026-11-22", "ouvre": "18:00:00", "ferme": "23:00:00",
+                     "retrait_debut": "18:30:00", "retrait_fin": "22:30:00", "pas_minutes": 15,
+                     "capacite_creneau": 6, "limite": "16:00:00", "bascule_sur_place": True},
+                ],
+                "stocks": [{"jour": "2026-11-15", "plat_id": "salmon", "precommande": 30, "sur_place": 15,
+                            "vendu_precommande": 7, "vendu_sur_place": 2}],
+                "commandes": [
+                    {"jour": "2026-11-15", "numero": "482", "creneau": "19:00:00", "prenom": "Ana",
+                     "telephone": "+351912345678", "nif": None, "statut": "payee",
+                     "lignes": [{"nom": "Salmon onigiri", "qty": 2}], "total_cents": 900,
+                     "facture_numero": "FS T01/900", "facture_etat": "emise", "motif": None},
+                    {"jour": "2026-11-15", "numero": "517", "creneau": "19:15:00", "prenom": "Rui",
+                     "telephone": "+351912345679", "nif": None, "statut": "refusee",
+                     "lignes": [{"nom": "Umeboshi onigiri", "qty": 1}], "total_cents": 400,
+                     "facture_numero": None, "facture_etat": None,
+                     "motif": "stock épuisé : ume · remboursement à faire : timeout"},
+                ],
+                "bilan": {"en_ligne_cents": 900, "sur_place_cents": 900, "encaisse_cents": 1800,
+                          "commission_cents": 360, "part_chef_cents": 1440},
+                "empechements": ["Umeboshi onigiri : prix du menu 4.00 € ≠ prix Vendus 3.90 €"],
+                "catalogue": [{"id": 101, "nom": "Salmon onigiri", "prix": 4.5, "categorie": "Pop-up Toro Toro"},
+                              {"id": 102, "nom": "Umeboshi onigiri", "prix": 3.9, "categorie": "Pop-up Toro Toro"}],
+                "liens": {"vitrine": "https://drop.estudantina.com/toro-toro-nov",
+                          "chef": "https://drop.estudantina.com/chef/" + "j" * 22},
+            },
+            "/api/drops": {"operations": [{"id": "toro-toro-nov", "chef": "Toro Toro",
+                                           "titre": "Onigiri night", "statut": "brouillon",
+                                           "soirees": ["2026-11-15", "2026-11-22"]}]},
+        },
+        "scenario": r"""
+(function attendre(n){
+  var E = function(i){ return document.getElementById(i); };
+  if(!E('menu') && n < 80) return setTimeout(function(){ attendre(n+1); }, 20);
+  var trace = function(t){ var d = document.createElement('div'); d.textContent = t;
+                           document.body.appendChild(d); };
+  var txt = E('dr-detail').textContent;
+  trace(txt.indexOf('14,40') >= 0 && txt.indexOf('3,60') >= 0 ? 'BILAN-AFFICHE' : 'BILAN-ABSENT');
+  trace(document.querySelector('.dr-avert') && txt.indexOf('≠ prix Vendus 3.90') >= 0 ? 'BLOCAGE-DIT' : 'BLOCAGE-MUET');
+  trace(txt.indexOf('Vendus : 3.90') >= 0 ? 'ECART-SUR-LA-LIGNE' : 'ECART-MUET');
+  trace(txt.indexOf('7 vendus') >= 0 ? 'VENDUS-AFFICHES' : 'VENDUS-ABSENTS');
+  trace(document.querySelectorAll('.dr-probleme').length === 1 ? 'PROBLEME-SIGNALE' : 'PROBLEME-MUET');
+  trace(document.querySelectorAll('.dr-soiree[data-jour]').length === 2 ? 'DEUX-SOIREES' : 'SOIREES-FAUSSES');
+
+  /* Copier les stocks du 15 sur le 22. */
+  document.querySelector('[data-copier="2026-11-15"]').click();
+  var v = document.querySelector('.dr-soiree[data-jour="2026-11-22"] tr[data-stock="salmon"] [data-q="precommande"]').value;
+  trace(v === '30' ? 'STOCK-COPIE' : 'STOCK-NON-COPIE ' + v);
+
+  /* Un plat ajouté puis le menu enregistré : ce qui part au serveur. */
+  E('plat-ajout').click();
+  var lignes = document.querySelectorAll('#menu tbody tr');
+  lignes[2].querySelector('[data-c="nom"]').value = 'Miso soup';
+  lignes[2].querySelector('[data-c="prix"]').value = '3,00';
+  var envoye = null;
+  window.fetch = function(u, o){
+    if (o && o.method === 'PUT') envoye = JSON.parse(o.body);
+    return Promise.resolve({ ok: false, status: 409, json: function(){ return Promise.resolve({ ok: false, error: 'refus de test' }); } });
+  };
+  E('menu-ok').click();
+  setTimeout(function(){
+    var p = envoye && envoye.plats;
+    trace(p && p.length === 3 && p[0].vendus_product_id === '101' && p[2].nom === 'Miso soup' && p[2].prix === '3,00'
+          ? 'MENU-ENVOYE' : 'MENU-MAL-ENVOYE ' + JSON.stringify(envoye));
+    trace(E('menu-etat').textContent.indexOf('refus de test') >= 0 ? 'REFUS-DIT' : 'REFUS-MUET');
+  }, 50);
+})(0);
+""",
+        "attendu": ["Précommandes des chefs", "Toro Toro", "BILAN-AFFICHE", "BLOCAGE-DIT", "ECART-SUR-LA-LIGNE",
+                    "VENDUS-AFFICHES", "PROBLEME-SIGNALE", "DEUX-SOIREES", "STOCK-COPIE", "MENU-ENVOYE",
+                    "REFUS-DIT", "remboursement à faire"],
+        "interdit": ["NaN", "undefined", "[object Object]"],
+        "suffixe": "#op=toro-toro-nov",
+    },
     "planning.html": {
         "reponses": {
             "/api/statut": {"ca": None, "ca_texte": "—", "tickets": None, "moyen_texte": "",

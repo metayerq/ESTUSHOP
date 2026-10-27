@@ -38,6 +38,7 @@ import mix as _mix
 import periodes as _per
 import segments as _seg
 import menu as _menu
+import drops as _drops
 import calendrier as _cal
 
 from flask import Flask, Response, jsonify, render_template, request, redirect, make_response, g
@@ -527,6 +528,9 @@ INVESTOR_BLOCKED_PREFIXES = (
     # comptes connaîtrait la surface d'attaque exacte du backoffice : qui entre, avec quel
     # niveau, et laquelle de ces portes est la plus ancienne.
     "/parametres", "/api/comptes",
+    # ⚠️ LES PRÉCOMMANDES DES CHEFS PORTENT LE PRÉNOM ET LE TÉLÉPHONE DE CHAQUE CLIENT. Même
+    # raison que le fichier de fidélité : une donnée personnelle, pas un chiffre d'actionnaire.
+    "/drops", "/api/drops",
 )
 
 def _auth_token(role):
@@ -9661,6 +9665,349 @@ def update_supply_price(product_id):
     if r.ok:
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": r.text}), 502
+
+
+# ══ LES PRÉCOMMANDES DES CHEFS EN RÉSIDENCE (« drops ») ═══════════════════════════════════════
+#
+# Le bureau prépare : opération, soirées, menu, stocks, ouverture ; et il compte : le bilan du
+# chef. La VENTE (vitrine, paiement Revolut, facture Vendus, SMS) est dans la caisse Mesa, qui
+# lit les mêmes tables. Les règles du bureau sont dans `drops.py`.
+#
+# ⚠️ ADMIN SEULEMENT, à chaque route. Le menu d'une opération ouverte se vend en ligne : un
+# prix modifié ici est un prix encaissé là-bas.
+
+DROP_SITE = os.environ.get("DROP_SITE_URL", "https://drop.estudantina.com").rstrip("/")
+_DE = _drops.ETABLISSEMENT
+
+
+def _drop_q(op=None, **extra):
+    q = {"etablissement": f"eq.{_DE}"}
+    if op is not None:
+        q["operation_id"] = f"eq.{op}"
+    q.update(extra)
+    return q
+
+
+def _drop_refus(message, code=400):
+    return jsonify({"ok": False, "error": message}), code
+
+
+def _drop_operation(op):
+    if not _drops.identifiant_valide(op):
+        return None
+    lignes = _supa_get("drop_operations", {"etablissement": f"eq.{_DE}", "id": f"eq.{op}"})
+    return lignes[0] if lignes else None
+
+
+def _prix_vendus():
+    """{id produit Vendus: prix TTC}. Le catalogue est celui du cache de 3 min."""
+    try:
+        return {int(p["id"]): float(p.get("price") or 0) for p in (get_catalog() or {}).values()}
+    except Exception:
+        return {}
+
+
+@app.route("/drops")
+def drops_page():
+    return render_template("drops.html")
+
+
+@app.route("/api/drops", methods=["GET"])
+def api_drops_liste():
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    ops = _supa_get("drop_operations", {"etablissement": f"eq.{_DE}", "order": "cree_le.desc"})
+    soirees = _supa_get("drop_soirees", {**_drop_q(), "select": "operation_id,jour"})
+    par_op = {}
+    for s_ in soirees:
+        par_op.setdefault(s_["operation_id"], []).append(s_["jour"])
+    return jsonify({"operations": [
+        {"id": o["id"], "chef": o["chef"], "titre": o["titre"], "statut": o["statut"],
+         "soirees": sorted(par_op.get(o["id"], []))}
+        for o in ops]})
+
+
+@app.route("/api/drops", methods=["POST"])
+def api_drops_creer():
+    """
+    Crée une opération et ses soirées.
+
+    ⚠️ LES SOIRÉES SONT CRÉÉES AVEC L'OPÉRATION, OU PAS DU TOUT. Une opération sans soirée
+    laissée par une écriture à moitié réussie apparaîtrait dans la liste sans rien à vendre ; on
+    l'efface si la seconde écriture échoue.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    d = request.get_json(silent=True) or {}
+    op = (d.get("id") or "").strip()
+    if not _drops.identifiant_valide(op):
+        return _drop_refus("identifiant : 3 à 60 caractères, minuscules, chiffres et tirets")
+    chef, titre = (d.get("chef") or "").strip(), (d.get("titre") or "").strip()
+    if not chef or not titre:
+        return _drop_refus("le chef et le titre sont obligatoires")
+    try:
+        pct = float(d.get("commission_pct", 20))
+        jours = _drops.jours_de_l_operation(d.get("duree"))
+        reglages = _drops.soiree_propre(d.get("soiree"))
+    except (TypeError, ValueError) as e:
+        return _drop_refus(str(e))
+    if not 0 <= pct <= 100:
+        return _drop_refus("la commission est un pourcentage, entre 0 et 100")
+    if _drop_operation(op):
+        return _drop_refus("une opération porte déjà cet identifiant", 409)
+
+    ok, err = _supa_insert("drop_operations", {
+        "etablissement": _DE, "id": op, "chef": chef, "titre": titre,
+        "description": (d.get("description") or "").strip(), "commission_pct": pct,
+        "jeton_chef": _secrets.token_urlsafe(16)})
+    if not ok:
+        return _drop_refus(err or "écriture refusée", 502)
+    ok, err = _supa_insert("drop_soirees", [
+        {"etablissement": _DE, "operation_id": op, "jour": j.isoformat(), **reglages} for j in jours])
+    if not ok:
+        _req.delete(f"{SUPA_URL}/rest/v1/drop_operations", headers=_supa_headers(),
+                    params={"etablissement": f"eq.{_DE}", "id": f"eq.{op}"})
+        return _drop_refus(err or "écriture refusée", 502)
+    _journal_action("admin", "drop-cree", op, None, {"chef": chef, "soirees": len(jours)},
+                    "opération de précommande créée")
+    return jsonify({"ok": True, "id": op})
+
+
+@app.route("/api/drops/<op>", methods=["GET"])
+def api_drop_detail(op):
+    """Tout ce que l'écran d'une opération affiche, en un appel."""
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    o = _drop_operation(op)
+    if not o:
+        return jsonify({"error": "not found"}), 404
+    plats = _supa_get("drop_plats", {**_drop_q(op), "order": "ordre.asc,nom.asc"})
+    soirees = _supa_get("drop_soirees", {**_drop_q(op), "order": "jour.asc"})
+    stocks = _supa_get("drop_stocks", _drop_q(op))
+    commandes = _supa_get("drop_commandes", {**_drop_q(op), "order": "jour.asc,creneau.asc"})
+    prix = _prix_vendus()
+    prix_plat = {p["id"]: int(p["prix_cents"]) for p in plats}
+    sur_place = [(int(s_["vendu_sur_place"]), prix_plat.get(s_["plat_id"], 0)) for s_ in stocks]
+    catalogue = sorted(
+        ({"id": int(p["id"]), "nom": p.get("name") or "", "prix": float(p.get("price") or 0),
+          "categorie": p.get("category_name") or ""} for p in (get_catalog() or {}).values()),
+        key=lambda p: (p["categorie"], p["nom"]))
+    return jsonify({
+        "operation": o,
+        "plats": plats,
+        "soirees": soirees,
+        "stocks": stocks,
+        "commandes": commandes,
+        "bilan": _drops.bilan(commandes, sur_place, o["commission_pct"]),
+        "empechements": _drops.empechements(plats, prix, [s_["jour"] for s_ in soirees]),
+        "catalogue": catalogue,
+        "liens": {"vitrine": f"{DROP_SITE}/{op}", "chef": f"{DROP_SITE}/chef/{o['jeton_chef']}"},
+    })
+
+
+@app.route("/api/drops/<op>", methods=["PUT"])
+def api_drop_infos(op):
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    if not _drop_operation(op):
+        return jsonify({"error": "not found"}), 404
+    d = request.get_json(silent=True) or {}
+    maj = {k: (d.get(k) or "").strip() for k in ("chef", "titre", "description", "photo_url")
+           if k in d}
+    if not maj.get("chef", "x") or not maj.get("titre", "x"):
+        return _drop_refus("le chef et le titre sont obligatoires")
+    if "photo_url" in maj and not maj["photo_url"]:
+        maj["photo_url"] = None
+    if "commission_pct" in d:
+        try:
+            maj["commission_pct"] = float(d["commission_pct"])
+        except (TypeError, ValueError):
+            return _drop_refus("commission illisible")
+        if not 0 <= maj["commission_pct"] <= 100:
+            return _drop_refus("la commission est un pourcentage, entre 0 et 100")
+    ok, err = _supa_patch("drop_operations", {"etablissement": f"eq.{_DE}", "id": f"eq.{op}"}, maj)
+    return jsonify({"ok": ok, "error": err}), (200 if ok else 502)
+
+
+@app.route("/api/drops/<op>/plats", methods=["PUT"])
+def api_drop_plats(op):
+    """
+    Enregistre le menu entier.
+
+    ⚠️ UNE OPÉRATION OUVERTE NE CHANGE PAS DE PRIX EN DOUCE. Si le menu modifié ne passe plus
+    le contrôle d'ouverture — un prix qui ne correspond plus à Vendus, un plat sans produit — on
+    refuse : la vitrine vendrait à un prix et la caisse facturerait à un autre.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    o = _drop_operation(op)
+    if not o:
+        return jsonify({"error": "not found"}), 404
+    lignes = (request.get_json(silent=True) or {}).get("plats")
+    if not isinstance(lignes, list):
+        return _drop_refus("aucun plat reçu")
+    propres, vus = [], set()
+    for i, p in enumerate(lignes):
+        nom = (p.get("nom") or "").strip()
+        if not nom:
+            return _drop_refus(f"plat {i + 1} : nom manquant")
+        pid = (p.get("id") or "").strip() or _drops.slug(nom)
+        if not pid or pid in vus:
+            return _drop_refus(f"{nom} : identifiant vide ou en double")
+        vus.add(pid)
+        try:
+            prix_cents = int(round(float(str(p.get("prix")).replace(",", ".")) * 100))
+            vendus = int(p["vendus_product_id"]) if p.get("vendus_product_id") not in (None, "") else None
+        except (TypeError, ValueError):
+            return _drop_refus(f"{nom} : prix ou produit Vendus illisible")
+        if prix_cents <= 0:
+            return _drop_refus(f"{nom} : le prix doit être positif")
+        propres.append({"etablissement": _DE, "operation_id": op, "id": pid, "nom": nom,
+                        "description": (p.get("description") or "").strip(),
+                        "prix_cents": prix_cents, "vendus_product_id": vendus, "ordre": i,
+                        "actif": bool(p.get("actif", True)),
+                        "photo_url": (p.get("photo_url") or "").strip() or None})
+    if o["statut"] == "ouverte":
+        soirees = _supa_get("drop_soirees", {**_drop_q(op), "select": "jour"})
+        bloque = _drops.empechements(propres, _prix_vendus(), [s_["jour"] for s_ in soirees])
+        if bloque:
+            return _drop_refus("opération ouverte — " + " · ".join(bloque), 409)
+    ok, err = _supa_upsert("drop_plats", propres, on_conflict="etablissement,operation_id,id")
+    return jsonify({"ok": ok, "error": err}), (200 if ok else 502)
+
+
+@app.route("/api/drops/<op>/soirees", methods=["POST"])
+def api_drop_soirees_ajout(op):
+    """Ajoute des soirées. Celles qui existent déjà gardent leurs réglages et leurs commandes."""
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    if not _drop_operation(op):
+        return jsonify({"error": "not found"}), 404
+    d = request.get_json(silent=True) or {}
+    try:
+        jours = _drops.jours_de_l_operation(d.get("duree"))
+        reglages = _drops.soiree_propre(d.get("soiree"))
+    except ValueError as e:
+        return _drop_refus(str(e))
+    deja = {s_["jour"] for s_ in _supa_get("drop_soirees", {**_drop_q(op), "select": "jour"})}
+    neuves = [{"etablissement": _DE, "operation_id": op, "jour": j.isoformat(), **reglages}
+              for j in jours if j.isoformat() not in deja]
+    if not neuves:
+        return jsonify({"ok": True, "ajoutees": 0})
+    ok, err = _supa_insert("drop_soirees", neuves)
+    return jsonify({"ok": ok, "error": err, "ajoutees": len(neuves) if ok else 0}), (200 if ok else 502)
+
+
+@app.route("/api/drops/<op>/soirees/<jour>", methods=["PATCH"])
+def api_drop_soiree_maj(op, jour):
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    actuelles = _supa_get("drop_soirees", {**_drop_q(op), "jour": f"eq.{jour}"}) \
+        if _drops.identifiant_valide(op) else []
+    if not actuelles:
+        return jsonify({"error": "not found"}), 404
+    try:
+        propre = _drops.soiree_propre({**actuelles[0], **(request.get_json(silent=True) or {})})
+    except ValueError as e:
+        return _drop_refus(str(e))
+    ok, err = _supa_patch("drop_soirees", {**_drop_q(op), "jour": f"eq.{jour}"}, propre)
+    return jsonify({"ok": ok, "error": err}), (200 if ok else 502)
+
+
+@app.route("/api/drops/<op>/soirees/<jour>", methods=["DELETE"])
+def api_drop_soiree_suppr(op, jour):
+    """⚠️ UNE SOIRÉE QUI A DES COMMANDES NE SE SUPPRIME PAS : ce sont des clients qui ont payé."""
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    if not _drop_operation(op):
+        return jsonify({"error": "not found"}), 404
+    if _supa_get("drop_commandes", {**_drop_q(op), "jour": f"eq.{jour}", "select": "id", "limit": 1}):
+        return _drop_refus("cette soirée a des commandes — elle ne peut pas être supprimée", 409)
+    r = _req.delete(f"{SUPA_URL}/rest/v1/drop_soirees", headers=_supa_headers(),
+                    params={**_drop_q(op), "jour": f"eq.{jour}"})
+    return jsonify({"ok": r.ok}), (200 if r.ok else 502)
+
+
+@app.route("/api/drops/<op>/stocks", methods=["PUT"])
+def api_drop_stocks(op):
+    """
+    Enregistre les stocks saisis, soirée par soirée et plat par plat.
+
+    ⚠️ ON N'ÉCRIT QUE CE QUI SE SAISIT. Les quantités déjà vendues sont décomptées par la caisse ;
+    un enregistrement d'ici qui les renverrait remettrait à zéro les ventes de la soirée.
+    ⚠️ ET UN STOCK NE DESCEND PAS SOUS CE QUI EST DÉJÀ VENDU : on le dit, plat par plat.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    if not _drop_operation(op):
+        return jsonify({"error": "not found"}), 404
+    lignes = (request.get_json(silent=True) or {}).get("stocks")
+    if not isinstance(lignes, list):
+        return _drop_refus("aucun stock reçu")
+    vendus = {(s_["jour"], s_["plat_id"]): s_ for s_ in _supa_get("drop_stocks", _drop_q(op))}
+    propres = []
+    for l in lignes:
+        try:
+            pre, sp = int(l.get("precommande") or 0), int(l.get("sur_place") or 0)
+        except (TypeError, ValueError):
+            return _drop_refus("quantité illisible")
+        if pre < 0 or sp < 0:
+            return _drop_refus("une quantité ne peut pas être négative")
+        deja = vendus.get((l.get("jour"), l.get("plat_id")))
+        if deja and pre < int(deja["vendu_precommande"]):
+            return _drop_refus(f"{l.get('plat_id')} le {l.get('jour')} : déjà "
+                               f"{deja['vendu_precommande']} vendus en ligne", 409)
+        propres.append({"etablissement": _DE, "operation_id": op, "jour": l.get("jour"),
+                        "plat_id": l.get("plat_id"), "precommande": pre, "sur_place": sp})
+    if not propres:
+        return jsonify({"ok": True})
+    ok, err = _supa_upsert("drop_stocks", propres,
+                           on_conflict="etablissement,operation_id,jour,plat_id")
+    return jsonify({"ok": ok, "error": err}), (200 if ok else 502)
+
+
+@app.route("/api/drops/<op>/statut", methods=["POST"])
+def api_drop_statut(op):
+    """
+    Ouvre, ferme, ou remet en brouillon.
+
+    ⚠️ OUVRIR SE MÉRITE : tant que `empechements` n'est pas vide, la vitrine vendrait un
+    plat sans facture possible, ou à un prix que Vendus ne connaît pas.
+    """
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    o = _drop_operation(op)
+    if not o:
+        return jsonify({"error": "not found"}), 404
+    statut = (request.get_json(silent=True) or {}).get("statut")
+    if statut not in ("brouillon", "ouverte", "close"):
+        return _drop_refus("statut inconnu")
+    if statut == "ouverte":
+        plats = _supa_get("drop_plats", _drop_q(op))
+        soirees = _supa_get("drop_soirees", {**_drop_q(op), "select": "jour"})
+        bloque = _drops.empechements(plats, _prix_vendus(), [s_["jour"] for s_ in soirees])
+        if bloque:
+            return jsonify({"ok": False, "error": "impossible d'ouvrir", "empechements": bloque}), 409
+    ok, err = _supa_patch("drop_operations", {"etablissement": f"eq.{_DE}", "id": f"eq.{op}"},
+                          {"statut": statut})
+    if ok:
+        _journal_action("admin", "drop-statut", op, {"statut": o["statut"]}, {"statut": statut},
+                        "statut de l'opération modifié")
+    return jsonify({"ok": ok, "error": err}), (200 if ok else 502)
+
+
+@app.route("/api/drops/<op>/jeton", methods=["POST"])
+def api_drop_jeton(op):
+    """⚠️ LE LIEN DU CHEF SE RÉVOQUE EN LE REMPLAÇANT : l'ancien cesse de fonctionner aussitôt."""
+    if _current_role() != "admin":
+        return jsonify({"error": "admin only"}), 403
+    if not _drop_operation(op):
+        return jsonify({"error": "not found"}), 404
+    jeton = _secrets.token_urlsafe(16)
+    ok, err = _supa_patch("drop_operations", {"etablissement": f"eq.{_DE}", "id": f"eq.{op}"},
+                          {"jeton_chef": jeton})
+    return jsonify({"ok": ok, "error": err, "chef": f"{DROP_SITE}/chef/{jeton}" if ok else None})
+
 
 
 if __name__ == "__main__":
