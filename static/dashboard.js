@@ -127,10 +127,21 @@ function fmtDate(iso) {
 let inclToday = false;
 try { inclToday = localStorage.getItem('estu_incl_today') === '1'; } catch (e) {}
 
+// Affichage du point mort : du jour (brut, variable) OU moyen du mois (lissé, constant).
+// C'est un choix d'AFFICHAGE : les deux valeurs sont déjà dans la réponse, on ne recharge pas.
+let pmLisse = false;
+try { pmLisse = localStorage.getItem('estu_pm_lisse') === '1'; } catch (e) {}
+
 function toggleInclToday() {
   inclToday = document.getElementById('incl-today').checked;
   try { localStorage.setItem('estu_incl_today', inclToday ? '1' : '0'); } catch (e) {}
   loadData(true);
+}
+
+function togglePmLisse() {
+  pmLisse = document.getElementById('pm-lisse').checked;
+  try { localStorage.setItem('estu_pm_lisse', pmLisse ? '1' : '0'); } catch (e) {}
+  if (window._lastData) render(window._lastData);   // bascule d'affichage : pas d'aller-retour serveur
 }
 
 async function loadData(force = false) {
@@ -372,7 +383,15 @@ function renderReponse(d) {
 
   /* ⚠️ LE POINT MORT EST DIT EN EUROS, PAS EN POURCENTAGE. « 145 % » ne se compare à rien
    * qu'on connaisse ; « 1 430 € » se compare à une journée de caisse. */
-  if (eco.seuil_ca_ttc != null) {
+  /* Point mort moyen du mois (lissé) : un repère constant, choisi par la case du haut. Il vit
+   * dans les insights du mois, indépendant du preset affiché. On ne bascule que si la valeur
+   * existe — sinon on retombe sur le point mort du jour plutôt que d'afficher un tiret. */
+  const pmLisseVal = (d.insights && d.insights.month) ? d.insights.month.seuil_mois_jour : null;
+  const pmLisseOn = (typeof pmLisse !== 'undefined') && pmLisse;   // robuste hors contexte global (tests isolés)
+  if (pmLisseOn && pmLisseVal != null) {
+    E('db-seuil').textContent = fmt(pmLisseVal);
+    E('db-seuil-sub').innerHTML = '<span class="db-badge flat">moyenne du mois · lissé</span>';
+  } else if (eco.seuil_ca_ttc != null) {
     E('db-seuil').textContent = fmt(eco.seuil_ca_ttc);
     /* ⚠️ UN SEUIL NOURRI D'UNE FACTURE QUI N'EST PAS ARRIVÉE N'EST PAS UN SEUIL MESURÉ. Le
      * montant reste le meilleur disponible — la dernière facture connue — mais l'écran le
@@ -519,6 +538,15 @@ function plurJs(n, sing, pl) { return n + ' ' + (n > 1 ? (pl || sing + 's') : si
 
 function render(d) {
   window._lastData = d;
+  // Case « point mort moyen du mois » : toujours visible, état restauré, indice chiffré.
+  const _pmCb = document.getElementById('pm-lisse');
+  if (_pmCb) {
+    _pmCb.checked = pmLisse;
+    const _pmv = (d.insights && d.insights.month) ? d.insights.month.seuil_mois_jour : null;
+    const _pmHint = document.getElementById('pm-lisse-hint');
+    if (_pmHint) _pmHint.textContent =
+      (pmLisse && _pmv != null) ? '— ' + fmt(_pmv) + ' / jour, constant sur le mois' : '';
+  }
   // Bandeau warnings — sources de données en échec
   const warnBanner = document.getElementById('warn-banner');
   if (d.warnings && d.warnings.length) {
