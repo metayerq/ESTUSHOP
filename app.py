@@ -254,11 +254,13 @@ def _cout_mois_jour(ref):
     except Exception:
         return None
     est_ouvert = lambda j: count_open_days_raw(j, j) == 1
-    ouverts = _ch.jours_ouverts_entre(m0, m1, est_ouvert)
+    ouverts = _ch.jours_ouverts_clients(m0, m1, est_ouvert, rule_rows, shift_rows)
     if not ouverts:
         return None
     fixes, perso, _ = _ch.cout_periode_planning(
         charges_rows, employee_rows, shift_rows, ouverts, est_ouvert, PLANNING_CUTOVER, rule_rows)
+    # Heures de prep des jours fermés/prep-seuls : comptées, réparties sur les jours ouverts.
+    perso += _ch.cout_prep_hors_ouverts(m0, m1, employee_rows, rule_rows, shift_rows, est_ouvert)
     return (fixes + perso) / len(ouverts)
 
 
@@ -5030,6 +5032,7 @@ def api_shifts_post():
            "note": (data.get("note") or "").strip(),
            "rule_id": rule_id,
            "annule": bool(data.get("annule")),
+           "prep": bool(data.get("prep")),   # créneau de préparation (ne sert pas les clients)
            "updated_at": datetime.now(timezone.utc).isoformat()}
     if data.get("id"):
         ok, err = _supa_patch("shifts", {"id": f"eq.{data['id']}"}, row)
@@ -5119,6 +5122,7 @@ def api_shift_rules_post():
            "start_time": debut, "end_time": fin,
            "valid_from": depuis, "valid_to": jusqua,
            "note": (data.get("note") or "").strip(),
+           "prep": bool(data.get("prep")),   # règle de préparation (ne sert pas les clients)
            "updated_at": datetime.now(timezone.utc).isoformat()}
     if data.get("id"):
         ok, err = _supa_patch("shift_rules", {"id": f"eq.{data['id']}"}, row)

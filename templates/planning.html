@@ -225,6 +225,14 @@
       <label for="f-note">Note</label>
       <input id="f-note" placeholder="facultatif">
     </div>
+    <div class="pl-champ">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal">
+        <input id="f-prep" type="checkbox" style="width:16px;height:16px;cursor:pointer">
+        En charge des prep (ne sert pas les clients)
+      </label>
+      <p class="pl-note" style="margin:4px 0 0">Si personne d'autre ne travaille ce jour-là,
+        le jour est compté comme fermé aux clients — mais les heures sont facturées.</p>
+    </div>
     <div class="pl-refus" id="f-refus" hidden></div>
     <div id="f-apercu" class="pl-note" style="margin:0"></div>
     <div class="pl-actions">
@@ -273,6 +281,12 @@
         <label for="r-jusqua">Jusqu'au (exclu)</label>
         <input id="r-jusqua" type="date">
       </div>
+    </div>
+    <div class="pl-champ">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal">
+        <input id="r-prep" type="checkbox" style="width:16px;height:16px;cursor:pointer">
+        En charge des prep (ne sert pas les clients)
+      </label>
     </div>
     <div class="pl-refus" id="r-refus" hidden></div>
     <div id="r-apercu" class="pl-note" style="margin:0"></div>
@@ -666,6 +680,7 @@ function ouvrir(jour, shiftId, ruleId){
   E('f-debut').value = src ? hhmm(src.start_time) : '09:00';
   E('f-fin').value   = src ? hhmm(src.end_time)   : '17:00';
   E('f-note').value  = src ? (src.note || '') : '';
+  E('f-prep').checked = !!(src && src.prep);
   if(src) E('f-personne').value = src.person_id;
   /* La personne d'un service de règle ne se change pas ici : ce serait modifier la règle pour
      un seul jour, ce qui n'a pas de sens. On change l'horaire, ou on annule. */
@@ -706,7 +721,7 @@ async function enregistrer(){
   try{
     const corps = {person_id: E('f-personne').value, day: E('f-jour').value,
                    start_time: E('f-debut').value, end_time: E('f-fin').value,
-                   note: E('f-note').value};
+                   note: E('f-note').value, prep: E('f-prep').checked};
     if(EDITE) corps.id = EDITE;
     if(EDITE_REGLE_JOUR) corps.rule_id = EDITE_REGLE_JOUR.rule_id;
     const r = await fetch('/api/shifts', {method:'POST',
@@ -794,6 +809,7 @@ function ouvrirRegle(id){
   E('r-fin').value     = r ? hhmm(r.end_time)   : '17:00';
   E('r-depuis').value  = r ? (r.valid_from || '') : iso(new Date());
   E('r-jusqua').value  = r ? (r.valid_to || '') : '';
+  E('r-prep').checked  = !!(r && r.prep);
   if(r) E('r-personne').value = r.person_id;
   apercuRegle();
   E('pl-fond-regle').classList.add('ouvert');
@@ -837,7 +853,8 @@ async function enregistrerRegle(){
   try{
     const corps = {person_id: E('r-personne').value, weekday: +E('r-jour').value,
                    start_time: E('r-debut').value, end_time: E('r-fin').value,
-                   valid_from: E('r-depuis').value, valid_to: E('r-jusqua').value};
+                   valid_from: E('r-depuis').value, valid_to: E('r-jusqua').value,
+                   prep: E('r-prep').checked};
     if(EDITE_REGLE) corps.id = EDITE_REGLE;
     const r = await fetch('/api/shift_rules', {method:'POST',
       headers:{'Content-Type':'application/json'}, body: JSON.stringify(corps)});
