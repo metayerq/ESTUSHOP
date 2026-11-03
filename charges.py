@@ -572,12 +572,14 @@ def services_du_jour(jour, regles, shifts):
             if ex.get("annule"):
                 continue
             out.append({**ex, "source": "regle-modifiee", "rule_id": r.get("id"),
-                        "person_id": r.get("person_id")})
+                        "person_id": r.get("person_id"),
+                        # L'exception peut porter son propre « prep » ; sinon elle hérite de la règle.
+                        "prep": ex.get("prep") if ex.get("prep") is not None else r.get("prep")})
             continue
         out.append({"id": None, "rule_id": r.get("id"), "person_id": r.get("person_id"),
                     "day": jour.isoformat(), "start_time": r.get("start_time"),
                     "end_time": r.get("end_time"), "note": r.get("note"),
-                    "source": "regle"})
+                    "prep": r.get("prep"), "source": "regle"})
 
     for s in shifts or []:
         if s.get("rule_id"):
@@ -594,6 +596,40 @@ def services_du_jour(jour, regles, shifts):
 
 def _est_extra(e):
     return str(e.get("type") or "") == "extra"
+
+
+def _est_prep(service):
+    """Un créneau coché « prep » : la personne prépare, elle ne sert pas les clients."""
+    return bool(service.get("prep"))
+
+
+def jour_prep_seul(jour, regles, shifts):
+    """
+    Vrai si ce jour a des services ET qu'ils sont TOUS des prep — personne en service.
+
+    ⚠️ C'EST CE QUI FERME UN JOUR AUX CLIENTS SANS TOUCHER AU CALENDRIER. Zoé vient préparer un
+    mercredi normalement ouvert mais sans personne au comptoir : le jour ne vend rien, il ne
+    doit donc pas compter comme jour ouvert (ni dans le diviseur, ni dans les ventes attendues).
+    Un jour sans aucun service reste jugé par le calendrier — l'absence de planning ne ferme
+    rien (un permanent peut tenir la boutique seul, sans créneau saisi).
+    """
+    svcs = services_du_jour(jour, regles, shifts)
+    return bool(svcs) and all(_est_prep(s) for s in svcs)
+
+
+def cout_prep_jour(jour, employes, regles, shifts):
+    """
+    Le coût des seuls créneaux PREP d'un jour (heures × taux). Extras uniquement : un permanent
+    est déjà dans sa paie lissée, l'ajouter ici le paierait deux fois.
+    """
+    total = 0.0
+    for s in services_du_jour(jour, regles, shifts):
+        if not _est_prep(s):
+            continue
+        fiche = fiche_du_jour(employes, s.get("person_id"), jour)
+        if fiche is not None and _est_extra(fiche):
+            total += cout_shift(s, employes)
+    return total
 
 
 def personnel_du_jour(employes, shifts, jour, jours_ouverts_mois, bascule=None, regles=None):
@@ -692,3 +728,27 @@ def jours_ouverts_entre(debut, fin, est_ouvert):
             out.append(j)
         j += timedelta(1)
     return out
+
+
+def jours_ouverts_clients(debut, fin, est_ouvert, regles, shifts):
+    """
+    Les jours ouverts AUX CLIENTS : le calendrier les dit ouverts ET ce ne sont pas des jours
+    « prep seul ». Ce sont eux qui divisent les charges et servent de base au point mort — un
+    jour de prep sans vente n'en est pas un.
+    """
+    return [j for j in jours_ouverts_entre(debut, fin, est_ouvert)
+            if not jour_prep_seul(j, regles, shifts)]
+
+
+def cout_prep_hors_ouverts(debut, fin, employes, regles, shifts, est_ouvert):
+    """
+    Le coût des créneaux PREP tombant sur des jours NON ouverts aux clients — fermés au
+    calendrier, ou « prep seuls ». Ces heures sont payées mais le jour ne vend rien : on les
+    renvoie pour les ajouter à la masse du mois, répartie sur les vrais jours ouverts.
+    """
+    total, j = 0.0, debut
+    while j <= fin:
+        if (not est_ouvert(j)) or jour_prep_seul(j, regles, shifts):
+            total += cout_prep_jour(j, employes, regles, shifts)
+        j += timedelta(1)
+    return total

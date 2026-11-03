@@ -692,9 +692,16 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
     # n'y a pas de coût journalier unique : multiplier un total par un nombre de jours donnerait
     # le bon ordre de grandeur et le mauvais chiffre — et l'erreur serait maximale le mois où
     # l'on vient justement voir l'effet du changement.
+    _est_ouvert = lambda j: count_open_days_raw(j, j) == 1
     if from_date is not None and to_date is not None:
-        _ouverts = _ch.jours_ouverts_entre(
-            from_date, to_date, lambda j: count_open_days_raw(j, j) == 1)
+        # Jours ouverts AUX CLIENTS : le calendrier les dit ouverts ET ce ne sont pas des jours
+        # « prep seuls » (quelqu'un prépare, personne ne sert → pas de vente, jour fermé).
+        _ouverts = _ch.jours_ouverts_clients(
+            from_date, to_date, _est_ouvert, rule_rows, shift_rows)
+        # Le diviseur suit le vrai nombre de jours ouverts aux clients.
+        if open_days_override is None:
+            open_days = len(_ouverts)
+            no_open_days = open_days == 0
     else:
         _ouverts = []
     if open_days_override is not None and _ouverts:
@@ -707,10 +714,13 @@ def daily_economics(docs, catalog, n_days=1, from_date=None, to_date=None, cogs_
         # ⚠️ LE DIVISEUR VIENT DU CALENDRIER, PLUS D'UNE CONSTANTE. `JOURS_OUVERTS_MOIS` valait
         # 21,25, saisi depuis le business plan ; le vrai compte oscille entre 20 (février) et
         # 23 (octobre). C'est le diviseur de toute paie lissée, donc de tout le point mort.
-        _est_ouvert = lambda j: count_open_days_raw(j, j) == 1
         total_fixes_periode, total_perso_periode, _par_jour = _ch.cout_periode_planning(
             charges_rows, employee_rows, shift_rows, _ouverts, _est_ouvert, PLANNING_CUTOVER,
             rule_rows)
+        # Les heures de prep des jours fermés ou « prep seuls » : payées, mais hors jour ouvert.
+        # On les ajoute à la masse du mois ; le diviseur (jours ouverts) les répartit.
+        total_perso_periode += _ch.cout_prep_hors_ouverts(
+            from_date, to_date, employee_rows, rule_rows, shift_rows, _est_ouvert)
         # Le coût JOURNALIER affiché est la moyenne sur la période — il varie si un montant a
         # changé au milieu, et l'écran doit montrer ce qui a réellement été imputé.
         cout_fixe_jour = total_fixes_periode / len(_ouverts)
