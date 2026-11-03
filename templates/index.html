@@ -114,6 +114,15 @@
     <span id="incl-today-hint" style="color:var(--db-faint);"></span>
   </label>
 
+  {# Bascule d'affichage du point mort : du jour (brut, variable) ↔ moyen du mois (lissé). #}
+  <label id="pm-lisse-bar" style="display:flex;align-items:center;gap:7px;margin:0 0 16px;
+         font-size:12.5px;color:var(--db-muted);cursor:pointer;user-select:none;">
+    <input type="checkbox" id="pm-lisse" onchange="togglePmLisse()"
+           style="width:15px;height:15px;cursor:pointer;">
+    <span>Point mort moyen du mois (liss&eacute;, constant tous les jours)</span>
+    <span id="pm-lisse-hint" style="color:var(--db-faint);"></span>
+  </label>
+
   <!-- ══ LA COURBE ══════════════════════════════════════════════════════════════════════ -->
   {#
     ⚠️ LE GRAPHIQUE A ÉTÉ RETIRÉ DE CETTE CARTE le 04/10/2026, à la demande de Quentin. Le

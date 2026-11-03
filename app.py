@@ -230,6 +230,38 @@ def _month_fallback_rate(rows_month):
     return ((covered - cogs) / covered) if covered > 0 else MARGE_BP_GLOBALE
 
 
+def _cout_mois_jour(ref):
+    """
+    Coût moyen d'un jour ouvert du mois de `ref` — charges fixes + salaires, planning compris,
+    étalé sur TOUS les jours d'ouverture du mois. C'est la base du POINT MORT LISSÉ : un repère
+    volontairement constant sur le mois, là où le coût d'un jour précis saute avec les extras.
+
+    ⚠️ ON RELIT LE PLANNING DU MOIS ENTIER, pas la fenêtre affichée. Le point mort lissé ne doit
+    pas dépendre du preset sélectionné : il répond la même chose qu'on regarde « aujourd'hui » ou
+    « ce mois ». Rend `None` si rien n'est lisible (base injoignable, aucun jour ouvert) — l'écran
+    dira qu'il n'y a pas de moyenne à montrer, plutôt qu'un zéro trompeur.
+    """
+    from config import count_open_days_raw
+    m0 = ref.replace(day=1)
+    m1 = (date(ref.year + 1, 1, 1) if ref.month == 12
+          else date(ref.year, ref.month + 1, 1)) - timedelta(1)
+    try:
+        charges_rows  = _supa_get("charges_fixes", {})
+        employee_rows = _supa_get("employees", {})
+        shift_rows    = _supa_get("shifts", {
+            "and": f"(day.gte.{m0.isoformat()},day.lte.{m1.isoformat()})"})
+        rule_rows     = _supa_get("shift_rules", {})
+    except Exception:
+        return None
+    est_ouvert = lambda j: count_open_days_raw(j, j) == 1
+    ouverts = _ch.jours_ouverts_entre(m0, m1, est_ouvert)
+    if not ouverts:
+        return None
+    fixes, perso, _ = _ch.cout_periode_planning(
+        charges_rows, employee_rows, shift_rows, ouverts, est_ouvert, PLANNING_CUTOVER, rule_rows)
+    return (fixes + perso) / len(ouverts)
+
+
 def _month_series(rows_month, cout_jour, fallback_rate, today_real):
     """Série EBITDA/jour du mois + cumul + projection fin de mois."""
     import calendar as _cal
@@ -1378,6 +1410,13 @@ def api_data():
             _mca_ttc = sum(float(r.get("ca_ttc") or 0) for r in rows_month)
             _mtva    = (_mca_ttc / _mca_ht) if _mca_ht > 0 else (1 + TVA_MOYENNE_BLENDED)
             _sj = (_mcout / _mrate * _mtva) if (_mrate and _mcout) else None
+            # Point mort LISSÉ : coût moyen d'un jour ouvert du mois (planning compris), converti
+            # à la marge et à la TVA du mois. Constant sur tout le mois, contrairement au point
+            # mort du jour qui saute avec les extras et la marge mesurée en direct. Le dashboard
+            # peut l'afficher au choix (case à cocher) à la place du point mort du jour.
+            _cmj = _cout_mois_jour(today_real)
+            month["seuil_mois_jour"] = (round(_cmj / _mrate * _mtva, 2)
+                                        if (_cmj and _mrate and _mtva) else None)
             month["ca_mtd"]        = ca_mtd
             month["proj_ca_end"]   = (round(_ca_full + _avg7 * _remain, 2)
                                       if _open_ca else None)
